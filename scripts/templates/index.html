@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Semantic Model Cleaner</title>
+<style>
+:root {
+  --bg: #f5f6fa; --card: #fff; --border: #dfe3ea;
+  --primary: #2563eb; --primary-hover: #1d4ed8;
+  --danger: #dc2626; --danger-hover: #b91c1c;
+  --warning: #f59e0b; --success: #16a34a;
+  --text: #1e293b; --text-light: #64748b;
+  --safe: #dcfce7; --review: #fef3c7; --caution: #fee2e2; --donotremove: #e2e8f0;
+  --row-hover: #f1f5f9; --radius: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+.header { background: var(--primary); color: #fff; padding: 16px 24px; display: flex; align-items: center; gap: 16px; }
+.header h1 { font-size: 18px; font-weight: 600; }
+.header .subtitle { font-size: 13px; opacity: .8; }
+.container { max-width: 1600px; margin: 0 auto; padding: 16px 24px; }
+.setup { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+.setup h2 { font-size: 15px; margin-bottom: 14px; }
+.setup-columns { display: flex; gap: 16px; align-items: flex-start; }
+.setup-col { flex: 1; min-width: 0; }
+.setup-col h3 { font-size: 12px; color: var(--text-light); text-transform: uppercase; letter-spacing: .4px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.setup-col h3 .count-badge { background: var(--primary); color: #fff; font-size: 10px; padding: 1px 7px; border-radius: 10px; }
+.pill-list { display: flex; flex-wrap: wrap; gap: 6px; min-height: 36px; padding: 8px; background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; }
+.pill-list.empty { align-items: center; justify-content: center; color: var(--text-light); font-size: 12px; font-style: italic; }
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 14px; font-size: 12px; font-weight: 500; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill.pill-report { background: #dbeafe; color: #1e40af; }
+.pill .pill-remove { cursor: pointer; font-size: 14px; opacity: .6; line-height: 1; }
+.pill .pill-remove:hover { opacity: 1; }
+.setup-actions { display: flex; flex-direction: column; gap: 8px; justify-content: flex-start; padding-top: 22px; }
+.btn { padding: 8px 18px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background .15s; }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: var(--danger-hover); }
+.btn-secondary { background: #e2e8f0; color: var(--text); }
+.btn-secondary:hover { background: #cbd5e1; }
+.btn-warning { background: var(--warning); color: #fff; }
+.btn-warning:hover { background: #d97706; }
+.btn-success { background: var(--success); color: #fff; }
+.btn-success:hover { background: #15803d; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.summary-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; text-align: center; }
+.summary-card .value { font-size: 28px; font-weight: 700; color: var(--primary); }
+.summary-card .label { font-size: 11px; color: var(--text-light); margin-top: 2px; text-transform: uppercase; letter-spacing: .5px; }
+.filters-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.filters-bar .filter-group { display: flex; flex-direction: column; gap: 3px; }
+.filters-bar .filter-group label { font-size: 11px; color: var(--text-light); font-weight: 500; text-transform: uppercase; letter-spacing: .3px; }
+.filters-bar select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; min-width: 120px; }
+.filters-bar input[type="text"] { padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; min-width: 180px; }
+.filter-counts { margin-left: auto; font-size: 12px; color: var(--text-light); white-space: nowrap; }
+.action-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.action-bar .selected-count { font-size: 13px; color: var(--text-light); margin-right: 8px; }
+.action-bar .folder-input { padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; width: 200px; }
+.table-container { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { position: sticky; top: 0; background: #f8fafc; border-bottom: 2px solid var(--border); padding: 10px 12px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .3px; color: var(--text-light); cursor: pointer; user-select: none; white-space: nowrap; }
+thead th:hover { color: var(--text); }
+thead th .sort-arrow { font-size: 10px; margin-left: 4px; }
+tbody td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
+tbody tr:hover { background: var(--row-hover); }
+tbody tr.row-review td:first-child { border-left: 3px solid var(--warning); }
+tbody tr.row-caution td:first-child { border-left: 3px solid var(--danger); }
+tbody tr.row-donotremove td:first-child { border-left: 3px solid #94a3b8; }
+tbody tr.selected { background: #eff6ff; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-safe { background: var(--safe); color: #166534; }
+.badge-review { background: var(--review); color: #92400e; }
+.badge-caution { background: var(--caution); color: #991b1b; }
+.badge-donotremove { background: var(--donotremove); color: #475569; }
+.badge-used { background: #dbeafe; color: #1e40af; }
+.status-log { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-top: 16px; max-height: 200px; overflow-y: auto; }
+.status-log h3 { font-size: 13px; margin-bottom: 8px; color: var(--text-light); }
+.status-log .log-entry { font-size: 12px; padding: 3px 0; font-family: 'SF Mono', Monaco, Consolas, monospace; }
+.log-ok { color: var(--success); }
+.log-err { color: var(--danger); }
+.log-info { color: var(--text-light); }
+.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #e2e8f0; border-top-color: var(--primary); border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal-overlay.hidden { display: none; }
+.modal { background: #fff; border-radius: 12px; padding: 24px; max-width: 440px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,.2); }
+.modal h2 { font-size: 16px; margin-bottom: 12px; color: var(--danger); }
+.modal p { font-size: 13px; color: var(--text-light); margin-bottom: 16px; }
+.modal input[type="text"] { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+.modal .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.hidden { display: none !important; }
+.backup-banner { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: var(--radius); padding: 10px 16px; margin-bottom: 12px; font-size: 13px; color: #065f46; display: flex; align-items: center; gap: 8px; }
+.backup-banner .path { font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 12px; word-break: break-all; }
+.git-warning { background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius); padding: 10px 16px; margin-bottom: 12px; font-size: 13px; color: #92400e; }
+.explorer-modal { background: #fff; border-radius: 12px; max-width: 700px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.explorer-header { padding: 16px 20px 0; }
+.explorer-header h2 { font-size: 16px; color: var(--text); margin-bottom: 10px; }
+.explorer-path-bar { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; }
+.explorer-path-bar input { flex: 1; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: 'SF Mono', Monaco, Consolas, monospace; }
+.explorer-path-bar button { flex-shrink: 0; }
+.breadcrumbs { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; font-size: 12px; margin-bottom: 8px; min-height: 24px; }
+.breadcrumbs span { color: var(--text-light); }
+.breadcrumbs a { color: var(--primary); text-decoration: none; cursor: pointer; padding: 2px 4px; border-radius: 3px; }
+.breadcrumbs a:hover { background: #eff6ff; }
+.explorer-body { flex: 1; overflow-y: auto; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); min-height: 200px; max-height: 50vh; }
+.explorer-list { list-style: none; }
+.explorer-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #f8fafc; transition: background .1s; }
+.explorer-item:hover { background: var(--row-hover); }
+.explorer-item.is-model { background: #f0f4ff; }
+.explorer-item.is-report { background: #f0f9ff; }
+.explorer-item.is-selected { background: #dbeafe; }
+.explorer-icon { font-size: 18px; flex-shrink: 0; width: 24px; text-align: center; }
+.explorer-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.explorer-type-label { font-size: 10px; text-transform: uppercase; font-weight: 600; letter-spacing: .3px; padding: 2px 6px; border-radius: 8px; flex-shrink: 0; }
+.explorer-type-label.model-label { background: #e0e7ff; color: #3730a3; }
+.explorer-type-label.report-label { background: #dbeafe; color: #1e40af; }
+.explorer-check { flex-shrink: 0; }
+.explorer-empty { padding: 40px 20px; text-align: center; color: var(--text-light); font-size: 13px; }
+.explorer-footer { padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.explorer-footer .selected-summary { font-size: 12px; color: var(--text-light); }
+.view-tabs { display: flex; gap: 0; margin-bottom: 12px; }
+.view-tab { padding: 10px 20px; background: var(--card); border: 1px solid var(--border); font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-light); transition: all .15s; }
+.view-tab:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.view-tab:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-left: none; }
+.view-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.view-tab .tab-count { font-size: 11px; font-weight: 400; opacity: .8; margin-left: 6px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>Semantic Model Cleaner</h1>
+    <div class="subtitle">Analyze &amp; clean Power BI semantic models</div>
+  </div>
+</div>
+<div class="container">
+  <div class="setup">
+    <h2>1. Select Models &amp; Reports</h2>
+    <div class="setup-columns">
+      <div class="setup-col">
+        <h3>Semantic Models <span class="count-badge" id="modelCountBadge">0</span></h3>
+        <div class="pill-list empty" id="modelPills">No models selected</div>
+        <button class="btn btn-secondary btn-sm" id="btnBrowseModels">Browse for models...</button>
+      </div>
+      <div class="setup-col">
+        <h3>Reports <span class="count-badge" id="reportCountBadge">0</span></h3>
+        <div class="pill-list empty" id="reportPills">No reports selected</div>
+        <button class="btn btn-secondary btn-sm" id="btnBrowseReports">Browse for reports...</button>
+      </div>
+      <div class="setup-actions">
+        <button class="btn btn-primary" id="btnAnalyze" disabled>Analyze</button>
+      </div>
+    </div>
+  </div>
+  <div class="summary-grid hidden" id="summarySection">
+    <div class="summary-card"><div class="value" id="sumTotal">0</div><div class="label">Total Items</div></div>
+    <div class="summary-card"><div class="value" id="sumUsed">0</div><div class="label">Used</div></div>
+    <div class="summary-card"><div class="value" id="sumUnused">0</div><div class="label">Not Used</div></div>
+    <div class="summary-card"><div class="value" id="sumMeasures">0</div><div class="label">Measures</div></div>
+    <div class="summary-card"><div class="value" id="sumColumns">0</div><div class="label">Columns</div></div>
+    <div class="summary-card"><div class="value" id="sumSafe">0</div><div class="label">Safe</div></div>
+    <div class="summary-card"><div class="value" id="sumReview">0</div><div class="label">Review</div></div>
+    <div class="summary-card"><div class="value" id="sumCaution">0</div><div class="label">Caution</div></div>
+  </div>
+  <div class="backup-banner hidden" id="backupBanner">Backup created: <span class="path" id="backupPath"></span></div>
+  <div class="git-warning hidden" id="gitWarning"></div>
+  <div class="filters-bar hidden" id="filtersSection">
+    <div class="filter-group"><label>Search</label><input type="text" id="filterSearch" placeholder="Name or table..."></div>
+    <div class="filter-group"><label>Status</label><select id="filterStatus"><option value="">All</option><option value="NOT USED">Not Used</option><option value="USED">Used</option><option value="INDIRECT">Indirect</option></select></div>
+    <div class="filter-group"><label>Risk</label><select id="filterRisk"><option value="">All</option><option value="Safe">Safe</option><option value="Review">Review</option><option value="Caution">Caution</option><option value="Do not remove">Do not remove</option></select></div>
+    <div class="filter-group"><label>Type</label><select id="filterType"><option value="">All</option><option value="Measure">Measure</option><option value="Column">Column</option><option value="Calculated Column">Calculated Column</option></select></div>
+    <div class="filter-group"><label>Table</label><select id="filterTable"><option value="">All</option></select></div>
+    <div class="filter-group"><label>Hidden</label><select id="filterHidden"><option value="">All</option><option value="yes">Hidden</option><option value="no">Visible</option></select></div>
+    <div class="filter-group"><label>Folder</label><select id="filterFolder"><option value="">All</option></select></div>
+    <div class="filter-counts" id="filterCounts"></div>
+  </div>
+  <div class="view-tabs hidden" id="viewTabs">
+    <div class="view-tab active" data-view="details" id="tabDetails">Details <span class="tab-count" id="tabDetailsCount"></span></div>
+    <div class="view-tab" data-view="refs" id="tabRefs">All References <span class="tab-count" id="tabRefsCount"></span></div>
+  </div>
+  <div class="action-bar hidden" id="actionSection">
+    <span class="selected-count" id="selectedCount">0 selected</span>
+    <button class="btn btn-secondary" id="btnSelectAllSafe">Select all Safe</button>
+    <button class="btn btn-secondary" id="btnSelectAllVisible">Select all visible</button>
+    <button class="btn btn-secondary" id="btnDeselectAll">Deselect all</button>
+    <span style="flex:1"></span>
+    <input type="text" class="folder-input" id="folderInput" placeholder="Display folder name..." value="Safe to delete">
+    <button class="btn btn-warning" id="btnMoveToFolder">Move to folder</button>
+    <button class="btn btn-secondary" id="btnHide">Hide</button>
+    <button class="btn btn-secondary" id="btnUnhide">Unhide</button>
+    <button class="btn btn-danger" id="btnDelete">Delete</button>
+  </div>
+  <div class="table-container hidden" id="tableSection">
+    <table>
+      <thead><tr>
+        <th style="width:36px"><input type="checkbox" id="checkAll"></th>
+        <th data-col="type">Type <span class="sort-arrow"></span></th>
+        <th data-col="table">Table <span class="sort-arrow"></span></th>
+        <th data-col="name">Name <span class="sort-arrow"></span></th>
+        <th data-col="displayFolder">Folder <span class="sort-arrow"></span></th>
+        <th data-col="status">Status <span class="sort-arrow"></span></th>
+        <th data-col="removalRisk">Risk <span class="sort-arrow"></span></th>
+        <th data-col="isHidden">Hidden <span class="sort-arrow"></span></th>
+        <th data-col="pagesUsed">Pages <span class="sort-arrow"></span></th>
+        <th data-col="usageCount">Refs <span class="sort-arrow"></span></th>
+      </tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+  <div class="table-container hidden" id="refsTableSection">
+    <table>
+      <thead><tr>
+        <th data-refcol="type">Type <span class="sort-arrow"></span></th>
+        <th data-refcol="table">Table <span class="sort-arrow"></span></th>
+        <th data-refcol="name">Name <span class="sort-arrow"></span></th>
+        <th data-refcol="isHidden">Hidden <span class="sort-arrow"></span></th>
+        <th data-refcol="displayFolder">Folder <span class="sort-arrow"></span></th>
+        <th data-refcol="report">Report <span class="sort-arrow"></span></th>
+        <th data-refcol="page">Page <span class="sort-arrow"></span></th>
+        <th data-refcol="visualType">Visual Type <span class="sort-arrow"></span></th>
+        <th data-refcol="visualTitle">Visual Title <span class="sort-arrow"></span></th>
+        <th data-refcol="context">Context <span class="sort-arrow"></span></th>
+        <th data-refcol="status">Status <span class="sort-arrow"></span></th>
+        <th data-refcol="removalRisk">Risk <span class="sort-arrow"></span></th>
+      </tr></thead>
+      <tbody id="refsTableBody"></tbody>
+    </table>
+  </div>
+  <div class="status-log hidden" id="statusLog">
+    <h3>Action Log</h3>
+    <div id="logEntries"></div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="explorerModal">
+  <div class="explorer-modal">
+    <div class="explorer-header">
+      <h2 id="explorerTitle">Browse for Models</h2>
+      <div class="explorer-path-bar">
+        <input type="text" id="explorerPathInput" placeholder="Type a path and press Enter...">
+        <button class="btn btn-secondary btn-sm" id="btnExplorerGo">Go</button>
+      </div>
+      <div class="breadcrumbs" id="explorerBreadcrumbs"></div>
+    </div>
+    <div class="explorer-body">
+      <ul class="explorer-list" id="explorerList"></ul>
+    </div>
+    <div class="explorer-footer">
+      <span class="selected-summary" id="explorerSelectedSummary">0 selected</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" id="btnExplorerCancel">Cancel</button>
+        <button class="btn btn-primary" id="btnExplorerDone">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="deleteModal">
+  <div class="modal">
+    <h2>Confirm Delete</h2>
+    <p>This will permanently remove <strong id="deleteCount">0</strong> item(s) from the TMDL files. A backup has been created. Type <strong>DELETE</strong> to confirm.</p>
+    <input type="text" id="deleteConfirmInput" placeholder="Type DELETE to confirm">
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btnDeleteCancel">Cancel</button>
+      <button class="btn btn-danger" id="btnDeleteConfirm" disabled>Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var allItems = [];
+var filteredItems = [];
+var allRefs = [];
+var filteredRefs = [];
+var selectedKeys = new Set();
+var sortCol = 'removalRisk';
+var sortAsc = true;
+var refSortCol = 'table';
+var refSortAsc = true;
+var currentView = 'details';
+var chosenModels = [];
+var chosenReports = [];
+var riskOrder = { 'Safe': 0, 'Review': 1, 'Caution': 2, 'Do not remove': 3 };
+var explorerMode = 'model';
+var explorerPicked = new Map();
+
+function $(id) { return document.getElementById(id); }
+
+function esc(s) {
+  if (!s) return '';
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function itemKey(item) { return item.table + '\0' + item.name; }
+
+async function apiGet(url) { var r = await fetch(url); return r.json(); }
+async function apiPost(url, body) {
+  var r = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+  return r.json();
+}
+
+/* == Pills == */
+function renderPills() {
+  renderPillList('modelPills', chosenModels, 'model');
+  renderPillList('reportPills', chosenReports, 'report');
+  $('modelCountBadge').textContent = chosenModels.length;
+  $('reportCountBadge').textContent = chosenReports.length;
+  $('btnAnalyze').disabled = !(chosenModels.length && chosenReports.length);
+}
+
+function renderPillList(id, items, kind) {
+  var el = $(id);
+  if (!items.length) {
+    el.className = 'pill-list empty';
+    el.textContent = kind === 'model' ? 'No models selected' : 'No reports selected';
+    return;
+  }
+  el.className = 'pill-list';
+  el.innerHTML = items.map(function(it, i) {
+    return '<span class="pill ' + (kind === 'report' ? 'pill-report' : '') + '" title="' + esc(it.path) + '">'
+      + esc(it.name) + ' <span class="pill-remove" data-kind="' + kind + '" data-idx="' + i + '">&times;</span></span>';
+  }).join('');
+  el.querySelectorAll('.pill-remove').forEach(function(btn) {
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (btn.dataset.kind === 'model') chosenModels.splice(parseInt(btn.dataset.idx), 1);
+      else chosenReports.splice(parseInt(btn.dataset.idx), 1);
+      renderPills();
+    };
+  });
+}
+
+/* == Explorer == */
+function cleanArtifactName(name) {
+  return name.replace(/\.SemanticModel$/, '').replace(/\.Report$/, '');
+}
+
+function parentDir(path) {
+  var parts = path.replace(/\/$/, '').split('/');
+  parts.pop();
+  return parts.join('/') || '/';
+}
+
+function openExplorer(mode) {
+  explorerMode = mode;
+  $('explorerTitle').textContent = mode === 'model' ? 'Browse for Semantic Models' : 'Browse for Reports';
+  explorerPicked.clear();
+  var existing = mode === 'model' ? chosenModels : chosenReports;
+  existing.forEach(function(it) { explorerPicked.set(it.path, it); });
+  $('explorerModal').classList.remove('hidden');
+  var startPath = existing.length ? parentDir(existing[0].path) : '';
+  browseDir(startPath);
+}
+
+async function browseDir(dirPath) {
+  var url = '/api/browse' + (dirPath ? '?path=' + encodeURIComponent(dirPath) : '');
+  var data = await apiGet(url);
+  if (data.error) { alert(data.error); return; }
+  $('explorerPathInput').value = data.current;
+  renderBreadcrumbs(data.current);
+  renderExplorerList(data.entries);
+  updateExplorerSummary();
+}
+
+function renderBreadcrumbs(currentPath) {
+  var parts = currentPath.split('/').filter(Boolean);
+  var html = '<a data-path="/">/ </a>';
+  var acc = '';
+  for (var i = 0; i < parts.length; i++) {
+    acc += '/' + parts[i];
+    html += '<span>/</span> <a data-path="' + esc(acc) + '">' + esc(parts[i]) + '</a> ';
+  }
+  $('explorerBreadcrumbs').innerHTML = html;
+  $('explorerBreadcrumbs').querySelectorAll('a').forEach(function(a) {
+    a.onclick = function() { browseDir(a.dataset.path); };
+  });
+}
+
+function renderExplorerList(entries) {
+  var list = $('explorerList');
+  if (!entries.length) {
+    list.innerHTML = '<li class="explorer-empty">This folder is empty</li>';
+    return;
+  }
+  list.innerHTML = entries.map(function(entry) {
+    var isChecked = explorerPicked.has(entry.path);
+    var icon, typeLabel = '', cls = 'explorer-item', checkbox = '';
+    if (entry.type === 'model') { icon = '\uD83D\uDCCA'; cls += ' is-model'; }
+    else if (entry.type === 'report') { icon = '\uD83D\uDCCB'; cls += ' is-report'; }
+    else { icon = '\uD83D\uDCC1'; }
+    if (entry.type === 'model') typeLabel = '<span class="explorer-type-label model-label">Model</span>';
+    if (entry.type === 'report') typeLabel = '<span class="explorer-type-label report-label">Report</span>';
+    if (isChecked) cls += ' is-selected';
+    if (entry.type === 'model' || entry.type === 'report') {
+      checkbox = '<input type="checkbox" class="explorer-check" ' + (isChecked ? 'checked' : '')
+        + ' data-path="' + esc(entry.path) + '" data-name="' + esc(entry.name) + '" data-type="' + entry.type + '">';
+    }
+    return '<li class="' + cls + '" data-path="' + esc(entry.path) + '" data-type="' + entry.type + '" data-name="' + esc(entry.name) + '">'
+      + '<span class="explorer-icon">' + icon + '</span>'
+      + '<span class="explorer-name">' + esc(entry.name) + '</span>'
+      + typeLabel + checkbox + '</li>';
+  }).join('');
+
+  list.querySelectorAll('.explorer-item').forEach(function(li) {
+    li.onclick = function(e) {
+      if (e.target.classList.contains('explorer-check')) return;
+      if (li.dataset.type === 'dir') { browseDir(li.dataset.path); }
+      else { var cb = li.querySelector('.explorer-check'); if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); } }
+    };
+  });
+
+  list.querySelectorAll('.explorer-check').forEach(function(cb) {
+    cb.onchange = function() {
+      if (cb.checked) explorerPicked.set(cb.dataset.path, { path: cb.dataset.path, name: cleanArtifactName(cb.dataset.name) });
+      else explorerPicked.delete(cb.dataset.path);
+      cb.closest('.explorer-item').classList.toggle('is-selected', cb.checked);
+      updateExplorerSummary();
+    };
+  });
+}
+
+function updateExplorerSummary() {
+  $('explorerSelectedSummary').textContent = explorerPicked.size + ' selected';
+}
+
+$('explorerPathInput').onkeydown = function(e) { if (e.key === 'Enter') browseDir($('explorerPathInput').value.trim()); };
+$('btnExplorerGo').onclick = function() { browseDir($('explorerPathInput').value.trim()); };
+$('btnExplorerCancel').onclick = function() { $('explorerModal').classList.add('hidden'); };
+$('btnExplorerDone').onclick = function() {
+  var items = Array.from(explorerPicked.values());
+  if (explorerMode === 'model') chosenModels = items; else chosenReports = items;
+  renderPills();
+  $('explorerModal').classList.add('hidden');
+};
+
+$('btnBrowseModels').onclick = function() { openExplorer('model'); };
+$('btnBrowseReports').onclick = function() { openExplorer('report'); };
+
+/* == Analyze == */
+$('btnAnalyze').onclick = async function() {
+  if (!chosenModels.length || !chosenReports.length) return;
+  $('btnAnalyze').disabled = true;
+  $('btnAnalyze').innerHTML = '<span class="spinner"></span>Analyzing...';
+  try {
+    var data = await apiPost('/api/analyze', {
+      model_paths: chosenModels.map(function(m) { return m.path; }),
+      report_paths: chosenReports.map(function(r) { return r.path; }),
+    });
+    if (data.error) { alert(data.error); return; }
+    loadResults(data);
+  } finally {
+    $('btnAnalyze').disabled = false;
+    $('btnAnalyze').textContent = 'Analyze';
+  }
+};
+
+function loadResults(data) {
+  allItems = data.items;
+  allRefs = data.references || [];
+  selectedKeys.clear();
+  updateSummary(data.summary);
+  populateFilterOptions();
+  applyFilters();
+  $('summarySection').classList.remove('hidden');
+  $('filtersSection').classList.remove('hidden');
+  $('viewTabs').classList.remove('hidden');
+  switchView(currentView);
+}
+
+function updateSummary(s) {
+  var total = s.total_measures + s.total_columns;
+  $('sumTotal').textContent = total;
+  $('sumUsed').textContent = total - s.not_used;
+  $('sumUnused').textContent = s.not_used;
+  $('sumMeasures').textContent = s.total_measures;
+  $('sumColumns').textContent = s.total_columns;
+  $('sumSafe').textContent = allItems.filter(function(i) { return i.removalRisk === 'Safe'; }).length;
+  $('sumReview').textContent = allItems.filter(function(i) { return i.removalRisk === 'Review'; }).length;
+  $('sumCaution').textContent = allItems.filter(function(i) { return i.removalRisk === 'Caution'; }).length;
+}
+
+/* == Filters == */
+function populateFilterOptions() {
+  var tables = Array.from(new Set(allItems.map(function(i) { return i.table; }))).sort();
+  $('filterTable').innerHTML = '<option value="">All</option>' + tables.map(function(t) { return '<option value="' + esc(t) + '">' + esc(t) + '</option>'; }).join('');
+  var folders = Array.from(new Set(allItems.map(function(i) { return i.displayFolder; }).filter(Boolean))).sort();
+  $('filterFolder').innerHTML = '<option value="">All</option><option value="__none__">(No folder)</option>' + folders.map(function(f) { return '<option value="' + esc(f) + '">' + esc(f) + '</option>'; }).join('');
+}
+
+function applyFilters() {
+  var search = $('filterSearch').value.toLowerCase();
+  var status = $('filterStatus').value;
+  var risk = $('filterRisk').value;
+  var type = $('filterType').value;
+  var table = $('filterTable').value;
+  var hidden = $('filterHidden').value;
+  var folder = $('filterFolder').value;
+  filteredItems = allItems.filter(function(item) {
+    if (search && !item.name.toLowerCase().includes(search) && !item.table.toLowerCase().includes(search)) return false;
+    if (status) {
+      if (status === 'USED' && !item.status.startsWith('USED')) return false;
+      if (status === 'NOT USED' && item.status !== 'NOT USED') return false;
+      if (status === 'INDIRECT' && !item.status.startsWith('INDIRECT')) return false;
+    }
+    if (risk && item.removalRisk !== risk) return false;
+    if (type && item.type !== type) return false;
+    if (table && item.table !== table) return false;
+    if (hidden === 'yes' && !item.isHidden) return false;
+    if (hidden === 'no' && item.isHidden) return false;
+    if (folder === '__none__' && item.displayFolder) return false;
+    if (folder && folder !== '__none__' && item.displayFolder !== folder) return false;
+    return true;
+  });
+  sortItems();
+  renderTable();
+  updateFilterCounts();
+  updateSelectedCount();
+  if (currentView === 'refs') applyRefFilters();
+}
+
+['filterSearch','filterStatus','filterRisk','filterType','filterTable','filterHidden','filterFolder'].forEach(function(id) {
+  $(id).addEventListener(id === 'filterSearch' ? 'input' : 'change', applyFilters);
+});
+
+function updateFilterCounts() {
+  if (currentView === 'details') {
+    $('filterCounts').textContent = 'Showing ' + filteredItems.length + ' of ' + allItems.length + ' items';
+  } else {
+    $('filterCounts').textContent = 'Showing ' + filteredRefs.length + ' of ' + allRefs.length + ' references';
+  }
+  $('tabDetailsCount').textContent = '(' + allItems.length + ')';
+  $('tabRefsCount').textContent = '(' + allRefs.length + ')';
+}
+
+/* == View Tabs == */
+function switchView(view) {
+  currentView = view;
+  document.querySelectorAll('.view-tab').forEach(function(t) { t.classList.toggle('active', t.dataset.view === view); });
+  $('tableSection').classList.toggle('hidden', view !== 'details');
+  $('actionSection').classList.toggle('hidden', view !== 'details');
+  $('refsTableSection').classList.toggle('hidden', view !== 'refs');
+  updateFilterCounts();
+  if (view === 'refs') { applyRefFilters(); }
+}
+document.querySelectorAll('.view-tab').forEach(function(t) {
+  t.onclick = function() { switchView(t.dataset.view); };
+});
+
+function applyRefFilters() {
+  var search = $('filterSearch').value.toLowerCase();
+  var status = $('filterStatus').value;
+  var risk = $('filterRisk').value;
+  var type = $('filterType').value;
+  var table = $('filterTable').value;
+  var hidden = $('filterHidden').value;
+  var folder = $('filterFolder').value;
+  filteredRefs = allRefs.filter(function(r) {
+    if (search && !r.name.toLowerCase().includes(search) && !r.table.toLowerCase().includes(search)
+        && !(r.report || '').toLowerCase().includes(search) && !(r.page || '').toLowerCase().includes(search)
+        && !(r.visualTitle || '').toLowerCase().includes(search)) return false;
+    if (status) {
+      if (status === 'USED' && !r.status.startsWith('USED')) return false;
+      if (status === 'NOT USED' && r.status !== 'NOT USED') return false;
+      if (status === 'INDIRECT' && !r.status.startsWith('INDIRECT')) return false;
+    }
+    if (risk && r.removalRisk !== risk) return false;
+    if (type && r.type !== type) return false;
+    if (table && r.table !== table) return false;
+    if (hidden === 'yes' && !r.isHidden) return false;
+    if (hidden === 'no' && r.isHidden) return false;
+    if (folder === '__none__' && r.displayFolder) return false;
+    if (folder && folder !== '__none__' && r.displayFolder !== folder) return false;
+    return true;
+  });
+  sortRefs();
+  renderRefsTable();
+  updateFilterCounts();
+}
+
+function sortRefs() {
+  filteredRefs.sort(function(a, b) {
+    var va = a[refSortCol], vb = b[refSortCol];
+    if (refSortCol === 'removalRisk') { va = riskOrder[va] != null ? riskOrder[va] : 99; vb = riskOrder[vb] != null ? riskOrder[vb] : 99; }
+    if (typeof va === 'number' && typeof vb === 'number') return refSortAsc ? va - vb : vb - va;
+    va = String(va || '').toLowerCase(); vb = String(vb || '').toLowerCase();
+    return refSortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+}
+
+function renderRefsTable() {
+  var tbody = $('refsTableBody');
+  tbody.innerHTML = filteredRefs.map(function(r) {
+    var riskClass = r.removalRisk ? 'row-' + r.removalRisk.toLowerCase().replace(/\s+/g, '') : '';
+    return '<tr class="' + riskClass + '">'
+      + '<td>' + esc(r.type) + '</td>'
+      + '<td>' + esc(r.table) + '</td>'
+      + '<td><strong>' + esc(r.name) + '</strong></td>'
+      + '<td>' + (r.isHidden ? '\uD83D\uDD12' : '') + '</td>'
+      + '<td>' + esc(r.displayFolder || '') + '</td>'
+      + '<td>' + esc(r.report || '') + '</td>'
+      + '<td>' + esc(r.page || '') + '</td>'
+      + '<td>' + esc(r.visualType || '') + '</td>'
+      + '<td>' + esc(r.visualTitle || '') + '</td>'
+      + '<td>' + esc(r.context || '') + '</td>'
+      + '<td>' + statusBadge(r.status) + '</td>'
+      + '<td>' + riskBadge(r.removalRisk) + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+/* == Sort == */
+document.querySelectorAll('thead th[data-col]').forEach(function(th) {
+  th.onclick = function() {
+    var col = th.dataset.col;
+    if (sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = true; }
+    document.querySelectorAll('#tableSection .sort-arrow').forEach(function(s) { s.textContent = ''; });
+    th.querySelector('.sort-arrow').textContent = sortAsc ? '\u25B2' : '\u25BC';
+    sortItems();
+    renderTable();
+  };
+});
+document.querySelectorAll('thead th[data-refcol]').forEach(function(th) {
+  th.onclick = function() {
+    var col = th.dataset.refcol;
+    if (refSortCol === col) refSortAsc = !refSortAsc; else { refSortCol = col; refSortAsc = true; }
+    document.querySelectorAll('#refsTableSection .sort-arrow').forEach(function(s) { s.textContent = ''; });
+    th.querySelector('.sort-arrow').textContent = refSortAsc ? '\u25B2' : '\u25BC';
+    sortRefs();
+    renderRefsTable();
+  };
+});
+
+function sortItems() {
+  filteredItems.sort(function(a, b) {
+    var va = a[sortCol] != null ? a[sortCol] : '';
+    var vb = b[sortCol] != null ? b[sortCol] : '';
+    if (sortCol === 'removalRisk') { va = riskOrder[va] != null ? riskOrder[va] : 99; vb = riskOrder[vb] != null ? riskOrder[vb] : 99; }
+    if (sortCol === 'pagesUsed') { va = (va || []).join(', '); vb = (vb || []).join(', '); }
+    if (typeof va === 'number' && typeof vb === 'number') return sortAsc ? va - vb : vb - va;
+    va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
+    return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+}
+
+/* == Table == */
+function renderTable() {
+  var tbody = $('tableBody');
+  tbody.innerHTML = filteredItems.map(function(item) {
+    var key = itemKey(item);
+    var checked = selectedKeys.has(key) ? 'checked' : '';
+    var riskClass = item.removalRisk ? 'row-' + item.removalRisk.toLowerCase().replace(/\s+/g, '') : '';
+    var sel = selectedKeys.has(key) ? 'selected' : '';
+    return '<tr class="' + riskClass + ' ' + sel + '" data-key="' + esc(key) + '">'
+      + '<td><input type="checkbox" class="row-check" ' + checked + ' data-key="' + esc(key) + '"></td>'
+      + '<td>' + esc(item.type) + '</td>'
+      + '<td>' + esc(item.table) + '</td>'
+      + '<td><strong>' + esc(item.name) + '</strong></td>'
+      + '<td>' + esc(item.displayFolder || '') + '</td>'
+      + '<td>' + statusBadge(item.status) + '</td>'
+      + '<td>' + riskBadge(item.removalRisk) + '</td>'
+      + '<td>' + (item.isHidden ? '\uD83D\uDD12' : '') + '</td>'
+      + '<td>' + esc((item.pagesUsed || []).join(', ')) + '</td>'
+      + '<td>' + (item.usageCount || 0) + '</td>'
+      + '</tr>';
+  }).join('');
+  tbody.querySelectorAll('.row-check').forEach(function(cb) {
+    cb.onchange = function() {
+      if (cb.checked) selectedKeys.add(cb.dataset.key); else selectedKeys.delete(cb.dataset.key);
+      cb.closest('tr').classList.toggle('selected', cb.checked);
+      updateSelectedCount();
+    };
+  });
+}
+
+function statusBadge(status) {
+  if (status === 'USED') return '<span class="badge badge-used">USED</span>';
+  if (status === 'NOT USED') return '<span class="badge" style="background:#fee2e2;color:#991b1b">NOT USED</span>';
+  if (status.startsWith('INDIRECT')) return '<span class="badge" style="background:#e0e7ff;color:#3730a3">INDIRECT</span>';
+  if (status.startsWith('USED')) return '<span class="badge badge-used">' + esc(status) + '</span>';
+  return esc(status);
+}
+
+function riskBadge(risk) {
+  if (!risk) return '';
+  var cls = { 'Safe': 'badge-safe', 'Review': 'badge-review', 'Caution': 'badge-caution', 'Do not remove': 'badge-donotremove' }[risk] || '';
+  return '<span class="badge ' + cls + '">' + esc(risk) + '</span>';
+}
+
+/* == Selection == */
+function updateSelectedCount() {
+  var vis = filteredItems.filter(function(i) { return selectedKeys.has(itemKey(i)); }).length;
+  $('selectedCount').textContent = vis + ' selected';
+  $('checkAll').checked = filteredItems.length > 0 && vis === filteredItems.length;
+  $('checkAll').indeterminate = vis > 0 && vis < filteredItems.length;
+}
+
+$('checkAll').onchange = function() {
+  var c = $('checkAll').checked;
+  filteredItems.forEach(function(item) { var k = itemKey(item); if (c) selectedKeys.add(k); else selectedKeys.delete(k); });
+  renderTable(); updateSelectedCount();
+};
+
+$('btnSelectAllSafe').onclick = function() {
+  filteredItems.filter(function(i) { return i.removalRisk === 'Safe'; }).forEach(function(i) { selectedKeys.add(itemKey(i)); });
+  renderTable(); updateSelectedCount();
+};
+$('btnSelectAllVisible').onclick = function() {
+  filteredItems.forEach(function(i) { selectedKeys.add(itemKey(i)); });
+  renderTable(); updateSelectedCount();
+};
+$('btnDeselectAll').onclick = function() { selectedKeys.clear(); renderTable(); updateSelectedCount(); };
+
+/* == Actions == */
+function getSelectedItems() { return allItems.filter(function(i) { return selectedKeys.has(itemKey(i)); }); }
+function getModelPath() { return chosenModels.length ? chosenModels[0].path : null; }
+
+function logEntry(msg, cls) {
+  var el = document.createElement('div');
+  el.className = 'log-entry log-' + cls;
+  el.textContent = msg;
+  $('logEntries').prepend(el);
+}
+
+async function performAction(actionName, extra) {
+  extra = extra || {};
+  var items = getSelectedItems();
+  if (!items.length) { alert('No items selected'); return; }
+  var modelPath = getModelPath();
+  if (!modelPath) { alert('No model selected'); return; }
+  var actions = items.map(function(item) {
+    var act = { action: actionName, table: item.table, name: item.name, item_type: item.type };
+    for (var k in extra) act[k] = extra[k];
+    return act;
+  });
+  var data = await apiPost('/api/action', { model_path: modelPath, actions: actions });
+  if (data.error) { logEntry(data.error, 'err'); return data; }
+  if (data.backup_path) { $('backupBanner').classList.remove('hidden'); $('backupPath').textContent = data.backup_path; }
+  if (data.git_warning) { $('gitWarning').classList.remove('hidden'); $('gitWarning').textContent = data.git_warning; }
+  $('statusLog').classList.remove('hidden');
+  var ok = 0, fail = 0;
+  data.results.forEach(function(r) {
+    if (r.ok) { ok++; logEntry('\u2713 ' + r.action + ': ' + r.table + '[' + r.name + ']', 'ok'); }
+    else { fail++; logEntry('\u2717 ' + r.table + '[' + r.name + ']: ' + r.error, 'err'); }
+  });
+  logEntry('Done: ' + ok + ' succeeded, ' + fail + ' failed', 'info');
+  return data;
+}
+
+$('btnMoveToFolder').onclick = async function() {
+  var folder = $('folderInput').value.trim();
+  if (!folder) { alert('Enter a folder name'); return; }
+  await performAction('move_to_folder', { folder: folder });
+  await reAnalyze();
+};
+$('btnHide').onclick = async function() { await performAction('hide'); await reAnalyze(); };
+$('btnUnhide').onclick = async function() { await performAction('unhide'); await reAnalyze(); };
+
+$('btnDelete').onclick = function() {
+  var items = getSelectedItems();
+  if (!items.length) { alert('No items selected'); return; }
+  $('deleteCount').textContent = items.length;
+  $('deleteConfirmInput').value = '';
+  $('btnDeleteConfirm').disabled = true;
+  $('deleteModal').classList.remove('hidden');
+  $('deleteConfirmInput').focus();
+};
+$('deleteConfirmInput').oninput = function() { $('btnDeleteConfirm').disabled = $('deleteConfirmInput').value.trim() !== 'DELETE'; };
+$('btnDeleteCancel').onclick = function() { $('deleteModal').classList.add('hidden'); };
+$('btnDeleteConfirm').onclick = async function() {
+  $('deleteModal').classList.add('hidden');
+  await performAction('delete');
+  getSelectedItems().forEach(function(i) { selectedKeys.delete(itemKey(i)); });
+  await reAnalyze();
+};
+
+async function reAnalyze() {
+  logEntry('Re-analyzing...', 'info');
+  if (!chosenModels.length || !chosenReports.length) { logEntry('Cannot re-analyze: no model/report selected', 'err'); return; }
+  var data = await apiPost('/api/analyze', {
+    model_paths: chosenModels.map(function(m) { return m.path; }),
+    report_paths: chosenReports.map(function(r) { return r.path; }),
+  });
+  if (data.error) { logEntry('Re-analysis failed: ' + data.error, 'err'); return; }
+  allItems = data.items;
+  allRefs = data.references || [];
+  updateSummary(data.summary);
+  populateFilterOptions();
+  applyFilters();
+  logEntry('Analysis refreshed', 'info');
+}
+
+/* == Auto-discover on load == */
+window.addEventListener('DOMContentLoaded', async function() {
+  try {
+    var data = await apiGet('/api/discover');
+    if (data.error) return;
+    if (data.models && data.models.length) chosenModels = data.models.map(function(m) { return { path: m.path, name: m.name }; });
+    if (data.reports && data.reports.length) chosenReports = data.reports.map(function(r) { return { path: r.path, name: r.name }; });
+    renderPills();
+  } catch (e) {}
+});
+</script>
+</body>
+</html>
