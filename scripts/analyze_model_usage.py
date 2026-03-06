@@ -335,9 +335,9 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
                     prop = inner.strip()
                     if prop.startswith("displayFolder:"):
                         display_folder = prop.split(":", 1)[1].strip()
-                    if prop.startswith("isHidden:"):
+                    if prop.startswith("hidden:") or prop.startswith("isHidden:"):
                         is_hidden = prop.split(":", 1)[1].strip().lower() == "true"
-                    elif prop == "isHidden":
+                    elif prop in ("hidden", "isHidden"):
                         is_hidden = True
                     # formatStringDefinition may contain DAX column refs
                     if prop.startswith("formatStringDefinition"):
@@ -394,9 +394,9 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
                             dax_lines.append(expr_part)
                     if prop.startswith("displayFolder:"):
                         display_folder = prop.split(":", 1)[1].strip()
-                    if prop.startswith("isHidden:"):
+                    if prop.startswith("hidden:") or prop.startswith("isHidden:"):
                         is_hidden = prop.split(":", 1)[1].strip().lower() == "true"
-                    elif prop == "isHidden":
+                    elif prop in ("hidden", "isHidden"):
                         is_hidden = True
                     if prop.startswith("isKey:"):
                         is_key = prop.split(":", 1)[1].strip().lower() == "true"

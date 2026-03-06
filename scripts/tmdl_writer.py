@@ -74,21 +74,32 @@ def _find_item_block(lines: list[str], name: str, item_type: str) -> tuple[int, 
     return None
 
 
-def _find_property_line(lines: list[str], start: int, end: int, prop_name: str) -> int | None:
+def _find_property_line(
+    lines: list[str], start: int, end: int, prop_name: str | tuple[str, ...]
+) -> int | None:
     """Find a 2-tab property line within a block. Returns line index or None."""
+    prop_names = (prop_name,) if isinstance(prop_name, str) else prop_name
     for i in range(start + 1, end):
         stripped = lines[i].strip()
-        if stripped.startswith(prop_name + ":") or stripped == prop_name:
-            return i
+        for candidate in prop_names:
+            if stripped.startswith(candidate + ":") or stripped == candidate:
+                return i
     return None
 
 
 def _insert_point_for_property(lines: list[str], start: int, end: int) -> int:
-    """Find the best insertion point for a new property (after existing 2-tab props)."""
+    """Find the best insertion point for a new property (after existing 2-tab props,
+    but before sub-objects like annotations, changedProperties, etc.)."""
     last_prop = start
     for i in range(start + 1, end):
-        if lines[i].startswith("\t\t") and not lines[i].startswith("\t\t\t"):
-            last_prop = i
+        line = lines[i]
+        if not line.startswith("\t\t") or line.startswith("\t\t\t"):
+            continue
+        stripped = line.strip()
+        # Sub-object declarations (annotation, changedProperty, etc.) come after properties
+        if stripped.startswith("annotation ") or stripped.startswith("changedProperty "):
+            break
+        last_prop = i
     return last_prop + 1
 
 
@@ -152,7 +163,7 @@ def set_display_folder(model_path: Path, table: str, name: str,
 
 def set_hidden(model_path: Path, table: str, name: str,
                item_type: str, hidden: bool = True) -> dict:
-    """Set or remove the isHidden flag on a measure or column."""
+    """Set hidden property on a measure or column using modern TMDL syntax."""
     tmdl_file = _find_tmdl_file(model_path, table)
     if not tmdl_file:
         return {"ok": False, "error": f"TMDL file not found for table '{table}'"}
@@ -163,15 +174,18 @@ def set_hidden(model_path: Path, table: str, name: str,
         return {"ok": False, "error": f"Item '{name}' not found in {tmdl_file.name}"}
 
     start, end = block
-    prop_line = _find_property_line(lines, start, end, "isHidden")
+    prop_line = _find_property_line(lines, start, end, ("hidden", "isHidden"))
 
     if hidden:
         if prop_line is None:
             insert_at = _insert_point_for_property(lines, start, end)
             lines.insert(insert_at, "\t\tisHidden")
+        else:
+            lines[prop_line] = "\t\tisHidden"
     else:
+        # isHidden defaults to false — just remove the line
         if prop_line is not None:
-            lines.pop(prop_line)
+            del lines[prop_line]
 
     tmdl_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return {"ok": True, "file": str(tmdl_file), "action": "set_hidden", "hidden": hidden}
@@ -229,6 +243,7 @@ def apply_actions(model_path: Path, actions: list[dict]) -> list[dict]:
 
         r["table"] = table
         r["name"] = name
+        r["item_type"] = item_type
         results.append(r)
 
     return results

@@ -70,6 +70,9 @@ tbody tr.row-review td:first-child { border-left: 3px solid var(--warning); }
 tbody tr.row-caution td:first-child { border-left: 3px solid var(--danger); }
 tbody tr.row-donotremove td:first-child { border-left: 3px solid #94a3b8; }
 tbody tr.selected { background: #eff6ff; }
+tbody tr.row-pending { background: #fef9c3; }
+tbody tr.row-applied { background: #dcfce7; }
+tbody tr.row-failed { background: #fee2e2; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
 .badge-safe { background: var(--safe); color: #166534; }
 .badge-review { background: var(--review); color: #92400e; }
@@ -115,8 +118,8 @@ tbody tr.selected { background: #eff6ff; }
 .explorer-icon { font-size: 18px; flex-shrink: 0; width: 24px; text-align: center; }
 .explorer-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .explorer-type-label { font-size: 10px; text-transform: uppercase; font-weight: 600; letter-spacing: .3px; padding: 2px 6px; border-radius: 8px; flex-shrink: 0; }
-.explorer-type-label.model-label { background: #e0e7ff; color: #3730a3; }
-.explorer-type-label.report-label { background: #dbeafe; color: #1e40af; }
+.explorer-type-label.model-label { background: #dbeafe; color: #1e40af; }
+.explorer-type-label.report-label { background: #fef3c7; color: #92400e; }
 .explorer-check { flex-shrink: 0; }
 .explorer-empty { padding: 40px 20px; text-align: center; color: var(--text-light); font-size: 13px; }
 .explorer-footer { padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
@@ -175,6 +178,7 @@ tbody tr.selected { background: #eff6ff; }
     <div class="filter-group"><label>Table</label><select id="filterTable"><option value="">All</option></select></div>
     <div class="filter-group"><label>Hidden</label><select id="filterHidden"><option value="">All</option><option value="yes">Hidden</option><option value="no">Visible</option></select></div>
     <div class="filter-group"><label>Folder</label><select id="filterFolder"><option value="">All</option></select></div>
+    <div class="filter-group"><label>Modified</label><select id="filterModified"><option value="">All</option><option value="applied">Applied</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="none">Not modified</option></select></div>
     <div class="filter-counts" id="filterCounts"></div>
   </div>
   <div class="view-tabs hidden" id="viewTabs">
@@ -192,6 +196,8 @@ tbody tr.selected { background: #eff6ff; }
     <button class="btn btn-secondary" id="btnHide">Hide</button>
     <button class="btn btn-secondary" id="btnUnhide">Unhide</button>
     <button class="btn btn-danger" id="btnDelete">Delete</button>
+    <button class="btn btn-secondary" id="btnReset" style="display:none">Reset</button>
+    <button class="btn btn-primary" id="btnApply" disabled>Apply</button>
   </div>
   <div class="table-container hidden" id="tableSection">
     <table>
@@ -206,6 +212,7 @@ tbody tr.selected { background: #eff6ff; }
         <th data-col="isHidden">Hidden <span class="sort-arrow"></span></th>
         <th data-col="pagesUsed">Pages <span class="sort-arrow"></span></th>
         <th data-col="usageCount">Refs <span class="sort-arrow"></span></th>
+        <th>Action</th>
       </tr></thead>
       <tbody id="tableBody"></tbody>
     </table>
@@ -283,6 +290,8 @@ var refSortAsc = true;
 var currentView = 'details';
 var chosenModels = [];
 var chosenReports = [];
+var pendingActions = new Map();
+var actionStatus = new Map();
 var riskOrder = { 'Safe': 0, 'Review': 1, 'Caution': 2, 'Do not remove': 3 };
 var explorerMode = 'model';
 var explorerPicked = new Map();
@@ -296,7 +305,59 @@ function esc(s) {
   return d.innerHTML;
 }
 
-function itemKey(item) { return item.table + '\0' + item.name; }
+function itemKey(item) { return item.type + ':::' + item.table + ':::' + item.name; }
+
+function actionLabel(action) {
+  if (!action || !action.action) return '';
+  if (action.action === 'move_to_folder') return 'Move to folder (' + (action.folder || '') + ')';
+  if (action.action === 'hide') return 'Hide';
+  if (action.action === 'unhide') return 'Unhide';
+  if (action.action === 'delete') return 'Delete';
+  return action.action;
+}
+
+function actionStatusText(key) {
+  var pending = pendingActions.get(key);
+  if (pending) return 'Pending: ' + actionLabel(pending);
+  return actionStatus.get(key) || '';
+}
+
+function actionStatusBadge(key) {
+  var text = actionStatusText(key);
+  if (!text) return '';
+  if (text.startsWith('Pending:')) return '<span class="badge badge-review">' + esc(text) + '</span>';
+  if (text.startsWith('Applied:')) return '<span class="badge badge-safe">' + esc(text) + '</span>';
+  if (text.startsWith('Failed:')) return '<span class="badge badge-caution">' + esc(text) + '</span>';
+  return esc(text);
+}
+
+function updateApplyButtonState() {
+  var btn = $('btnApply');
+  if (!btn) return;
+  var resetBtn = $('btnReset');
+  if (pendingActions.size > 0 || actionStatus.size > 0) {
+    resetBtn.style.display = '';
+  } else {
+    resetBtn.style.display = 'none';
+  }
+  if (pendingActions.size > 0) {
+    btn.disabled = false;
+    btn.textContent = 'Apply (' + pendingActions.size + ')';
+  } else {
+    btn.disabled = true;
+    btn.textContent = 'Apply';
+  }
+}
+
+function pruneActionState() {
+  var valid = new Set(allItems.map(function(item) { return itemKey(item); }));
+  pendingActions.forEach(function(_, key) {
+    if (!valid.has(key)) pendingActions.delete(key);
+  });
+  actionStatus.forEach(function(_, key) {
+    if (!valid.has(key)) actionStatus.delete(key);
+  });
+}
 
 async function apiGet(url) { var r = await fetch(url); return r.json(); }
 async function apiPost(url, body) {
@@ -432,8 +493,16 @@ $('explorerPathInput').onkeydown = function(e) { if (e.key === 'Enter') browseDi
 $('btnExplorerGo').onclick = function() { browseDir($('explorerPathInput').value.trim()); };
 $('btnExplorerCancel').onclick = function() { $('explorerModal').classList.add('hidden'); };
 $('btnExplorerDone').onclick = function() {
-  var items = Array.from(explorerPicked.values());
-  if (explorerMode === 'model') chosenModels = items; else chosenReports = items;
+  var pickedModels = [];
+  var pickedReports = [];
+  explorerPicked.forEach(function(item) {
+    if (item.path.endsWith('.Report')) pickedReports.push(item);
+    else if (item.path.endsWith('.SemanticModel')) pickedModels.push(item);
+    else if (explorerMode === 'model') pickedModels.push(item);
+    else pickedReports.push(item);
+  });
+  if (pickedModels.length) chosenModels = pickedModels;
+  if (pickedReports.length) chosenReports = pickedReports;
   renderPills();
   $('explorerModal').classList.add('hidden');
 };
@@ -460,16 +529,31 @@ $('btnAnalyze').onclick = async function() {
 };
 
 function loadResults(data) {
-  allItems = data.items;
-  allRefs = data.references || [];
-  selectedKeys.clear();
-  updateSummary(data.summary);
-  populateFilterOptions();
-  applyFilters();
+  setResultsData(data, false);
   $('summarySection').classList.remove('hidden');
   $('filtersSection').classList.remove('hidden');
   $('viewTabs').classList.remove('hidden');
   switchView(currentView);
+}
+
+function setResultsData(data, preserveActionState) {
+  allItems = data.items;
+  allRefs = data.references || [];
+  if (preserveActionState) {
+    var valid = new Set(allItems.map(function(item) { return itemKey(item); }));
+    selectedKeys.forEach(function(key) {
+      if (!valid.has(key)) selectedKeys.delete(key);
+    });
+    pruneActionState();
+  } else {
+    selectedKeys.clear();
+    pendingActions.clear();
+    actionStatus.clear();
+  }
+  updateSummary(data.summary);
+  populateFilterOptions();
+  applyFilters();
+  updateApplyButtonState();
 }
 
 function updateSummary(s) {
@@ -500,6 +584,7 @@ function applyFilters() {
   var table = $('filterTable').value;
   var hidden = $('filterHidden').value;
   var folder = $('filterFolder').value;
+  var modified = $('filterModified').value;
   filteredItems = allItems.filter(function(item) {
     if (search && !item.name.toLowerCase().includes(search) && !item.table.toLowerCase().includes(search)) return false;
     if (status) {
@@ -514,6 +599,15 @@ function applyFilters() {
     if (hidden === 'no' && item.isHidden) return false;
     if (folder === '__none__' && item.displayFolder) return false;
     if (folder && folder !== '__none__' && item.displayFolder !== folder) return false;
+    if (modified) {
+      var key = itemKey(item);
+      var st = actionStatus.get(key) || '';
+      var hasPending = pendingActions.has(key);
+      if (modified === 'applied' && !st.startsWith('Applied:')) return false;
+      if (modified === 'pending' && !hasPending) return false;
+      if (modified === 'failed' && !st.startsWith('Failed:')) return false;
+      if (modified === 'none' && (hasPending || st)) return false;
+    }
     return true;
   });
   sortItems();
@@ -523,7 +617,7 @@ function applyFilters() {
   if (currentView === 'refs') applyRefFilters();
 }
 
-['filterSearch','filterStatus','filterRisk','filterType','filterTable','filterHidden','filterFolder'].forEach(function(id) {
+['filterSearch','filterStatus','filterRisk','filterType','filterTable','filterHidden','filterFolder','filterModified'].forEach(function(id) {
   $(id).addEventListener(id === 'filterSearch' ? 'input' : 'change', applyFilters);
 });
 
@@ -655,7 +749,9 @@ function renderTable() {
     var checked = selectedKeys.has(key) ? 'checked' : '';
     var riskClass = item.removalRisk ? 'row-' + item.removalRisk.toLowerCase().replace(/\s+/g, '') : '';
     var sel = selectedKeys.has(key) ? 'selected' : '';
-    return '<tr class="' + riskClass + ' ' + sel + '" data-key="' + esc(key) + '">'
+    var st = actionStatus.get(key) || '';
+    var actionClass = pendingActions.has(key) ? 'row-pending' : st.startsWith('Applied:') ? 'row-applied' : st.startsWith('Failed:') ? 'row-failed' : '';
+    return '<tr class="' + riskClass + ' ' + sel + ' ' + actionClass + '" data-key="' + esc(key) + '">'
       + '<td><input type="checkbox" class="row-check" ' + checked + ' data-key="' + esc(key) + '"></td>'
       + '<td>' + esc(item.type) + '</td>'
       + '<td>' + esc(item.table) + '</td>'
@@ -666,6 +762,7 @@ function renderTable() {
       + '<td>' + (item.isHidden ? '\uD83D\uDD12' : '') + '</td>'
       + '<td>' + esc((item.pagesUsed || []).join(', ')) + '</td>'
       + '<td>' + (item.usageCount || 0) + '</td>'
+      + '<td>' + actionStatusBadge(key) + '</td>'
       + '</tr>';
   }).join('');
   tbody.querySelectorAll('.row-check').forEach(function(cb) {
@@ -726,57 +823,130 @@ function logEntry(msg, cls) {
   $('logEntries').prepend(el);
 }
 
-async function performAction(actionName, extra) {
+function queueSelectedAction(actionName, extra) {
   extra = extra || {};
   var items = getSelectedItems();
   if (!items.length) { alert('No items selected'); return; }
-  var modelPath = getModelPath();
-  if (!modelPath) { alert('No model selected'); return; }
-  var actions = items.map(function(item) {
+  var queued = 0;
+  items.forEach(function(item) {
+    var key = itemKey(item);
     var act = { action: actionName, table: item.table, name: item.name, item_type: item.type };
     for (var k in extra) act[k] = extra[k];
-    return act;
+    pendingActions.set(key, act);
+    actionStatus.set(key, 'Pending: ' + actionLabel(act));
+    queued += 1;
   });
-  var data = await apiPost('/api/action', { model_path: modelPath, actions: actions });
-  if (data.error) { logEntry(data.error, 'err'); return data; }
+  selectedKeys.clear();
+  $('statusLog').classList.remove('hidden');
+  logEntry('Queued ' + actionLabel({ action: actionName, folder: extra.folder }) + ' for ' + queued + ' item(s)', 'info');
+  renderTable();
+  updateSelectedCount();
+  updateApplyButtonState();
+}
+
+function confirmDeleteApply(deleteCount) {
+  if (!deleteCount) return Promise.resolve(true);
+
+  $('deleteCount').textContent = deleteCount;
+  $('deleteConfirmInput').value = '';
+  $('btnDeleteConfirm').disabled = true;
+  $('deleteModal').classList.remove('hidden');
+  $('deleteConfirmInput').focus();
+
+  return new Promise(function(resolve) {
+    function cleanup() {
+      $('btnDeleteCancel').onclick = null;
+      $('btnDeleteConfirm').onclick = null;
+    }
+    $('btnDeleteCancel').onclick = function() {
+      $('deleteModal').classList.add('hidden');
+      cleanup();
+      resolve(false);
+    };
+    $('btnDeleteConfirm').onclick = function() {
+      $('deleteModal').classList.add('hidden');
+      cleanup();
+      resolve(true);
+    };
+  });
+}
+
+async function applyQueuedActions() {
+  if (!pendingActions.size) { alert('No pending actions'); return; }
+  var modelPath = getModelPath();
+  if (!modelPath) { alert('No model selected'); return; }
+
+  var actions = Array.from(pendingActions.values());
+  var deleteCount = actions.filter(function(a) { return a.action === 'delete'; }).length;
+  var confirmed = await confirmDeleteApply(deleteCount);
+  if (!confirmed) {
+    logEntry('Apply canceled', 'info');
+    return;
+  }
+
+  var btn = $('btnApply');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Applying...';
+  var data;
+  try {
+    data = await apiPost('/api/action', { model_path: modelPath, actions: actions });
+  } catch (e) {
+    logEntry('Apply failed: ' + (e && e.message ? e.message : e), 'err');
+    updateApplyButtonState();
+    return;
+  } finally {
+    updateApplyButtonState();
+  }
+  if (data.error) { logEntry('Apply failed: ' + data.error, 'err'); return; }
+
   if (data.backup_path) { $('backupBanner').classList.remove('hidden'); $('backupPath').textContent = data.backup_path; }
   if (data.git_warning) { $('gitWarning').classList.remove('hidden'); $('gitWarning').textContent = data.git_warning; }
   $('statusLog').classList.remove('hidden');
+
   var ok = 0, fail = 0;
   data.results.forEach(function(r) {
-    if (r.ok) { ok++; logEntry('\u2713 ' + r.action + ': ' + r.table + '[' + r.name + ']', 'ok'); }
-    else { fail++; logEntry('\u2717 ' + r.table + '[' + r.name + ']: ' + r.error, 'err'); }
+    var key = (r.item_type || '') + ':::' + r.table + ':::' + r.name;
+    var queued = pendingActions.get(key);
+    var label = actionLabel(queued || { action: r.action });
+    pendingActions.delete(key);
+    if (r.ok) {
+      ok++;
+      actionStatus.set(key, 'Applied: ' + label);
+      logEntry('Applied ' + label + ' to ' + r.table + '[' + r.name + ']', 'ok');
+    } else {
+      fail++;
+      actionStatus.set(key, 'Failed: ' + (r.error || 'Unknown error'));
+      logEntry('Failed ' + label + ' for ' + r.table + '[' + r.name + ']: ' + (r.error || 'Unknown error'), 'err');
+    }
   });
-  logEntry('Done: ' + ok + ' succeeded, ' + fail + ' failed', 'info');
-  return data;
+  logEntry('Apply complete: ' + ok + ' succeeded, ' + fail + ' failed', 'info');
+  selectedKeys.clear();
+  updateApplyButtonState();
+  renderTable();
+  updateSelectedCount();
+  await reAnalyze();
 }
 
 $('btnMoveToFolder').onclick = async function() {
   var folder = $('folderInput').value.trim();
   if (!folder) { alert('Enter a folder name'); return; }
-  await performAction('move_to_folder', { folder: folder });
-  await reAnalyze();
+  queueSelectedAction('move_to_folder', { folder: folder });
 };
-$('btnHide').onclick = async function() { await performAction('hide'); await reAnalyze(); };
-$('btnUnhide').onclick = async function() { await performAction('unhide'); await reAnalyze(); };
+$('btnHide').onclick = function() { queueSelectedAction('hide'); };
+$('btnUnhide').onclick = function() { queueSelectedAction('unhide'); };
+$('btnReset').onclick = function() {
+  pendingActions.clear();
+  actionStatus.clear();
+  selectedKeys.clear();
+  updateApplyButtonState();
+  renderTable();
+  updateSelectedCount();
+  logEntry('Reset all pending actions and statuses', 'info');
+};
+$('btnDelete').onclick = function() { queueSelectedAction('delete'); };
+$('btnApply').onclick = async function() { await applyQueuedActions(); };
 
-$('btnDelete').onclick = function() {
-  var items = getSelectedItems();
-  if (!items.length) { alert('No items selected'); return; }
-  $('deleteCount').textContent = items.length;
-  $('deleteConfirmInput').value = '';
-  $('btnDeleteConfirm').disabled = true;
-  $('deleteModal').classList.remove('hidden');
-  $('deleteConfirmInput').focus();
-};
 $('deleteConfirmInput').oninput = function() { $('btnDeleteConfirm').disabled = $('deleteConfirmInput').value.trim() !== 'DELETE'; };
-$('btnDeleteCancel').onclick = function() { $('deleteModal').classList.add('hidden'); };
-$('btnDeleteConfirm').onclick = async function() {
-  $('deleteModal').classList.add('hidden');
-  await performAction('delete');
-  getSelectedItems().forEach(function(i) { selectedKeys.delete(itemKey(i)); });
-  await reAnalyze();
-};
 
 async function reAnalyze() {
   logEntry('Re-analyzing...', 'info');
@@ -786,11 +956,7 @@ async function reAnalyze() {
     report_paths: chosenReports.map(function(r) { return r.path; }),
   });
   if (data.error) { logEntry('Re-analysis failed: ' + data.error, 'err'); return; }
-  allItems = data.items;
-  allRefs = data.references || [];
-  updateSummary(data.summary);
-  populateFilterOptions();
-  applyFilters();
+  setResultsData(data, true);
   logEntry('Analysis refreshed', 'info');
 }
 
