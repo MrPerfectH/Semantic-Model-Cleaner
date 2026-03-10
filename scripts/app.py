@@ -229,8 +229,8 @@ def api_action():
         if not model_path.exists():
             return jsonify({"error": f"Model path not found: {model_path}"}), 400
 
-        # Create backup if not already done this session
-        if _state["backup_path"] is None:
+        # Create backup only if requested by user and not already done this session
+        if data.get("create_backup", False) and _state["backup_path"] is None:
             _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
 
         # Git dirty check

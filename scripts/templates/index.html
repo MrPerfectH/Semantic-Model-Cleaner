@@ -268,7 +268,8 @@ tbody tr.row-failed { background: #fee2e2; }
 <div class="modal-overlay hidden" id="deleteModal">
   <div class="modal">
     <h2>Confirm Delete</h2>
-    <p>This will permanently remove <strong id="deleteCount">0</strong> item(s) from the TMDL files. A backup has been created. Type <strong>DELETE</strong> to confirm.</p>
+    <p>This will permanently remove <strong id="deleteCount">0</strong> item(s) from the TMDL files. Type <strong>DELETE</strong> to confirm.</p>
+    <label style="display:flex;align-items:center;gap:6px;margin:8px 0;font-size:13px;cursor:pointer;"><input type="checkbox" id="backupCheckbox" checked> Create backup before applying</label>
     <input type="text" id="deleteConfirmInput" placeholder="Type DELETE to confirm">
     <div class="modal-actions">
       <button class="btn btn-secondary" id="btnDeleteCancel">Cancel</button>
@@ -845,11 +846,12 @@ function queueSelectedAction(actionName, extra) {
 }
 
 function confirmDeleteApply(deleteCount) {
-  if (!deleteCount) return Promise.resolve(true);
+  if (!deleteCount) return Promise.resolve({ confirmed: true, backup: false });
 
   $('deleteCount').textContent = deleteCount;
   $('deleteConfirmInput').value = '';
   $('btnDeleteConfirm').disabled = true;
+  $('backupCheckbox').checked = true;
   $('deleteModal').classList.remove('hidden');
   $('deleteConfirmInput').focus();
 
@@ -861,12 +863,13 @@ function confirmDeleteApply(deleteCount) {
     $('btnDeleteCancel').onclick = function() {
       $('deleteModal').classList.add('hidden');
       cleanup();
-      resolve(false);
+      resolve({ confirmed: false, backup: false });
     };
     $('btnDeleteConfirm').onclick = function() {
+      var wantBackup = $('backupCheckbox').checked;
       $('deleteModal').classList.add('hidden');
       cleanup();
-      resolve(true);
+      resolve({ confirmed: true, backup: wantBackup });
     };
   });
 }
@@ -878,18 +881,19 @@ async function applyQueuedActions() {
 
   var actions = Array.from(pendingActions.values());
   var deleteCount = actions.filter(function(a) { return a.action === 'delete'; }).length;
-  var confirmed = await confirmDeleteApply(deleteCount);
-  if (!confirmed) {
+  var result = await confirmDeleteApply(deleteCount);
+  if (!result.confirmed) {
     logEntry('Apply canceled', 'info');
     return;
   }
+  var createBackup = result.backup;
 
   var btn = $('btnApply');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>Applying...';
   var data;
   try {
-    data = await apiPost('/api/action', { model_path: modelPath, actions: actions });
+    data = await apiPost('/api/action', { model_path: modelPath, actions: actions, create_backup: createBackup });
   } catch (e) {
     logEntry('Apply failed: ' + (e && e.message ? e.message : e), 'err');
     updateApplyButtonState();
