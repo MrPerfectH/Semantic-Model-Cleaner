@@ -12,6 +12,7 @@ Usage:
     python scripts/analyze_model_usage.py --format xlsx -o report.xlsx
 
 Output: Markdown report, JSON, or Excel (.xlsx) showing all measures/columns and their usage status.
+The analyzer expects exactly one semantic model and one or more reports.
 """
 
 import argparse
@@ -1751,7 +1752,7 @@ def format_xlsx(results: dict, output_path: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Analyze TMDL semantic model usage in PBIR reports",
+        description="Analyze one TMDL semantic model against one or more PBIR reports",
     )
     parser.add_argument(
         "workspace",
@@ -1772,7 +1773,7 @@ def main():
     parser.add_argument(
         "--models-path",
         nargs="+",
-        help="One or more paths to search for .SemanticModel folders (or direct .SemanticModel paths)",
+        help="One or more paths to search for the single .SemanticModel folder to analyze",
     )
     parser.add_argument(
         "--reports-path",
@@ -1826,6 +1827,18 @@ def main():
             reports,
             lambda p: f"{report_display_name(p)} ({p})",
         )
+
+    if len(models) != 1:
+        if not models:
+            print("Error: No matching semantic model found.", file=sys.stderr)
+        else:
+            found = ", ".join(str(m) for m in models)
+            print(
+                "Error: exactly one semantic model must be selected. "
+                f"Found {len(models)}: {found}",
+                file=sys.stderr,
+            )
+        sys.exit(1)
 
     results = analyze(
         workspace,

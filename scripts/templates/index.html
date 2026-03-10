@@ -34,10 +34,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .pill .pill-remove:hover { opacity: 1; }
 .setup-actions { display: flex; flex-direction: column; gap: 8px; justify-content: flex-start; padding-top: 22px; }
 .btn { padding: 8px 18px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background .15s; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn-sm { padding: 5px 12px; font-size: 12px; }
 .btn-primary { background: var(--primary); color: #fff; }
 .btn-primary:hover { background: var(--primary-hover); }
-.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { background: var(--danger-hover); }
 .btn-secondary { background: #e2e8f0; color: var(--text); }
@@ -141,12 +141,12 @@ tbody tr.row-failed { background: #fee2e2; }
 </div>
 <div class="container">
   <div class="setup">
-    <h2>1. Select Models &amp; Reports</h2>
+    <h2>1. Select Model &amp; Reports</h2>
     <div class="setup-columns">
       <div class="setup-col">
-        <h3>Semantic Models <span class="count-badge" id="modelCountBadge">0</span></h3>
-        <div class="pill-list empty" id="modelPills">No models selected</div>
-        <button class="btn btn-secondary btn-sm" id="btnBrowseModels">Browse for models...</button>
+        <h3>Semantic Model <span class="count-badge" id="modelCountBadge">0</span></h3>
+        <div class="pill-list empty" id="modelPills">No model selected</div>
+        <button class="btn btn-secondary btn-sm" id="btnBrowseModels">Choose model...</button>
       </div>
       <div class="setup-col">
         <h3>Reports <span class="count-badge" id="reportCountBadge">0</span></h3>
@@ -245,7 +245,7 @@ tbody tr.row-failed { background: #fee2e2; }
 <div class="modal-overlay hidden" id="explorerModal">
   <div class="explorer-modal">
     <div class="explorer-header">
-      <h2 id="explorerTitle">Browse for Models</h2>
+      <h2 id="explorerTitle">Choose Model</h2>
       <div class="explorer-path-bar">
         <input type="text" id="explorerPathInput" placeholder="Type a path and press Enter...">
         <button class="btn btn-secondary btn-sm" id="btnExplorerGo">Go</button>
@@ -372,14 +372,14 @@ function renderPills() {
   renderPillList('reportPills', chosenReports, 'report');
   $('modelCountBadge').textContent = chosenModels.length;
   $('reportCountBadge').textContent = chosenReports.length;
-  $('btnAnalyze').disabled = !(chosenModels.length && chosenReports.length);
+  $('btnAnalyze').disabled = !(chosenModels.length === 1 && chosenReports.length);
 }
 
 function renderPillList(id, items, kind) {
   var el = $(id);
   if (!items.length) {
     el.className = 'pill-list empty';
-    el.textContent = kind === 'model' ? 'No models selected' : 'No reports selected';
+    el.textContent = kind === 'model' ? 'No model selected' : 'No reports selected';
     return;
   }
   el.className = 'pill-list';
@@ -410,7 +410,7 @@ function parentDir(path) {
 
 function openExplorer(mode) {
   explorerMode = mode;
-  $('explorerTitle').textContent = mode === 'model' ? 'Browse for Semantic Models' : 'Browse for Reports';
+  $('explorerTitle').textContent = mode === 'model' ? 'Choose Semantic Model' : 'Browse for Reports';
   explorerPicked.clear();
   var existing = mode === 'model' ? chosenModels : chosenReports;
   existing.forEach(function(it) { explorerPicked.set(it.path, it); });
@@ -478,6 +478,15 @@ function renderExplorerList(entries) {
 
   list.querySelectorAll('.explorer-check').forEach(function(cb) {
     cb.onchange = function() {
+      if (explorerMode === 'model') {
+        explorerPicked.clear();
+        list.querySelectorAll('.explorer-check').forEach(function(other) {
+          if (other !== cb) {
+            other.checked = false;
+            other.closest('.explorer-item').classList.remove('is-selected');
+          }
+        });
+      }
       if (cb.checked) explorerPicked.set(cb.dataset.path, { path: cb.dataset.path, name: cleanArtifactName(cb.dataset.name) });
       else explorerPicked.delete(cb.dataset.path);
       cb.closest('.explorer-item').classList.toggle('is-selected', cb.checked);
@@ -502,8 +511,8 @@ $('btnExplorerDone').onclick = function() {
     else if (explorerMode === 'model') pickedModels.push(item);
     else pickedReports.push(item);
   });
-  if (pickedModels.length) chosenModels = pickedModels;
-  if (pickedReports.length) chosenReports = pickedReports;
+  if (explorerMode === 'model') chosenModels = pickedModels.slice(0, 1);
+  if (explorerMode === 'report') chosenReports = pickedReports;
   renderPills();
   $('explorerModal').classList.add('hidden');
 };
@@ -808,10 +817,12 @@ $('btnSelectAllSafe').onclick = function() {
   renderTable(); updateSelectedCount();
 };
 $('btnSelectAllVisible').onclick = function() {
-  filteredItems.forEach(function(i) { selectedKeys.add(itemKey(i)); });
+  filteredItems.filter(function(i) { return !i.isHidden; }).forEach(function(i) { selectedKeys.add(itemKey(i)); });
   renderTable(); updateSelectedCount();
 };
-$('btnDeselectAll').onclick = function() { selectedKeys.clear(); renderTable(); updateSelectedCount(); };
+$('btnDeselectAll').onclick = function() {
+  selectedKeys.clear(); renderTable(); updateSelectedCount();
+};
 
 /* == Actions == */
 function getSelectedItems() { return allItems.filter(function(i) { return selectedKeys.has(itemKey(i)); }); }
@@ -969,7 +980,8 @@ window.addEventListener('DOMContentLoaded', async function() {
   try {
     var data = await apiGet('/api/discover');
     if (data.error) return;
-    if (data.models && data.models.length) chosenModels = data.models.map(function(m) { return { path: m.path, name: m.name }; });
+    if (data.models && data.models.length === 1) chosenModels = data.models.map(function(m) { return { path: m.path, name: m.name }; });
+    else chosenModels = [];
     if (data.reports && data.reports.length) chosenReports = data.reports.map(function(r) { return { path: r.path, name: r.name }; });
     renderPills();
   } catch (e) {}
