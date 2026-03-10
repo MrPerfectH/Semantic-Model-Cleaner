@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.DS_Store
+.venv/
+*_usage_analysis.xlsx
+*.SemanticModel_backup_*/

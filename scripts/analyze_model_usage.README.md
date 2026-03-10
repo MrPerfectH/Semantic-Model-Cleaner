@@ -1,6 +1,7 @@
 # analyze_model_usage.py
 
 Deterministic analyzer for Power BI PBIR + TMDL projects.
+The supported workflow is exactly one semantic model and one or more reports.
 
 It cross-references:
 - semantic model items from `*.SemanticModel`
@@ -44,6 +45,7 @@ python3 scripts/analyze_model_usage.py . --model Sales Finance --report Executiv
 - `--model` accepts one or more substrings.
 - `--report` accepts one or more substrings.
 - Filters are OR-based within each flag.
+- The final selection must resolve to exactly one semantic model.
 - `--models-path` / `--reports-path` can point to:
   - a directory to search recursively
   - a standard workspace root
@@ -152,7 +154,7 @@ Requires `flask` (`pip install flask`).
 
 ### Features
 
-- **Discover** — auto-detects `.SemanticModel` and `.Report` directories
+- **Discover** — auto-detects one `.SemanticModel` and one or more `.Report` directories
 - **Analyze** — runs the full analysis and displays results in a sortable, filterable table
 - **Filters** — status, risk, type, table, hidden, display folder, free-text search
 - **Bulk select** — "Select all Safe", "Select all visible", checkbox per row

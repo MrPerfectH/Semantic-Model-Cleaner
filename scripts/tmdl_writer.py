@@ -191,8 +191,169 @@ def set_hidden(model_path: Path, table: str, name: str,
     return {"ok": True, "file": str(tmdl_file), "action": "set_hidden", "hidden": hidden}
 
 
+def _delete_relationships_for_column(model_path: Path, table: str, column: str) -> list[str]:
+    """Remove any relationship blocks from relationships.tmdl that reference
+    the given table + column (on either fromColumn or toColumn side).
+
+    Returns list of removed relationship identifiers.
+    """
+    rel_file = model_path / "definition" / "relationships.tmdl"
+    if not rel_file.exists():
+        return []
+
+    lines = rel_file.read_text(encoding="utf-8").splitlines()
+
+    # Build a reference pattern that matches Table.column in either quoted or unquoted form
+    # fromColumn: 'Table'.column  |  Table.column  |  Table.'column'
+    escaped_table = re.escape(table)
+    escaped_col = re.escape(column)
+    ref_pattern = re.compile(
+        rf"(?:fromColumn|toColumn):\s+"
+        rf"(?:'{escaped_table}'|{escaped_table})\.(?:'{escaped_col}'|{escaped_col})\s*$",
+        re.IGNORECASE,
+    )
+
+    # Parse relationship blocks and identify ones to remove
+    blocks_to_remove: list[tuple[int, int, str]] = []  # (start, end, name)
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("relationship ") or line.startswith("relationship\t"):
+            block_start = i
+            rel_name = line.strip()
+            i += 1
+            matches_column = False
+            while i < len(lines):
+                inner = lines[i]
+                if inner == "" or inner.strip() == "":
+                    j = i + 1
+                    while j < len(lines) and (lines[j] == "" or lines[j].strip() == ""):
+                        j += 1
+                    if j < len(lines) and lines[j].startswith("\t"):
+                        i = j
+                        continue
+                    else:
+                        break
+                if inner.startswith("\t"):
+                    if ref_pattern.search(inner):
+                        matches_column = True
+                    i += 1
+                    continue
+                break
+            # Consume trailing blank lines
+            while i < len(lines) and (lines[i] == "" or lines[i].strip() == ""):
+                i += 1
+            if matches_column:
+                blocks_to_remove.append((block_start, i, rel_name))
+        else:
+            i += 1
+
+    if not blocks_to_remove:
+        return []
+
+    # Remove blocks in reverse order to preserve indices
+    removed = []
+    for start, end, rel_name in reversed(blocks_to_remove):
+        del lines[start:end]
+        removed.append(rel_name)
+
+    rel_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return removed
+
+
+def _delete_table_ref_from_model(model_path: Path, table: str) -> bool:
+    """Remove the 'ref table' line for the given table from model.tmdl.
+    Returns True if a line was removed."""
+    model_file = model_path / "definition" / "model.tmdl"
+    if not model_file.exists():
+        return False
+
+    lines = model_file.read_text(encoding="utf-8").splitlines()
+    escaped = re.escape(table)
+    # Match: ref table TableName  or  ref table 'Table Name'
+    pattern = re.compile(rf"^ref\s+table\s+(?:'{escaped}'|{escaped})\s*$", re.IGNORECASE)
+
+    new_lines = [line for line in lines if not pattern.match(line)]
+    if len(new_lines) == len(lines):
+        return False
+
+    model_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    return True
+
+
+def _table_has_items(lines: list[str]) -> bool:
+    """Check if a TMDL table file still has any column or measure declarations."""
+    for line in lines:
+        if re.match(r"^\tcolumn\s+", line) or re.match(r"^\tmeasure\s+", line):
+            return True
+    return False
+
+
+def _delete_all_relationships_for_table(model_path: Path, table: str) -> list[str]:
+    """Remove all relationship blocks from relationships.tmdl that reference
+    the given table on either side. Returns list of removed relationship identifiers."""
+    rel_file = model_path / "definition" / "relationships.tmdl"
+    if not rel_file.exists():
+        return []
+
+    lines = rel_file.read_text(encoding="utf-8").splitlines()
+
+    escaped_table = re.escape(table)
+    ref_pattern = re.compile(
+        rf"(?:fromColumn|toColumn):\s+(?:'{escaped_table}'|{escaped_table})\.",
+        re.IGNORECASE,
+    )
+
+    blocks_to_remove: list[tuple[int, int, str]] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("relationship ") or line.startswith("relationship\t"):
+            block_start = i
+            rel_name = line.strip()
+            i += 1
+            matches_table = False
+            while i < len(lines):
+                inner = lines[i]
+                if inner == "" or inner.strip() == "":
+                    j = i + 1
+                    while j < len(lines) and (lines[j] == "" or lines[j].strip() == ""):
+                        j += 1
+                    if j < len(lines) and lines[j].startswith("\t"):
+                        i = j
+                        continue
+                    else:
+                        break
+                if inner.startswith("\t"):
+                    if ref_pattern.search(inner):
+                        matches_table = True
+                    i += 1
+                    continue
+                break
+            while i < len(lines) and (lines[i] == "" or lines[i].strip() == ""):
+                i += 1
+            if matches_table:
+                blocks_to_remove.append((block_start, i, rel_name))
+        else:
+            i += 1
+
+    if not blocks_to_remove:
+        return []
+
+    removed = []
+    for start, end, rel_name in reversed(blocks_to_remove):
+        del lines[start:end]
+        removed.append(rel_name)
+
+    rel_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return removed
+
+
 def delete_item(model_path: Path, table: str, name: str, item_type: str) -> dict:
-    """Delete an entire measure or column block from the TMDL file."""
+    """Delete an entire measure or column block from the TMDL file.
+    If the item is a column, also removes any relationships referencing it.
+    If the table has no remaining columns or measures, deletes the table file
+    and all its relationships."""
     tmdl_file = _find_tmdl_file(model_path, table)
     if not tmdl_file:
         return {"ok": False, "error": f"TMDL file not found for table '{table}'"}
@@ -205,8 +366,30 @@ def delete_item(model_path: Path, table: str, name: str, item_type: str) -> dict
     start, end = block
     del lines[start:end]
 
-    tmdl_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return {"ok": True, "file": str(tmdl_file), "action": "delete", "item": name}
+    result = {"ok": True, "file": str(tmdl_file), "action": "delete", "item": name}
+
+    # If deleting a column, also clean up any relationships referencing it
+    if item_type.lower() in ("column", "calculated column"):
+        removed_rels = _delete_relationships_for_column(model_path, table, name)
+        if removed_rels:
+            result["removed_relationships"] = removed_rels
+
+    # Check if the table has any remaining columns or measures
+    if not _table_has_items(lines):
+        # Remove the table file entirely
+        tmdl_file.unlink()
+        result["table_deleted"] = True
+        # Remove all remaining relationships for this table
+        removed_table_rels = _delete_all_relationships_for_table(model_path, table)
+        if removed_table_rels:
+            existing = result.get("removed_relationships", [])
+            result["removed_relationships"] = existing + removed_table_rels
+        # Remove the ref table line from model.tmdl
+        _delete_table_ref_from_model(model_path, table)
+    else:
+        tmdl_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    return result
 
 
 # ── Batch Operations ─────────────────────────────────────────────────────────

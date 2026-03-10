@@ -126,7 +126,11 @@ def api_analyze():
         report_paths = data.get("report_paths", _state["report_paths"])
 
         if not model_paths or not report_paths:
-            return jsonify({"error": "No models or reports selected. Run discover first."}), 400
+            return jsonify({"error": "No model or reports selected. Run discover first."}), 400
+        if len(model_paths) != 1:
+            return jsonify({
+                "error": "Select exactly one semantic model and one or more reports before analyzing.",
+            }), 400
 
         results = analyzer.analyze(
             workspace=Path(_state["workspace"]) if _state["workspace"] else Path("."),
@@ -198,7 +202,11 @@ def api_analyze():
                     "removalRisk": risk,
                 })
 
-        return jsonify({"summary": results["summary"], "items": items, "references": references})
+        return jsonify({
+            "summary": results["summary"],
+            "items": items,
+            "references": references,
+        })
     except SystemExit:
         return jsonify({"error": "Analysis failed — no models or reports found at the given paths."}), 400
     except Exception as e:
@@ -229,8 +237,8 @@ def api_action():
         if not model_path.exists():
             return jsonify({"error": f"Model path not found: {model_path}"}), 400
 
-        # Create backup if not already done this session
-        if _state["backup_path"] is None:
+        # Create backup only if requested by user and not already done this session
+        if data.get("create_backup", False) and _state["backup_path"] is None:
             _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
 
         # Git dirty check
@@ -267,17 +275,21 @@ def api_backup_info():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Semantic Model Cleaner Web App")
+    parser = argparse.ArgumentParser(
+        description="Semantic Model Cleaner Web App (one semantic model, one or more reports)"
+    )
     parser.add_argument("workspace", nargs="?", default=".",
                         help="Workspace root (default: current directory)")
     parser.add_argument("--models-path", nargs="+",
-                        help="Path(s) to search for .SemanticModel directories")
+                        help="Path(s) to search for the single .SemanticModel directory to analyze")
     parser.add_argument("--reports-path", nargs="+",
                         help="Path(s) to search for .Report directories")
     parser.add_argument("--port", type=int, default=5001,
                         help="Port to run on (default: 5001)")
     parser.add_argument("--host", default="127.0.0.1",
                         help="Host to bind to (default: 127.0.0.1)")
+    parser.add_argument("--debug", action="store_true",
+                        help="Enable Flask debug mode and auto-reload")
 
     args = parser.parse_args()
 
@@ -295,9 +307,10 @@ def main():
     if _state["report_search_roots"]:
         print(f"  Reports   : {', '.join(_state['report_search_roots'])}")
     print(f"  URL       : http://{args.host}:{args.port}")
+    print(f"  Debug     : {'on' if args.debug else 'off'}")
     print()
 
-    app.run(host=args.host, port=args.port, debug=True)
+    app.run(host=args.host, port=args.port, debug=args.debug)
 
 
 if __name__ == "__main__":
