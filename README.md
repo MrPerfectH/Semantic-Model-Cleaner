@@ -5,8 +5,8 @@ Internal tool for analyzing Power BI PBIR + TMDL projects, finding unused semant
 ## Repo Status
 
 - Intended audience: internal team using a private GitHub repo
-- Current shape: script-based CLI plus local Flask web app
-- Packaging: not installable yet in this iteration
+- Current shape: installable Python package with CLI plus local Flask web app
+- Entry points: `semantic-model-cleaner`, `semantic-model-cleaner-web`, `smc`, and `smc-web`
 
 ## What It Does
 
@@ -24,13 +24,13 @@ Internal tool for analyzing Power BI PBIR + TMDL projects, finding unused semant
 Runtime only:
 
 ```bash
-pip install -r requirements.txt
+python -m pip install .
 ```
 
 Development setup:
 
 ```bash
-pip install -r requirements-dev.txt
+python -m pip install -e .[dev]
 ```
 
 ## Analysis Surfaces
@@ -47,18 +47,38 @@ The analyzer supports:
 Examples:
 
 ```bash
-python3 scripts/analyze_model_usage.py . --format full
-python3 scripts/analyze_model_usage.py . --format json -o analysis.json
-python3 scripts/analyze_model_usage.py . --format xlsx -o analysis.xlsx
+semantic-model-cleaner . --format full
+semantic-model-cleaner . --format json -o analysis.json
+semantic-model-cleaner . --format xlsx -o analysis.xlsx
+```
+
+Short aliases:
+
+```bash
+smc . --format full
 ```
 
 You can also use explicit paths:
 
 ```bash
-python3 scripts/analyze_model_usage.py \
+semantic-model-cleaner \
   --models-path /path/to/Model.SemanticModel \
   --reports-path /path/to/Report.Report \
   --format unused
+```
+
+Compatibility note:
+
+```bash
+python3 scripts/analyze_model_usage.py .
+```
+
+still works from a cloned repo, but the packaged command is now the preferred entrypoint.
+
+Module entrypoint:
+
+```bash
+python3 -m semantic_model_cleaner . --format full
 ```
 
 ### Web app
@@ -66,7 +86,13 @@ python3 scripts/analyze_model_usage.py \
 Start the local UI:
 
 ```bash
-python3 scripts/app.py .
+semantic-model-cleaner-web .
+```
+
+Short alias:
+
+```bash
+smc-web .
 ```
 
 Open `http://127.0.0.1:5001`.
@@ -81,9 +107,15 @@ The web app supports:
 Optional flags:
 
 ```bash
-python3 scripts/app.py . --port 8080
-python3 scripts/app.py . --host 0.0.0.0
-python3 scripts/app.py . --debug
+semantic-model-cleaner-web . --port 8080
+semantic-model-cleaner-web . --host 0.0.0.0
+semantic-model-cleaner-web . --debug
+```
+
+Module entrypoint:
+
+```bash
+python3 -m semantic_model_cleaner.web .
 ```
 
 ## Supported Exports
@@ -123,11 +155,13 @@ python3 -m ruff check .
 
 ## Repo Layout
 
-- `scripts/analyze_model_usage.py`: CLI analyzer and export logic
+- `src/semantic_model_cleaner/analyzer.py`: CLI analyzer and export logic
+- `src/semantic_model_cleaner/webapp.py`: Flask app and API
+- `src/semantic_model_cleaner/tmdl_writer.py`: TMDL edit engine
+- `src/semantic_model_cleaner/templates/index.html`: single-page web UI template
+- `scripts/analyze_model_usage.py`: compatibility wrapper for the packaged CLI
 - `scripts/analyze_model_usage.README.md`: analyzer-specific behavior and limits
-- `scripts/app.py`: Flask app and API
-- `scripts/tmdl_writer.py`: TMDL edit engine
-- `scripts/templates/index.html`: single-page web UI
+- `scripts/app.py`: compatibility wrapper for the packaged web app
 - `tests/`: automated tests and fixtures
 
 ## Roadmap
