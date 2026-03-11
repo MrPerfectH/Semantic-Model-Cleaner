@@ -1,5 +1,4 @@
-import analyze_model_usage as analyzer
-import app as web_app
+from semantic_model_cleaner import analyzer, webapp as web_app
 
 
 def _fake_results():
@@ -54,6 +53,14 @@ def _fake_results():
             }
         ],
     }
+
+
+def test_index_renders_packaged_template():
+    client = web_app.app.test_client()
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"Semantic Model Cleaner" in response.data
 
 
 def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):

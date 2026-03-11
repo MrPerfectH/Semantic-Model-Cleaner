@@ -1,4 +1,4 @@
-import tmdl_writer
+from semantic_model_cleaner import tmdl_writer
 
 
 def test_delete_item_removes_empty_table_model_ref_and_relationships(tmp_path):

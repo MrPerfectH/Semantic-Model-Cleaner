@@ -15,5 +15,4 @@
 
 ## Later
 
-- Create an installable package with stable entrypoints for the CLI and web app.
 - Prepare the repo for public release with an OSS license, public-facing demo assets, and issue/community scaffolding.

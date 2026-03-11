@@ -1,3 +1,39 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "semantic-model-cleaner"
+version = "0.1.0"
+description = "Analyze Power BI PBIR + TMDL projects and apply semantic model cleanup actions locally."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.1,<4",
+    "openpyxl>=3.1,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9,<10",
+    "ruff>=0.11,<1",
+]
+
+[project.scripts]
+semantic-model-cleaner = "semantic_model_cleaner.cli:main"
+semantic-model-cleaner-web = "semantic_model_cleaner.webapp:main"
+smc = "semantic_model_cleaner.cli:main"
+smc-web = "semantic_model_cleaner.web:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+semantic_model_cleaner = ["templates/*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
