@@ -12,6 +12,8 @@ Usage:
 
 import argparse
 import io
+import os
+import re
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -31,6 +33,27 @@ _state = {
     "report_paths": [],
     "backup_path": None,
 }
+
+_WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:(?![\\/])")
+
+
+def _normalize_browse_path(raw: str) -> str:
+    """Normalize browser-submitted paths before pathlib resolves them.
+
+    The frontend explorer can submit Windows drive paths. On Windows, make sure
+    they stay absolute even if the browser/UI drops the slash after the drive
+    letter or prefixes the path with an extra slash.
+    """
+    path = (raw or "").strip()
+    if not path or os.name != "nt":
+        return path
+
+    path = path.replace("/", "\\")
+    if re.match(r"^\\[A-Za-z]:", path):
+        path = path[1:]
+    if _WINDOWS_DRIVE_PATH.match(path):
+        path = path[:2] + "\\" + path[2:].lstrip("\\")
+    return path
 
 
 def _serialize_results(results: dict) -> dict:
@@ -128,7 +151,7 @@ def api_browse():
     type is one of: "dir", "model", "report"
     """
     try:
-        raw = request.args.get("path", "").strip()
+        raw = _normalize_browse_path(request.args.get("path", ""))
         if not raw:
             raw = _state["workspace"] or str(Path.home())
         target = Path(raw).resolve()
