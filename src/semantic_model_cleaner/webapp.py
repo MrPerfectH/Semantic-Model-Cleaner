@@ -58,27 +58,66 @@ def _normalize_browse_path(raw: str) -> str:
 
 def _serialize_results(results: dict) -> dict:
     """Serialize analyzer results for JSON API responses."""
+    items_by_key = {r["item"].key: r["item"] for r in results["items"]}
+    dax_measure_deps = analyzer.build_dax_dependency_graph(list(items_by_key.values()))
+    dax_column_deps = analyzer.build_dax_column_deps(list(items_by_key.values()))
+    reverse_measure_deps: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    reverse_column_deps: dict[tuple[str, str], set[tuple[str, str]]] = {}
+
+    for source_key, deps in dax_measure_deps.items():
+        for dep_key in deps:
+            reverse_measure_deps.setdefault(dep_key, set()).add(source_key)
+
+    for source_key, deps in dax_column_deps.items():
+        for dep_key in deps:
+            reverse_column_deps.setdefault(dep_key, set()).add(source_key)
+
     items = []
     for r in results["items"]:
         pages_used = sorted({u.page for u in r["usages"] if u.page})
         visual_types = sorted({u.visual_type for u in r["usages"] if u.visual_type})
         contexts = sorted({u.context for u in r["usages"] if u.context})
+        item = r["item"]
+        key = item.key
+        status = r["status"]
+        indirect_via = []
+        if status.startswith("INDIRECT (via: ") and status.endswith(")"):
+            indirect_via = [part.strip() for part in status[15:-1].split(",") if part.strip()]
 
         items.append({
-            "type": r["item"].item_type,
-            "table": r["item"].table,
-            "name": r["item"].name,
-            "displayFolder": r["item"].display_folder,
-            "isHidden": r["item"].is_hidden,
-            "isKey": r["item"].is_key,
-            "isInferred": r["item"].is_inferred,
-            "sortByColumn": r["item"].sort_by_column or None,
-            "status": r["status"],
+            "type": item.item_type,
+            "table": item.table,
+            "name": item.name,
+            "displayFolder": item.display_folder,
+            "isHidden": item.is_hidden,
+            "isKey": item.is_key,
+            "isInferred": item.is_inferred,
+            "sortByColumn": item.sort_by_column or None,
+            "status": status,
+            "statusDetail": status,
             "removalRisk": r.get("removal_risk", "") or None,
             "pagesUsed": pages_used,
             "visualTypes": visual_types,
             "contexts": contexts,
             "usageCount": len(r["usages"]),
+            "indirectVia": indirect_via,
+            "dependsOnMeasures": sorted(analyzer.format_item_ref(dep) for dep in dax_measure_deps.get(key, set())),
+            "dependsOnColumns": sorted(analyzer.format_item_ref(dep) for dep in dax_column_deps.get(key, set())),
+            "usedByItems": sorted(
+                analyzer.format_item_ref(dep) for dep in
+                (reverse_measure_deps.get(key, set()) | reverse_column_deps.get(key, set()))
+            ),
+            "usageDetails": [
+                {
+                    "report": u.report,
+                    "page": u.page,
+                    "visualType": u.visual_type,
+                    "visualTitle": u.visual_title or "",
+                    "context": u.context,
+                    "refType": u.ref_type,
+                }
+                for u in r["usages"]
+            ],
         })
 
     references = []

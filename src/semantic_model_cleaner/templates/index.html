@@ -54,7 +54,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .filters-bar .filter-group { display: flex; flex-direction: column; gap: 3px; }
 .filters-bar .filter-group label { font-size: 11px; color: var(--text-light); font-weight: 500; text-transform: uppercase; letter-spacing: .3px; }
 .filters-bar select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; min-width: 120px; }
+.filters-bar select[multiple] { min-height: 96px; padding: 4px 8px; }
 .filters-bar input[type="text"] { padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; min-width: 180px; }
+.filters-bar .filter-hint { font-size: 11px; color: var(--text-light); align-self: flex-end; }
 .filter-counts { margin-left: auto; font-size: 12px; color: var(--text-light); white-space: nowrap; }
 .export-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; justify-content: flex-end; }
 .export-bar .label { margin-right: auto; font-size: 12px; color: var(--text-light); text-transform: uppercase; letter-spacing: .3px; font-weight: 600; }
@@ -63,9 +65,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .action-bar .folder-input { padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; width: 200px; }
 .table-container { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-thead th { position: sticky; top: 0; background: #f8fafc; border-bottom: 2px solid var(--border); padding: 10px 12px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .3px; color: var(--text-light); cursor: pointer; user-select: none; white-space: nowrap; }
+thead th { position: sticky; top: 0; background: #f8fafc; border-bottom: 2px solid var(--border); padding: 10px 12px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .3px; color: var(--text-light); cursor: pointer; user-select: none; white-space: nowrap; position: sticky; }
 thead th:hover { color: var(--text); }
 thead th .sort-arrow { font-size: 10px; margin-left: 4px; }
+thead th .col-resizer { position: absolute; top: 0; right: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 3; }
 tbody td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
 tbody tr:hover { background: var(--row-hover); }
 tbody tr.row-review td:first-child { border-left: 3px solid var(--warning); }
@@ -75,12 +78,14 @@ tbody tr.selected { background: #eff6ff; }
 tbody tr.row-pending { background: #fef9c3; }
 tbody tr.row-applied { background: #dcfce7; }
 tbody tr.row-failed { background: #fee2e2; }
-.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.badge-status { min-width: 86px; text-align: center; }
 .badge-safe { background: var(--safe); color: #166534; }
 .badge-review { background: var(--review); color: #92400e; }
 .badge-caution { background: var(--caution); color: #991b1b; }
 .badge-donotremove { background: var(--donotremove); color: #475569; }
 .badge-used { background: #dbeafe; color: #1e40af; }
+.badge-muted { background: #e2e8f0; color: #475569; }
 .status-log { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-top: 16px; max-height: 200px; overflow-y: auto; }
 .status-log h3 { font-size: 13px; margin-bottom: 8px; color: var(--text-light); }
 .status-log .log-entry { font-size: 12px; padding: 3px 0; font-family: 'SF Mono', Monaco, Consolas, monospace; }
@@ -102,8 +107,10 @@ tbody tr.row-failed { background: #fee2e2; }
 .git-warning { background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius); padding: 10px 16px; margin-bottom: 12px; font-size: 13px; color: #92400e; }
 .warning-banner { background: #fffbeb; border: 1px solid #f59e0b; border-radius: var(--radius); padding: 12px 16px; margin-bottom: 12px; color: #92400e; }
 .warning-banner h3 { font-size: 13px; margin-bottom: 8px; }
+.warning-banner .warning-note { font-size: 12px; line-height: 1.5; margin-bottom: 8px; color: #92400e; }
 .warning-banner .warning-entry { font-size: 12px; line-height: 1.5; }
 .warning-banner .warning-entry + .warning-entry { margin-top: 4px; }
+.warning-banner .warning-meta { font-size: 11px; color: #a16207; margin-top: 2px; }
 .explorer-modal { background: #fff; border-radius: 12px; max-width: 700px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
 .explorer-header { padding: 16px 20px 0; }
 .explorer-header h2 { font-size: 16px; color: var(--text); margin-bottom: 10px; }
@@ -136,6 +143,21 @@ tbody tr.row-failed { background: #fee2e2; }
 .view-tab:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-left: none; }
 .view-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 .view-tab .tab-count { font-size: 11px; font-weight: 400; opacity: .8; margin-left: 6px; }
+body.is-resizing-columns { cursor: col-resize; user-select: none; }
+.cell-status, .cell-risk, .cell-hidden, .cell-refs { white-space: nowrap; }
+.item-link { color: inherit; text-decoration: none; cursor: pointer; }
+.item-link:hover { color: var(--primary); text-decoration: underline; }
+.detail-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+.detail-panel h3 { font-size: 18px; margin-bottom: 6px; }
+.detail-panel .detail-meta { font-size: 12px; color: var(--text-light); margin-bottom: 16px; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.detail-card { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.detail-card h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .3px; color: var(--text-light); margin-bottom: 8px; }
+.detail-card .detail-value { font-size: 14px; color: var(--text); line-height: 1.5; }
+.detail-list { list-style: none; margin: 0; padding: 0; }
+.detail-list li { padding: 6px 0; border-bottom: 1px solid #eef2f7; font-size: 13px; line-height: 1.45; }
+.detail-list li:last-child { border-bottom: none; }
+.detail-empty { color: var(--text-light); font-style: italic; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -178,22 +200,25 @@ tbody tr.row-failed { background: #fee2e2; }
   <div class="git-warning hidden" id="gitWarning"></div>
   <div class="warning-banner hidden" id="warningBanner">
     <h3>Analyzer Warnings</h3>
+    <div class="warning-note">Warnings mean the analyzer found ambiguous or unsupported metadata patterns. Results are still usable, but some usage links may be incomplete or conservative.</div>
     <div id="warningList"></div>
   </div>
   <div class="filters-bar hidden" id="filtersSection">
     <div class="filter-group"><label>Search</label><input type="text" id="filterSearch" placeholder="Name or table..."></div>
-    <div class="filter-group"><label>Status</label><select id="filterStatus"><option value="">All</option><option value="NOT USED">Not Used</option><option value="USED">Used</option><option value="INDIRECT">Indirect</option></select></div>
-    <div class="filter-group"><label>Risk</label><select id="filterRisk"><option value="">All</option><option value="Safe">Safe</option><option value="Review">Review</option><option value="Caution">Caution</option><option value="Do not remove">Do not remove</option></select></div>
-    <div class="filter-group"><label>Type</label><select id="filterType"><option value="">All</option><option value="Measure">Measure</option><option value="Column">Column</option><option value="Calculated Column">Calculated Column</option></select></div>
-    <div class="filter-group"><label>Table</label><select id="filterTable"><option value="">All</option></select></div>
-    <div class="filter-group"><label>Hidden</label><select id="filterHidden"><option value="">All</option><option value="yes">Hidden</option><option value="no">Visible</option></select></div>
-    <div class="filter-group"><label>Folder</label><select id="filterFolder"><option value="">All</option></select></div>
-    <div class="filter-group"><label>Modified</label><select id="filterModified"><option value="">All</option><option value="applied">Applied</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="none">Not modified</option></select></div>
+    <div class="filter-group"><label>Status</label><select id="filterStatus" multiple><option value="NOT USED">Not Used</option><option value="USED">Used</option><option value="INDIRECT">Indirect</option></select></div>
+    <div class="filter-group"><label>Risk</label><select id="filterRisk" multiple><option value="Safe">Safe</option><option value="Review">Review</option><option value="Caution">Caution</option><option value="Do not remove">Do not remove</option><option value="__not_applicable__">Not applicable</option></select></div>
+    <div class="filter-group"><label>Type</label><select id="filterType" multiple><option value="Measure">Measure</option><option value="Column">Column</option><option value="Calculated Column">Calculated Column</option></select></div>
+    <div class="filter-group"><label>Table</label><select id="filterTable" multiple></select></div>
+    <div class="filter-group"><label>Hidden</label><select id="filterHidden" multiple><option value="yes">Hidden</option><option value="no">Visible</option></select></div>
+    <div class="filter-group"><label>Folder</label><select id="filterFolder" multiple></select></div>
+    <div class="filter-group"><label>Modified</label><select id="filterModified" multiple><option value="applied">Applied</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="none">Not modified</option></select></div>
+    <div class="filter-hint">Filters support multi-select. Click values to toggle.</div>
     <div class="filter-counts" id="filterCounts"></div>
   </div>
   <div class="view-tabs hidden" id="viewTabs">
     <div class="view-tab active" data-view="details" id="tabDetails">Details <span class="tab-count" id="tabDetailsCount"></span></div>
     <div class="view-tab" data-view="refs" id="tabRefs">All References <span class="tab-count" id="tabRefsCount"></span></div>
+    <div class="view-tab" data-view="item" id="tabItem">Item Details</div>
   </div>
   <div class="export-bar hidden" id="exportSection">
     <span class="label">Export Current Analysis</span>
@@ -250,6 +275,42 @@ tbody tr.row-failed { background: #fee2e2; }
       </tr></thead>
       <tbody id="refsTableBody"></tbody>
     </table>
+  </div>
+  <div class="detail-panel hidden" id="itemDetailSection">
+    <h3 id="detailTitle">Item Details</h3>
+    <div class="detail-meta" id="detailMeta">Select a measure or column to inspect its usage and dependency details.</div>
+    <div class="detail-grid">
+      <div class="detail-card">
+        <h4>Status</h4>
+        <div class="detail-value" id="detailStatus"></div>
+      </div>
+      <div class="detail-card">
+        <h4>Risk</h4>
+        <div class="detail-value" id="detailRisk"></div>
+      </div>
+      <div class="detail-card">
+        <h4>Depends On</h4>
+        <div class="detail-value" id="detailDependsOn"></div>
+      </div>
+      <div class="detail-card">
+        <h4>Used By</h4>
+        <div class="detail-value" id="detailUsedBy"></div>
+      </div>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-card">
+        <h4>Indirect Via</h4>
+        <div class="detail-value" id="detailIndirectVia"></div>
+      </div>
+      <div class="detail-card">
+        <h4>Pages Used</h4>
+        <div class="detail-value" id="detailPagesUsed"></div>
+      </div>
+    </div>
+    <div class="detail-card">
+      <h4>Direct Report References</h4>
+      <div id="detailUsageList"></div>
+    </div>
   </div>
   <div class="status-log hidden" id="statusLog">
     <h3>Action Log</h3>
@@ -309,9 +370,10 @@ var chosenReports = [];
 var pendingActions = new Map();
 var actionStatus = new Map();
 var allWarnings = [];
-var riskOrder = { 'Safe': 0, 'Review': 1, 'Caution': 2, 'Do not remove': 3 };
+var riskOrder = { 'Safe': 0, 'Review': 1, 'Caution': 2, 'Do not remove': 3, '__not_applicable__': 4 };
 var explorerMode = 'model';
 var explorerPicked = new Map();
+var detailItemKey = null;
 
 function $(id) { return document.getElementById(id); }
 
@@ -323,6 +385,10 @@ function esc(s) {
 }
 
 function itemKey(item) { return item.type + ':::' + item.table + ':::' + item.name; }
+
+function itemRefText(item) {
+  return item.table + '[' + item.name + ']';
+}
 
 function actionLabel(action) {
   if (!action || !action.action) return '';
@@ -346,6 +412,130 @@ function actionStatusBadge(key) {
   if (text.startsWith('Applied:')) return '<span class="badge badge-safe">' + esc(text) + '</span>';
   if (text.startsWith('Failed:')) return '<span class="badge badge-caution">' + esc(text) + '</span>';
   return esc(text);
+}
+
+function statusLabel(status) {
+  if (!status) return '';
+  if (status === 'NOT USED') return 'NOT USED';
+  if (status.startsWith('INDIRECT')) return 'INDIRECT';
+  if (status.startsWith('USED')) return 'USED';
+  return status;
+}
+
+function statusHelpText(status) {
+  var label = statusLabel(status);
+  var base = {
+    'USED': 'Directly referenced by at least one report visual or required model dependency.',
+    'NOT USED': 'No direct or indirect usage was found in the selected reports.',
+    'INDIRECT': 'Reached through another item such as a dependent measure, calculation, or relationship chain.'
+  }[label] || 'Analyzer status for this item.';
+  return status && status !== label ? base + ' Details: ' + status : base;
+}
+
+function riskDisplayValue(itemOrRisk, maybeStatus) {
+  if (itemOrRisk && typeof itemOrRisk === 'object') {
+    if (itemOrRisk.removalRisk) return itemOrRisk.removalRisk;
+    return itemOrRisk.status === 'NOT USED' ? '__not_applicable__' : '__not_applicable__';
+  }
+  return itemOrRisk || '__not_applicable__';
+}
+
+function riskHelpText(risk) {
+  var text = {
+    'Safe': 'No dependent DAX items were found. This item looks unused and low risk to review for cleanup.',
+    'Review': 'Unused, but hidden or key-like characteristics mean it needs a manual check before removal.',
+    'Caution': 'Unused in reports, but other model logic appears to depend on it. Removal may break calculations.',
+    'Do not remove': 'System-generated or inferred item. Treat as required metadata unless you know exactly why it exists.',
+    '__not_applicable__': 'Risk is only scored for items that are NOT USED. Used or indirect items are not cleanup candidates.'
+  }[risk || '__not_applicable__'];
+  return text || 'Analyzer risk classification.';
+}
+
+function warningHelpText(warning) {
+  var extra = {
+    'UNRESOLVED_NAMEOF_TARGET': 'The analyzer found a NAMEOF reference but could not match it to a model item. Usage may be undercounted for the affected field parameter target.',
+    'AMBIGUOUS_NAMEOF_TARGET': 'The analyzer found a NAMEOF reference that could match multiple model items. Usage attribution may be conservative.'
+  }[warning.code] || 'The analyzer hit a pattern it could not fully resolve.';
+  return extra;
+}
+
+function getSelectedValues(id) {
+  return Array.from($(id).selectedOptions || []).map(function(option) { return option.value; }).filter(Boolean);
+}
+
+function matchesSelectedValues(value, selectedValues) {
+  return !selectedValues.length || selectedValues.indexOf(value) !== -1;
+}
+
+function enableMultiSelect(select) {
+  if (!select || select.dataset.multiReady === 'true') return;
+  select.dataset.multiReady = 'true';
+  select.addEventListener('mousedown', function(e) {
+    if (e.target.tagName !== 'OPTION') return;
+    e.preventDefault();
+    e.target.selected = !e.target.selected;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+function setupMultiSelects() {
+  document.querySelectorAll('.filters-bar select[multiple]').forEach(enableMultiSelect);
+}
+
+function setupResizableTable(tableSectionId) {
+  var table = document.querySelector('#' + tableSectionId + ' table');
+  if (!table) return;
+  var headerCells = Array.from(table.querySelectorAll('thead th'));
+  if (!headerCells.length) return;
+
+  var colgroup = table.querySelector('colgroup');
+  if (!colgroup) {
+    colgroup = document.createElement('colgroup');
+    headerCells.forEach(function() { colgroup.appendChild(document.createElement('col')); });
+    table.insertBefore(colgroup, table.firstChild);
+  }
+
+  var cols = Array.from(colgroup.children);
+  headerCells.forEach(function(th, index) {
+    var col = cols[index];
+    if (!col.style.width && th.offsetWidth) {
+      col.style.width = Math.max(th.offsetWidth, 56) + 'px';
+    }
+    if (th.querySelector('.col-resizer')) return;
+
+    th.title = 'Click to sort. Drag the right edge to resize.';
+    var handle = document.createElement('span');
+    handle.className = 'col-resizer';
+    th.appendChild(handle);
+
+    handle.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      document.body.classList.add('is-resizing-columns');
+      var startX = e.clientX;
+      var startWidth = th.getBoundingClientRect().width;
+
+      function onMove(moveEvent) {
+        var width = Math.max(56, startWidth + (moveEvent.clientX - startX));
+        col.style.width = width + 'px';
+      }
+
+      function onUp() {
+        document.body.classList.remove('is-resizing-columns');
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      }
+
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
+  });
+  table.style.tableLayout = 'fixed';
+}
+
+function setupResizableTables() {
+  setupResizableTable('tableSection');
+  setupResizableTable('refsTableSection');
 }
 
 function updateApplyButtonState() {
@@ -491,7 +681,8 @@ function renderBreadcrumbs(currentPath) {
   var acc = info.root;
   for (var i = 0; i < info.segments.length; i++) {
     acc = joinPath(acc, info.segments[i], info.separator);
-    html += '<span>' + esc(info.separator) + '</span> <a data-path="' + esc(acc) + '">' + esc(info.segments[i]) + '</a> ';
+    if (i > 0) html += '<span>' + esc(info.separator) + '</span> ';
+    html += '<a data-path="' + esc(acc) + '">' + esc(info.segments[i]) + '</a> ';
   }
   $('explorerBreadcrumbs').innerHTML = html;
   $('explorerBreadcrumbs').querySelectorAll('a').forEach(function(a) {
@@ -603,6 +794,10 @@ function loadResults(data) {
   $('viewTabs').classList.remove('hidden');
   $('exportSection').classList.remove('hidden');
   switchView(currentView);
+  requestAnimationFrame(function() {
+    setupMultiSelects();
+    setupResizableTables();
+  });
 }
 
 function setResultsData(data, preserveActionState) {
@@ -620,7 +815,9 @@ function setResultsData(data, preserveActionState) {
     pendingActions.clear();
     actionStatus.clear();
   }
+  if (detailItemKey && !getItemByKey(detailItemKey)) detailItemKey = null;
   renderWarnings();
+  renderItemDetails();
   updateSummary(data.summary);
   populateFilterOptions();
   applyFilters();
@@ -638,7 +835,14 @@ function renderWarnings() {
 
   list.innerHTML = allWarnings.map(function(warning) {
     var prefix = warning.code ? '<strong>' + esc(warning.code) + '</strong>: ' : '';
-    return '<div class="warning-entry">' + prefix + esc(warning.message || '') + '</div>';
+    var details = [];
+    if (warning.table) details.push('table: ' + warning.table);
+    if (warning.model) details.push('model: ' + warning.model);
+    if (warning.source_file) details.push('file: ' + warning.source_file);
+    return '<div class="warning-entry" title="' + esc(warningHelpText(warning)) + '">'
+      + prefix + esc(warning.message || '')
+      + '<div class="warning-meta">' + esc(warningHelpText(warning)) + (details.length ? ' [' + esc(details.join(' | ')) + ']' : '') + '</div>'
+      + '</div>';
   }).join('');
   banner.classList.remove('hidden');
 }
@@ -657,43 +861,57 @@ function updateSummary(s) {
 
 /* == Filters == */
 function populateFilterOptions() {
+  var selectedTables = getSelectedValues('filterTable');
+  var selectedFolders = getSelectedValues('filterFolder');
   var tables = Array.from(new Set(allItems.map(function(i) { return i.table; }))).sort();
-  $('filterTable').innerHTML = '<option value="">All</option>' + tables.map(function(t) { return '<option value="' + esc(t) + '">' + esc(t) + '</option>'; }).join('');
+  $('filterTable').innerHTML = tables.map(function(t) {
+    return '<option value="' + esc(t) + '"' + (selectedTables.indexOf(t) !== -1 ? ' selected' : '') + '>' + esc(t) + '</option>';
+  }).join('');
   var folders = Array.from(new Set(allItems.map(function(i) { return i.displayFolder; }).filter(Boolean))).sort();
-  $('filterFolder').innerHTML = '<option value="">All</option><option value="__none__">(No folder)</option>' + folders.map(function(f) { return '<option value="' + esc(f) + '">' + esc(f) + '</option>'; }).join('');
+  $('filterFolder').innerHTML = '<option value="__none__"' + (selectedFolders.indexOf('__none__') !== -1 ? ' selected' : '') + '>(No folder)</option>'
+    + folders.map(function(f) {
+      return '<option value="' + esc(f) + '"' + (selectedFolders.indexOf(f) !== -1 ? ' selected' : '') + '>' + esc(f) + '</option>';
+    }).join('');
+  setupMultiSelects();
 }
 
 function applyFilters() {
   var search = $('filterSearch').value.toLowerCase();
-  var status = $('filterStatus').value;
-  var risk = $('filterRisk').value;
-  var type = $('filterType').value;
-  var table = $('filterTable').value;
-  var hidden = $('filterHidden').value;
-  var folder = $('filterFolder').value;
-  var modified = $('filterModified').value;
+  var statuses = getSelectedValues('filterStatus');
+  var risks = getSelectedValues('filterRisk');
+  var types = getSelectedValues('filterType');
+  var tables = getSelectedValues('filterTable');
+  var hiddenValues = getSelectedValues('filterHidden');
+  var folders = getSelectedValues('filterFolder');
+  var modifiedValues = getSelectedValues('filterModified');
   filteredItems = allItems.filter(function(item) {
     if (search && !item.name.toLowerCase().includes(search) && !item.table.toLowerCase().includes(search)) return false;
-    if (status) {
-      if (status === 'USED' && !item.status.startsWith('USED')) return false;
-      if (status === 'NOT USED' && item.status !== 'NOT USED') return false;
-      if (status === 'INDIRECT' && !item.status.startsWith('INDIRECT')) return false;
+    if (statuses.length) {
+      var matchedStatus = statuses.some(function(status) {
+        if (status === 'USED') return item.status.startsWith('USED');
+        if (status === 'NOT USED') return item.status === 'NOT USED';
+        if (status === 'INDIRECT') return item.status.startsWith('INDIRECT');
+        return false;
+      });
+      if (!matchedStatus) return false;
     }
-    if (risk && item.removalRisk !== risk) return false;
-    if (type && item.type !== type) return false;
-    if (table && item.table !== table) return false;
-    if (hidden === 'yes' && !item.isHidden) return false;
-    if (hidden === 'no' && item.isHidden) return false;
-    if (folder === '__none__' && item.displayFolder) return false;
-    if (folder && folder !== '__none__' && item.displayFolder !== folder) return false;
-    if (modified) {
+    if (!matchesSelectedValues(riskDisplayValue(item), risks)) return false;
+    if (!matchesSelectedValues(item.type, types)) return false;
+    if (!matchesSelectedValues(item.table, tables)) return false;
+    if (hiddenValues.length) {
+      var hiddenKey = item.isHidden ? 'yes' : 'no';
+      if (!matchesSelectedValues(hiddenKey, hiddenValues)) return false;
+    }
+    if (folders.length) {
+      var folderValue = item.displayFolder || '__none__';
+      if (!matchesSelectedValues(folderValue, folders)) return false;
+    }
+    if (modifiedValues.length) {
       var key = itemKey(item);
       var st = actionStatus.get(key) || '';
       var hasPending = pendingActions.has(key);
-      if (modified === 'applied' && !st.startsWith('Applied:')) return false;
-      if (modified === 'pending' && !hasPending) return false;
-      if (modified === 'failed' && !st.startsWith('Failed:')) return false;
-      if (modified === 'none' && (hasPending || st)) return false;
+      var modifiedValue = hasPending ? 'pending' : st.startsWith('Applied:') ? 'applied' : st.startsWith('Failed:') ? 'failed' : 'none';
+      if (!matchesSelectedValues(modifiedValue, modifiedValues)) return false;
     }
     return true;
   });
@@ -725,8 +943,11 @@ function switchView(view) {
   $('tableSection').classList.toggle('hidden', view !== 'details');
   $('actionSection').classList.toggle('hidden', view !== 'details');
   $('refsTableSection').classList.toggle('hidden', view !== 'refs');
+  $('itemDetailSection').classList.toggle('hidden', view !== 'item');
   updateFilterCounts();
   if (view === 'refs') { applyRefFilters(); }
+  if (view === 'item') { renderItemDetails(); }
+  requestAnimationFrame(setupResizableTables);
 }
 document.querySelectorAll('.view-tab').forEach(function(t) {
   t.onclick = function() { switchView(t.dataset.view); };
@@ -734,28 +955,30 @@ document.querySelectorAll('.view-tab').forEach(function(t) {
 
 function applyRefFilters() {
   var search = $('filterSearch').value.toLowerCase();
-  var status = $('filterStatus').value;
-  var risk = $('filterRisk').value;
-  var type = $('filterType').value;
-  var table = $('filterTable').value;
-  var hidden = $('filterHidden').value;
-  var folder = $('filterFolder').value;
+  var statuses = getSelectedValues('filterStatus');
+  var risks = getSelectedValues('filterRisk');
+  var types = getSelectedValues('filterType');
+  var tables = getSelectedValues('filterTable');
+  var hiddenValues = getSelectedValues('filterHidden');
+  var folders = getSelectedValues('filterFolder');
   filteredRefs = allRefs.filter(function(r) {
     if (search && !r.name.toLowerCase().includes(search) && !r.table.toLowerCase().includes(search)
         && !(r.report || '').toLowerCase().includes(search) && !(r.page || '').toLowerCase().includes(search)
         && !(r.visualTitle || '').toLowerCase().includes(search)) return false;
-    if (status) {
-      if (status === 'USED' && !r.status.startsWith('USED')) return false;
-      if (status === 'NOT USED' && r.status !== 'NOT USED') return false;
-      if (status === 'INDIRECT' && !r.status.startsWith('INDIRECT')) return false;
+    if (statuses.length) {
+      var matchedStatus = statuses.some(function(status) {
+        if (status === 'USED') return r.status.startsWith('USED');
+        if (status === 'NOT USED') return r.status === 'NOT USED';
+        if (status === 'INDIRECT') return r.status.startsWith('INDIRECT');
+        return false;
+      });
+      if (!matchedStatus) return false;
     }
-    if (risk && r.removalRisk !== risk) return false;
-    if (type && r.type !== type) return false;
-    if (table && r.table !== table) return false;
-    if (hidden === 'yes' && !r.isHidden) return false;
-    if (hidden === 'no' && r.isHidden) return false;
-    if (folder === '__none__' && r.displayFolder) return false;
-    if (folder && folder !== '__none__' && r.displayFolder !== folder) return false;
+    if (!matchesSelectedValues(riskDisplayValue(r), risks)) return false;
+    if (!matchesSelectedValues(r.type, types)) return false;
+    if (!matchesSelectedValues(r.table, tables)) return false;
+    if (hiddenValues.length && !matchesSelectedValues(r.isHidden ? 'yes' : 'no', hiddenValues)) return false;
+    if (folders.length && !matchesSelectedValues(r.displayFolder || '__none__', folders)) return false;
     return true;
   });
   sortRefs();
@@ -766,7 +989,11 @@ function applyRefFilters() {
 function sortRefs() {
   filteredRefs.sort(function(a, b) {
     var va = a[refSortCol], vb = b[refSortCol];
-    if (refSortCol === 'removalRisk') { va = riskOrder[va] != null ? riskOrder[va] : 99; vb = riskOrder[vb] != null ? riskOrder[vb] : 99; }
+    if (refSortCol === 'removalRisk') { va = riskOrder[riskDisplayValue(a)] != null ? riskOrder[riskDisplayValue(a)] : 99; vb = riskOrder[riskDisplayValue(b)] != null ? riskOrder[riskDisplayValue(b)] : 99; }
+    if (refSortCol === 'status') {
+      va = { 'NOT USED': 0, 'INDIRECT': 1, 'USED': 2 }[statusLabel(a.status)] != null ? { 'NOT USED': 0, 'INDIRECT': 1, 'USED': 2 }[statusLabel(a.status)] : 99;
+      vb = { 'NOT USED': 0, 'INDIRECT': 1, 'USED': 2 }[statusLabel(b.status)] != null ? { 'NOT USED': 0, 'INDIRECT': 1, 'USED': 2 }[statusLabel(b.status)] : 99;
+    }
     if (typeof va === 'number' && typeof vb === 'number') return refSortAsc ? va - vb : vb - va;
     va = String(va || '').toLowerCase(); vb = String(vb || '').toLowerCase();
     return refSortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
@@ -780,7 +1007,7 @@ function renderRefsTable() {
     return '<tr class="' + riskClass + '">'
       + '<td>' + esc(r.type) + '</td>'
       + '<td>' + esc(r.table) + '</td>'
-      + '<td><strong>' + esc(r.name) + '</strong></td>'
+      + '<td><strong><a href="#" class="item-link" data-item-key="' + esc(r.type + ':::' + r.table + ':::' + r.name) + '">' + esc(r.name) + '</a></strong></td>'
       + '<td>' + (r.isHidden ? '\uD83D\uDD12' : '') + '</td>'
       + '<td>' + esc(r.displayFolder || '') + '</td>'
       + '<td>' + esc(r.report || '') + '</td>'
@@ -788,10 +1015,16 @@ function renderRefsTable() {
       + '<td>' + esc(r.visualType || '') + '</td>'
       + '<td>' + esc(r.visualTitle || '') + '</td>'
       + '<td>' + esc(r.context || '') + '</td>'
-      + '<td>' + statusBadge(r.status) + '</td>'
-      + '<td>' + riskBadge(r.removalRisk) + '</td>'
+      + '<td class="cell-status">' + statusBadge(r.status) + '</td>'
+      + '<td class="cell-risk">' + riskBadge(r) + '</td>'
       + '</tr>';
   }).join('');
+  tbody.querySelectorAll('.item-link').forEach(function(link) {
+    link.onclick = function(e) {
+      e.preventDefault();
+      openItemDetails(link.dataset.itemKey);
+    };
+  });
 }
 
 /* == Sort == */
@@ -820,7 +1053,11 @@ function sortItems() {
   filteredItems.sort(function(a, b) {
     var va = a[sortCol] != null ? a[sortCol] : '';
     var vb = b[sortCol] != null ? b[sortCol] : '';
-    if (sortCol === 'removalRisk') { va = riskOrder[va] != null ? riskOrder[va] : 99; vb = riskOrder[vb] != null ? riskOrder[vb] : 99; }
+    if (sortCol === 'removalRisk') { va = riskOrder[riskDisplayValue(a)] != null ? riskOrder[riskDisplayValue(a)] : 99; vb = riskOrder[riskDisplayValue(b)] != null ? riskOrder[riskDisplayValue(b)] : 99; }
+    if (sortCol === 'status') {
+      va = { 'NOT USED': 0, 'INDIRECT': 1, 'USED': 2 }[statusLabel(a.status)] != null ? { 'NOT USED': 0, 'INDIRECT': 1, 'USED': 2 }[statusLabel(a.status)] : 99;
+      vb = { 'NOT USED': 0, 'INDIRECT': 1, 'USED': 2 }[statusLabel(b.status)] != null ? { 'NOT USED': 0, 'INDIRECT': 1, 'USED': 2 }[statusLabel(b.status)] : 99;
+    }
     if (sortCol === 'pagesUsed') { va = (va || []).join(', '); vb = (vb || []).join(', '); }
     if (typeof va === 'number' && typeof vb === 'number') return sortAsc ? va - vb : vb - va;
     va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
@@ -842,13 +1079,13 @@ function renderTable() {
       + '<td><input type="checkbox" class="row-check" ' + checked + ' data-key="' + esc(key) + '"></td>'
       + '<td>' + esc(item.type) + '</td>'
       + '<td>' + esc(item.table) + '</td>'
-      + '<td><strong>' + esc(item.name) + '</strong></td>'
+      + '<td><strong><a href="#" class="item-link" data-item-key="' + esc(key) + '">' + esc(item.name) + '</a></strong></td>'
       + '<td>' + esc(item.displayFolder || '') + '</td>'
-      + '<td>' + statusBadge(item.status) + '</td>'
-      + '<td>' + riskBadge(item.removalRisk) + '</td>'
-      + '<td>' + (item.isHidden ? '\uD83D\uDD12' : '') + '</td>'
+      + '<td class="cell-status">' + statusBadge(item.status) + '</td>'
+      + '<td class="cell-risk">' + riskBadge(item) + '</td>'
+      + '<td class="cell-hidden">' + (item.isHidden ? '\uD83D\uDD12' : '') + '</td>'
       + '<td>' + esc((item.pagesUsed || []).join(', ')) + '</td>'
-      + '<td>' + (item.usageCount || 0) + '</td>'
+      + '<td class="cell-refs">' + (item.usageCount || 0) + '</td>'
       + '<td>' + actionStatusBadge(key) + '</td>'
       + '</tr>';
   }).join('');
@@ -859,20 +1096,98 @@ function renderTable() {
       updateSelectedCount();
     };
   });
+  tbody.querySelectorAll('.item-link').forEach(function(link) {
+    link.onclick = function(e) {
+      e.preventDefault();
+      openItemDetails(link.dataset.itemKey);
+    };
+  });
 }
 
 function statusBadge(status) {
-  if (status === 'USED') return '<span class="badge badge-used">USED</span>';
-  if (status === 'NOT USED') return '<span class="badge" style="background:#fee2e2;color:#991b1b">NOT USED</span>';
-  if (status.startsWith('INDIRECT')) return '<span class="badge" style="background:#e0e7ff;color:#3730a3">INDIRECT</span>';
-  if (status.startsWith('USED')) return '<span class="badge badge-used">' + esc(status) + '</span>';
+  var label = statusLabel(status);
+  var title = statusHelpText(status);
+  if (label === 'USED') return '<span class="badge badge-used badge-status" title="' + esc(title) + '">USED</span>';
+  if (label === 'NOT USED') return '<span class="badge badge-status" style="background:#fee2e2;color:#991b1b" title="' + esc(title) + '">NOT USED</span>';
+  if (label === 'INDIRECT') return '<span class="badge badge-status" style="background:#e0e7ff;color:#3730a3" title="' + esc(title) + '">INDIRECT</span>';
   return esc(status);
 }
 
-function riskBadge(risk) {
-  if (!risk) return '';
+function riskBadge(itemOrRisk) {
+  var risk = riskDisplayValue(itemOrRisk);
+  if (risk === '__not_applicable__') return '<span class="badge badge-muted" title="' + esc(riskHelpText(risk)) + '">In use</span>';
   var cls = { 'Safe': 'badge-safe', 'Review': 'badge-review', 'Caution': 'badge-caution', 'Do not remove': 'badge-donotremove' }[risk] || '';
-  return '<span class="badge ' + cls + '">' + esc(risk) + '</span>';
+  return '<span class="badge ' + cls + '" title="' + esc(riskHelpText(risk)) + '">' + esc(risk) + '</span>';
+}
+
+function riskText(item) {
+  var risk = riskDisplayValue(item);
+  return risk === '__not_applicable__' ? 'In use / not applicable' : risk;
+}
+
+function getItemByKey(key) {
+  for (var i = 0; i < allItems.length; i++) {
+    if (itemKey(allItems[i]) === key) return allItems[i];
+  }
+  return null;
+}
+
+function formatDetailList(items) {
+  if (!items || !items.length) return '<div class="detail-empty">None</div>';
+  return '<ul class="detail-list">' + items.map(function(value) { return '<li>' + esc(value) + '</li>'; }).join('') + '</ul>';
+}
+
+function renderUsageDetails(item) {
+  if (!item.usageDetails || !item.usageDetails.length) return '<div class="detail-empty">No direct report references recorded.</div>';
+  return '<ul class="detail-list">' + item.usageDetails.map(function(usage) {
+    var parts = [];
+    if (usage.report) parts.push(usage.report);
+    if (usage.page) parts.push(usage.page);
+    if (usage.context) parts.push(usage.context);
+    if (usage.visualType) parts.push(usage.visualType);
+    if (usage.visualTitle) parts.push('"' + usage.visualTitle + '"');
+    return '<li>' + esc(parts.join(' | ')) + '</li>';
+  }).join('') + '</ul>';
+}
+
+function renderItemDetails() {
+  var section = $('itemDetailSection');
+  if (!detailItemKey) {
+    $('detailTitle').textContent = 'Item Details';
+    $('detailMeta').textContent = 'Select a measure or column to inspect its usage and dependency details.';
+    $('detailStatus').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailRisk').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailDependsOn').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailUsedBy').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailIndirectVia').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailPagesUsed').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailUsageList').innerHTML = '<div class="detail-empty">Select an item from the table.</div>';
+    return;
+  }
+
+  var item = getItemByKey(detailItemKey);
+  if (!item) {
+    detailItemKey = null;
+    renderItemDetails();
+    return;
+  }
+
+  $('detailTitle').textContent = itemRefText(item);
+  $('detailMeta').textContent = item.type + (item.displayFolder ? ' | Folder: ' + item.displayFolder : '') + (item.sortByColumn ? ' | Sorts by: ' + item.sortByColumn : '');
+  $('detailStatus').innerHTML = statusBadge(item.status) + '<div class="detail-value" style="margin-top:8px">' + esc(statusHelpText(item.status)) + '</div>'
+    + (item.statusDetail && item.statusDetail !== statusLabel(item.status) ? '<div class="detail-value" style="margin-top:8px"><strong>Raw status:</strong> ' + esc(item.statusDetail) + '</div>' : '');
+  $('detailRisk').innerHTML = riskBadge(item) + '<div class="detail-value" style="margin-top:8px">' + esc(riskHelpText(riskDisplayValue(item))) + '</div>';
+  $('detailDependsOn').innerHTML = formatDetailList((item.dependsOnMeasures || []).concat(item.dependsOnColumns || []));
+  $('detailUsedBy').innerHTML = formatDetailList(item.usedByItems || []);
+  $('detailIndirectVia').innerHTML = formatDetailList(item.indirectVia || []);
+  $('detailPagesUsed').innerHTML = formatDetailList(item.pagesUsed || []);
+  $('detailUsageList').innerHTML = renderUsageDetails(item);
+}
+
+function openItemDetails(key) {
+  detailItemKey = key;
+  renderItemDetails();
+  switchView('item');
 }
 
 /* == Selection == */
@@ -1052,6 +1367,7 @@ async function reAnalyze() {
   logEntry('Analysis refreshed', 'info');
 }
 
+setupMultiSelects();
 renderPills();
 </script>
 </body>

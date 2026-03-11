@@ -1199,11 +1199,11 @@ def build_dax_dependency_graph(items: list[ModelItem]) -> dict[tuple[str, str], 
         refs: set[tuple[str, str]] = set()
         for tbl, name in _extract_dax_qualified_refs(item.dax_body):
             key = measure_key_index.get(normalize_key(tbl, name))
-            if key:
+            if key and key != item.key:
                 refs.add(key)
 
         for name in _extract_dax_unqualified_refs(item.dax_body):
-            refs |= measure_name_index.get(name.casefold(), set())
+            refs |= {key for key in measure_name_index.get(name.casefold(), set()) if key != item.key}
 
         deps[item.key] = refs
 
@@ -1226,14 +1226,14 @@ def build_dax_column_deps(items: list[ModelItem]) -> dict[tuple[str, str], set[t
         refs: set[tuple[str, str]] = set()
         for tbl, name in _extract_dax_qualified_refs(item.dax_body):
             key = column_key_index.get(normalize_key(tbl, name))
-            if key:
+            if key and key != item.key:
                 refs.add(key)
 
         # In calculated columns, [Name] often refers to another same-table column.
         if item.item_type == "Calculated Column":
             for name in _extract_dax_unqualified_refs(item.dax_body):
                 key = column_key_index.get(normalize_key(item.table, name))
-                if key:
+                if key and key != item.key:
                     refs.add(key)
 
         deps[item.key] = refs

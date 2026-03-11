@@ -65,3 +65,16 @@ def test_json_output_includes_warnings():
     assert "warnings" in payload
     assert isinstance(payload["warnings"], list)
     assert payload["warnings"][0]["code"] == "AMBIGUOUS_NAMEOF_TARGET"
+
+
+def test_dax_dependency_graph_excludes_self_references():
+    item = analyzer.ModelItem(
+        item_type="Measure",
+        table="Sales",
+        name="Revenue",
+        dax_body="[Revenue] + 1",
+    )
+
+    deps = analyzer.build_dax_dependency_graph([item])
+
+    assert deps[item.key] == set()

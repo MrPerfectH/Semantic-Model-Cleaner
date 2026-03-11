@@ -84,6 +84,11 @@ def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):
     payload = response.get_json()
     assert payload["summary"]["total_measures"] == 1
     assert payload["warnings"][0]["code"] == "AMBIGUOUS_NAMEOF_TARGET"
+    assert payload["items"][0]["statusDetail"] == "NOT USED"
+    assert payload["items"][0]["dependsOnMeasures"] == []
+    assert payload["items"][0]["dependsOnColumns"] == []
+    assert payload["items"][0]["usedByItems"] == []
+    assert payload["items"][0]["usageDetails"] == []
 
 
 def test_api_analyze_rejects_multiple_models(monkeypatch, tmp_path):
