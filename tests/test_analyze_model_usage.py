@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-import analyze_model_usage as analyzer
+from semantic_model_cleaner import analyzer
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -65,4 +65,3 @@ def test_json_output_includes_warnings():
     assert "warnings" in payload
     assert isinstance(payload["warnings"], list)
     assert payload["warnings"][0]["code"] == "AMBIGUOUS_NAMEOF_TARGET"
-
