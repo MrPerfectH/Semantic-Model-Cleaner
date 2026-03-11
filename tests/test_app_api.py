@@ -159,6 +159,7 @@ def test_index_renders_empty_selection_state():
     assert "No model selected" in html
     assert "No reports selected" in html
     assert "/api/discover" not in html
+    assert "if (mode === 'report' && chosenModels.length) return parentDir(chosenModels[0].path);" in html
 
 
 def test_normalize_browse_path_fixes_windows_drive_relative_input(monkeypatch):

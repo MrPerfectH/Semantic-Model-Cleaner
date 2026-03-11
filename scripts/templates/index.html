@@ -458,6 +458,12 @@ function parentDir(path) {
   return info.root + info.segments.join(info.separator);
 }
 
+function explorerStartPath(mode, existing) {
+  if (existing.length) return parentDir(existing[0].path);
+  if (mode === 'report' && chosenModels.length) return parentDir(chosenModels[0].path);
+  return '';
+}
+
 function openExplorer(mode) {
   explorerMode = mode;
   $('explorerTitle').textContent = mode === 'model' ? 'Choose Semantic Model' : 'Browse for Reports';
@@ -465,7 +471,7 @@ function openExplorer(mode) {
   var existing = mode === 'model' ? chosenModels : chosenReports;
   existing.forEach(function(it) { explorerPicked.set(it.path, it); });
   $('explorerModal').classList.remove('hidden');
-  var startPath = existing.length ? parentDir(existing[0].path) : '';
+  var startPath = explorerStartPath(mode, existing);
   browseDir(startPath);
 }
 

@@ -1,0 +1,5 @@
+[console_scripts]
+semantic-model-cleaner = semantic_model_cleaner.cli:main
+semantic-model-cleaner-web = semantic_model_cleaner.webapp:main
+smc = semantic_model_cleaner.cli:main
+smc-web = semantic_model_cleaner.web:main
