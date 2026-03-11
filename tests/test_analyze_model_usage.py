@@ -1,0 +1,68 @@
+import json
+from pathlib import Path
+
+import analyze_model_usage as analyzer
+
+
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+
+
+def _analyze_fixture(name: str) -> dict:
+    return analyzer.analyze((FIXTURES_DIR / name).resolve())
+
+
+def _find_item(results: dict, table: str, name: str, item_type: str | None = None) -> dict:
+    matches = [
+        row for row in results["items"]
+        if row["item"].table == table and row["item"].name == name
+        and (item_type is None or row["item"].item_type == item_type)
+    ]
+    assert matches, f"Item not found: {table}[{name}]"
+    if item_type is None:
+        assert len(matches) == 1, f"Expected one match for {table}[{name}], found {len(matches)}"
+    return matches[0]
+
+
+def test_field_parameter_targets_are_marked_used():
+    results = _analyze_fixture("field_parameter_used")
+
+    revenue = _find_item(results, "Sales", "Revenue", "Measure")
+    margin = _find_item(results, "Sales", "Margin %", "Measure")
+
+    assert revenue["status"] == "USED (Field Parameter: Metric Parameter)"
+    assert margin["status"] == "USED (Field Parameter: Metric Parameter)"
+    assert [u.context for u in revenue["usages"]] == ["Field Parameter"]
+    assert [u.context for u in margin["usages"]] == ["Field Parameter"]
+
+
+def test_unused_field_parameter_table_does_not_promote_targets():
+    results = _analyze_fixture("field_parameter_unused")
+
+    revenue = _find_item(results, "Sales", "Revenue", "Measure")
+    margin = _find_item(results, "Sales", "Margin %", "Measure")
+
+    assert revenue["status"] == "USED"
+    assert margin["status"] == "NOT USED"
+
+
+def test_ambiguous_nameof_target_emits_warning():
+    results = _analyze_fixture("nameof_ambiguous_target")
+
+    warnings = results["warnings"]
+    assert any(w["code"] == "AMBIGUOUS_NAMEOF_TARGET" for w in warnings)
+
+    measure = _find_item(results, "Sales", "Revenue", "Measure")
+    column = _find_item(results, "Sales", "Revenue", "Column")
+    assert measure["status"] == "NOT USED"
+    assert column["status"] == "NOT USED"
+
+
+def test_json_output_includes_warnings():
+    results = _analyze_fixture("nameof_ambiguous_target")
+
+    payload = json.loads(analyzer.format_json_output(results))
+
+    assert "warnings" in payload
+    assert isinstance(payload["warnings"], list)
+    assert payload["warnings"][0]["code"] == "AMBIGUOUS_NAMEOF_TARGET"
+

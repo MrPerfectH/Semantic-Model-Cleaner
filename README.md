@@ -1,69 +1,58 @@
 # Semantic Model Cleaner
 
-Analyze Power BI PBIR + TMDL projects to find unused semantic model items, explain why items are still needed, and apply safe cleanup actions locally.
+Internal tool for analyzing Power BI PBIR + TMDL projects, finding unused semantic model items across selected reports, and applying cleanup actions locally.
+
+## Repo Status
+
+- Intended audience: internal team using a private GitHub repo
+- Current shape: script-based CLI plus local Flask web app
+- Packaging: not installable yet in this iteration
 
 ## What It Does
 
-This repo has two parts:
+- Scans exactly one `.SemanticModel` and one or more `.Report` folders
+- Detects direct report usage plus supported indirect/model-backed usage
+- Surfaces warnings for unresolved or ambiguous dynamic references
+- Lets you review results in a local web UI and apply cleanup actions safely
 
-- A CLI analyzer that scans exactly one `.SemanticModel` and one or more `.Report` folders, classifies measures and columns, and exports reports in Markdown, JSON, or Excel.
-- A local Flask web app that lets you review findings and apply cleanup actions such as move to folder, hide, unhide, and delete.
+## Python Requirement
 
-## Feature Summary
+- Python `3.11+`
 
-### Analysis
+## Setup
 
-- Auto-discovers `.SemanticModel` and `.Report` folders from a workspace root or explicit paths
-- Parses measures, columns, calculated columns, hierarchies, relationships, and RLS filters
-- Scans report visuals, filters, bookmarks, drillthrough config, and additional report definition JSON
-- Resolves indirect DAX dependencies so helper measures and columns are not misclassified as unused
-- Classifies items as `USED`, `INDIRECT`, or `NOT USED`
-- Assigns removal risk levels: `Safe`, `Review`, `Caution`, `Do not remove`
-- Produces table-level summaries and full reference matrices
-
-### Outputs
-
-- `full`: detailed Markdown report
-- `unused`: compact Markdown report of only unused items
-- `json`: machine-readable output
-- `xlsx`: workbook with `Summary`, `Details`, and `All References` sheets
-
-### Web Cleaner
-
-- Built-in filesystem browser for selecting one model and one or more report folders
-- Sortable and filterable results table
-- Bulk selection helpers
-- TMDL cleanup actions:
-  - Move to display folder
-  - Hide / unhide
-  - Delete measure or column
-- Timestamped semantic model backup before destructive edits
-- Git dirty-tree warning before writes
-- Automatic re-analysis after changes
-
-## Quick Start
+Runtime only:
 
 ```bash
-git clone https://github.com/<you>/Semantic-Model-Cleaner.git
-cd Semantic-Model-Cleaner
 pip install -r requirements.txt
 ```
 
-## CLI
-
-Run against a workspace root:
+Development setup:
 
 ```bash
-python3 scripts/analyze_model_usage.py ~/Projects/MyProject --format full
+pip install -r requirements-dev.txt
 ```
 
-Write an Excel report:
+## Analysis Surfaces
+
+### CLI analyzer
+
+The analyzer supports:
+
+- `--format full`
+- `--format unused`
+- `--format json`
+- `--format xlsx`
+
+Examples:
 
 ```bash
-python3 scripts/analyze_model_usage.py ~/Projects/MyProject --format xlsx -o usage_analysis.xlsx
+python3 scripts/analyze_model_usage.py . --format full
+python3 scripts/analyze_model_usage.py . --format json -o analysis.json
+python3 scripts/analyze_model_usage.py . --format xlsx -o analysis.xlsx
 ```
 
-Use explicit paths:
+You can also use explicit paths:
 
 ```bash
 python3 scripts/analyze_model_usage.py \
@@ -72,15 +61,22 @@ python3 scripts/analyze_model_usage.py \
   --format unused
 ```
 
-## Web App
+### Web app
 
 Start the local UI:
 
 ```bash
-python3 scripts/app.py
+python3 scripts/app.py .
 ```
 
 Open `http://127.0.0.1:5001`.
+
+The web app supports:
+
+- browse/select model and reports
+- analyze and review results
+- export the latest analysis as `json` or `xlsx`
+- apply cleanup actions such as move to folder, hide/unhide, and delete
 
 Optional flags:
 
@@ -90,28 +86,54 @@ python3 scripts/app.py . --host 0.0.0.0
 python3 scripts/app.py . --debug
 ```
 
+## Supported Exports
+
+### CLI exports
+
+- `json`
+- `xlsx`
+
+### Web UI exports
+
+- `Export JSON`
+- `Export Excel`
+
+Both web exports download the latest completed analysis without re-running it.
+
 ## Safety Notes
 
-- The workflow is intentionally `1 semantic model -> 1 or more reports`.
-- The app creates a backup before destructive edits when requested.
-- The analyzer is static analysis. Dynamic DAX patterns and metadata indirection can still hide real usage.
+- The workflow is intentionally `1 semantic model -> 1 or more reports`
+- The app creates a backup before destructive edits when requested
+- Field parameters backed by `NAMEOF(...)` are supported
+- Remaining caveats include calculation groups, broader metadata indirection, and malformed or skipped JSON
+
+## Development
+
+Run tests:
+
+```bash
+python3 -m pytest
+```
+
+Run lint:
+
+```bash
+python3 -m ruff check .
+```
 
 ## Repo Layout
 
-- `scripts/analyze_model_usage.py`: CLI analyzer and report exporters
+- `scripts/analyze_model_usage.py`: CLI analyzer and export logic
+- `scripts/analyze_model_usage.README.md`: analyzer-specific behavior and limits
 - `scripts/app.py`: Flask app and API
 - `scripts/tmdl_writer.py`: TMDL edit engine
 - `scripts/templates/index.html`: single-page web UI
-- `scripts/analyze_model_usage.README.md`: analyzer-specific usage details
+- `tests/`: automated tests and fixtures
 
-## Next Features
+## Roadmap
 
-Recommended next steps for the project:
+Planned follow-up work is tracked in [BACKLOG.md](BACKLOG.md).
 
-1. Add test coverage for TMDL editing and analyzer edge cases using small fixture models and reports.
-2. Add a dry-run diff preview in the web app before applying destructive changes.
-3. Export cleanup plans as JSON or Markdown so teams can review changes before writing files.
-4. Add support for more Power BI metadata cases, especially semantic links not covered by current static parsing.
-5. Add packaging and developer tooling: `pyproject.toml`, linting, formatting, and CI checks.
+## More Detail
 
-Full analyzer usage is documented in [scripts/analyze_model_usage.README.md](scripts/analyze_model_usage.README.md).
+Analyzer-specific usage and caveats are documented in [scripts/analyze_model_usage.README.md](scripts/analyze_model_usage.README.md).

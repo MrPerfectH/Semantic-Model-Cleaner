@@ -1,0 +1,7 @@
+table 'Metric Parameter'
+	column Metric
+	partition 'Metric Parameter' = calculated
+		source =
+			{
+				("Revenue", NAMEOF('Sales'[Revenue]), 0)
+			}

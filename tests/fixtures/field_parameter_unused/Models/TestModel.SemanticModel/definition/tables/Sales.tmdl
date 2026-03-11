@@ -1,0 +1,3 @@
+table Sales
+	measure Revenue = 1
+	measure 'Margin %' = 2

@@ -19,6 +19,7 @@ import argparse
 import json
 import re
 import sys
+import tempfile
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -62,6 +63,23 @@ class HierarchyInfo:
     table: str
     name: str
     columns: list  # column names referenced by hierarchy levels
+
+
+@dataclass
+class FieldParameterInfo:
+    table: str
+    source_file: Path
+    targets: list[tuple[str, str]]
+
+
+@dataclass
+class AnalyzerWarning:
+    code: str
+    severity: str
+    message: str
+    model: str | None = None
+    table: str | None = None
+    source_file: str | None = None
 
 
 # ── Discovery ─────────────────────────────────────────────────────────────────
@@ -196,6 +214,35 @@ def format_item_ref(key: tuple[str, str]) -> str:
     return f"{key[0]}[{key[1]}]"
 
 
+def _serialize_warning(warning: AnalyzerWarning) -> dict:
+    return {
+        "code": warning.code,
+        "severity": warning.severity,
+        "message": warning.message,
+        "model": warning.model,
+        "table": warning.table,
+        "source_file": warning.source_file,
+    }
+
+
+def _add_warning(
+    warnings: list[AnalyzerWarning],
+    code: str,
+    message: str,
+    model: str | None = None,
+    table: str | None = None,
+    source_file: Path | str | None = None,
+) -> None:
+    warnings.append(AnalyzerWarning(
+        code=code,
+        severity="warning",
+        message=message,
+        model=model,
+        table=table,
+        source_file=str(source_file) if source_file else None,
+    ))
+
+
 # ── TMDL Parsing ─────────────────────────────────────────────────────────────
 
 
@@ -218,6 +265,211 @@ def parse_hierarchies(model_path: Path) -> list[HierarchyInfo]:
     for f in sorted(tables_dir.glob("*.tmdl")):
         hierarchies.extend(_parse_tmdl_hierarchies(f))
     return hierarchies
+
+
+def _extract_nameof_targets(text: str) -> list[tuple[str, str]]:
+    targets = []
+    pattern = r"NAMEOF\s*\(\s*(?:'([^']+)'|([^\[\r\n]+?))\s*\[([^\]]+)\]\s*\)"
+    for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+        table = (match.group(1) or match.group(2) or "").strip().strip("'\"")
+        name = match.group(3).strip()
+        if table and name:
+            targets.append((table, name))
+    return targets
+
+
+def _iter_tmdl_table_sections(lines: list[str]):
+    current_table = None
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+
+        if not line.startswith("\t") and line.startswith("table "):
+            current_table = line[6:].strip().strip("'\"")
+            i += 1
+            continue
+
+        if not current_table or not line.startswith("\t") or line.startswith("\t\t"):
+            i += 1
+            continue
+
+        block_lines = [line]
+        header = line.strip()
+        i += 1
+
+        while i < len(lines):
+            inner = lines[i]
+            if inner.startswith("\t") and not inner.startswith("\t\t"):
+                break
+            if not inner.startswith("\t") and inner.strip():
+                break
+            block_lines.append(inner)
+            i += 1
+
+        yield current_table, header, "\n".join(block_lines)
+
+
+def parse_field_parameters(
+    model_path: Path,
+    warnings: list[AnalyzerWarning] | None = None,
+) -> list[FieldParameterInfo]:
+    tables_dir = model_path / "definition" / "tables"
+    if not tables_dir.exists():
+        return []
+
+    field_parameters = []
+    model_name = model_path.name
+
+    for filepath in sorted(tables_dir.glob("*.tmdl")):
+        text = filepath.read_text(encoding="utf-8")
+        if "NAMEOF(" not in text.upper():
+            continue
+
+        valid_targets = []
+        invalid_nameof = False
+        lines = text.splitlines()
+
+        for current_table, header, block_text in _iter_tmdl_table_sections(lines):
+            if "NAMEOF(" not in block_text.upper():
+                continue
+
+            header_lc = header.casefold()
+            is_supported_table_block = (
+                header_lc.startswith("partition ")
+                or header_lc.startswith("source")
+                or header_lc.startswith("expression")
+            )
+
+            if is_supported_table_block:
+                valid_targets.extend(_extract_nameof_targets(block_text))
+            else:
+                invalid_nameof = True
+                if warnings is not None:
+                    _add_warning(
+                        warnings,
+                        "NAMEOF_PATTERN_NOT_IN_FIELD_PARAMETER_TABLE",
+                        (
+                            "Found NAMEOF(...) outside a table-level calculated-table "
+                            f"source/expression block in {filepath.name}; skipping that pattern."
+                        ),
+                        model=model_name,
+                        table=current_table,
+                        source_file=filepath,
+                    )
+
+        if valid_targets:
+            table_name = next(
+                (table for table, _, block_text in _iter_tmdl_table_sections(lines) if "NAMEOF(" in block_text.upper()),
+                filepath.stem,
+            )
+            field_parameters.append(FieldParameterInfo(
+                table=table_name,
+                source_file=filepath,
+                targets=valid_targets,
+            ))
+        elif "NAMEOF(" in text.upper() and not invalid_nameof and warnings is not None:
+            _add_warning(
+                warnings,
+                "NAMEOF_PATTERN_NOT_IN_FIELD_PARAMETER_TABLE",
+                (
+                    "Found NAMEOF(...) in "
+                    f"{filepath.name}, but not inside a supported field-parameter table source block."
+                ),
+                model=model_name,
+                source_file=filepath,
+            )
+
+    return field_parameters
+
+
+def resolve_field_parameter_targets(
+    field_parameters: list[FieldParameterInfo],
+    items: list[ModelItem],
+    model_name: str,
+    warnings: list[AnalyzerWarning],
+) -> list[tuple[FieldParameterInfo, list[ModelItem]]]:
+    item_index: dict[tuple[str, str], list[ModelItem]] = defaultdict(list)
+    for item in items:
+        item_index[normalize_key(*item.key)].append(item)
+
+    resolved = []
+    for info in field_parameters:
+        resolved_targets = []
+        seen_keys = set()
+
+        for target_table, target_name in info.targets:
+            matches = item_index.get(normalize_key(target_table, target_name), [])
+            if len(matches) == 1:
+                match = matches[0]
+                if match.key not in seen_keys:
+                    resolved_targets.append(match)
+                    seen_keys.add(match.key)
+            elif len(matches) == 0:
+                _add_warning(
+                    warnings,
+                    "UNRESOLVED_NAMEOF_TARGET",
+                    (
+                        f"Could not resolve NAMEOF target {target_table}[{target_name}] "
+                        f"from field parameter table {info.table}."
+                    ),
+                    model=model_name,
+                    table=info.table,
+                    source_file=info.source_file,
+                )
+            else:
+                match_types = ", ".join(sorted(item.item_type for item in matches))
+                _add_warning(
+                    warnings,
+                    "AMBIGUOUS_NAMEOF_TARGET",
+                    (
+                        f"NAMEOF target {target_table}[{target_name}] from field parameter table "
+                        f"{info.table} matched multiple items ({match_types})."
+                    ),
+                    model=model_name,
+                    table=info.table,
+                    source_file=info.source_file,
+                )
+
+        resolved.append((info, resolved_targets))
+
+    return resolved
+
+
+def promote_field_parameter_usages(
+    direct_usages: list[UsageRef],
+    resolved_field_parameters: list[tuple[FieldParameterInfo, list[ModelItem]]],
+) -> tuple[list[UsageRef], dict[tuple[str, str], set[str]]]:
+    usages_by_table: dict[str, list[UsageRef]] = defaultdict(list)
+    for usage in direct_usages:
+        usages_by_table[usage.table.casefold()].append(usage)
+
+    synthetic_usages = []
+    promoted_tables: dict[tuple[str, str], set[str]] = defaultdict(set)
+
+    for info, targets in resolved_field_parameters:
+        table_usages = usages_by_table.get(info.table.casefold(), [])
+        if not table_usages:
+            continue
+
+        for target in targets:
+            target_nkey = normalize_key(*target.key)
+            promoted_tables[target_nkey].add(info.table)
+            ref_type = "Measure" if target.item_type == "Measure" else "Column"
+
+            for origin in table_usages:
+                synthetic_usages.append(UsageRef(
+                    table=target.table,
+                    name=target.name,
+                    ref_type=ref_type,
+                    report=origin.report,
+                    page=origin.page,
+                    visual_type=origin.visual_type,
+                    visual_title=origin.visual_title,
+                    context="Field Parameter",
+                ))
+
+    return synthetic_usages, promoted_tables
 
 
 def _parse_tmdl_hierarchies(filepath: Path) -> list[HierarchyInfo]:
@@ -1087,12 +1339,23 @@ def analyze(
     all_relationship_cols = set()
     all_rls_refs = []
     all_hierarchies = []
+    all_field_parameters = []
+    warnings: list[AnalyzerWarning] = []
 
     for model_path in models:
-        all_items.extend(parse_model_items(model_path))
+        model_items = parse_model_items(model_path)
+        all_items.extend(model_items)
         all_relationship_cols |= parse_relationships(model_path)
         all_rls_refs.extend(parse_rls_roles(model_path))
         all_hierarchies.extend(parse_hierarchies(model_path))
+        all_field_parameters.extend(
+            resolve_field_parameter_targets(
+                parse_field_parameters(model_path, warnings),
+                model_items,
+                model_path.name,
+                warnings,
+            )
+        )
 
     # ── Scan reports ──
     all_visual_usages = []
@@ -1113,7 +1376,7 @@ def analyze(
             scan_additional_definition_json(report_path, excluded_files)
         )
 
-    all_usages = (
+    direct_usages = (
         all_visual_usages
         + all_interaction_usages
         + all_bookmark_usages
@@ -1121,6 +1384,17 @@ def analyze(
     )
 
     # ── Build indices ──
+    direct_usage_index: dict[tuple[str, str], list[UsageRef]] = defaultdict(list)
+    for u in direct_usages:
+        direct_usage_index[normalize_key(u.table, u.name)].append(u)
+
+    synthetic_field_parameter_usages, field_parameter_targets = promote_field_parameter_usages(
+        direct_usages,
+        all_field_parameters,
+    )
+
+    all_usages = direct_usages + synthetic_field_parameter_usages
+
     usage_index: dict[tuple[str, str], list[UsageRef]] = defaultdict(list)
     for u in all_usages:
         usage_index[normalize_key(u.table, u.name)].append(u)
@@ -1194,6 +1468,8 @@ def analyze(
     for item in all_items:
         nkey = normalize_key(*item.key)
         usages = usage_index.get(nkey, [])
+        has_direct_usage = nkey in direct_usage_index
+        field_parameter_tables = field_parameter_targets.get(nkey, set())
         is_relationship = nkey in relationship_keys
         is_rls = nkey in rls_keys
         is_indirect_measure = item.key in indirect_measures and item.item_type == "Measure"
@@ -1202,8 +1478,11 @@ def analyze(
         is_hierarchy_col = nkey in hierarchy_col_keys
         is_sort_target = nkey in sort_by_map
 
-        if usages:
+        if has_direct_usage:
             status = "USED"
+        elif field_parameter_tables:
+            parameter_tables = ", ".join(sorted(field_parameter_tables, key=str.casefold))
+            status = f"USED (Field Parameter: {parameter_tables})"
         elif is_relationship:
             status = "USED (Relationship)"
         elif is_rls:
@@ -1296,7 +1575,10 @@ def analyze(
         "total_measures": sum(1 for i in all_items if i.item_type == "Measure"),
         "total_columns": sum(1 for i in all_items if i.item_type in ("Column", "Calculated Column")),
         "total_calc_columns": sum(1 for i in all_items if i.item_type == "Calculated Column"),
-        "used_in_visuals": sum(1 for r in results if r["status"] == "USED"),
+        "used_in_visuals": sum(
+            1 for r in results
+            if r["status"] == "USED" or r["status"].startswith("USED (Field Parameter:")
+        ),
         "used_relationship": sum(1 for r in results if "Relationship" in r["status"]),
         "used_rls": sum(1 for r in results if "RLS" in r["status"]),
         "used_key_column": sum(1 for r in results if "Key Column" in r["status"]),
@@ -1310,7 +1592,11 @@ def analyze(
         "tables": dict(table_stats),
     }
 
-    return {"items": results, "summary": summary}
+    return {
+        "items": results,
+        "summary": summary,
+        "warnings": [_serialize_warning(w) for w in warnings],
+    }
 
 
 # ── Output Formatters ─────────────────────────────────────────────────────────
@@ -1320,6 +1606,29 @@ def _escape_pipe(s: str) -> str:
     return s.replace("|", "\\|")
 
 
+def _format_warnings_section(results: dict) -> list[str]:
+    warnings = results.get("warnings", [])
+    if not warnings:
+        return []
+
+    lines = ["## Warnings\n"]
+    for warning in warnings:
+        detail_parts = []
+        if warning.get("code"):
+            detail_parts.append(f"[{warning['code']}]")
+        if warning.get("model"):
+            detail_parts.append(f"model={warning['model']}")
+        if warning.get("table"):
+            detail_parts.append(f"table={warning['table']}")
+        if warning.get("source_file"):
+            detail_parts.append(f"file={warning['source_file']}")
+
+        detail = f" ({'; '.join(detail_parts)})" if detail_parts else ""
+        lines.append(f"- {warning['message']}{detail}")
+    lines.append("")
+    return lines
+
+
 def format_full(results: dict) -> str:
     lines = []
     s = results["summary"]
@@ -1327,6 +1636,7 @@ def format_full(results: dict) -> str:
     lines.append("# Semantic Model Usage Analysis\n")
     lines.append(f"**Models**: {', '.join(s['models'])}")
     lines.append(f"**Reports**: {', '.join(s['reports'])}\n")
+    lines.extend(_format_warnings_section(results))
 
     lines.append("## Summary\n")
     lines.append("| Metric | Count |")
@@ -1380,6 +1690,7 @@ def format_full(results: dict) -> str:
         usages = r["usages"]
         status = r["status"]
         hidden = "\u2713" if item.is_hidden else "\u2014"
+        display_folder = _escape_pipe(item.display_folder) or "\u2014"
         risk = r.get("removal_risk", "")
 
         if usages:
@@ -1387,14 +1698,14 @@ def format_full(results: dict) -> str:
                 title_str = f' "{_escape_pipe(u.visual_title)}"' if u.visual_title else ""
                 lines.append(
                     f"| {item.item_type} | {_escape_pipe(item.table)} | {_escape_pipe(item.name)} | "
-                    f"{hidden} | {_escape_pipe(item.display_folder) or '\u2014'} | {_escape_pipe(u.report)} | "
+                    f"{hidden} | {display_folder} | {_escape_pipe(u.report)} | "
                     f"{_escape_pipe(u.page)} | {_escape_pipe(u.visual_type)}{title_str} | "
                     f"{_escape_pipe(u.context)} | {_escape_pipe(status)} | {risk} |"
                 )
         else:
             lines.append(
                 f"| {item.item_type} | {_escape_pipe(item.table)} | {_escape_pipe(item.name)} | "
-                f"{hidden} | {_escape_pipe(item.display_folder) or '\u2014'} | \u2014 | \u2014 | \u2014 | \u2014 | "
+                f"{hidden} | {display_folder} | \u2014 | \u2014 | \u2014 | \u2014 | "
                 f"{_escape_pipe(status)} | {risk} |"
             )
 
@@ -1408,6 +1719,7 @@ def format_unused(results: dict) -> str:
 
     lines.append("# Unused Measures & Columns\n")
     lines.append(f"**Models**: {', '.join(s['models'])} | **Reports**: {', '.join(s['reports'])}\n")
+    lines.extend(_format_warnings_section(results))
     lines.append(f"**{s['not_used']}** unused out of **{total}** total items\n")
 
     unused = [r for r in results["items"] if r["status"] == "NOT USED"]
@@ -1439,10 +1751,11 @@ def format_unused(results: dict) -> str:
     )):
         item = r["item"]
         hidden = "\u2713" if item.is_hidden else "\u2014"
+        display_folder = _escape_pipe(item.display_folder) or "\u2014"
         risk = r.get("removal_risk", "")
         lines.append(
             f"| {item.item_type} | {_escape_pipe(item.table)} | "
-            f"{_escape_pipe(item.name)} | {hidden} | {_escape_pipe(item.display_folder) or '\u2014'} | {risk} |"
+            f"{_escape_pipe(item.name)} | {hidden} | {display_folder} | {risk} |"
         )
 
     return "\n".join(lines)
@@ -1451,6 +1764,7 @@ def format_unused(results: dict) -> str:
 def format_json_output(results: dict) -> str:
     output = {
         "summary": results["summary"],
+        "warnings": results.get("warnings", []),
         "items": [],
     }
     for r in results["items"]:
@@ -1479,7 +1793,7 @@ def format_json_output(results: dict) -> str:
     return json.dumps(output, indent=2, ensure_ascii=False)
 
 
-def format_xlsx(results: dict, output_path: str) -> None:
+def format_xlsx(results: dict, output_path: str, announce: bool = True) -> None:
     """Write results to an Excel workbook with Summary, Details, and Unused sheets."""
     try:
         from openpyxl import Workbook
@@ -1744,7 +2058,16 @@ def format_xlsx(results: dict, output_path: str) -> None:
     _auto_width(ws_refs)
 
     wb.save(output_path)
-    print(f"Excel report saved to: {output_path}")
+    if announce:
+        print(f"Excel report saved to: {output_path}")
+
+
+def create_xlsx_bytes(results: dict) -> bytes:
+    """Render the Excel report to bytes for HTTP downloads or other in-memory use."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        output_path = Path(tmp_dir) / "analysis.xlsx"
+        format_xlsx(results, str(output_path), announce=False)
+        return output_path.read_bytes()
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
