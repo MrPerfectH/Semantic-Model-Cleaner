@@ -148,3 +148,30 @@ def test_api_export_rejects_unknown_format():
 
     assert response.status_code == 400
     assert "Unsupported export format" in response.get_json()["error"]
+
+
+def test_index_renders_empty_selection_state():
+    client = web_app.app.test_client()
+    response = client.get("/")
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "No model selected" in html
+    assert "No reports selected" in html
+    assert "/api/discover" not in html
+
+
+def test_normalize_browse_path_fixes_windows_drive_relative_input(monkeypatch):
+    monkeypatch.setattr(web_app.os, "name", "nt", raising=False)
+
+    assert web_app._normalize_browse_path(r"C:Projects\Semantic-Model-Cleaner") == (
+        r"C:\Projects\Semantic-Model-Cleaner"
+    )
+
+
+def test_normalize_browse_path_removes_leading_slash_from_windows_drive(monkeypatch):
+    monkeypatch.setattr(web_app.os, "name", "nt", raising=False)
+
+    assert web_app._normalize_browse_path(r"/C:\Projects\Semantic-Model-Cleaner") == (
+        r"C:\Projects\Semantic-Model-Cleaner"
+    )

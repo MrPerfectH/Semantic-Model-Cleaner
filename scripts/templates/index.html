@@ -418,10 +418,44 @@ function cleanArtifactName(name) {
   return name.replace(/\.SemanticModel$/, '').replace(/\.Report$/, '');
 }
 
+function isWindowsPath(path) {
+  return /^[A-Za-z]:[\\/]/.test(path || '');
+}
+
+function splitPathInfo(path) {
+  var raw = String(path || '').trim();
+  if (!raw) return { root: '/', segments: [], separator: '/' };
+
+  if (isWindowsPath(raw)) {
+    var normalizedWin = raw.replace(/\//g, '\\').replace(/\\+$/, '');
+    return {
+      root: normalizedWin.slice(0, 3),
+      segments: normalizedWin.slice(3).split('\\').filter(Boolean),
+      separator: '\\'
+    };
+  }
+
+  var normalizedPosix = raw.replace(/\/+$/, '') || '/';
+  return {
+    root: '/',
+    segments: normalizedPosix === '/' ? [] : normalizedPosix.split('/').filter(Boolean),
+    separator: '/'
+  };
+}
+
+function joinPath(base, segment, separator) {
+  if (separator === '\\') {
+    return base.replace(/[\\/]$/, '') + '\\' + segment;
+  }
+  return base === '/' ? '/' + segment : base.replace(/\/$/, '') + '/' + segment;
+}
+
 function parentDir(path) {
-  var parts = path.replace(/\/$/, '').split('/');
-  parts.pop();
-  return parts.join('/') || '/';
+  var info = splitPathInfo(path);
+  if (!info.segments.length) return info.root;
+  info.segments.pop();
+  if (!info.segments.length) return info.root;
+  return info.root + info.segments.join(info.separator);
 }
 
 function openExplorer(mode) {
@@ -446,12 +480,12 @@ async function browseDir(dirPath) {
 }
 
 function renderBreadcrumbs(currentPath) {
-  var parts = currentPath.split('/').filter(Boolean);
-  var html = '<a data-path="/">/ </a>';
-  var acc = '';
-  for (var i = 0; i < parts.length; i++) {
-    acc += '/' + parts[i];
-    html += '<span>/</span> <a data-path="' + esc(acc) + '">' + esc(parts[i]) + '</a> ';
+  var info = splitPathInfo(currentPath);
+  var html = '<a data-path="' + esc(info.root) + '">' + esc(info.root) + '</a>';
+  var acc = info.root;
+  for (var i = 0; i < info.segments.length; i++) {
+    acc = joinPath(acc, info.segments[i], info.separator);
+    html += '<span>' + esc(info.separator) + '</span> <a data-path="' + esc(acc) + '">' + esc(info.segments[i]) + '</a> ';
   }
   $('explorerBreadcrumbs').innerHTML = html;
   $('explorerBreadcrumbs').querySelectorAll('a').forEach(function(a) {
@@ -1012,17 +1046,7 @@ async function reAnalyze() {
   logEntry('Analysis refreshed', 'info');
 }
 
-/* == Auto-discover on load == */
-window.addEventListener('DOMContentLoaded', async function() {
-  try {
-    var data = await apiGet('/api/discover');
-    if (data.error) return;
-    if (data.models && data.models.length === 1) chosenModels = data.models.map(function(m) { return { path: m.path, name: m.name }; });
-    else chosenModels = [];
-    if (data.reports && data.reports.length) chosenReports = data.reports.map(function(r) { return { path: r.path, name: r.name }; });
-    renderPills();
-  } catch (e) {}
-});
+renderPills();
 </script>
 </body>
 </html>
