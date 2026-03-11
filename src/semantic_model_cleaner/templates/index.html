@@ -491,7 +491,8 @@ function renderBreadcrumbs(currentPath) {
   var acc = info.root;
   for (var i = 0; i < info.segments.length; i++) {
     acc = joinPath(acc, info.segments[i], info.separator);
-    html += '<span>' + esc(info.separator) + '</span> <a data-path="' + esc(acc) + '">' + esc(info.segments[i]) + '</a> ';
+    if (i > 0) html += '<span>' + esc(info.separator) + '</span> ';
+    html += '<a data-path="' + esc(acc) + '">' + esc(info.segments[i]) + '</a> ';
   }
   $('explorerBreadcrumbs').innerHTML = html;
   $('explorerBreadcrumbs').querySelectorAll('a').forEach(function(a) {
