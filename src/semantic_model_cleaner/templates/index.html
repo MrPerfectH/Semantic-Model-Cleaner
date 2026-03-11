@@ -145,6 +145,19 @@ tbody tr.row-failed { background: #fee2e2; }
 .view-tab .tab-count { font-size: 11px; font-weight: 400; opacity: .8; margin-left: 6px; }
 body.is-resizing-columns { cursor: col-resize; user-select: none; }
 .cell-status, .cell-risk, .cell-hidden, .cell-refs { white-space: nowrap; }
+.item-link { color: inherit; text-decoration: none; cursor: pointer; }
+.item-link:hover { color: var(--primary); text-decoration: underline; }
+.detail-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+.detail-panel h3 { font-size: 18px; margin-bottom: 6px; }
+.detail-panel .detail-meta { font-size: 12px; color: var(--text-light); margin-bottom: 16px; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.detail-card { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.detail-card h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .3px; color: var(--text-light); margin-bottom: 8px; }
+.detail-card .detail-value { font-size: 14px; color: var(--text); line-height: 1.5; }
+.detail-list { list-style: none; margin: 0; padding: 0; }
+.detail-list li { padding: 6px 0; border-bottom: 1px solid #eef2f7; font-size: 13px; line-height: 1.45; }
+.detail-list li:last-child { border-bottom: none; }
+.detail-empty { color: var(--text-light); font-style: italic; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -205,6 +218,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
   <div class="view-tabs hidden" id="viewTabs">
     <div class="view-tab active" data-view="details" id="tabDetails">Details <span class="tab-count" id="tabDetailsCount"></span></div>
     <div class="view-tab" data-view="refs" id="tabRefs">All References <span class="tab-count" id="tabRefsCount"></span></div>
+    <div class="view-tab" data-view="item" id="tabItem">Item Details</div>
   </div>
   <div class="export-bar hidden" id="exportSection">
     <span class="label">Export Current Analysis</span>
@@ -261,6 +275,42 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       </tr></thead>
       <tbody id="refsTableBody"></tbody>
     </table>
+  </div>
+  <div class="detail-panel hidden" id="itemDetailSection">
+    <h3 id="detailTitle">Item Details</h3>
+    <div class="detail-meta" id="detailMeta">Select a measure or column to inspect its usage and dependency details.</div>
+    <div class="detail-grid">
+      <div class="detail-card">
+        <h4>Status</h4>
+        <div class="detail-value" id="detailStatus"></div>
+      </div>
+      <div class="detail-card">
+        <h4>Risk</h4>
+        <div class="detail-value" id="detailRisk"></div>
+      </div>
+      <div class="detail-card">
+        <h4>Depends On</h4>
+        <div class="detail-value" id="detailDependsOn"></div>
+      </div>
+      <div class="detail-card">
+        <h4>Used By</h4>
+        <div class="detail-value" id="detailUsedBy"></div>
+      </div>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-card">
+        <h4>Indirect Via</h4>
+        <div class="detail-value" id="detailIndirectVia"></div>
+      </div>
+      <div class="detail-card">
+        <h4>Pages Used</h4>
+        <div class="detail-value" id="detailPagesUsed"></div>
+      </div>
+    </div>
+    <div class="detail-card">
+      <h4>Direct Report References</h4>
+      <div id="detailUsageList"></div>
+    </div>
   </div>
   <div class="status-log hidden" id="statusLog">
     <h3>Action Log</h3>
@@ -323,6 +373,7 @@ var allWarnings = [];
 var riskOrder = { 'Safe': 0, 'Review': 1, 'Caution': 2, 'Do not remove': 3, '__not_applicable__': 4 };
 var explorerMode = 'model';
 var explorerPicked = new Map();
+var detailItemKey = null;
 
 function $(id) { return document.getElementById(id); }
 
@@ -334,6 +385,10 @@ function esc(s) {
 }
 
 function itemKey(item) { return item.type + ':::' + item.table + ':::' + item.name; }
+
+function itemRefText(item) {
+  return item.table + '[' + item.name + ']';
+}
 
 function actionLabel(action) {
   if (!action || !action.action) return '';
@@ -760,7 +815,9 @@ function setResultsData(data, preserveActionState) {
     pendingActions.clear();
     actionStatus.clear();
   }
+  if (detailItemKey && !getItemByKey(detailItemKey)) detailItemKey = null;
   renderWarnings();
+  renderItemDetails();
   updateSummary(data.summary);
   populateFilterOptions();
   applyFilters();
@@ -886,8 +943,10 @@ function switchView(view) {
   $('tableSection').classList.toggle('hidden', view !== 'details');
   $('actionSection').classList.toggle('hidden', view !== 'details');
   $('refsTableSection').classList.toggle('hidden', view !== 'refs');
+  $('itemDetailSection').classList.toggle('hidden', view !== 'item');
   updateFilterCounts();
   if (view === 'refs') { applyRefFilters(); }
+  if (view === 'item') { renderItemDetails(); }
   requestAnimationFrame(setupResizableTables);
 }
 document.querySelectorAll('.view-tab').forEach(function(t) {
@@ -948,7 +1007,7 @@ function renderRefsTable() {
     return '<tr class="' + riskClass + '">'
       + '<td>' + esc(r.type) + '</td>'
       + '<td>' + esc(r.table) + '</td>'
-      + '<td><strong>' + esc(r.name) + '</strong></td>'
+      + '<td><strong><a href="#" class="item-link" data-item-key="' + esc(r.type + ':::' + r.table + ':::' + r.name) + '">' + esc(r.name) + '</a></strong></td>'
       + '<td>' + (r.isHidden ? '\uD83D\uDD12' : '') + '</td>'
       + '<td>' + esc(r.displayFolder || '') + '</td>'
       + '<td>' + esc(r.report || '') + '</td>'
@@ -960,6 +1019,12 @@ function renderRefsTable() {
       + '<td class="cell-risk">' + riskBadge(r) + '</td>'
       + '</tr>';
   }).join('');
+  tbody.querySelectorAll('.item-link').forEach(function(link) {
+    link.onclick = function(e) {
+      e.preventDefault();
+      openItemDetails(link.dataset.itemKey);
+    };
+  });
 }
 
 /* == Sort == */
@@ -1014,7 +1079,7 @@ function renderTable() {
       + '<td><input type="checkbox" class="row-check" ' + checked + ' data-key="' + esc(key) + '"></td>'
       + '<td>' + esc(item.type) + '</td>'
       + '<td>' + esc(item.table) + '</td>'
-      + '<td><strong>' + esc(item.name) + '</strong></td>'
+      + '<td><strong><a href="#" class="item-link" data-item-key="' + esc(key) + '">' + esc(item.name) + '</a></strong></td>'
       + '<td>' + esc(item.displayFolder || '') + '</td>'
       + '<td class="cell-status">' + statusBadge(item.status) + '</td>'
       + '<td class="cell-risk">' + riskBadge(item) + '</td>'
@@ -1029,6 +1094,12 @@ function renderTable() {
       if (cb.checked) selectedKeys.add(cb.dataset.key); else selectedKeys.delete(cb.dataset.key);
       cb.closest('tr').classList.toggle('selected', cb.checked);
       updateSelectedCount();
+    };
+  });
+  tbody.querySelectorAll('.item-link').forEach(function(link) {
+    link.onclick = function(e) {
+      e.preventDefault();
+      openItemDetails(link.dataset.itemKey);
     };
   });
 }
@@ -1047,6 +1118,76 @@ function riskBadge(itemOrRisk) {
   if (risk === '__not_applicable__') return '<span class="badge badge-muted" title="' + esc(riskHelpText(risk)) + '">In use</span>';
   var cls = { 'Safe': 'badge-safe', 'Review': 'badge-review', 'Caution': 'badge-caution', 'Do not remove': 'badge-donotremove' }[risk] || '';
   return '<span class="badge ' + cls + '" title="' + esc(riskHelpText(risk)) + '">' + esc(risk) + '</span>';
+}
+
+function riskText(item) {
+  var risk = riskDisplayValue(item);
+  return risk === '__not_applicable__' ? 'In use / not applicable' : risk;
+}
+
+function getItemByKey(key) {
+  for (var i = 0; i < allItems.length; i++) {
+    if (itemKey(allItems[i]) === key) return allItems[i];
+  }
+  return null;
+}
+
+function formatDetailList(items) {
+  if (!items || !items.length) return '<div class="detail-empty">None</div>';
+  return '<ul class="detail-list">' + items.map(function(value) { return '<li>' + esc(value) + '</li>'; }).join('') + '</ul>';
+}
+
+function renderUsageDetails(item) {
+  if (!item.usageDetails || !item.usageDetails.length) return '<div class="detail-empty">No direct report references recorded.</div>';
+  return '<ul class="detail-list">' + item.usageDetails.map(function(usage) {
+    var parts = [];
+    if (usage.report) parts.push(usage.report);
+    if (usage.page) parts.push(usage.page);
+    if (usage.context) parts.push(usage.context);
+    if (usage.visualType) parts.push(usage.visualType);
+    if (usage.visualTitle) parts.push('"' + usage.visualTitle + '"');
+    return '<li>' + esc(parts.join(' | ')) + '</li>';
+  }).join('') + '</ul>';
+}
+
+function renderItemDetails() {
+  var section = $('itemDetailSection');
+  if (!detailItemKey) {
+    $('detailTitle').textContent = 'Item Details';
+    $('detailMeta').textContent = 'Select a measure or column to inspect its usage and dependency details.';
+    $('detailStatus').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailRisk').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailDependsOn').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailUsedBy').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailIndirectVia').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailPagesUsed').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailUsageList').innerHTML = '<div class="detail-empty">Select an item from the table.</div>';
+    return;
+  }
+
+  var item = getItemByKey(detailItemKey);
+  if (!item) {
+    detailItemKey = null;
+    renderItemDetails();
+    return;
+  }
+
+  $('detailTitle').textContent = itemRefText(item);
+  $('detailMeta').textContent = item.type + (item.displayFolder ? ' | Folder: ' + item.displayFolder : '') + (item.sortByColumn ? ' | Sorts by: ' + item.sortByColumn : '');
+  $('detailStatus').innerHTML = statusBadge(item.status) + '<div class="detail-value" style="margin-top:8px">' + esc(statusHelpText(item.status)) + '</div>'
+    + (item.statusDetail && item.statusDetail !== statusLabel(item.status) ? '<div class="detail-value" style="margin-top:8px"><strong>Raw status:</strong> ' + esc(item.statusDetail) + '</div>' : '');
+  $('detailRisk').innerHTML = riskBadge(item) + '<div class="detail-value" style="margin-top:8px">' + esc(riskHelpText(riskDisplayValue(item))) + '</div>';
+  $('detailDependsOn').innerHTML = formatDetailList((item.dependsOnMeasures || []).concat(item.dependsOnColumns || []));
+  $('detailUsedBy').innerHTML = formatDetailList(item.usedByItems || []);
+  $('detailIndirectVia').innerHTML = formatDetailList(item.indirectVia || []);
+  $('detailPagesUsed').innerHTML = formatDetailList(item.pagesUsed || []);
+  $('detailUsageList').innerHTML = renderUsageDetails(item);
+}
+
+function openItemDetails(key) {
+  detailItemKey = key;
+  renderItemDetails();
+  switchView('item');
 }
 
 /* == Selection == */
