@@ -1,0 +1,25 @@
+{
+  "visual": {
+    "visualType": "slicer",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Property": "Metric",
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Metric Parameter"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

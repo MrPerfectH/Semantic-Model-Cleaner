@@ -11,14 +11,14 @@ Usage:
 """
 
 import argparse
-import json
+import io
 import sys
 from pathlib import Path
 
 # Ensure scripts/ is importable
 sys.path.insert(0, str(Path(__file__).parent))
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_file
 
 import analyze_model_usage as analyzer
 import tmdl_writer
@@ -36,6 +36,83 @@ _state = {
     "report_paths": [],
     "backup_path": None,
 }
+
+
+def _serialize_results(results: dict) -> dict:
+    """Serialize analyzer results for JSON API responses."""
+    items = []
+    for r in results["items"]:
+        pages_used = sorted({u.page for u in r["usages"] if u.page})
+        visual_types = sorted({u.visual_type for u in r["usages"] if u.visual_type})
+        contexts = sorted({u.context for u in r["usages"] if u.context})
+
+        items.append({
+            "type": r["item"].item_type,
+            "table": r["item"].table,
+            "name": r["item"].name,
+            "displayFolder": r["item"].display_folder,
+            "isHidden": r["item"].is_hidden,
+            "isKey": r["item"].is_key,
+            "isInferred": r["item"].is_inferred,
+            "sortByColumn": r["item"].sort_by_column or None,
+            "status": r["status"],
+            "removalRisk": r.get("removal_risk", "") or None,
+            "pagesUsed": pages_used,
+            "visualTypes": visual_types,
+            "contexts": contexts,
+            "usageCount": len(r["usages"]),
+        })
+
+    references = []
+    for r in results["items"]:
+        item = r["item"]
+        status = r["status"]
+        risk = r.get("removal_risk", "") or None
+        if r["usages"]:
+            for u in r["usages"]:
+                references.append({
+                    "type": item.item_type,
+                    "table": item.table,
+                    "name": item.name,
+                    "isHidden": item.is_hidden,
+                    "displayFolder": item.display_folder,
+                    "report": u.report,
+                    "page": u.page,
+                    "visualType": u.visual_type,
+                    "visualTitle": u.visual_title or "",
+                    "context": u.context,
+                    "status": status,
+                    "removalRisk": risk,
+                })
+        else:
+            references.append({
+                "type": item.item_type,
+                "table": item.table,
+                "name": item.name,
+                "isHidden": item.is_hidden,
+                "displayFolder": item.display_folder,
+                "report": "",
+                "page": "",
+                "visualType": "",
+                "visualTitle": "",
+                "context": "",
+                "status": status,
+                "removalRisk": risk,
+            })
+
+    return {
+        "summary": results["summary"],
+        "warnings": results.get("warnings", []),
+        "items": items,
+        "references": references,
+    }
+
+
+def _analysis_download_basename(results: dict) -> str:
+    models = results.get("summary", {}).get("models", [])
+    if not models:
+        return "analysis"
+    return models[0].replace(".SemanticModel", "")
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -139,76 +216,43 @@ def api_analyze():
         )
 
         _state["last_results"] = results
-
-        # Serialize for JSON response
-        items = []
-        for r in results["items"]:
-            pages_used = sorted({u.page for u in r["usages"] if u.page})
-            visual_types = sorted({u.visual_type for u in r["usages"] if u.visual_type})
-            contexts = sorted({u.context for u in r["usages"] if u.context})
-
-            items.append({
-                "type": r["item"].item_type,
-                "table": r["item"].table,
-                "name": r["item"].name,
-                "displayFolder": r["item"].display_folder,
-                "isHidden": r["item"].is_hidden,
-                "isKey": r["item"].is_key,
-                "isInferred": r["item"].is_inferred,
-                "sortByColumn": r["item"].sort_by_column or None,
-                "status": r["status"],
-                "removalRisk": r.get("removal_risk", "") or None,
-                "pagesUsed": pages_used,
-                "visualTypes": visual_types,
-                "contexts": contexts,
-                "usageCount": len(r["usages"]),
-            })
-
-        # Build expanded references list (one row per usage ref, like "All References" Excel sheet)
-        references = []
-        for r in results["items"]:
-            item = r["item"]
-            status = r["status"]
-            risk = r.get("removal_risk", "") or None
-            if r["usages"]:
-                for u in r["usages"]:
-                    references.append({
-                        "type": item.item_type,
-                        "table": item.table,
-                        "name": item.name,
-                        "isHidden": item.is_hidden,
-                        "displayFolder": item.display_folder,
-                        "report": u.report,
-                        "page": u.page,
-                        "visualType": u.visual_type,
-                        "visualTitle": u.visual_title or "",
-                        "context": u.context,
-                        "status": status,
-                        "removalRisk": risk,
-                    })
-            else:
-                references.append({
-                    "type": item.item_type,
-                    "table": item.table,
-                    "name": item.name,
-                    "isHidden": item.is_hidden,
-                    "displayFolder": item.display_folder,
-                    "report": "",
-                    "page": "",
-                    "visualType": "",
-                    "visualTitle": "",
-                    "context": "",
-                    "status": status,
-                    "removalRisk": risk,
-                })
-
-        return jsonify({
-            "summary": results["summary"],
-            "items": items,
-            "references": references,
-        })
+        return jsonify(_serialize_results(results))
     except SystemExit:
         return jsonify({"error": "Analysis failed — no models or reports found at the given paths."}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/export", methods=["GET"])
+def api_export():
+    """Download the latest analysis as JSON or XLSX."""
+    try:
+        results = _state.get("last_results")
+        if not results:
+            return jsonify({"error": "No analysis results available. Run analysis first."}), 400
+
+        export_format = request.args.get("format", "").strip().lower()
+        base_name = _analysis_download_basename(results)
+
+        if export_format == "json":
+            payload = analyzer.format_json_output(results).encode("utf-8")
+            return send_file(
+                io.BytesIO(payload),
+                mimetype="application/json",
+                as_attachment=True,
+                download_name=f"{base_name}_usage_analysis.json",
+            )
+
+        if export_format == "xlsx":
+            payload = analyzer.create_xlsx_bytes(results)
+            return send_file(
+                io.BytesIO(payload),
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                as_attachment=True,
+                download_name=f"{base_name}_usage_analysis.xlsx",
+            )
+
+        return jsonify({"error": f"Unsupported export format: {export_format or '(empty)'}"}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -299,8 +343,8 @@ def main():
     if args.reports_path:
         _state["report_search_roots"] = [str(Path(p).resolve()) for p in args.reports_path]
 
-    print(f"\n  Semantic Model Cleaner")
-    print(f"  ─────────────────────")
+    print("\n  Semantic Model Cleaner")
+    print("  ─────────────────────")
     print(f"  Workspace : {_state['workspace']}")
     if _state["model_search_roots"]:
         print(f"  Models    : {', '.join(_state['model_search_roots'])}")

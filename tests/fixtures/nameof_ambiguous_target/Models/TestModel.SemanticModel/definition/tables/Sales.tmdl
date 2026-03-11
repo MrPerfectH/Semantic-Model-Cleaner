@@ -1,0 +1,3 @@
+table Sales
+	column Revenue
+	measure Revenue = 1
