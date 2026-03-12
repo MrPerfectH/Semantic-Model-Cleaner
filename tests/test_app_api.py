@@ -174,6 +174,33 @@ def test_index_renders_empty_selection_state():
     assert "No reports selected" in html
     assert "/api/discover" not in html
     assert "if (mode === 'report' && chosenModels.length) return parentDir(chosenModels[0].path);" in html
+    assert 'id="btnExplorerUp"' in html
+    assert "$('btnExplorerUp').onclick = function() { if (explorerParentPath) browseDir(explorerParentPath); };" in html
+
+
+def test_api_browse_lists_child_directories_and_parent(tmp_path):
+    workspace = tmp_path / "Workspace"
+    reports = workspace / "Reports"
+    nested = reports / "Regional.Report"
+    misc = reports / "Archive"
+    hidden = reports / ".git"
+    workspace.mkdir()
+    reports.mkdir()
+    nested.mkdir()
+    misc.mkdir()
+    hidden.mkdir()
+
+    client = web_app.app.test_client()
+    response = client.get("/api/browse", query_string={"path": str(reports)})
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["current"] == str(reports.resolve())
+    assert payload["parent"] == str(workspace.resolve())
+    assert payload["entries"] == [
+        {"name": "Archive", "path": str(misc.resolve()), "type": "dir"},
+        {"name": "Regional.Report", "path": str(nested.resolve()), "type": "report"},
+    ]
 
 
 def test_normalize_browse_path_fixes_windows_drive_relative_input(monkeypatch):

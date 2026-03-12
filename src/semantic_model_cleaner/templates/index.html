@@ -117,6 +117,7 @@ tbody tr.row-failed { background: #fee2e2; }
 .explorer-path-bar { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; }
 .explorer-path-bar input { flex: 1; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: 'SF Mono', Monaco, Consolas, monospace; }
 .explorer-path-bar button { flex-shrink: 0; }
+.explorer-item.is-parent { font-weight: 600; }
 .breadcrumbs { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; font-size: 12px; margin-bottom: 8px; min-height: 24px; }
 .breadcrumbs span { color: var(--text-light); }
 .breadcrumbs a { color: var(--primary); text-decoration: none; cursor: pointer; padding: 2px 4px; border-radius: 3px; }
@@ -327,6 +328,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="explorer-header">
       <h2 id="explorerTitle">Choose Model</h2>
       <div class="explorer-path-bar">
+        <button class="btn btn-secondary btn-sm" id="btnExplorerUp" title="Go to parent folder">Up</button>
         <input type="text" id="explorerPathInput" placeholder="Type a path and press Enter...">
         <button class="btn btn-secondary btn-sm" id="btnExplorerGo">Go</button>
       </div>
@@ -377,6 +379,8 @@ var allWarnings = [];
 var riskOrder = { 'Safe': 0, 'Review': 1, 'Caution': 2, 'Do not remove': 3, '__not_applicable__': 4 };
 var explorerMode = 'model';
 var explorerPicked = new Map();
+var explorerCurrentPath = '';
+var explorerParentPath = '';
 var detailItemKey = null;
 
 function $(id) { return document.getElementById(id); }
@@ -621,9 +625,11 @@ function splitPathInfo(path) {
   if (!raw) return { root: '/', segments: [], separator: '/' };
 
   if (isWindowsPath(raw)) {
-    var normalizedWin = raw.replace(/\//g, '\\').replace(/\\+$/, '');
+    var normalizedWin = raw.replace(/\//g, '\\');
+    var driveRoot = /^[A-Za-z]:\\*$/.test(normalizedWin);
+    if (!driveRoot) normalizedWin = normalizedWin.replace(/\\+$/, '');
     return {
-      root: normalizedWin.slice(0, 3),
+      root: normalizedWin.slice(0, 2) + '\\',
       segments: normalizedWin.slice(3).split('\\').filter(Boolean),
       separator: '\\'
     };
@@ -670,59 +676,73 @@ function openExplorer(mode) {
 }
 
 async function browseDir(dirPath) {
-  var url = '/api/browse' + (dirPath ? '?path=' + encodeURIComponent(dirPath) : '');
-  var data = await apiGet(url);
-  if (data.error) { alert(data.error); return; }
-  $('explorerPathInput').value = data.current;
-  renderBreadcrumbs(data.current);
-  renderExplorerList(data.entries);
-  updateExplorerSummary();
+  try {
+    var url = '/api/browse' + (dirPath ? '?path=' + encodeURIComponent(dirPath) : '');
+    var data = await apiGet(url);
+    if (data.error) { alert(data.error); return; }
+    explorerCurrentPath = data.current;
+    explorerParentPath = data.parent || '';
+    $('explorerPathInput').value = data.current;
+    $('btnExplorerUp').disabled = !explorerParentPath;
+    renderBreadcrumbs(data.current);
+    renderExplorerList(data.entries || [], explorerParentPath);
+    updateExplorerSummary();
+  } catch (err) {
+    console.error('Failed to browse directory', err);
+    renderBreadcrumbs(dirPath || '');
+    renderExplorerList([], '');
+    alert('Unable to load that folder. Check the path and try again.');
+  }
 }
 
 function renderBreadcrumbs(currentPath) {
   var info = splitPathInfo(currentPath);
-  var html = '<a data-path="' + esc(info.root) + '">' + esc(info.root) + '</a>';
+  var container = $('explorerBreadcrumbs');
+  container.innerHTML = '';
+
+  function appendCrumb(label, path) {
+    var a = document.createElement('a');
+    a.textContent = label;
+    a.dataset.path = path;
+    a.onclick = function() { browseDir(path); };
+    container.appendChild(a);
+  }
+
+  appendCrumb(info.root, info.root);
   var acc = info.root;
   for (var i = 0; i < info.segments.length; i++) {
+    var sep = document.createElement('span');
+    sep.textContent = info.separator;
+    container.appendChild(sep);
     acc = joinPath(acc, info.segments[i], info.separator);
-    if (i > 0) html += '<span>' + esc(info.separator) + '</span> ';
-    html += '<a data-path="' + esc(acc) + '">' + esc(info.segments[i]) + '</a> ';
+    appendCrumb(info.segments[i], acc);
   }
-  $('explorerBreadcrumbs').innerHTML = html;
-  $('explorerBreadcrumbs').querySelectorAll('a').forEach(function(a) {
-    a.onclick = function() { browseDir(a.dataset.path); };
-  });
 }
 
-function renderExplorerList(entries) {
+function renderExplorerList(entries, parentPath) {
   var list = $('explorerList');
-  if (!entries.length) {
-    list.innerHTML = '<li class="explorer-empty">This folder is empty</li>';
+  list.innerHTML = '';
+  if (!entries.length && !parentPath) {
+    var empty = document.createElement('li');
+    empty.className = 'explorer-empty';
+    empty.textContent = 'This folder is empty';
+    list.appendChild(empty);
     return;
   }
-  list.innerHTML = entries.map(function(entry) {
-    var isChecked = explorerPicked.has(entry.path);
-    var icon, typeLabel = '', cls = 'explorer-item', checkbox = '';
-    if (entry.type === 'model') { icon = '\uD83D\uDCCA'; cls += ' is-model'; }
-    else if (entry.type === 'report') { icon = '\uD83D\uDCCB'; cls += ' is-report'; }
-    else { icon = '\uD83D\uDCC1'; }
-    if (entry.type === 'model') typeLabel = '<span class="explorer-type-label model-label">Model</span>';
-    if (entry.type === 'report') typeLabel = '<span class="explorer-type-label report-label">Report</span>';
-    if (isChecked) cls += ' is-selected';
-    if (entry.type === 'model' || entry.type === 'report') {
-      checkbox = '<input type="checkbox" class="explorer-check" ' + (isChecked ? 'checked' : '')
-        + ' data-path="' + esc(entry.path) + '" data-name="' + esc(entry.name) + '" data-type="' + entry.type + '">';
-    }
-    return '<li class="' + cls + '" data-path="' + esc(entry.path) + '" data-type="' + entry.type + '" data-name="' + esc(entry.name) + '">'
-      + '<span class="explorer-icon">' + icon + '</span>'
-      + '<span class="explorer-name">' + esc(entry.name) + '</span>'
-      + typeLabel + checkbox + '</li>';
-  }).join('');
+  if (parentPath) list.appendChild(createExplorerRow({
+    path: parentPath,
+    type: 'parent',
+    name: '..',
+    label: 'Parent folder'
+  }));
+  entries.forEach(function(entry) {
+    list.appendChild(createExplorerRow(entry));
+  });
 
   list.querySelectorAll('.explorer-item').forEach(function(li) {
     li.onclick = function(e) {
       if (e.target.classList.contains('explorer-check')) return;
-      if (li.dataset.type === 'dir') { browseDir(li.dataset.path); }
+      if (li.dataset.type === 'dir' || li.dataset.type === 'parent') { browseDir(li.dataset.path); }
       else { var cb = li.querySelector('.explorer-check'); if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); } }
     };
   });
@@ -746,11 +766,57 @@ function renderExplorerList(entries) {
   });
 }
 
+function createExplorerRow(entry) {
+  var li = document.createElement('li');
+  var icon = document.createElement('span');
+  var name = document.createElement('span');
+
+  li.className = 'explorer-item';
+  li.dataset.path = entry.path;
+  li.dataset.type = entry.type;
+  li.dataset.name = entry.name;
+  if (entry.type === 'parent') li.classList.add('is-parent');
+  if (entry.type === 'model') li.classList.add('is-model');
+  if (entry.type === 'report') li.classList.add('is-report');
+  if (explorerPicked.has(entry.path)) li.classList.add('is-selected');
+
+  icon.className = 'explorer-icon';
+  if (entry.type === 'parent') icon.textContent = '..';
+  else if (entry.type === 'model') icon.textContent = '\uD83D\uDCCA';
+  else if (entry.type === 'report') icon.textContent = '\uD83D\uDCCB';
+  else icon.textContent = '\uD83D\uDCC1';
+
+  name.className = 'explorer-name';
+  name.textContent = entry.label || entry.name;
+
+  li.appendChild(icon);
+  li.appendChild(name);
+
+  if (entry.type === 'model' || entry.type === 'report') {
+    var typeLabel = document.createElement('span');
+    typeLabel.className = 'explorer-type-label ' + (entry.type === 'model' ? 'model-label' : 'report-label');
+    typeLabel.textContent = entry.type === 'model' ? 'Model' : 'Report';
+    li.appendChild(typeLabel);
+
+    var checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'explorer-check';
+    checkbox.checked = explorerPicked.has(entry.path);
+    checkbox.dataset.path = entry.path;
+    checkbox.dataset.name = entry.name;
+    checkbox.dataset.type = entry.type;
+    li.appendChild(checkbox);
+  }
+
+  return li;
+}
+
 function updateExplorerSummary() {
   $('explorerSelectedSummary').textContent = explorerPicked.size + ' selected';
 }
 
 $('explorerPathInput').onkeydown = function(e) { if (e.key === 'Enter') browseDir($('explorerPathInput').value.trim()); };
+$('btnExplorerUp').onclick = function() { if (explorerParentPath) browseDir(explorerParentPath); };
 $('btnExplorerGo').onclick = function() { browseDir($('explorerPathInput').value.trim()); };
 $('btnExplorerCancel').onclick = function() { $('explorerModal').classList.add('hidden'); };
 $('btnExplorerDone').onclick = function() {
