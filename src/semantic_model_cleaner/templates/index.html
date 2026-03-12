@@ -306,6 +306,10 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <h4>Pages Used</h4>
         <div class="detail-value" id="detailPagesUsed"></div>
       </div>
+      <div class="detail-card">
+        <h4>Commented References</h4>
+        <div class="detail-value" id="detailCommentedRefs"></div>
+      </div>
     </div>
     <div class="detail-card">
       <h4>Direct Report References</h4>
@@ -1161,6 +1165,7 @@ function renderItemDetails() {
     $('detailUsedBy').innerHTML = '<span class="detail-empty">Nothing selected</span>';
     $('detailIndirectVia').innerHTML = '<span class="detail-empty">Nothing selected</span>';
     $('detailPagesUsed').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailCommentedRefs').innerHTML = '<span class="detail-empty">Nothing selected</span>';
     $('detailUsageList').innerHTML = '<div class="detail-empty">Select an item from the table.</div>';
     return;
   }
@@ -1181,6 +1186,7 @@ function renderItemDetails() {
   $('detailUsedBy').innerHTML = formatDetailList(item.usedByItems || []);
   $('detailIndirectVia').innerHTML = formatDetailList(item.indirectVia || []);
   $('detailPagesUsed').innerHTML = formatDetailList(item.pagesUsed || []);
+  $('detailCommentedRefs').innerHTML = formatDetailList(item.commentedRefs || []);
   $('detailUsageList').innerHTML = renderUsageDetails(item);
 }
 

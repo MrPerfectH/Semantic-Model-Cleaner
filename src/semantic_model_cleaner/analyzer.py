@@ -406,17 +406,10 @@ def resolve_field_parameter_targets(
                     resolved_targets.append(match)
                     seen_keys.add(match.key)
             elif len(matches) == 0:
-                _add_warning(
-                    warnings,
-                    "UNRESOLVED_NAMEOF_TARGET",
-                    (
-                        f"Could not resolve NAMEOF target {target_table}[{target_name}] "
-                        f"from field parameter table {info.table}."
-                    ),
-                    model=model_name,
-                    table=info.table,
-                    source_file=info.source_file,
-                )
+                # Ignore unresolved NAMEOF targets. In practice these can point at
+                # helper/function-like constructs that are not cleanup candidates.
+                # We still protect real model items via DAX dependency analysis.
+                continue
             else:
                 match_types = ", ".join(sorted(item.item_type for item in matches))
                 _add_warning(
@@ -1160,19 +1153,52 @@ def scan_additional_definition_json(
 # ── DAX Dependency Analysis ──────────────────────────────────────────────────
 
 
-def _extract_dax_qualified_refs(dax_body: str) -> set[tuple[str, str]]:
-    """Extract qualified refs: 'Table'[Name] and Table[Name]."""
+def _split_dax_comments(dax_body: str) -> tuple[str, str]:
+    """Return (active_code, comments) from a DAX expression."""
+    active_parts = []
+    comment_parts = []
+    i = 0
+
+    while i < len(dax_body):
+        if dax_body.startswith("//", i):
+            end = dax_body.find("\n", i)
+            if end == -1:
+                comment_parts.append(dax_body[i:])
+                active_parts.append(" " * (len(dax_body) - i))
+                break
+            comment_parts.append(dax_body[i:end])
+            active_parts.append(" " * (end - i))
+            i = end
+            continue
+        if dax_body.startswith("/*", i):
+            end = dax_body.find("*/", i + 2)
+            if end == -1:
+                comment_parts.append(dax_body[i:])
+                active_parts.append(" " * (len(dax_body) - i))
+                break
+            end += 2
+            comment_parts.append(dax_body[i:end])
+            active_parts.append(" " * (end - i))
+            i = end
+            continue
+
+        active_parts.append(dax_body[i])
+        i += 1
+
+    return "".join(active_parts), "\n".join(comment_parts)
+
+
+def _extract_dax_qualified_refs_from_text(text: str) -> set[tuple[str, str]]:
     refs = set()
-    for m in re.finditer(r"'([^']+)'\[([^\]]+)\]", dax_body):
+    for m in re.finditer(r"'([^']+)'\[([^\]]+)\]", text):
         refs.add((m.group(1), m.group(2)))
-    for m in re.finditer(r"(?<!')\b([A-Za-z_]\w*)\[([^\]]+)\]", dax_body):
+    for m in re.finditer(r"(?<!')\b([A-Za-z_]\w*)\[([^\]]+)\]", text):
         refs.add((m.group(1), m.group(2)))
     return refs
 
 
-def _extract_dax_unqualified_refs(dax_body: str) -> set[str]:
-    """Extract unqualified [Name] references."""
-    cleaned = re.sub(r"'[^']+'\[[^\]]+\]", " ", dax_body)
+def _extract_dax_unqualified_refs_from_text(text: str) -> set[str]:
+    cleaned = re.sub(r"'[^']+'\[[^\]]+\]", " ", text)
     cleaned = re.sub(r"(?<!')\b[A-Za-z_]\w*\[[^\]]+\]", " ", cleaned)
 
     refs = set()
@@ -1180,6 +1206,26 @@ def _extract_dax_unqualified_refs(dax_body: str) -> set[str]:
         name = m.group(1)
         if not name.startswith("@"):
             refs.add(name)
+    return refs
+
+
+def _extract_dax_qualified_refs(dax_body: str) -> set[tuple[str, str]]:
+    """Extract qualified refs: 'Table'[Name] and Table[Name]."""
+    active_dax, _ = _split_dax_comments(dax_body)
+    return _extract_dax_qualified_refs_from_text(active_dax)
+
+
+def _extract_dax_unqualified_refs(dax_body: str) -> set[str]:
+    """Extract unqualified [Name] references."""
+    active_dax, _ = _split_dax_comments(dax_body)
+    return _extract_dax_unqualified_refs_from_text(active_dax)
+
+
+def extract_dax_commented_refs(dax_body: str) -> set[str]:
+    """Extract item-like refs found only in DAX comments for diagnostics."""
+    _, comments = _split_dax_comments(dax_body)
+    refs = {f"{table}[{name}]" for table, name in _extract_dax_qualified_refs_from_text(comments)}
+    refs |= {f"[{name}]" for name in _extract_dax_unqualified_refs_from_text(comments)}
     return refs
 
 

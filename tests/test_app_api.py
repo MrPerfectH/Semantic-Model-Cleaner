@@ -9,6 +9,7 @@ def _fake_results():
                     item_type="Measure",
                     table="Sales",
                     name="Revenue",
+                    dax_body="// [Legacy Revenue]\nSUM(Sales[Amount])",
                 ),
                 "status": "NOT USED",
                 "usages": [],
@@ -89,6 +90,7 @@ def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):
     assert payload["items"][0]["dependsOnColumns"] == []
     assert payload["items"][0]["usedByItems"] == []
     assert payload["items"][0]["usageDetails"] == []
+    assert payload["items"][0]["commentedRefs"] == ["[Legacy Revenue]"]
 
 
 def test_api_analyze_rejects_multiple_models(monkeypatch, tmp_path):

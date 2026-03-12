@@ -103,6 +103,7 @@ def _serialize_results(results: dict) -> dict:
             "indirectVia": indirect_via,
             "dependsOnMeasures": sorted(analyzer.format_item_ref(dep) for dep in dax_measure_deps.get(key, set())),
             "dependsOnColumns": sorted(analyzer.format_item_ref(dep) for dep in dax_column_deps.get(key, set())),
+            "commentedRefs": sorted(analyzer.extract_dax_commented_refs(item.dax_body or "")),
             "usedByItems": sorted(
                 analyzer.format_item_ref(dep) for dep in
                 (reverse_measure_deps.get(key, set()) | reverse_column_deps.get(key, set()))

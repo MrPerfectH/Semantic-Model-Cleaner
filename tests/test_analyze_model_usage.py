@@ -78,3 +78,38 @@ def test_dax_dependency_graph_excludes_self_references():
     deps = analyzer.build_dax_dependency_graph([item])
 
     assert deps[item.key] == set()
+
+
+def test_unresolved_field_parameter_targets_do_not_emit_warnings(tmp_path):
+    warnings = []
+    info = analyzer.FieldParameterInfo(
+        table="FP PNL",
+        source_file=tmp_path / "FP PNL.tmdl",
+        targets=[("_Measures", "Summary Actuals")],
+    )
+    items = [
+        analyzer.ModelItem(item_type="Measure", table="Sales", name="Revenue"),
+    ]
+
+    resolved = analyzer.resolve_field_parameter_targets([info], items, "Model.SemanticModel", warnings)
+
+    assert resolved == [(info, [])]
+    assert warnings == []
+
+
+def test_commented_dax_refs_are_excluded_from_dependencies_but_exposed():
+    target = analyzer.ModelItem(item_type="Measure", table="_Measures", name="Total Other SG&A")
+    source = analyzer.ModelItem(
+        item_type="Measure",
+        table="_Measures",
+        name="EBIT - Actuals",
+        dax_body="// [Total Other SG&A]\nCALCULATE([Transaction Amount - USD])",
+    )
+    base = analyzer.ModelItem(item_type="Measure", table="_Measures", name="Transaction Amount - USD")
+
+    deps = analyzer.build_dax_dependency_graph([target, source, base])
+    commented = analyzer.extract_dax_commented_refs(source.dax_body)
+
+    assert target.key not in deps[source.key]
+    assert base.key in deps[source.key]
+    assert "[Total Other SG&A]" in commented
