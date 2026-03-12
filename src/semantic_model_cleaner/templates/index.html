@@ -50,12 +50,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .summary-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; text-align: center; }
 .summary-card .value { font-size: 28px; font-weight: 700; color: var(--primary); }
 .summary-card .label { font-size: 11px; color: var(--text-light); margin-top: 2px; text-transform: uppercase; letter-spacing: .5px; }
-.filters-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.filters-bar .filter-group { display: flex; flex-direction: column; gap: 3px; }
+.filters-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.filters-bar .filter-group { display: flex; flex-direction: column; gap: 3px; min-width: 120px; }
 .filters-bar .filter-group label { font-size: 11px; color: var(--text-light); font-weight: 500; text-transform: uppercase; letter-spacing: .3px; }
-.filters-bar select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; min-width: 120px; }
-.filters-bar select[multiple] { min-height: 96px; padding: 4px 8px; }
 .filters-bar input[type="text"] { padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; min-width: 180px; }
+.filter-dropdown { position: relative; min-width: 140px; }
+.filter-dropdown-toggle { position: relative; width: 100%; min-height: 34px; padding: 6px 34px 6px 10px; border: 1px solid var(--border); border-radius: 5px; background: #fff; color: var(--text); font-size: 13px; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.filter-dropdown-toggle::after { content: '\25BE'; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-light); font-size: 11px; pointer-events: none; }
+.filter-dropdown.is-open .filter-dropdown-toggle { border-color: #94a3b8; box-shadow: 0 0 0 3px rgba(37, 99, 235, .08); }
+.filter-dropdown-menu { position: absolute; top: calc(100% + 6px); left: 0; width: max-content; min-width: 100%; max-width: 280px; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 12px 30px rgba(15, 23, 42, .14); z-index: 20; }
+.filter-dropdown-actions { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid #eef2f7; }
+.filter-dropdown-action { border: 1px solid var(--border); border-radius: 5px; background: #f8fafc; color: var(--text); padding: 4px 8px; font-size: 12px; cursor: pointer; }
+.filter-dropdown-action:hover { background: #eef2f7; }
+.filter-dropdown-options { max-height: 220px; overflow-y: auto; padding: 6px 0; }
+.filter-dropdown-option { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
+.filter-dropdown-option:hover { background: #f8fafc; }
+.filter-dropdown-option input { margin-top: 2px; }
+.filter-dropdown-empty { padding: 10px; font-size: 12px; color: var(--text-light); font-style: italic; }
 .filters-bar .filter-hint { font-size: 11px; color: var(--text-light); align-self: flex-end; }
 .filter-counts { margin-left: auto; font-size: 12px; color: var(--text-light); white-space: nowrap; }
 .export-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; justify-content: flex-end; }
@@ -206,14 +217,14 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
   </div>
   <div class="filters-bar hidden" id="filtersSection">
     <div class="filter-group"><label>Search</label><input type="text" id="filterSearch" placeholder="Name or table..."></div>
-    <div class="filter-group"><label>Status</label><select id="filterStatus" multiple><option value="NOT USED">Not Used</option><option value="USED">Used</option><option value="INDIRECT">Indirect</option></select></div>
-    <div class="filter-group"><label>Risk</label><select id="filterRisk" multiple><option value="Safe">Safe</option><option value="Review">Review</option><option value="Caution">Caution</option><option value="Do not remove">Do not remove</option><option value="__not_applicable__">Not applicable</option></select></div>
-    <div class="filter-group"><label>Type</label><select id="filterType" multiple><option value="Measure">Measure</option><option value="Column">Column</option><option value="Calculated Column">Calculated Column</option></select></div>
-    <div class="filter-group"><label>Table</label><select id="filterTable" multiple></select></div>
-    <div class="filter-group"><label>Hidden</label><select id="filterHidden" multiple><option value="yes">Hidden</option><option value="no">Visible</option></select></div>
-    <div class="filter-group"><label>Folder</label><select id="filterFolder" multiple></select></div>
-    <div class="filter-group"><label>Modified</label><select id="filterModified" multiple><option value="applied">Applied</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="none">Not modified</option></select></div>
-    <div class="filter-hint">Filters support multi-select. Click values to toggle.</div>
+    <div class="filter-group"><label>Status</label><div class="filter-dropdown" id="filterStatus"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+    <div class="filter-group"><label>Risk</label><div class="filter-dropdown" id="filterRisk"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+    <div class="filter-group"><label>Type</label><div class="filter-dropdown" id="filterType"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+    <div class="filter-group"><label>Table</label><div class="filter-dropdown" id="filterTable"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+    <div class="filter-group"><label>Hidden</label><div class="filter-dropdown" id="filterHidden"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+    <div class="filter-group"><label>Folder</label><div class="filter-dropdown" id="filterFolder"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+    <div class="filter-group"><label>Modified</label><div class="filter-dropdown" id="filterModified"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+    <div class="filter-hint">Dropdown filters support multi-select. Use `Select all` or `Clear` inside each slicer.</div>
     <div class="filter-counts" id="filterCounts"></div>
   </div>
   <div class="view-tabs hidden" id="viewTabs">
@@ -382,6 +393,62 @@ var explorerPicked = new Map();
 var explorerCurrentPath = '';
 var explorerParentPath = '';
 var detailItemKey = null;
+var filterDefinitions = {
+  filterStatus: {
+    allLabel: 'All statuses',
+    options: [
+      { value: 'NOT USED', label: 'Not Used' },
+      { value: 'USED', label: 'Used' },
+      { value: 'INDIRECT', label: 'Indirect' }
+    ]
+  },
+  filterRisk: {
+    allLabel: 'All risks',
+    options: [
+      { value: 'Safe', label: 'Safe' },
+      { value: 'Review', label: 'Review' },
+      { value: 'Caution', label: 'Caution' },
+      { value: 'Do not remove', label: 'Do not remove' },
+      { value: '__not_applicable__', label: 'Not applicable' }
+    ]
+  },
+  filterType: {
+    allLabel: 'All types',
+    options: [
+      { value: 'Measure', label: 'Measure' },
+      { value: 'Column', label: 'Column' },
+      { value: 'Calculated Column', label: 'Calculated Column' }
+    ]
+  },
+  filterTable: { allLabel: 'All tables', options: [] },
+  filterHidden: {
+    allLabel: 'All visibility',
+    options: [
+      { value: 'yes', label: 'Hidden' },
+      { value: 'no', label: 'Visible' }
+    ]
+  },
+  filterFolder: { allLabel: 'All folders', options: [] },
+  filterModified: {
+    allLabel: 'All changes',
+    options: [
+      { value: 'applied', label: 'Applied' },
+      { value: 'pending', label: 'Pending' },
+      { value: 'failed', label: 'Failed' },
+      { value: 'none', label: 'Not modified' }
+    ]
+  }
+};
+var filterState = {
+  filterStatus: [],
+  filterRisk: [],
+  filterType: [],
+  filterTable: [],
+  filterHidden: [],
+  filterFolder: [],
+  filterModified: []
+};
+var filterDropdownEventsReady = false;
 
 function $(id) { return document.getElementById(id); }
 
@@ -468,26 +535,133 @@ function warningHelpText(warning) {
 }
 
 function getSelectedValues(id) {
-  return Array.from($(id).selectedOptions || []).map(function(option) { return option.value; }).filter(Boolean);
+  return (filterState[id] || []).slice();
 }
 
 function matchesSelectedValues(value, selectedValues) {
   return !selectedValues.length || selectedValues.indexOf(value) !== -1;
 }
 
-function enableMultiSelect(select) {
-  if (!select || select.dataset.multiReady === 'true') return;
-  select.dataset.multiReady = 'true';
-  select.addEventListener('mousedown', function(e) {
-    if (e.target.tagName !== 'OPTION') return;
-    e.preventDefault();
-    e.target.selected = !e.target.selected;
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+function getFilterOptions(id) {
+  return (filterDefinitions[id] && filterDefinitions[id].options) ? filterDefinitions[id].options.slice() : [];
+}
+
+function closeFilterDropdowns() {
+  document.querySelectorAll('.filter-dropdown').forEach(function(dropdown) {
+    dropdown.classList.remove('is-open');
+    var menu = dropdown.querySelector('.filter-dropdown-menu');
+    if (menu) menu.classList.add('hidden');
   });
 }
 
-function setupMultiSelects() {
-  document.querySelectorAll('.filters-bar select[multiple]').forEach(enableMultiSelect);
+function updateFilterDropdownLabel(id) {
+  var dropdown = $(id);
+  if (!dropdown) return;
+  var toggle = dropdown.querySelector('.filter-dropdown-toggle');
+  var options = getFilterOptions(id);
+  var labelsByValue = {};
+  options.forEach(function(option) { labelsByValue[option.value] = option.label; });
+  var selected = getSelectedValues(id);
+  var totalCount = options.length;
+  if (!selected.length || (totalCount && selected.length === totalCount)) {
+    toggle.textContent = (filterDefinitions[id] && filterDefinitions[id].allLabel) || 'All';
+    return;
+  }
+  if (selected.length === 1) {
+    toggle.textContent = labelsByValue[selected[0]] || selected[0];
+    return;
+  }
+  toggle.textContent = selected.length + ' selected';
+}
+
+function renderFilterDropdownOptions(id) {
+  var dropdown = $(id);
+  if (!dropdown) return;
+  var container = dropdown.querySelector('.filter-dropdown-options');
+  var options = getFilterOptions(id);
+  var selected = new Set(getSelectedValues(id));
+  if (!options.length) {
+    container.innerHTML = '<div class="filter-dropdown-empty">No values available</div>';
+    updateFilterDropdownLabel(id);
+    return;
+  }
+  container.innerHTML = options.map(function(option, index) {
+    var optionId = id + '_option_' + index;
+    return '<label class="filter-dropdown-option" for="' + esc(optionId) + '">'
+      + '<input type="checkbox" id="' + esc(optionId) + '" value="' + esc(option.value) + '"' + (selected.has(option.value) ? ' checked' : '') + '>'
+      + '<span>' + esc(option.label) + '</span>'
+      + '</label>';
+  }).join('');
+  container.querySelectorAll('input[type="checkbox"]').forEach(function(checkbox) {
+    checkbox.addEventListener('change', function() {
+      var nextValues = [];
+      container.querySelectorAll('input[type="checkbox"]:checked').forEach(function(input) {
+        nextValues.push(input.value);
+      });
+      filterState[id] = nextValues;
+      updateFilterDropdownLabel(id);
+      applyFilters();
+    });
+  });
+  updateFilterDropdownLabel(id);
+}
+
+function setFilterOptions(id, options) {
+  filterDefinitions[id].options = options.slice();
+  var valid = new Set(options.map(function(option) { return option.value; }));
+  filterState[id] = getSelectedValues(id).filter(function(value) { return valid.has(value); });
+  renderFilterDropdownOptions(id);
+}
+
+function selectAllFilterOptions(id) {
+  filterState[id] = getFilterOptions(id).map(function(option) { return option.value; });
+  renderFilterDropdownOptions(id);
+  applyFilters();
+}
+
+function clearFilterOptions(id) {
+  filterState[id] = [];
+  renderFilterDropdownOptions(id);
+  applyFilters();
+}
+
+function setupFilterDropdowns() {
+  document.querySelectorAll('.filter-dropdown').forEach(function(dropdown) {
+    if (dropdown.dataset.ready === 'true') return;
+    dropdown.dataset.ready = 'true';
+
+    var toggle = dropdown.querySelector('.filter-dropdown-toggle');
+    var menu = dropdown.querySelector('.filter-dropdown-menu');
+    toggle.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var willOpen = !dropdown.classList.contains('is-open');
+      closeFilterDropdowns();
+      if (willOpen) {
+        dropdown.classList.add('is-open');
+        menu.classList.remove('hidden');
+      }
+    });
+
+    dropdown.querySelectorAll('.filter-dropdown-action').forEach(function(button) {
+      button.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (button.dataset.action === 'all') selectAllFilterOptions(dropdown.id);
+        if (button.dataset.action === 'clear') clearFilterOptions(dropdown.id);
+      });
+    });
+  });
+
+  if (!filterDropdownEventsReady) {
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.filter-dropdown')) closeFilterDropdowns();
+    });
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeFilterDropdowns();
+    });
+    filterDropdownEventsReady = true;
+  }
+
+  Object.keys(filterDefinitions).forEach(renderFilterDropdownOptions);
 }
 
 function setupResizableTable(tableSectionId) {
@@ -711,9 +885,12 @@ function renderBreadcrumbs(currentPath) {
   appendCrumb(info.root, info.root);
   var acc = info.root;
   for (var i = 0; i < info.segments.length; i++) {
-    var sep = document.createElement('span');
-    sep.textContent = info.separator;
-    container.appendChild(sep);
+    var needsSeparator = !(i === 0 && info.root.slice(-1) === info.separator);
+    if (needsSeparator) {
+      var sep = document.createElement('span');
+      sep.textContent = info.separator;
+      container.appendChild(sep);
+    }
     acc = joinPath(acc, info.segments[i], info.separator);
     appendCrumb(info.segments[i], acc);
   }
@@ -865,7 +1042,7 @@ function loadResults(data) {
   $('exportSection').classList.remove('hidden');
   switchView(currentView);
   requestAnimationFrame(function() {
-    setupMultiSelects();
+    setupFilterDropdowns();
     setupResizableTables();
   });
 }
@@ -931,18 +1108,14 @@ function updateSummary(s) {
 
 /* == Filters == */
 function populateFilterOptions() {
-  var selectedTables = getSelectedValues('filterTable');
-  var selectedFolders = getSelectedValues('filterFolder');
   var tables = Array.from(new Set(allItems.map(function(i) { return i.table; }))).sort();
-  $('filterTable').innerHTML = tables.map(function(t) {
-    return '<option value="' + esc(t) + '"' + (selectedTables.indexOf(t) !== -1 ? ' selected' : '') + '>' + esc(t) + '</option>';
-  }).join('');
+  setFilterOptions('filterTable', tables.map(function(table) {
+    return { value: table, label: table };
+  }));
   var folders = Array.from(new Set(allItems.map(function(i) { return i.displayFolder; }).filter(Boolean))).sort();
-  $('filterFolder').innerHTML = '<option value="__none__"' + (selectedFolders.indexOf('__none__') !== -1 ? ' selected' : '') + '>(No folder)</option>'
-    + folders.map(function(f) {
-      return '<option value="' + esc(f) + '"' + (selectedFolders.indexOf(f) !== -1 ? ' selected' : '') + '>' + esc(f) + '</option>';
-    }).join('');
-  setupMultiSelects();
+  setFilterOptions('filterFolder', [{ value: '__none__', label: '(No folder)' }].concat(folders.map(function(folder) {
+    return { value: folder, label: folder };
+  })));
 }
 
 function applyFilters() {
@@ -992,9 +1165,7 @@ function applyFilters() {
   if (currentView === 'refs') applyRefFilters();
 }
 
-['filterSearch','filterStatus','filterRisk','filterType','filterTable','filterHidden','filterFolder','filterModified'].forEach(function(id) {
-  $(id).addEventListener(id === 'filterSearch' ? 'input' : 'change', applyFilters);
-});
+$('filterSearch').addEventListener('input', applyFilters);
 
 function updateFilterCounts() {
   if (currentView === 'details') {
@@ -1439,7 +1610,7 @@ async function reAnalyze() {
   logEntry('Analysis refreshed', 'info');
 }
 
-setupMultiSelects();
+setupFilterDropdowns();
 renderPills();
 </script>
 </body>

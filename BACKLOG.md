@@ -1,5 +1,11 @@
 # Backlog
 
+## Highest priority
+
+- Add a setting to turn automatic analysis refresh on or off after cleanup actions, and show a disclaimer after refresh that dependency safety/usage results may change once measures are deleted.
+- Replace the always-visible filter value lists with dropdown-based multi-select filters, and add a `Select all` action for each filter.
+- Expand the item details page to show the full DAX expression for measures and calculated columns; for regular columns, show the relevant Power Query / M source details when available.
+
 ## Near-term
 
 - Add a dry-run diff preview before applying cleanup actions in the web app.
