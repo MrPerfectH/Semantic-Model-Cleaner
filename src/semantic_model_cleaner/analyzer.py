@@ -73,6 +73,18 @@ class FieldParameterInfo:
 
 
 @dataclass
+class RelationshipInfo:
+    name: str
+    from_table: str
+    from_column: str
+    to_table: str
+    to_column: str
+    from_cardinality: str = ""
+    to_cardinality: str = ""
+    is_active: bool = True
+
+
+@dataclass
 class AnalyzerWarning:
     code: str
     severity: str
@@ -681,22 +693,94 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
     return items
 
 
-def parse_relationships(model_path: Path) -> set[tuple[str, str]]:
+def _parse_relationship_ref(value: str) -> tuple[str, str] | None:
+    match = re.match(
+        r"(?:'([^']+)'|([^\s.]+))\.(?:'([^']+)'|(\S+))",
+        value.strip(),
+    )
+    if not match:
+        return None
+    table = (match.group(1) or match.group(2) or "").strip()
+    column = (match.group(3) or match.group(4) or "").strip()
+    if not table or not column:
+        return None
+    return table, column
+
+
+def _iter_relationship_blocks(lines: list[str]):
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("relationship ") or line.startswith("relationship\t"):
+            name = line.split(None, 1)[1].strip().strip("'\"") if len(line.split(None, 1)) > 1 else ""
+            block_lines = []
+            i += 1
+            while i < len(lines):
+                inner = lines[i]
+                if inner == "" or inner.strip() == "":
+                    j = i + 1
+                    while j < len(lines) and (lines[j] == "" or lines[j].strip() == ""):
+                        j += 1
+                    if j < len(lines) and lines[j].startswith("\t"):
+                        block_lines.append(inner)
+                        i = j
+                        continue
+                    break
+                if inner.startswith("\t"):
+                    block_lines.append(inner)
+                    i += 1
+                    continue
+                break
+            while i < len(lines) and (lines[i] == "" or lines[i].strip() == ""):
+                i += 1
+            yield name, block_lines
+            continue
+        i += 1
+
+
+def parse_relationship_details(model_path: Path) -> list[RelationshipInfo]:
     rel_file = model_path / "definition" / "relationships.tmdl"
     if not rel_file.exists():
-        return set()
+        return []
 
-    text = rel_file.read_text(encoding="utf-8")
+    lines = rel_file.read_text(encoding="utf-8").splitlines()
+    relationships: list[RelationshipInfo] = []
+
+    for name, block_lines in _iter_relationship_blocks(lines):
+        props: dict[str, str] = {}
+        for line in block_lines:
+            stripped = line.strip()
+            if ":" in stripped:
+                key, value = stripped.split(":", 1)
+                props[key.strip()] = value.strip().strip("'\"")
+            elif stripped:
+                props[stripped] = "true"
+
+        from_ref = _parse_relationship_ref(props.get("fromColumn", ""))
+        to_ref = _parse_relationship_ref(props.get("toColumn", ""))
+        if not from_ref or not to_ref:
+            continue
+
+        is_active_raw = props.get("isActive", "true").strip().lower()
+        relationships.append(RelationshipInfo(
+            name=name,
+            from_table=from_ref[0],
+            from_column=from_ref[1],
+            to_table=to_ref[0],
+            to_column=to_ref[1],
+            from_cardinality=props.get("fromCardinality", "").strip().lower(),
+            to_cardinality=props.get("toCardinality", "").strip().lower(),
+            is_active=is_active_raw not in ("false", "0", "no"),
+        ))
+
+    return relationships
+
+
+def parse_relationships(model_path: Path) -> set[tuple[str, str]]:
     refs = set()
-
-    # Match: fromColumn/toColumn: 'Table Name'.column  or  Table.column  or  Table.'Column'
-    pattern = r"(?:fromColumn|toColumn):\s+(?:'([^']+)'|([^\s.]+))\.(?:'([^']+)'|(\S+))"
-    for m in re.finditer(pattern, text):
-        table = m.group(1) or m.group(2)
-        column = m.group(3) or m.group(4)
-        if table and column:
-            refs.add((table, column))
-
+    for rel in parse_relationship_details(model_path):
+        refs.add((rel.from_table, rel.from_column))
+        refs.add((rel.to_table, rel.to_column))
     return refs
 
 
@@ -1346,6 +1430,241 @@ def resolve_indirect_columns(
 # ── Main Analysis ─────────────────────────────────────────────────────────────
 
 
+def _normalize_cardinality(value: str) -> str:
+    raw = (value or "").strip().lower()
+    if raw in ("one", "1"):
+        return "one"
+    if raw in ("many", "*"):
+        return "many"
+    return ""
+
+
+def _classify_table_role(table: str, relationships: list[RelationshipInfo]) -> tuple[str, str]:
+    active_relationships = [rel for rel in relationships if rel.is_active]
+    if not active_relationships:
+        if relationships:
+            return "isolated", "Only inactive relationships were found for this table."
+        return "isolated", "No relationships were found for this table."
+
+    sides = []
+    unknown_count = 0
+    for rel in active_relationships:
+        if rel.from_table.casefold() == table.casefold():
+            own_cardinality = _normalize_cardinality(rel.from_cardinality)
+            other_cardinality = _normalize_cardinality(rel.to_cardinality)
+        else:
+            own_cardinality = _normalize_cardinality(rel.to_cardinality)
+            other_cardinality = _normalize_cardinality(rel.from_cardinality)
+
+        if own_cardinality == "one" and other_cardinality == "many":
+            sides.append("one")
+        elif own_cardinality == "many" and other_cardinality == "one":
+            sides.append("many")
+        else:
+            unknown_count += 1
+
+    if sides and len(set(sides)) == 1 and unknown_count == 0:
+        if sides[0] == "one":
+            return "dimension-like", "All active relationships put this table on the one side of a 1:* relationship."
+        return "fact-like", "All active relationships put this table on the many side of a 1:* relationship."
+
+    if sides or unknown_count:
+        if "one" in sides and "many" in sides:
+            return "mixed", "This table appears on both the one and many sides of active relationships."
+        return "unknown", "Active relationships exist, but their role pattern is not a clean 1:* shape."
+
+    return "isolated", "No active relationships were found for this table."
+
+
+def build_table_summaries(
+    results: list[dict],
+    all_usages: list[UsageRef],
+    relationship_details: list[RelationshipInfo],
+    dax_column_deps: dict[tuple[str, str], set[tuple[str, str]]],
+) -> list[dict]:
+    rows_by_table: dict[str, list[dict]] = defaultdict(list)
+    usage_by_table: dict[str, list[UsageRef]] = defaultdict(list)
+    relationships_by_table: dict[str, list[RelationshipInfo]] = defaultdict(list)
+
+    for row in results:
+        rows_by_table[row["item"].table].append(row)
+
+    for usage in all_usages:
+        usage_by_table[usage.table].append(usage)
+
+    for rel in relationship_details:
+        relationships_by_table[rel.from_table].append(rel)
+        if rel.to_table.casefold() != rel.from_table.casefold():
+            relationships_by_table[rel.to_table].append(rel)
+
+    tables = sorted(rows_by_table.keys(), key=str.casefold)
+    summaries = []
+
+    for table in tables:
+        rows = rows_by_table[table]
+        usages = usage_by_table.get(table, [])
+        relationships = relationships_by_table.get(table, [])
+        reports = sorted({u.report for u in usages if u.report}, key=str.casefold)
+        pages = sorted({u.page for u in usages if u.page}, key=str.casefold)
+        related_tables = sorted({
+            rel.to_table if rel.from_table.casefold() == table.casefold() else rel.from_table
+            for rel in relationships
+        }, key=str.casefold)
+
+        relationship_only_columns = []
+        single_column_measures = []
+        items_in_table = []
+        hidden_count = 0
+        used_count = 0
+        measure_count = 0
+        column_count = 0
+        calc_column_count = 0
+
+        for row in sorted(rows, key=lambda r: (r["item"].item_type, r["item"].name.casefold())):
+            item = row["item"]
+            status = row["status"]
+            if item.is_hidden:
+                hidden_count += 1
+            if status != "NOT USED":
+                used_count += 1
+            if item.item_type == "Measure":
+                measure_count += 1
+                column_deps = sorted(dax_column_deps.get(item.key, set()))
+                if len(column_deps) == 1:
+                    dep_table, dep_column = column_deps[0]
+                    single_column_measures.append({
+                        "measure": format_item_ref(item.key),
+                        "column": format_item_ref((dep_table, dep_column)),
+                    })
+            elif item.item_type == "Calculated Column":
+                calc_column_count += 1
+                column_count += 1
+            else:
+                column_count += 1
+
+            if item.item_type in ("Column", "Calculated Column") and status == "USED (Relationship)":
+                relationship_only_columns.append(format_item_ref(item.key))
+
+            items_in_table.append({
+                "name": item.name,
+                "ref": format_item_ref(item.key),
+                "type": item.item_type,
+                "status": status,
+                "removal_risk": row.get("removal_risk", "") or None,
+                "review_triggers": row.get("review_triggers", []),
+                "usage_count": len(row["usages"]),
+            })
+
+        active_relationships = sum(1 for rel in relationships if rel.is_active)
+        inactive_relationships = len(relationships) - active_relationships
+        one_to_many = 0
+        many_to_one = 0
+        one_to_one = 0
+        many_to_many = 0
+        relationship_items = []
+
+        for rel in relationships:
+            from_cardinality = _normalize_cardinality(rel.from_cardinality)
+            to_cardinality = _normalize_cardinality(rel.to_cardinality)
+            if from_cardinality == "one" and to_cardinality == "many":
+                one_to_many += 1
+            elif from_cardinality == "many" and to_cardinality == "one":
+                many_to_one += 1
+            elif from_cardinality == "one" and to_cardinality == "one":
+                one_to_one += 1
+            elif from_cardinality == "many" and to_cardinality == "many":
+                many_to_many += 1
+
+            if rel.from_table.casefold() == table.casefold():
+                local_column = rel.from_column
+                other_table = rel.to_table
+                other_column = rel.to_column
+                local_cardinality = from_cardinality
+                other_cardinality = to_cardinality
+            else:
+                local_column = rel.to_column
+                other_table = rel.from_table
+                other_column = rel.from_column
+                local_cardinality = to_cardinality
+                other_cardinality = from_cardinality
+
+            if local_cardinality == "one" and other_cardinality == "many":
+                role = "one-side"
+            elif local_cardinality == "many" and other_cardinality == "one":
+                role = "many-side"
+            else:
+                role = "unknown"
+
+            cardinality_label = ""
+            if from_cardinality and to_cardinality:
+                cardinality_label = ("1" if from_cardinality == "one" else "*") + ":" + ("1" if to_cardinality == "one" else "*")
+
+            relationship_items.append({
+                "name": rel.name,
+                "local_column": format_item_ref((table, local_column)),
+                "other_table": other_table,
+                "other_column": format_item_ref((other_table, other_column)),
+                "cardinality": cardinality_label,
+                "is_active": rel.is_active,
+                "role": role,
+            })
+
+        role_label, role_reason = _classify_table_role(table, relationships)
+        signals = []
+        if role_label == "dimension-like":
+            signals.append("Looks like a dimension table based on active 1:* relationships.")
+        elif role_label == "fact-like":
+            signals.append("Looks like a fact table based on active 1:* relationships.")
+        elif role_label == "mixed":
+            signals.append("Participates on both sides of active relationships.")
+
+        if relationship_only_columns:
+            count = len(relationship_only_columns)
+            noun = "column" if count == 1 else "columns"
+            signals.append(f"{count} {noun} are only used for relationships.")
+
+        if single_column_measures:
+            count = len(single_column_measures)
+            noun = "measure" if count == 1 else "measures"
+            signals.append(f"{count} {noun} depend on exactly one column.")
+
+        if not reports:
+            signals.append("No direct report references were found for this table.")
+
+        summaries.append({
+            "name": table,
+            "role_label": role_label,
+            "role_reason": role_reason,
+            "item_count": len(rows),
+            "measure_count": measure_count,
+            "column_count": column_count,
+            "calculated_column_count": calc_column_count,
+            "used_item_count": used_count,
+            "unused_item_count": len(rows) - used_count,
+            "hidden_item_count": hidden_count,
+            "usage_ref_count": sum(len(row["usages"]) for row in rows),
+            "report_count": len(reports),
+            "reports": reports,
+            "page_count": len(pages),
+            "pages": pages,
+            "relationship_count": len(relationships),
+            "active_relationship_count": active_relationships,
+            "inactive_relationship_count": inactive_relationships,
+            "one_to_many_count": one_to_many,
+            "many_to_one_count": many_to_one,
+            "one_to_one_count": one_to_one,
+            "many_to_many_count": many_to_many,
+            "related_tables": related_tables,
+            "relationship_only_columns": relationship_only_columns,
+            "single_column_measures": single_column_measures,
+            "relationships": relationship_items,
+            "signals": signals,
+            "items": items_in_table,
+        })
+
+    return summaries
+
+
 def analyze(
     workspace: Path,
     model_filters: list[str] | None = None,
@@ -1383,6 +1702,7 @@ def analyze(
     # ── Parse model ──
     all_items = []
     all_relationship_cols = set()
+    all_relationship_details = []
     all_rls_refs = []
     all_hierarchies = []
     all_field_parameters = []
@@ -1391,7 +1711,13 @@ def analyze(
     for model_path in models:
         model_items = parse_model_items(model_path)
         all_items.extend(model_items)
-        all_relationship_cols |= parse_relationships(model_path)
+        relationship_details = parse_relationship_details(model_path)
+        all_relationship_details.extend(relationship_details)
+        all_relationship_cols |= {
+            (rel.from_table, rel.from_column) for rel in relationship_details
+        } | {
+            (rel.to_table, rel.to_column) for rel in relationship_details
+        }
         all_rls_refs.extend(parse_rls_roles(model_path))
         all_hierarchies.extend(parse_hierarchies(model_path))
         all_field_parameters.extend(
@@ -1562,6 +1888,7 @@ def analyze(
             status = "NOT USED"
 
         # ── Removal risk ──
+        review_triggers: list[str] = []
         if status != "NOT USED":
             removal_risk = ""
         elif item.is_inferred:
@@ -1580,7 +1907,12 @@ def analyze(
                         break
             if has_dax_dependents:
                 removal_risk = "Caution"
-            elif item.is_hidden or item.is_key:
+            else:
+                if item.is_hidden:
+                    review_triggers.append("Item is hidden")
+                if item.is_key:
+                    review_triggers.append("Item is marked as a key")
+            if review_triggers:
                 removal_risk = "Review"
             else:
                 removal_risk = "Safe"
@@ -1590,9 +1922,17 @@ def analyze(
             "status": status,
             "usages": usages,
             "removal_risk": removal_risk,
+            "review_triggers": review_triggers,
         })
 
     # ── Table-level summary ──
+    table_summaries = build_table_summaries(
+        results,
+        all_usages,
+        all_relationship_details,
+        dax_col_deps,
+    )
+
     table_stats: dict[str, dict] = defaultdict(lambda: {
         "total": 0, "used": 0, "unused": 0,
         "measures": 0, "measures_used": 0,
@@ -1641,6 +1981,7 @@ def analyze(
     return {
         "items": results,
         "summary": summary,
+        "table_summaries": table_summaries,
         "warnings": [_serialize_warning(w) for w in warnings],
     }
 
@@ -1810,6 +2151,7 @@ def format_unused(results: dict) -> str:
 def format_json_output(results: dict) -> str:
     output = {
         "summary": results["summary"],
+        "tables": results.get("table_summaries", []),
         "warnings": results.get("warnings", []),
         "items": [],
     }
@@ -1825,6 +2167,7 @@ def format_json_output(results: dict) -> str:
             "sortByColumn": r["item"].sort_by_column or None,
             "status": r["status"],
             "removalRisk": r.get("removal_risk", "") or None,
+            "reviewTriggers": r.get("review_triggers", []),
             "usages": [
                 {
                     "report": u.report,

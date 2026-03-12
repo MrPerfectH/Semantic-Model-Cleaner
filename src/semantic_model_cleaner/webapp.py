@@ -96,6 +96,7 @@ def _serialize_results(results: dict) -> dict:
             "status": status,
             "statusDetail": status,
             "removalRisk": r.get("removal_risk", "") or None,
+            "reviewTriggers": r.get("review_triggers", []),
             "pagesUsed": pages_used,
             "visualTypes": visual_types,
             "contexts": contexts,
@@ -141,6 +142,7 @@ def _serialize_results(results: dict) -> dict:
                     "context": u.context,
                     "status": status,
                     "removalRisk": risk,
+                    "reviewTriggers": r.get("review_triggers", []),
                 })
         else:
             references.append({
@@ -156,10 +158,67 @@ def _serialize_results(results: dict) -> dict:
                 "context": "",
                 "status": status,
                 "removalRisk": risk,
+                "reviewTriggers": r.get("review_triggers", []),
             })
+
+    tables = []
+    for table in results.get("table_summaries", []):
+        tables.append({
+            "name": table["name"],
+            "roleLabel": table.get("role_label", ""),
+            "roleReason": table.get("role_reason", ""),
+            "itemCount": table.get("item_count", 0),
+            "measureCount": table.get("measure_count", 0),
+            "columnCount": table.get("column_count", 0),
+            "calculatedColumnCount": table.get("calculated_column_count", 0),
+            "usedItemCount": table.get("used_item_count", 0),
+            "unusedItemCount": table.get("unused_item_count", 0),
+            "hiddenItemCount": table.get("hidden_item_count", 0),
+            "usageRefCount": table.get("usage_ref_count", 0),
+            "reportCount": table.get("report_count", 0),
+            "reports": table.get("reports", []),
+            "pageCount": table.get("page_count", 0),
+            "pages": table.get("pages", []),
+            "relationshipCount": table.get("relationship_count", 0),
+            "activeRelationshipCount": table.get("active_relationship_count", 0),
+            "inactiveRelationshipCount": table.get("inactive_relationship_count", 0),
+            "oneToManyCount": table.get("one_to_many_count", 0),
+            "manyToOneCount": table.get("many_to_one_count", 0),
+            "oneToOneCount": table.get("one_to_one_count", 0),
+            "manyToManyCount": table.get("many_to_many_count", 0),
+            "relatedTables": table.get("related_tables", []),
+            "relationshipOnlyColumns": table.get("relationship_only_columns", []),
+            "singleColumnMeasures": table.get("single_column_measures", []),
+            "relationships": [
+                {
+                    "name": rel.get("name", ""),
+                    "localColumn": rel.get("local_column", ""),
+                    "otherTable": rel.get("other_table", ""),
+                    "otherColumn": rel.get("other_column", ""),
+                    "cardinality": rel.get("cardinality", ""),
+                    "isActive": rel.get("is_active", True),
+                    "role": rel.get("role", ""),
+                }
+                for rel in table.get("relationships", [])
+            ],
+            "signals": table.get("signals", []),
+            "items": [
+                {
+                    "name": item.get("name", ""),
+                    "ref": item.get("ref", ""),
+                    "type": item.get("type", ""),
+                    "status": item.get("status", ""),
+                    "removalRisk": item.get("removal_risk"),
+                    "reviewTriggers": item.get("review_triggers", []),
+                    "usageCount": item.get("usage_count", 0),
+                }
+                for item in table.get("items", [])
+            ],
+        })
 
     return {
         "summary": results["summary"],
+        "tables": tables,
         "warnings": results.get("warnings", []),
         "items": items,
         "references": references,
