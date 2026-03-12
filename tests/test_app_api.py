@@ -43,6 +43,47 @@ def _fake_results():
                 }
             },
         },
+        "table_summaries": [
+            {
+                "name": "Sales",
+                "role_label": "isolated",
+                "role_reason": "No relationships were found for this table.",
+                "item_count": 1,
+                "measure_count": 1,
+                "column_count": 0,
+                "calculated_column_count": 0,
+                "used_item_count": 0,
+                "unused_item_count": 1,
+                "hidden_item_count": 0,
+                "usage_ref_count": 0,
+                "report_count": 0,
+                "reports": [],
+                "page_count": 0,
+                "pages": [],
+                "relationship_count": 0,
+                "active_relationship_count": 0,
+                "inactive_relationship_count": 0,
+                "one_to_many_count": 0,
+                "many_to_one_count": 0,
+                "one_to_one_count": 0,
+                "many_to_many_count": 0,
+                "related_tables": [],
+                "relationship_only_columns": [],
+                "single_column_measures": [],
+                "relationships": [],
+                "signals": ["No direct report references were found for this table."],
+                "items": [
+                    {
+                        "name": "Revenue",
+                        "ref": "Sales[Revenue]",
+                        "type": "Measure",
+                        "status": "NOT USED",
+                        "removal_risk": "Safe",
+                        "usage_count": 0,
+                    }
+                ],
+            }
+        ],
         "warnings": [
             {
                 "code": "AMBIGUOUS_NAMEOF_TARGET",
@@ -54,6 +95,33 @@ def _fake_results():
             }
         ],
     }
+
+
+def _fake_review_results():
+    results = _fake_results()
+    results["items"][0]["item"] = analyzer.ModelItem(
+        item_type="Column",
+        table="Sales",
+        name="CustomerKey",
+        dax_body="",
+        is_hidden=True,
+    )
+    results["items"][0]["removal_risk"] = "Review"
+    results["items"][0]["review_triggers"] = ["Item is hidden"]
+    results["summary"]["total_measures"] = 0
+    results["summary"]["total_columns"] = 1
+    results["summary"]["tables"]["Sales"]["measures"] = 0
+    results["summary"]["tables"]["Sales"]["measures_used"] = 0
+    results["summary"]["tables"]["Sales"]["columns"] = 1
+    results["summary"]["tables"]["Sales"]["columns_used"] = 0
+    results["table_summaries"][0]["measure_count"] = 0
+    results["table_summaries"][0]["column_count"] = 1
+    results["table_summaries"][0]["items"][0]["name"] = "CustomerKey"
+    results["table_summaries"][0]["items"][0]["ref"] = "Sales[CustomerKey]"
+    results["table_summaries"][0]["items"][0]["type"] = "Column"
+    results["table_summaries"][0]["items"][0]["removal_risk"] = "Review"
+    results["table_summaries"][0]["items"][0]["review_triggers"] = ["Item is hidden"]
+    return results
 
 
 def test_index_renders_packaged_template():
@@ -91,6 +159,8 @@ def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):
     assert payload["items"][0]["usedByItems"] == []
     assert payload["items"][0]["usageDetails"] == []
     assert payload["items"][0]["commentedRefs"] == ["[Legacy Revenue]"]
+    assert payload["tables"][0]["name"] == "Sales"
+    assert payload["tables"][0]["signals"] == ["No direct report references were found for this table."]
 
 
 def test_api_analyze_rejects_multiple_models(monkeypatch, tmp_path):
@@ -113,6 +183,30 @@ def test_api_analyze_rejects_multiple_models(monkeypatch, tmp_path):
     assert response.status_code == 400
     payload = response.get_json()
     assert "exactly one semantic model" in payload["error"]
+
+
+def test_api_analyze_includes_review_triggers(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    report_path = tmp_path / "Executive.Report"
+    model_path.mkdir()
+    report_path.mkdir()
+
+    monkeypatch.setattr(web_app.analyzer, "analyze", lambda **_: _fake_review_results())
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/analyze",
+        json={
+            "model_paths": [str(model_path)],
+            "report_paths": [str(report_path)],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["items"][0]["removalRisk"] == "Review"
+    assert payload["items"][0]["reviewTriggers"] == ["Item is hidden"]
+    assert payload["references"][0]["reviewTriggers"] == ["Item is hidden"]
 
 
 def test_api_export_json_returns_latest_analysis():
@@ -172,6 +266,8 @@ def test_index_renders_empty_selection_state():
     html = response.get_data(as_text=True)
     assert "No model selected" in html
     assert "No reports selected" in html
+    assert 'data-view="tables"' in html
+    assert "Table Details" in html
     assert "/api/discover" not in html
     assert "if (mode === 'report' && chosenModels.length) return parentDir(chosenModels[0].path);" in html
     assert 'id="btnExplorerUp"' in html

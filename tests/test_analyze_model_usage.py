@@ -67,6 +67,35 @@ def test_json_output_includes_warnings():
     assert payload["warnings"][0]["code"] == "AMBIGUOUS_NAMEOF_TARGET"
 
 
+def test_unused_hidden_column_includes_review_triggers(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    pages_dir = report / "definition" / "pages" / "Page 1"
+    tables_dir.mkdir(parents=True)
+    pages_dir.mkdir(parents=True)
+
+    (tables_dir / "Date.tmdl").write_text(
+        "table Date\n"
+        "\tcolumn DateKey\n"
+        "\t\tisHidden\n",
+        encoding="utf-8",
+    )
+    (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
+
+    results = analyzer.analyze(workspace.resolve())
+    date_key = _find_item(results, "Date", "DateKey", "Column")
+
+    assert date_key["status"] == "NOT USED"
+    assert date_key["removal_risk"] == "Review"
+    assert date_key["review_triggers"] == ["Item is hidden"]
+
+    payload = json.loads(analyzer.format_json_output(results))
+    payload_item = next(item for item in payload["items"] if item["table"] == "Date" and item["name"] == "DateKey")
+    assert payload_item["reviewTriggers"] == ["Item is hidden"]
+
+
 def test_dax_dependency_graph_excludes_self_references():
     item = analyzer.ModelItem(
         item_type="Measure",
@@ -113,3 +142,48 @@ def test_commented_dax_refs_are_excluded_from_dependencies_but_exposed():
     assert target.key not in deps[source.key]
     assert base.key in deps[source.key]
     assert "[Total Other SG&A]" in commented
+
+
+def test_table_summaries_capture_role_patterns_and_single_column_measures(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    pages_dir = report / "definition" / "pages" / "Page 1"
+    tables_dir.mkdir(parents=True)
+    pages_dir.mkdir(parents=True)
+
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn OrderDateKey\n"
+        "\tcolumn Amount\n"
+        "\tmeasure Order Date Count = DISTINCTCOUNT(Sales[OrderDateKey])\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "Date.tmdl").write_text(
+        "table Date\n"
+        "\tcolumn DateKey\n"
+        "\t\tisKey\n"
+        "\tcolumn CalendarDate\n",
+        encoding="utf-8",
+    )
+    (model / "definition" / "relationships.tmdl").write_text(
+        "relationship SalesToDate\n"
+        "\tfromColumn: Sales.OrderDateKey\n"
+        "\ttoColumn: Date.DateKey\n"
+        "\tfromCardinality: many\n"
+        "\ttoCardinality: one\n"
+        "\tisActive: true\n",
+        encoding="utf-8",
+    )
+    (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
+
+    results = analyzer.analyze(workspace.resolve())
+    table_summaries = {row["name"]: row for row in results["table_summaries"]}
+
+    assert table_summaries["Date"]["role_label"] == "dimension-like"
+    assert table_summaries["Sales"]["role_label"] == "fact-like"
+    assert table_summaries["Date"]["relationship_only_columns"] == ["Date[DateKey]"]
+    assert table_summaries["Sales"]["single_column_measures"] == [
+        {"measure": "Sales[Order Date Count]", "column": "Sales[OrderDateKey]"}
+    ]
