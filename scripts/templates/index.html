@@ -81,6 +81,7 @@ tbody tr.row-failed { background: #fee2e2; }
 .badge-caution { background: var(--caution); color: #991b1b; }
 .badge-donotremove { background: var(--donotremove); color: #475569; }
 .badge-used { background: #dbeafe; color: #1e40af; }
+.risk-trigger-note { margin-top: 4px; font-size: 12px; line-height: 1.35; color: var(--text-light); }
 .status-log { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-top: 16px; max-height: 200px; overflow-y: auto; }
 .status-log h3 { font-size: 13px; margin-bottom: 8px; color: var(--text-light); }
 .status-log .log-entry { font-size: 12px; padding: 3px 0; font-family: 'SF Mono', Monaco, Consolas, monospace; }
@@ -845,7 +846,7 @@ function renderTable() {
       + '<td><strong>' + esc(item.name) + '</strong></td>'
       + '<td>' + esc(item.displayFolder || '') + '</td>'
       + '<td>' + statusBadge(item.status) + '</td>'
-      + '<td>' + riskBadge(item.removalRisk) + '</td>'
+      + '<td>' + riskCellContent(item) + '</td>'
       + '<td>' + (item.isHidden ? '\uD83D\uDD12' : '') + '</td>'
       + '<td>' + esc((item.pagesUsed || []).join(', ')) + '</td>'
       + '<td>' + (item.usageCount || 0) + '</td>'
@@ -873,6 +874,13 @@ function riskBadge(risk) {
   if (!risk) return '';
   var cls = { 'Safe': 'badge-safe', 'Review': 'badge-review', 'Caution': 'badge-caution', 'Do not remove': 'badge-donotremove' }[risk] || '';
   return '<span class="badge ' + cls + '">' + esc(risk) + '</span>';
+}
+
+function riskCellContent(item) {
+  var badge = riskBadge(item.removalRisk);
+  if (item.removalRisk !== 'Review' || !Array.isArray(item.reviewTriggers) || !item.reviewTriggers.length) return badge;
+  var triggerText = item.reviewTriggers.join('; ');
+  return badge + '<div class="risk-trigger-note" title="' + esc(triggerText) + '">' + esc(triggerText) + '</div>';
 }
 
 /* == Selection == */
