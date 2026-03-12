@@ -51,3 +51,31 @@ python3 -m ruff check .
 - Do not commit generated analysis exports such as `*_usage_analysis.json` or `*_usage_analysis.xlsx`.
 - Do not commit personal editor workspace files such as `*.code-workspace`.
 - Do not commit Python cache artifacts such as `__pycache__/` or `*.pyc`.
+
+## Backlog workflow
+
+Use one git worktree per backlog item.
+
+Create:
+
+```bash
+python3 scripts/worktree_backlog.py create "item 123 refresh toggle"
+```
+
+List:
+
+```bash
+python3 scripts/worktree_backlog.py list
+```
+
+Remove after merge:
+
+```bash
+python3 scripts/worktree_backlog.py remove item-123-refresh-toggle --delete-branch
+```
+
+Notes:
+
+- Branches use the `backlog/<slug>` naming convention by default.
+- Run the helper from an existing linked worktree to keep new worktrees in the same shared home.
+- Set `SMC_WORKTREE_HOME` if you want a fixed custom worktree root on your machine.

@@ -22,8 +22,10 @@ dev = [
 [project.scripts]
 semantic-model-cleaner = "semantic_model_cleaner.cli:main"
 semantic-model-cleaner-web = "semantic_model_cleaner.webapp:main"
+semantic-model-cleaner-backlog = "semantic_model_cleaner.backlog_worktree:main"
 smc = "semantic_model_cleaner.cli:main"
 smc-web = "semantic_model_cleaner.web:main"
+smc-backlog = "semantic_model_cleaner.backlog_worktree:main"
 
 [tool.setuptools]
 include-package-data = true

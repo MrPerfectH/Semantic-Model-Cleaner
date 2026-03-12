@@ -153,15 +153,55 @@ Run lint:
 python3 -m ruff check .
 ```
 
+## Backlog Worktrees
+
+Use one linked worktree per backlog item so feature work, reviews, and interrupts do not share
+uncommitted changes.
+
+Create a worktree:
+
+```bash
+python3 scripts/worktree_backlog.py create "item 123 refresh toggle"
+```
+
+Installed command:
+
+```bash
+smc-backlog create "item 123 refresh toggle"
+```
+
+By default the helper:
+
+- creates a branch named `backlog/<slug>`
+- creates the worktree under the current repo worktree home when already inside a linked worktree
+- otherwise creates worktrees in a sibling folder named `<repo>-worktrees`
+- fetches `origin` and branches from `origin/main`
+
+Useful commands:
+
+```bash
+python3 scripts/worktree_backlog.py list
+python3 scripts/worktree_backlog.py remove item-123-refresh-toggle --delete-branch
+python3 scripts/worktree_backlog.py prune
+```
+
+Optional override:
+
+```bash
+SMC_WORKTREE_HOME=/path/to/worktrees python3 scripts/worktree_backlog.py create "item 123"
+```
+
 ## Repo Layout
 
 - `src/semantic_model_cleaner/analyzer.py`: CLI analyzer and export logic
+- `src/semantic_model_cleaner/backlog_worktree.py`: backlog-focused git worktree helper CLI
 - `src/semantic_model_cleaner/webapp.py`: Flask app and API
 - `src/semantic_model_cleaner/tmdl_writer.py`: TMDL edit engine
 - `src/semantic_model_cleaner/templates/index.html`: single-page web UI template
 - `scripts/analyze_model_usage.py`: compatibility wrapper for the packaged CLI
 - `scripts/analyze_model_usage.README.md`: analyzer-specific behavior and limits
 - `scripts/app.py`: compatibility wrapper for the packaged web app
+- `scripts/worktree_backlog.py`: compatibility wrapper for the backlog worktree CLI
 - `tests/`: automated tests and fixtures
 
 ## Roadmap
