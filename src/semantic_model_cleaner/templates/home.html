@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Semantic Model Tools</title>
+<style>
+:root {
+  --bg: #f5f6fa;
+  --card: #ffffff;
+  --border: #dfe3ea;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --text: #1e293b;
+  --text-light: #64748b;
+  --radius: 12px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+.header {
+  background: var(--primary);
+  color: #fff;
+  padding: 22px 24px;
+}
+.header h1 { font-size: 20px; margin-bottom: 6px; }
+.header p { font-size: 13px; opacity: .85; }
+.container { max-width: 980px; margin: 0 auto; padding: 28px 24px; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+.card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.card:hover {
+  transform: translateY(-2px);
+  border-color: #bfd2ff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, .08);
+}
+.card h2 {
+  font-size: 17px;
+  margin-bottom: 8px;
+}
+.card p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-light);
+}
+.badge {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e40af;
+  background: #dbeafe;
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>Semantic Model Tools</h1>
+    <p>Select a workflow to continue.</p>
+  </div>
+
+  <div class="container">
+    <div class="grid">
+      <a class="card" href="/analyze">
+        <h2>Cleaner</h2>
+        <p>Analyze one semantic model against one or more reports and queue cleanup actions.</p>
+        <span class="badge">Analyze &amp; Cleanup</span>
+      </a>
+      <a class="card" href="/compare">
+        <h2>Compare</h2>
+        <p>Compare two semantic models (baseline and candidate) and review structured diffs.</p>
+        <span class="badge">SM vs SM</span>
+      </a>
+    </div>
+  </div>
+</body>
+</html>

@@ -19,6 +19,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .header { background: var(--primary); color: #fff; padding: 16px 24px; display: flex; align-items: center; gap: 16px; }
 .header h1 { font-size: 18px; font-weight: 600; }
 .header .subtitle { font-size: 13px; opacity: .8; }
+.header .header-nav { margin-left: auto; display: flex; gap: 8px; }
+.header .header-nav a { color: #fff; text-decoration: none; font-size: 12px; border: 1px solid rgba(255,255,255,.35); border-radius: 999px; padding: 4px 10px; }
+.header .header-nav a:hover { background: rgba(255,255,255,.14); }
 .container { max-width: 1600px; margin: 0 auto; padding: 16px 24px; }
 .setup { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
 .setup h2 { font-size: 15px; margin-bottom: 14px; }
@@ -189,6 +192,10 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
   <div>
     <h1>Semantic Model Cleaner</h1>
     <div class="subtitle">Analyze &amp; clean Power BI semantic models</div>
+  </div>
+  <div class="header-nav">
+    <a href="/">Menu</a>
+    <a href="/compare">Compare</a>
   </div>
 </div>
 <div class="container">

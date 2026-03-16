@@ -1,4 +1,4 @@
-from semantic_model_cleaner import analyzer, webapp as web_app
+﻿from semantic_model_cleaner import analyzer, compare as compare_engine, webapp as web_app
 
 
 def _fake_results():
@@ -124,12 +124,98 @@ def _fake_review_results():
     return results
 
 
-def test_index_renders_packaged_template():
+def _fake_compare_results():
+    return {
+        "summary": {
+            "baselineModel": "Baseline.SemanticModel",
+            "candidateModel": "Candidate.SemanticModel",
+            "totalChanges": 2,
+            "countsByChangeType": {
+                "added": 1,
+                "removed": 0,
+                "changed": 1,
+            },
+            "levels": {
+                "model": {"added": 0, "removed": 0, "changed": 0},
+                "relationship": {"added": 0, "removed": 0, "changed": 0},
+                "table": {"added": 1, "removed": 0, "changed": 0},
+                "measure": {"added": 0, "removed": 0, "changed": 1},
+                "column": {"added": 0, "removed": 0, "changed": 0},
+            },
+        },
+        "changes": [
+            {
+                "level": "table",
+                "changeType": "added",
+                "objectId": "table::Product",
+                "table": "Product",
+                "name": "Product",
+                "propertyChanges": [],
+                "before": None,
+                "after": {
+                    "name": "Product",
+                    "properties": {},
+                    "measureNames": [],
+                    "columnNames": [],
+                },
+            },
+            {
+                "level": "measure",
+                "changeType": "changed",
+                "objectId": "measure::Sales::Revenue",
+                "table": "Sales",
+                "name": "Revenue",
+                "propertyChanges": [
+                    {
+                        "property": "expression",
+                        "before": "SUM(Sales[Amount])",
+                        "after": "SUM(Sales[NetAmount])",
+                    }
+                ],
+                "before": {
+                    "table": "Sales",
+                    "name": "Revenue",
+                    "properties": {"expression": "SUM(Sales[Amount])"},
+                },
+                "after": {
+                    "table": "Sales",
+                    "name": "Revenue",
+                    "properties": {"expression": "SUM(Sales[NetAmount])"},
+                },
+            },
+        ],
+        "warnings": [],
+    }
+
+
+def test_home_renders_mode_menu():
     client = web_app.app.test_client()
     response = client.get("/")
 
     assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Semantic Model Tools" in html
+    assert 'href="/analyze"' in html
+    assert 'href="/compare"' in html
+
+
+def test_analyze_page_renders_packaged_template():
+    client = web_app.app.test_client()
+    response = client.get("/analyze")
+
+    assert response.status_code == 200
     assert b"Semantic Model Cleaner" in response.data
+
+
+def test_compare_page_renders():
+    client = web_app.app.test_client()
+    response = client.get("/compare")
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Semantic Model Compare (1:1)" in html
+    assert 'id="baselinePath"' in html
+    assert 'id="candidatePath"' in html
 
 
 def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):
@@ -258,9 +344,116 @@ def test_api_export_rejects_unknown_format():
     assert "Unsupported export format" in response.get_json()["error"]
 
 
-def test_index_renders_empty_selection_state():
+def test_api_compare_success(monkeypatch, tmp_path):
+    baseline = tmp_path / "Baseline.SemanticModel"
+    candidate = tmp_path / "Candidate.SemanticModel"
+    baseline.mkdir()
+    candidate.mkdir()
+
+    monkeypatch.setattr(web_app.compare, "compare_models", lambda **_: _fake_compare_results())
+
     client = web_app.app.test_client()
-    response = client.get("/")
+    response = client.post(
+        "/api/compare",
+        json={
+            "baseline_model_path": str(baseline),
+            "candidate_model_path": str(candidate),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["summary"]["totalChanges"] == 2
+    assert payload["changes"][0]["level"] == "table"
+
+
+def test_api_compare_rejects_same_model(tmp_path):
+    model = tmp_path / "Sales.SemanticModel"
+    model.mkdir()
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/compare",
+        json={
+            "baseline_model_path": str(model),
+            "candidate_model_path": str(model),
+        },
+    )
+
+    assert response.status_code == 400
+    assert "must be different" in response.get_json()["error"]
+
+
+def test_api_compare_rejects_non_model_path(tmp_path):
+    baseline = tmp_path / "Baseline.SemanticModel"
+    candidate = tmp_path / "not-model"
+    baseline.mkdir()
+    candidate.mkdir()
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/compare",
+        json={
+            "baseline_model_path": str(baseline),
+            "candidate_model_path": str(candidate),
+        },
+    )
+
+    assert response.status_code == 400
+    assert ".SemanticModel" in response.get_json()["error"]
+
+
+def test_api_compare_export_json_returns_latest_compare():
+    web_app._state["last_compare_results"] = _fake_compare_results()
+
+    client = web_app.app.test_client()
+    response = client.get("/api/compare/export?format=json")
+
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith("application/json")
+    assert "Baseline_vs_Candidate_model_compare.json" in response.headers["Content-Disposition"]
+    payload = response.get_json()
+    assert payload["summary"]["baselineModel"] == "Baseline.SemanticModel"
+
+
+def test_api_compare_export_xlsx_returns_attachment(monkeypatch):
+    web_app._state["last_compare_results"] = _fake_compare_results()
+    monkeypatch.setattr(compare_engine, "create_compare_xlsx_bytes", lambda results: b"PK\x03\x04fake-xlsx")
+
+    client = web_app.app.test_client()
+    response = client.get("/api/compare/export?format=xlsx")
+
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert "Baseline_vs_Candidate_model_compare.xlsx" in response.headers["Content-Disposition"]
+    assert response.data.startswith(b"PK")
+
+
+def test_api_compare_export_requires_prior_compare():
+    web_app._state["last_compare_results"] = None
+
+    client = web_app.app.test_client()
+    response = client.get("/api/compare/export?format=json")
+
+    assert response.status_code == 400
+    assert "Run compare first" in response.get_json()["error"]
+
+
+def test_api_compare_export_rejects_unknown_format():
+    web_app._state["last_compare_results"] = _fake_compare_results()
+
+    client = web_app.app.test_client()
+    response = client.get("/api/compare/export?format=bad")
+
+    assert response.status_code == 400
+    assert "Unsupported export format" in response.get_json()["error"]
+
+
+def test_analyze_page_renders_empty_selection_state():
+    client = web_app.app.test_client()
+    response = client.get("/analyze")
 
     assert response.status_code == 200
     html = response.get_data(as_text=True)

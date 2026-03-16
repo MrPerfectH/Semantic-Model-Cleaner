@@ -18,7 +18,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
 
-from . import analyzer, tmdl_writer
+from . import analyzer, compare, tmdl_writer
 
 app = Flask(__name__)
 
@@ -29,6 +29,7 @@ _state = {
     "model_search_roots": None,
     "report_search_roots": None,
     "last_results": None,
+    "last_compare_results": None,
     "model_paths": [],
     "report_paths": [],
     "backup_path": None,
@@ -232,12 +233,29 @@ def _analysis_download_basename(results: dict) -> str:
     return models[0].replace(".SemanticModel", "")
 
 
+def _compare_download_basename(results: dict) -> str:
+    summary = results.get("summary", {})
+    baseline = summary.get("baselineModel", "baseline").replace(".SemanticModel", "")
+    candidate = summary.get("candidateModel", "candidate").replace(".SemanticModel", "")
+    return f"{baseline}_vs_{candidate}"
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 
 @app.route("/")
+def home():
+    return render_template("home.html")
+
+
+@app.route("/analyze")
 def index():
     return render_template("index.html")
+
+
+@app.route("/compare")
+def compare_page():
+    return render_template("compare.html")
 
 
 @app.route("/api/browse", methods=["GET"])
@@ -336,6 +354,79 @@ def api_analyze():
         return jsonify(_serialize_results(results))
     except SystemExit:
         return jsonify({"error": "Analysis failed — no models or reports found at the given paths."}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/compare", methods=["POST"])
+def api_compare():
+    """Run semantic model compare and return JSON diff results."""
+    try:
+        data = request.get_json(silent=True) or {}
+        baseline_raw = _normalize_browse_path(data.get("baseline_model_path", ""))
+        candidate_raw = _normalize_browse_path(data.get("candidate_model_path", ""))
+
+        if not baseline_raw or not candidate_raw:
+            return jsonify({
+                "error": "Provide both baseline_model_path and candidate_model_path.",
+            }), 400
+
+        baseline_path = Path(baseline_raw).resolve()
+        candidate_path = Path(candidate_raw).resolve()
+
+        if baseline_path == candidate_path:
+            return jsonify({
+                "error": "Baseline and candidate must be different semantic models.",
+            }), 400
+
+        for label, path in (("baseline", baseline_path), ("candidate", candidate_path)):
+            if not path.exists() or not path.is_dir():
+                return jsonify({"error": f"{label.title()} model path not found: {path}"}), 400
+            if not path.name.endswith(".SemanticModel"):
+                return jsonify({
+                    "error": f"{label.title()} path must point to a .SemanticModel directory: {path}",
+                }), 400
+
+        results = compare.compare_models(
+            baseline_model_path=baseline_path,
+            candidate_model_path=candidate_path,
+        )
+        _state["last_compare_results"] = results
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/compare/export", methods=["GET"])
+def api_compare_export():
+    """Download the latest compare results as JSON or XLSX."""
+    try:
+        results = _state.get("last_compare_results")
+        if not results:
+            return jsonify({"error": "No compare results available. Run compare first."}), 400
+
+        export_format = request.args.get("format", "").strip().lower()
+        base_name = _compare_download_basename(results)
+
+        if export_format == "json":
+            payload = compare.format_compare_json_output(results).encode("utf-8")
+            return send_file(
+                io.BytesIO(payload),
+                mimetype="application/json",
+                as_attachment=True,
+                download_name=f"{base_name}_model_compare.json",
+            )
+
+        if export_format == "xlsx":
+            payload = compare.create_compare_xlsx_bytes(results)
+            return send_file(
+                io.BytesIO(payload),
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                as_attachment=True,
+                download_name=f"{base_name}_model_compare.xlsx",
+            )
+
+        return jsonify({"error": f"Unsupported export format: {export_format or '(empty)'}"}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

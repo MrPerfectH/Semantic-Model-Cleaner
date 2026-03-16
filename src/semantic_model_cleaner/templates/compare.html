@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Semantic Model Compare</title>
+<style>
+:root {
+  --bg: #f5f6fa;
+  --card: #fff;
+  --border: #dfe3ea;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --text: #1e293b;
+  --text-light: #64748b;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --warning: #f59e0b;
+  --radius: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+.header {
+  background: var(--primary);
+  color: #fff;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.header h1 { font-size: 18px; }
+.header .nav { display: flex; gap: 10px; }
+.header .nav a {
+  color: #fff;
+  text-decoration: none;
+  font-size: 12px;
+  border: 1px solid rgba(255,255,255,.35);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+.header .nav a:hover { background: rgba(255,255,255,.14); }
+.container { max-width: 1600px; margin: 0 auto; padding: 16px 24px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.setup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-light);
+  margin-bottom: 6px;
+}
+.field-row { display: flex; gap: 8px; }
+.field input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+.btn {
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-secondary { background: #e2e8f0; color: var(--text); }
+.btn-secondary:hover { background: #cbd5e1; }
+.status { font-size: 12px; color: var(--text-light); min-height: 16px; }
+.status.ok { color: var(--success); }
+.status.err { color: var(--danger); }
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+.metric {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  background: #f8fafc;
+}
+.metric .value { font-size: 26px; font-weight: 700; color: var(--primary); }
+.metric .label { font-size: 11px; color: var(--text-light); text-transform: uppercase; }
+.level-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.level-table th, .level-table td {
+  border-bottom: 1px solid #eef2f7;
+  padding: 6px 8px;
+  text-align: left;
+}
+.filters {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.filters .group { display: flex; flex-direction: column; gap: 4px; }
+.filters label {
+  font-size: 11px;
+  color: var(--text-light);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.filters select, .filters input {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 13px;
+}
+.export-bar { display: flex; justify-content: flex-end; gap: 8px; }
+.table-wrap {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-light);
+  padding: 9px 10px;
+}
+tbody td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; }
+tbody tr:hover { background: #f8fafc; }
+tbody tr.selected { background: #eff6ff; }
+.pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.pill-added { background: #dcfce7; color: #166534; }
+.pill-removed { background: #fee2e2; color: #991b1b; }
+.pill-changed { background: #fef3c7; color: #92400e; }
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+.detail-panel h3 { margin-bottom: 8px; font-size: 15px; }
+.detail-panel h4 { margin-bottom: 6px; font-size: 12px; color: var(--text-light); text-transform: uppercase; }
+.prop-list { list-style: none; }
+.prop-list li {
+  border-bottom: 1px solid #eef2f7;
+  padding: 6px 0;
+  font-size: 12px;
+}
+.prop-list li:last-child { border-bottom: none; }
+pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.hidden { display: none !important; }
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal {
+  width: min(760px, 94vw);
+  max-height: 82vh;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.modal-head { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.modal-body { overflow-y: auto; }
+.modal-foot {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.browser-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #f1f5f9;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.browser-item:hover { background: #f8fafc; }
+.browser-type {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--text-light);
+}
+.warning {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  color: #92400e;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>Semantic Model Compare (1:1)</h1>
+    <div class="nav">
+      <a href="/">Menu</a>
+      <a href="/analyze">Cleaner</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <div class="setup-grid">
+        <div class="field">
+          <label for="baselinePath">Baseline Semantic Model</label>
+          <div class="field-row">
+            <input id="baselinePath" type="text" placeholder="C:\Projects\Baseline.SemanticModel">
+            <button class="btn btn-secondary" id="btnBrowseBaseline" type="button">Browse</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="candidatePath">Candidate Semantic Model</label>
+          <div class="field-row">
+            <input id="candidatePath" type="text" placeholder="C:\Projects\Candidate.SemanticModel">
+            <button class="btn btn-secondary" id="btnBrowseCandidate" type="button">Browse</button>
+          </div>
+        </div>
+      </div>
+      <div class="field-row">
+        <button class="btn btn-primary" id="btnCompare" type="button">Run Compare</button>
+      </div>
+      <div class="status" id="statusText"></div>
+    </div>
+
+    <div class="warning hidden" id="warningBox"></div>
+
+    <div class="card hidden" id="summarySection">
+      <div class="summary-grid">
+        <div class="metric"><div class="value" id="sumTotal">0</div><div class="label">Total Changes</div></div>
+        <div class="metric"><div class="value" id="sumAdded">0</div><div class="label">Added</div></div>
+        <div class="metric"><div class="value" id="sumRemoved">0</div><div class="label">Removed</div></div>
+        <div class="metric"><div class="value" id="sumChanged">0</div><div class="label">Changed</div></div>
+      </div>
+      <table class="level-table" id="levelTable">
+        <thead>
+          <tr><th>Level</th><th>Added</th><th>Removed</th><th>Changed</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="card hidden" id="filtersSection">
+      <div class="filters">
+        <div class="group">
+          <label for="filterLevel">Level</label>
+          <select id="filterLevel">
+            <option value="">All levels</option>
+          </select>
+        </div>
+        <div class="group">
+          <label for="filterChange">Change</label>
+          <select id="filterChange">
+            <option value="">All changes</option>
+            <option value="added">Added</option>
+            <option value="removed">Removed</option>
+            <option value="changed">Changed</option>
+          </select>
+        </div>
+        <div class="group">
+          <label for="filterTable">Table</label>
+          <select id="filterTable">
+            <option value="">All tables</option>
+          </select>
+        </div>
+        <div class="group">
+          <label for="filterSearch">Search</label>
+          <input id="filterSearch" type="text" placeholder="Object name...">
+        </div>
+      </div>
+    </div>
+
+    <div class="card export-bar hidden" id="exportSection">
+      <button class="btn btn-secondary" id="btnExportJson" type="button">Export JSON</button>
+      <button class="btn btn-secondary" id="btnExportExcel" type="button">Export Excel</button>
+    </div>
+
+    <div class="table-wrap hidden" id="tableSection">
+      <table>
+        <thead>
+          <tr>
+            <th>Level</th>
+            <th>Change</th>
+            <th>Table</th>
+            <th>Name</th>
+            <th>Property Changes</th>
+          </tr>
+        </thead>
+        <tbody id="changesBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card detail-panel hidden" id="detailSection">
+      <h3 id="detailTitle">Change Details</h3>
+      <div class="detail-grid">
+        <div>
+          <h4>Property Changes</h4>
+          <ul class="prop-list" id="propChanges"></ul>
+        </div>
+        <div>
+          <h4>Before</h4>
+          <pre id="beforeJson">{}</pre>
+        </div>
+        <div>
+          <h4>After</h4>
+          <pre id="afterJson">{}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="browserModal">
+    <div class="modal">
+      <div class="modal-head">
+        <strong>Choose Semantic Model</strong>
+        <div style="margin-top:8px; display:flex; gap:8px;">
+          <input id="browserPath" type="text" style="flex:1; border:1px solid var(--border); border-radius:6px; padding:7px 8px; font-size:12px;">
+          <button class="btn btn-secondary" id="btnBrowserGo" type="button">Go</button>
+          <button class="btn btn-secondary" id="btnBrowserUp" type="button">Up</button>
+        </div>
+      </div>
+      <div class="modal-body" id="browserList"></div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" id="btnBrowserClose" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+function $(id) { return document.getElementById(id); }
+function esc(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+var compareData = null;
+var allChanges = [];
+var filteredChanges = [];
+var selectedChangeId = null;
+var browserTargetInputId = null;
+var browserParentPath = null;
+
+function setStatus(text, cls) {
+  var el = $('statusText');
+  el.textContent = text || '';
+  el.className = 'status' + (cls ? ' ' + cls : '');
+}
+
+async function apiGet(url) {
+  var r = await fetch(url);
+  return r.json();
+}
+
+async function apiPost(url, data) {
+  var r = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data),
+  });
+  var payload = await r.json();
+  if (!r.ok) throw new Error(payload.error || 'Request failed');
+  return payload;
+}
+
+async function runCompare() {
+  var baseline = $('baselinePath').value.trim();
+  var candidate = $('candidatePath').value.trim();
+  if (!baseline || !candidate) {
+    setStatus('Select both baseline and candidate model paths.', 'err');
+    return;
+  }
+
+  $('btnCompare').disabled = true;
+  setStatus('Running compare...', '');
+  try {
+    compareData = await apiPost('/api/compare', {
+      baseline_model_path: baseline,
+      candidate_model_path: candidate,
+    });
+    allChanges = compareData.changes || [];
+    selectedChangeId = null;
+    renderSummary();
+    buildFilters();
+    applyFilters();
+    renderWarnings(compareData.warnings || []);
+    setStatus('Compare completed.', 'ok');
+  } catch (err) {
+    setStatus(err.message || 'Compare failed', 'err');
+  } finally {
+    $('btnCompare').disabled = false;
+  }
+}
+
+function renderWarnings(warnings) {
+  var box = $('warningBox');
+  if (!warnings || !warnings.length) {
+    box.classList.add('hidden');
+    box.textContent = '';
+    return;
+  }
+  box.classList.remove('hidden');
+  box.innerHTML = warnings.map(function(w) {
+    return '<div>' + esc(w.code) + ': ' + esc(w.message) + '</div>';
+  }).join('');
+}
+
+function renderSummary() {
+  var s = (compareData && compareData.summary) || {};
+  $('sumTotal').textContent = String(s.totalChanges || 0);
+  $('sumAdded').textContent = String((s.countsByChangeType || {}).added || 0);
+  $('sumRemoved').textContent = String((s.countsByChangeType || {}).removed || 0);
+  $('sumChanged').textContent = String((s.countsByChangeType || {}).changed || 0);
+
+  var tbody = $('levelTable').querySelector('tbody');
+  var levels = s.levels || {};
+  var order = ['model', 'relationship', 'table', 'measure', 'column'];
+  tbody.innerHTML = order.map(function(level) {
+    var c = levels[level] || { added: 0, removed: 0, changed: 0 };
+    return '<tr>'
+      + '<td>' + esc(level) + '</td>'
+      + '<td>' + esc(String(c.added || 0)) + '</td>'
+      + '<td>' + esc(String(c.removed || 0)) + '</td>'
+      + '<td>' + esc(String(c.changed || 0)) + '</td>'
+      + '</tr>';
+  }).join('');
+
+  $('summarySection').classList.remove('hidden');
+  $('filtersSection').classList.remove('hidden');
+  $('exportSection').classList.remove('hidden');
+  $('tableSection').classList.remove('hidden');
+}
+
+function buildFilters() {
+  var levels = ['model', 'relationship', 'table', 'measure', 'column'];
+  $('filterLevel').innerHTML = '<option value=\"\">All levels</option>'
+    + levels.map(function(level) { return '<option value=\"' + level + '\">' + level + '</option>'; }).join('');
+
+  var tableSet = new Set();
+  allChanges.forEach(function(change) {
+    if (change.table) tableSet.add(change.table);
+  });
+  var tables = Array.from(tableSet).sort(function(a, b) { return a.localeCompare(b); });
+  $('filterTable').innerHTML = '<option value=\"\">All tables</option>'
+    + tables.map(function(tbl) { return '<option value=\"' + esc(tbl) + '\">' + esc(tbl) + '</option>'; }).join('');
+}
+
+function applyFilters() {
+  var level = $('filterLevel').value;
+  var changeType = $('filterChange').value;
+  var table = $('filterTable').value;
+  var search = $('filterSearch').value.trim().toLowerCase();
+
+  filteredChanges = allChanges.filter(function(change) {
+    if (level && change.level !== level) return false;
+    if (changeType && change.changeType !== changeType) return false;
+    if (table && (change.table || '') !== table) return false;
+    if (search) {
+      var target = (change.name || '') + ' ' + (change.table || '') + ' ' + (change.level || '');
+      if (target.toLowerCase().indexOf(search) === -1) return false;
+    }
+    return true;
+  });
+
+  renderChangesTable();
+  renderDetail();
+}
+
+function changePill(changeType) {
+  var cls = changeType === 'added' ? 'pill-added' : (changeType === 'removed' ? 'pill-removed' : 'pill-changed');
+  return '<span class=\"pill ' + cls + '\">' + esc(changeType) + '</span>';
+}
+
+function renderChangesTable() {
+  var tbody = $('changesBody');
+  tbody.innerHTML = filteredChanges.map(function(change) {
+    var selectedClass = change.objectId === selectedChangeId ? 'selected' : '';
+    return '<tr class=\"' + selectedClass + '\" data-change-id=\"' + esc(change.objectId) + '\">'
+      + '<td>' + esc(change.level) + '</td>'
+      + '<td>' + changePill(change.changeType) + '</td>'
+      + '<td>' + esc(change.table || '-') + '</td>'
+      + '<td>' + esc(change.name || '-') + '</td>'
+      + '<td>' + esc(String((change.propertyChanges || []).length)) + '</td>'
+      + '</tr>';
+  }).join('');
+
+  tbody.querySelectorAll('tr').forEach(function(row) {
+    row.addEventListener('click', function() {
+      selectedChangeId = row.dataset.changeId;
+      renderChangesTable();
+      renderDetail();
+    });
+  });
+}
+
+function findSelectedChange() {
+  if (!selectedChangeId) return null;
+  for (var i = 0; i < allChanges.length; i++) {
+    if (allChanges[i].objectId === selectedChangeId) return allChanges[i];
+  }
+  return null;
+}
+
+function renderDetail() {
+  var detail = $('detailSection');
+  var change = findSelectedChange();
+  if (!change) {
+    detail.classList.add('hidden');
+    return;
+  }
+  detail.classList.remove('hidden');
+  $('detailTitle').textContent = change.level + ' :: ' + (change.table ? change.table + ' :: ' : '') + change.name;
+  $('propChanges').innerHTML = (change.propertyChanges || []).length
+    ? change.propertyChanges.map(function(p) {
+      return '<li><strong>' + esc(p.property) + '</strong>: '
+        + '<span style=\"color:#991b1b\">' + esc(JSON.stringify(p.before)) + '</span>'
+        + ' → '
+        + '<span style=\"color:#166534\">' + esc(JSON.stringify(p.after)) + '</span></li>';
+    }).join('')
+    : '<li>No property-level entries (add/remove object).</li>';
+
+  $('beforeJson').textContent = JSON.stringify(change.before, null, 2);
+  $('afterJson').textContent = JSON.stringify(change.after, null, 2);
+}
+
+async function browseDir(path) {
+  try {
+    var url = '/api/browse' + (path ? '?path=' + encodeURIComponent(path) : '');
+    var payload = await apiGet(url);
+    if (payload.error) throw new Error(payload.error);
+    $('browserPath').value = payload.current || '';
+    browserParentPath = payload.parent || null;
+
+    var rows = [];
+    if (payload.parent) {
+      rows.push('<div class=\"browser-item\" data-type=\"parent\" data-path=\"' + esc(payload.parent) + '\">'
+        + '<span>..</span><span class=\"browser-type\">up</span></div>');
+    }
+    rows = rows.concat((payload.entries || []).map(function(entry) {
+      return '<div class=\"browser-item\" data-type=\"' + esc(entry.type) + '\" data-path=\"' + esc(entry.path) + '\">'
+        + '<span>' + esc(entry.name) + '</span><span class=\"browser-type\">' + esc(entry.type) + '</span></div>';
+    }));
+    $('browserList').innerHTML = rows.join('');
+
+    $('browserList').querySelectorAll('.browser-item').forEach(function(row) {
+      row.addEventListener('click', function() {
+        var type = row.dataset.type;
+        var target = row.dataset.path;
+        if (type === 'dir' || type === 'parent') {
+          browseDir(target);
+          return;
+        }
+        if (type === 'model' && browserTargetInputId) {
+          $(browserTargetInputId).value = target;
+          closeBrowser();
+        }
+      });
+    });
+  } catch (err) {
+    setStatus('Browse failed: ' + (err.message || 'Unknown error'), 'err');
+  }
+}
+
+function openBrowser(targetInputId) {
+  browserTargetInputId = targetInputId;
+  $('browserModal').classList.remove('hidden');
+  var start = $(targetInputId).value.trim();
+  browseDir(start);
+}
+
+function closeBrowser() {
+  browserTargetInputId = null;
+  browserParentPath = null;
+  $('browserModal').classList.add('hidden');
+}
+
+$('btnCompare').addEventListener('click', runCompare);
+$('btnBrowseBaseline').addEventListener('click', function() { openBrowser('baselinePath'); });
+$('btnBrowseCandidate').addEventListener('click', function() { openBrowser('candidatePath'); });
+$('btnBrowserClose').addEventListener('click', closeBrowser);
+$('btnBrowserGo').addEventListener('click', function() { browseDir($('browserPath').value.trim()); });
+$('btnBrowserUp').addEventListener('click', function() { if (browserParentPath) browseDir(browserParentPath); });
+$('filterLevel').addEventListener('change', applyFilters);
+$('filterChange').addEventListener('change', applyFilters);
+$('filterTable').addEventListener('change', applyFilters);
+$('filterSearch').addEventListener('input', applyFilters);
+$('btnExportJson').addEventListener('click', function() {
+  window.location.href = '/api/compare/export?format=json';
+});
+$('btnExportExcel').addEventListener('click', function() {
+  window.location.href = '/api/compare/export?format=xlsx';
+});
+</script>
+</body>
+</html>
