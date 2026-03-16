@@ -124,12 +124,33 @@ def _fake_review_results():
     return results
 
 
+def _fake_column_results():
+    results = _fake_results()
+    results["items"][0]["item"] = analyzer.ModelItem(
+        item_type="Column",
+        table="Sales",
+        name="Region",
+        dax_body="",
+    )
+    results["summary"]["total_measures"] = 0
+    results["summary"]["total_columns"] = 1
+    results["summary"]["tables"]["Sales"]["measures"] = 0
+    results["summary"]["tables"]["Sales"]["columns"] = 1
+    results["table_summaries"][0]["measure_count"] = 0
+    results["table_summaries"][0]["column_count"] = 1
+    results["table_summaries"][0]["items"][0]["name"] = "Region"
+    results["table_summaries"][0]["items"][0]["ref"] = "Sales[Region]"
+    results["table_summaries"][0]["items"][0]["type"] = "Column"
+    return results
+
+
 def test_index_renders_packaged_template():
     client = web_app.app.test_client()
     response = client.get("/")
 
     assert response.status_code == 200
     assert b"Semantic Model Cleaner" in response.data
+    assert b"UI build identifier" in response.data
 
 
 def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):
@@ -154,12 +175,15 @@ def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):
     assert payload["summary"]["total_measures"] == 1
     assert payload["warnings"][0]["code"] == "AMBIGUOUS_NAMEOF_TARGET"
     assert payload["items"][0]["statusDetail"] == "NOT USED"
+    assert payload["items"][0]["daxExpression"] == "// [Legacy Revenue]\nSUM(Sales[Amount])"
+    assert payload["items"][0]["mSourceDetails"] is None
     assert payload["items"][0]["dependsOnMeasures"] == []
     assert payload["items"][0]["dependsOnColumns"] == []
     assert payload["items"][0]["usedByItems"] == []
     assert payload["items"][0]["usageDetails"] == []
     assert payload["items"][0]["commentedRefs"] == ["[Legacy Revenue]"]
     assert payload["tables"][0]["name"] == "Sales"
+    assert payload["tables"][0]["usageStatus"] == "NOT USED"
     assert payload["tables"][0]["signals"] == ["No direct report references were found for this table."]
 
 
@@ -208,6 +232,73 @@ def test_api_analyze_includes_review_triggers(monkeypatch, tmp_path):
     assert payload["items"][0]["reviewTriggers"] == ["Item is hidden"]
     assert payload["references"][0]["reviewTriggers"] == ["Item is hidden"]
 
+
+def test_api_analyze_includes_m_source_details_for_regular_columns(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    report_path = tmp_path / "Executive.Report"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    report_path.mkdir()
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Region\n"
+        "\tpartition Sales = import\n"
+        "\t\tsource =\n"
+        "\t\t\tlet\n"
+        "\t\t\t\tSource = #table({\"Region\"}, {{\"US\"}})\n"
+        "\t\t\tin\n"
+        "\t\t\t\tSource\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(web_app.analyzer, "analyze", lambda **_: _fake_column_results())
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/analyze",
+        json={
+            "model_paths": [str(model_path)],
+            "report_paths": [str(report_path)],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["items"][0]["daxExpression"] is None
+    assert "Source = #table" in payload["items"][0]["mSourceDetails"]
+
+
+def test_api_dax_updates_expression(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    model_path.mkdir()
+    captured = {}
+
+    def fake_set_dax_expression(**kwargs):
+        captured.update(kwargs)
+        return {"ok": True, "file": "x", "action": "set_dax_expression"}
+
+    monkeypatch.setattr(web_app.tmdl_writer, "set_dax_expression", fake_set_dax_expression)
+    monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/dax",
+        json={
+            "model_path": str(model_path),
+            "table": "Sales",
+            "name": "Revenue",
+            "item_type": "Measure",
+            "dax_expression": "SUM(Sales[Amount])",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["result"]["ok"] is True
+    assert captured["table"] == "Sales"
+    assert captured["name"] == "Revenue"
+    assert captured["item_type"] == "Measure"
+    assert captured["dax_expression"] == "SUM(Sales[Amount])"
 
 def test_api_export_json_returns_latest_analysis():
     web_app._state["last_results"] = _fake_results()

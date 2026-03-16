@@ -191,6 +191,81 @@ def set_hidden(model_path: Path, table: str, name: str,
     return {"ok": True, "file": str(tmdl_file), "action": "set_hidden", "hidden": hidden}
 
 
+def _normalize_expression_lines(dax_expression: str) -> list[str]:
+    lines = [line.rstrip() for line in str(dax_expression).splitlines()]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return lines
+
+
+def set_dax_expression(
+    model_path: Path,
+    table: str,
+    name: str,
+    item_type: str,
+    dax_expression: str,
+) -> dict:
+    """Replace DAX expression for a measure or calculated column."""
+    if item_type not in ("Measure", "Calculated Column"):
+        return {"ok": False, "error": "Only Measure and Calculated Column are supported"}
+
+    expression_lines = _normalize_expression_lines(dax_expression)
+    if not expression_lines:
+        return {"ok": False, "error": "DAX expression cannot be empty"}
+
+    tmdl_file = _find_tmdl_file(model_path, table)
+    if not tmdl_file:
+        return {"ok": False, "error": f"TMDL file not found for table '{table}'"}
+
+    lines = tmdl_file.read_text(encoding="utf-8").splitlines()
+    block = _find_item_block(lines, name, item_type)
+    if not block:
+        return {"ok": False, "error": f"Item '{name}' not found in {tmdl_file.name}"}
+    start, end = block
+
+    if item_type == "Measure":
+        declaration = lines[start]
+        match = re.match(r"^(\tmeasure\s+.+?=)\s*(.*)$", declaration, re.IGNORECASE)
+        if not match:
+            return {"ok": False, "error": f"Measure declaration not recognized for '{name}'"}
+
+        new_declaration = f"{match.group(1)} {expression_lines[0]}"
+        continuation = [f"\t\t\t{line}" for line in expression_lines[1:]]
+
+        i = start + 1
+        while i < end and (lines[i].startswith("\t\t\t") or not lines[i].strip()):
+            i += 1
+        remainder = lines[i:end]
+
+        lines = lines[:start] + [new_declaration] + continuation + remainder + lines[end:]
+    else:
+        expr_line_idx = None
+        for i in range(start + 1, end):
+            line = lines[i]
+            if line.startswith("\t\t") and not line.startswith("\t\t\t"):
+                stripped = line.strip()
+                if "expression" in stripped and "=" in stripped and not stripped.startswith("formatString"):
+                    expr_line_idx = i
+                    break
+        if expr_line_idx is None:
+            return {"ok": False, "error": f"Calculated column expression block not found for '{name}'"}
+
+        prop_prefix = lines[expr_line_idx].split("=", 1)[0].rstrip()
+        new_expr_line = f"{prop_prefix} = {expression_lines[0]}"
+        continuation = [f"\t\t\t{line}" for line in expression_lines[1:]]
+
+        j = expr_line_idx + 1
+        while j < end and (lines[j].startswith("\t\t\t") or not lines[j].strip()):
+            j += 1
+
+        lines = lines[:expr_line_idx] + [new_expr_line] + continuation + lines[j:]
+
+    tmdl_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {"ok": True, "file": str(tmdl_file), "action": "set_dax_expression"}
+
+
 def _delete_relationships_for_column(model_path: Path, table: str, column: str) -> list[str]:
     """Remove any relationship blocks from relationships.tmdl that reference
     the given table + column (on either fromColumn or toColumn side).

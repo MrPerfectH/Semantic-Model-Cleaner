@@ -109,7 +109,7 @@ def test_dax_dependency_graph_excludes_self_references():
     assert deps[item.key] == set()
 
 
-def test_unresolved_field_parameter_targets_do_not_emit_warnings(tmp_path):
+def test_unresolved_field_parameter_targets_emit_warnings(tmp_path):
     warnings = []
     info = analyzer.FieldParameterInfo(
         table="FP PNL",
@@ -123,7 +123,9 @@ def test_unresolved_field_parameter_targets_do_not_emit_warnings(tmp_path):
     resolved = analyzer.resolve_field_parameter_targets([info], items, "Model.SemanticModel", warnings)
 
     assert resolved == [(info, [])]
-    assert warnings == []
+    assert len(warnings) == 1
+    assert warnings[0].code == "UNRESOLVED_NAMEOF_TARGET"
+    assert "NAMEOF target _Measures[Summary Actuals] from field parameter table FP PNL does not resolve" in warnings[0].message
 
 
 def test_commented_dax_refs_are_excluded_from_dependencies_but_exposed():
@@ -187,3 +189,203 @@ def test_table_summaries_capture_role_patterns_and_single_column_measures(tmp_pa
     assert table_summaries["Sales"]["single_column_measures"] == [
         {"measure": "Sales[Order Date Count]", "column": "Sales[OrderDateKey]"}
     ]
+
+
+def test_broken_measure_refs_are_flagged(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    pages_dir = report / "definition" / "pages" / "Page 1"
+    tables_dir.mkdir(parents=True)
+    pages_dir.mkdir(parents=True)
+
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = [Missing Measure] + SUM('Missing Table'[Amount])\n",
+        encoding="utf-8",
+    )
+    (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
+
+    results = analyzer.analyze(workspace.resolve())
+    revenue = _find_item(results, "Sales", "Revenue", "Measure")
+
+    assert revenue["status"] == "BROKEN (2 missing refs)"
+    assert revenue["broken_dax_refs"] == ["[Missing Measure]", "Missing Table[Amount]"]
+    assert revenue["broken_dax_ref_details"] == [
+        {"kind": "measure", "ref": "[Missing Measure]", "message": "Missing measure: [Missing Measure]"},
+        {"kind": "column", "ref": "Missing Table[Amount]", "message": "Missing column (table not found): Missing Table[Amount]"},
+    ]
+    assert results["summary"]["broken"] == 1
+
+    payload = json.loads(analyzer.format_json_output(results))
+    payload_item = next(item for item in payload["items"] if item["table"] == "Sales" and item["name"] == "Revenue")
+    assert payload_item["brokenDaxRefs"] == ["[Missing Measure]", "Missing Table[Amount]"]
+    assert payload_item["brokenDaxRefDetails"] == [
+        {"kind": "measure", "ref": "[Missing Measure]", "message": "Missing measure: [Missing Measure]"},
+        {"kind": "column", "ref": "Missing Table[Amount]", "message": "Missing column (table not found): Missing Table[Amount]"},
+    ]
+
+
+def test_bare_table_refs_are_flagged_as_broken(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    report.mkdir(parents=True)
+
+    (tables_dir / "Measures.tmdl").write_text(
+        "table Measures\n"
+        "\tmeasure Row Count = COUNTROWS('Account')\n",
+        encoding="utf-8",
+    )
+
+    (report / "definition.pbir").write_text('{"version":"4.0"}', encoding="utf-8")
+    (report / "report.json").write_text('{"sections":[]}', encoding="utf-8")
+
+    results = analyzer.analyze(workspace)
+    row_count = _find_item(results, "Measures", "Row Count", "Measure")
+
+    assert row_count["status"] == "BROKEN (1 missing ref)"
+    assert row_count["broken_dax_refs"] == ["Account"]
+    assert row_count["broken_dax_ref_details"] == [
+        {"kind": "table", "ref": "Account", "message": "Missing table: Account"},
+    ]
+    assert results["summary"]["broken"] == 1
+
+
+def test_valid_quoted_column_refs_do_not_trigger_false_broken_table_refs(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Forecast.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    report.mkdir(parents=True)
+
+    (tables_dir / "Date.tmdl").write_text(
+        "table Date\n"
+        "\tcolumn Month\n"
+        "\t\tsummarizeBy: none\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "Measures.tmdl").write_text(
+        "table Measures\n"
+        "\tmeasure Forecast Amount - USD - March =\n"
+        "\t\tCALCULATE(\n"
+        "\t\t\t[Forecast Amount - USD - March (view)],\n"
+        "\t\t\tKEEPFILTERS('Date'[Month] IN { 4, 5, 6, 7, 8, 9, 10, 11, 12 })\n"
+        "\t\t)\n"
+        "\t\t+\n"
+        "\t\tCALCULATE(\n"
+        "\t\t\t[Transaction Amount - USD],\n"
+        "\t\t\tKEEPFILTERS('Date'[Month] IN { 1, 2, 3 })\n"
+        "\t\t)\n"
+        "\tmeasure Forecast Amount - USD - March (view) = 1\n"
+        "\tmeasure Transaction Amount - USD = 1\n",
+        encoding="utf-8",
+    )
+
+    (report / "definition.pbir").write_text('{"version":"4.0"}', encoding="utf-8")
+    (report / "report.json").write_text('{"sections":[]}', encoding="utf-8")
+
+    results = analyzer.analyze(workspace)
+    row = _find_item(results, "Measures", "Forecast Amount - USD - March", "Measure")
+
+    assert row["status"] != "BROKEN (1 missing ref)"
+    assert row["broken_dax_refs"] == []
+
+
+def test_inline_calculated_columns_are_parsed_and_do_not_false_flag_measures(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Forecast.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    report.mkdir(parents=True)
+
+    (tables_dir / "Date.tmdl").write_text(
+        "table Date\n"
+        "\tcolumn 'HasActuals USD' = CALCULATE(IF(ISBLANK([Transaction Amount - D365 - USD]), 0, 1), ALLEXCEPT('Date', 'Date'[YearMonth]))\n"
+        "\tcolumn YearMonthNumber = 'Date'[Year]*12+'Date'[Month]\n"
+        "\tcolumn Year\n"
+        "\tcolumn Month\n"
+        "\tcolumn YearMonth\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "Measures.tmdl").write_text(
+        "table Measures\n"
+        "\tmeasure Forecast Amount - USD - September - Dynamic (vena) =\n"
+        "\t\tVAR _ForecastCutoff =\n"
+        "\t\t\tCALCULATE(\n"
+        "\t\t\t\tMAX('Date'[YearMonthNumber]),\n"
+        "\t\t\t\t'Date'[HasActuals USD] = 1,\n"
+        "\t\t\t\tREMOVEFILTERS('Date')\n"
+        "\t\t\t)\n"
+        "\t\tRETURN CALCULATE([Base Measure], KEEPFILTERS('Date'[YearMonthNumber] <= _ForecastCutoff))\n"
+        "\tmeasure Base Measure = 1\n"
+        "\tmeasure Transaction Amount - D365 - USD = 1\n",
+        encoding="utf-8",
+    )
+
+    (report / "definition.pbir").write_text('{\"version\":\"4.0\"}', encoding="utf-8")
+    (report / "report.json").write_text('{\"sections\":[]}', encoding="utf-8")
+
+    parsed = analyzer.parse_model_items(model)
+    parsed_refs = {(item.table, item.name, item.item_type) for item in parsed}
+    assert ("Date", "HasActuals USD", "Calculated Column") in parsed_refs
+    assert ("Date", "YearMonthNumber", "Calculated Column") in parsed_refs
+
+    results = analyzer.analyze(workspace)
+    measure = _find_item(results, "Measures", "Forecast Amount - USD - September - Dynamic (vena)", "Measure")
+    assert measure["broken_dax_refs"] == []
+
+
+def test_field_parameter_tables_warn_on_unresolved_nameof_targets(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Forecast.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    pages_dir = report / "definition" / "pages" / "Page 1"
+    tables_dir.mkdir(parents=True)
+    pages_dir.mkdir(parents=True)
+
+    (tables_dir / "_Measures.tmdl").write_text(
+        "table _Measures\n"
+        "\tmeasure 'Summary Actuals' = 1\n"
+        "\tmeasure 'Summary Budget' = 1\n"
+        "\tmeasure 'Summary FC2' = 1\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "FP PNL.tmdl").write_text(
+        "table 'FP PNL'\n"
+        "\tcolumn 'FP PNL'\n"
+        "\t\tsummarizeBy: none\n"
+        "\tcolumn 'FP PNL Fields'\n"
+        "\t\tsummarizeBy: none\n"
+        "\tpartition 'FP PNL' = calculated\n"
+        "\t\tsource = ```\n"
+        "\t\t\t{\n"
+        "\t\t\t    (\"Summary Actuals\", NAMEOF('_Measures'[Summary Actuals]), 1, \"MTH\"),\n"
+        "\t\t\t    (\"Summary Budget\", NAMEOF('_Measures'[Summary Budget]), 2, \"MTH\"),\n"
+        "\t\t\t    //(\"Summary FC1\", NAMEOF('_Measures'[Summary FC1]), 3, \"MTH\"),\n"
+        "\t\t\t    (\"Summary Missing Active\", NAMEOF('_Measures'[Summary Missing Active]), 4, \"MTH\"),\n"
+        "\t\t\t    (\"Summary Actuals\", NAMEOF('_Measures'[Summary Actuals]), 5, \"BUD\")\n"
+        "\t\t\t    // (\"6\", NAMEOF('_Measures'[Summary Missing]), 6, \"BUD\")\n"
+        "\t\t\t}\n"
+        "\t\t\t```\n",
+        encoding="utf-8",
+    )
+    (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
+
+    results = analyzer.analyze(workspace.resolve())
+
+    unresolved = [w for w in results["warnings"] if w["code"] == "UNRESOLVED_NAMEOF_TARGET"]
+    assert len(unresolved) == 1
+    assert "_Measures[Summary Missing Active]" in unresolved[0]["message"]
+    assert "_Measures[Summary FC1]" not in unresolved[0]["message"]
+    assert "_Measures[Summary Missing]" not in unresolved[0]["message"]
+
+    table_summary = next(table for table in results["table_summaries"] if table["name"] == "FP PNL")
+    assert table_summary["field_parameter_issues"] == [unresolved[0]["message"]]
+    assert table_summary["signals"][0] == "Broken field parameter: 1 unresolved NAMEOF target."

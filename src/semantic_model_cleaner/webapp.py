@@ -14,11 +14,12 @@ import argparse
 import io
 import os
 import re
+import subprocess
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
 
-from . import analyzer, tmdl_writer
+from . import __version__, analyzer, tmdl_writer
 
 app = Flask(__name__)
 
@@ -28,6 +29,7 @@ _state = {
     "workspace": None,
     "model_search_roots": None,
     "report_search_roots": None,
+    "default_root": r"C:\Projects\TURBO\Enterprise Reporting",
     "last_results": None,
     "model_paths": [],
     "report_paths": [],
@@ -56,9 +58,132 @@ def _normalize_browse_path(raw: str) -> str:
     return path
 
 
+def _extract_tmdl_table_source_details(model_path: Path | None) -> dict[str, str]:
+    """Return table-level source blocks (Power Query / M) when they can be parsed."""
+    if model_path is None:
+        return {}
+
+    tables_dir = model_path / "definition" / "tables"
+    if not tables_dir.exists():
+        return {}
+
+    source_by_table: dict[str, str] = {}
+
+    for filepath in sorted(tables_dir.glob("*.tmdl")):
+        try:
+            lines = filepath.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+
+        current_table = ""
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+
+            if not line.startswith("\t") and line.startswith("table "):
+                current_table = line[6:].strip().strip("'\"")
+                i += 1
+                continue
+
+            if not current_table:
+                i += 1
+                continue
+
+            if line.startswith("\t\tsource"):
+                rhs = ""
+                if "=" in stripped:
+                    rhs = stripped.split("=", 1)[1].strip()
+                block_lines = []
+                if rhs and rhs != "```":
+                    block_lines.append(rhs)
+
+                j = i + 1
+                while j < len(lines):
+                    inner = lines[j]
+                    if inner.startswith("\t\t\t"):
+                        cleaned = inner.strip()
+                        if cleaned and cleaned != "```":
+                            block_lines.append(cleaned)
+                        j += 1
+                        continue
+                    if not inner.strip():
+                        j += 1
+                        continue
+                    break
+
+                if block_lines and current_table not in source_by_table:
+                    source_by_table[current_table] = "\n".join(block_lines)
+                i = j
+                continue
+
+            i += 1
+
+    return source_by_table
+
+
+def _table_usage_status(table_summary: dict) -> str:
+    """Map table summary metrics to the same status families used for items."""
+    if table_summary.get("field_parameter_issues"):
+        count = len(table_summary.get("field_parameter_issues", []))
+        noun = "target" if count == 1 else "targets"
+        return f"BROKEN ({count} field parameter {noun})"
+    used_items = int(table_summary.get("used_item_count", 0) or 0)
+    usage_refs = int(table_summary.get("usage_ref_count", 0) or 0)
+
+    if used_items == 0:
+        return "NOT USED"
+    if usage_refs == 0:
+        return "INDIRECT (via: model dependencies)"
+    return "USED"
+
+
+def _ensure_default_workspace_config() -> None:
+    if _state["workspace"]:
+        return
+    default_root = Path(_state["default_root"]).resolve()
+    _state["workspace"] = str(default_root)
+    if not _state["model_search_roots"]:
+        _state["model_search_roots"] = [str(default_root)]
+    if not _state["report_search_roots"]:
+        _state["report_search_roots"] = [str(default_root)]
+
+
+def _effective_model_roots() -> list[str]:
+    _ensure_default_workspace_config()
+    return _state["model_search_roots"] or ([_state["workspace"]] if _state["workspace"] else [])
+
+
+def _effective_report_roots() -> list[str]:
+    _ensure_default_workspace_config()
+    return _state["report_search_roots"] or ([_state["workspace"]] if _state["workspace"] else [])
+
+
+def _discover_initial_artifacts() -> tuple[list[Path], list[Path]]:
+    model_roots = [Path(r) for r in _effective_model_roots()]
+    report_roots = [Path(r) for r in _effective_report_roots()]
+    models = analyzer.discover_models(model_roots)
+    reports = analyzer.discover_reports(report_roots)
+    return models, reports
+
+
+def _default_model_selection(models: list[Path]) -> list[Path]:
+    if not models:
+        return []
+    preferred_names = ["LINDEN.SemanticModel", "Linden.SemanticModel"]
+    for preferred in preferred_names:
+        match = next((m for m in models if m.name == preferred), None)
+        if match:
+            return [match]
+    return [models[0]]
+
+
 def _serialize_results(results: dict) -> dict:
     """Serialize analyzer results for JSON API responses."""
     items_by_key = {r["item"].key: r["item"] for r in results["items"]}
+    model_name = results.get("summary", {}).get("models", [""])[0]
+    model_path = next((Path(p) for p in _state.get("model_paths", []) if Path(p).name == model_name), None)
+    table_source_details = _extract_tmdl_table_source_details(model_path)
     dax_measure_deps = analyzer.build_dax_dependency_graph(list(items_by_key.values()))
     dax_column_deps = analyzer.build_dax_column_deps(list(items_by_key.values()))
     reverse_measure_deps: dict[tuple[str, str], set[tuple[str, str]]] = {}
@@ -80,6 +205,8 @@ def _serialize_results(results: dict) -> dict:
         item = r["item"]
         key = item.key
         status = r["status"]
+        dax_expression = (item.dax_body or "").strip() or None
+        m_source_details = table_source_details.get(item.table) if item.item_type == "Column" else None
         indirect_via = []
         if status.startswith("INDIRECT (via: ") and status.endswith(")"):
             indirect_via = [part.strip() for part in status[15:-1].split(",") if part.strip()]
@@ -93,10 +220,14 @@ def _serialize_results(results: dict) -> dict:
             "isKey": item.is_key,
             "isInferred": item.is_inferred,
             "sortByColumn": item.sort_by_column or None,
+            "daxExpression": dax_expression,
+            "mSourceDetails": m_source_details,
             "status": status,
             "statusDetail": status,
             "removalRisk": r.get("removal_risk", "") or None,
             "reviewTriggers": r.get("review_triggers", []),
+            "brokenDaxRefs": r.get("broken_dax_refs", []),
+            "brokenDaxRefDetails": r.get("broken_dax_ref_details", []),
             "pagesUsed": pages_used,
             "visualTypes": visual_types,
             "contexts": contexts,
@@ -143,6 +274,8 @@ def _serialize_results(results: dict) -> dict:
                     "status": status,
                     "removalRisk": risk,
                     "reviewTriggers": r.get("review_triggers", []),
+                    "brokenDaxRefs": r.get("broken_dax_refs", []),
+                    "brokenDaxRefDetails": r.get("broken_dax_ref_details", []),
                 })
         else:
             references.append({
@@ -159,14 +292,18 @@ def _serialize_results(results: dict) -> dict:
                 "status": status,
                 "removalRisk": risk,
                 "reviewTriggers": r.get("review_triggers", []),
+                "brokenDaxRefs": r.get("broken_dax_refs", []),
+                "brokenDaxRefDetails": r.get("broken_dax_ref_details", []),
             })
 
     tables = []
     for table in results.get("table_summaries", []):
+        table_usage_status = _table_usage_status(table)
         tables.append({
             "name": table["name"],
             "roleLabel": table.get("role_label", ""),
             "roleReason": table.get("role_reason", ""),
+            "usageStatus": table_usage_status,
             "itemCount": table.get("item_count", 0),
             "measureCount": table.get("measure_count", 0),
             "columnCount": table.get("column_count", 0),
@@ -202,6 +339,7 @@ def _serialize_results(results: dict) -> dict:
                 for rel in table.get("relationships", [])
             ],
             "signals": table.get("signals", []),
+            "fieldParameterIssues": table.get("field_parameter_issues", []),
             "items": [
                 {
                     "name": item.get("name", ""),
@@ -210,6 +348,8 @@ def _serialize_results(results: dict) -> dict:
                     "status": item.get("status", ""),
                     "removalRisk": item.get("removal_risk"),
                     "reviewTriggers": item.get("review_triggers", []),
+                    "brokenDaxRefs": item.get("broken_dax_refs", []),
+                    "brokenDaxRefDetails": item.get("broken_dax_ref_details", []),
                     "usageCount": item.get("usage_count", 0),
                 }
                 for item in table.get("items", [])
@@ -232,12 +372,45 @@ def _analysis_download_basename(results: dict) -> str:
     return models[0].replace(".SemanticModel", "")
 
 
+def _build_stamp() -> str:
+    """Create a short build stamp for the UI header."""
+    package_version = f"v{__version__}"
+
+    try:
+        repo_root = Path(__file__).resolve().parents[2]
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=repo_root,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        dirty = subprocess.run(
+            ["git", "diff", "--quiet", "--exit-code"],
+            cwd=repo_root,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode != 0
+        state = "dirty" if dirty else "clean"
+        return f"{package_version} | commit {commit} | {state}"
+    except Exception:
+        return f"{package_version} | commit unknown"
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    models, reports = _discover_initial_artifacts()
+    selected_models = _default_model_selection(models)
+    selected_reports = reports
+    return render_template(
+        "index.html",
+        build_stamp=_build_stamp(),
+        default_root=_state.get("default_root") or "",
+        initial_models=[{"path": str(m), "name": m.name.replace(".SemanticModel", "")} for m in selected_models],
+        initial_reports=[{"path": str(r), "name": analyzer.report_display_name(r)} for r in selected_reports],
+    )
 
 
 @app.route("/api/browse", methods=["GET"])
@@ -294,8 +467,8 @@ def api_discover():
         body = request.get_json(silent=True) or {} if request.method == "POST" else {}
 
         # Custom roots from POST override CLI defaults
-        model_roots = body.get("model_roots") or _state["model_search_roots"] or ([_state["workspace"]] if _state["workspace"] else [])
-        report_roots = body.get("report_roots") or _state["report_search_roots"] or ([_state["workspace"]] if _state["workspace"] else [])
+        model_roots = body.get("model_roots") or _effective_model_roots()
+        report_roots = body.get("report_roots") or _effective_report_roots()
 
         models = analyzer.discover_models([Path(r) for r in model_roots])
         reports = analyzer.discover_reports([Path(r) for r in report_roots])
@@ -325,6 +498,8 @@ def api_analyze():
             return jsonify({
                 "error": "Select exactly one semantic model and one or more reports before analyzing.",
             }), 400
+        _state["model_paths"] = model_paths
+        _state["report_paths"] = report_paths
 
         results = analyzer.analyze(
             workspace=Path(_state["workspace"]) if _state["workspace"] else Path("."),
@@ -424,6 +599,54 @@ def api_action():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/dax", methods=["POST"])
+def api_dax():
+    """Update DAX for a measure or calculated column."""
+    try:
+        data = request.get_json(silent=True) or {}
+        model_path_str = data.get("model_path") or (_state["model_paths"][0] if _state["model_paths"] else None)
+        table = (data.get("table") or "").strip()
+        name = (data.get("name") or "").strip()
+        item_type = (data.get("item_type") or "").strip()
+        dax_expression = data.get("dax_expression")
+
+        if not model_path_str:
+            return jsonify({"error": "No model path specified"}), 400
+        if not table or not name or not item_type:
+            return jsonify({"error": "Missing required fields: table, name, item_type"}), 400
+        if item_type not in ("Measure", "Calculated Column"):
+            return jsonify({"error": "DAX editing is only supported for Measure and Calculated Column"}), 400
+        if dax_expression is None:
+            return jsonify({"error": "Missing required field: dax_expression"}), 400
+
+        model_path = Path(model_path_str)
+        if not model_path.exists():
+            return jsonify({"error": f"Model path not found: {model_path}"}), 400
+
+        if data.get("create_backup", False) and _state["backup_path"] is None:
+            _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
+
+        git_warning = tmdl_writer.check_git_dirty(model_path)
+        result = tmdl_writer.set_dax_expression(
+            model_path=model_path,
+            table=table,
+            name=name,
+            item_type=item_type,
+            dax_expression=str(dax_expression),
+        )
+
+        if not result.get("ok"):
+            return jsonify(result), 400
+
+        return jsonify({
+            "result": result,
+            "backup_path": _state["backup_path"],
+            "git_warning": git_warning,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/backup", methods=["GET"])
 def api_backup_info():
     """Get current backup info."""
@@ -454,7 +677,14 @@ def main():
 
     args = parser.parse_args()
 
-    _state["workspace"] = str(Path(args.workspace).resolve())
+    default_root = Path(_state["default_root"]).resolve()
+    _state["workspace"] = str(default_root)
+    _state["model_search_roots"] = [str(default_root)]
+    _state["report_search_roots"] = [str(default_root)]
+    if args.workspace and args.workspace != ".":
+        _state["workspace"] = str(Path(args.workspace).resolve())
+        _state["model_search_roots"] = [str(Path(args.workspace).resolve())]
+        _state["report_search_roots"] = [str(Path(args.workspace).resolve())]
     if args.models_path:
         _state["model_search_roots"] = [str(Path(p).resolve()) for p in args.models_path]
     if args.reports_path:

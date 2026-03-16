@@ -35,3 +35,58 @@ def test_delete_item_removes_empty_table_model_ref_and_relationships(tmp_path):
     assert not sales_file.exists()
     assert "ref table Sales" not in (model_path / "definition" / "model.tmdl").read_text(encoding="utf-8")
     assert (model_path / "definition" / "relationships.tmdl").read_text(encoding="utf-8").strip() == ""
+
+
+def test_set_dax_expression_updates_measure(tmp_path):
+    model_path = tmp_path / "Demo.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n"
+        "\t\tdisplayFolder: Core\n",
+        encoding="utf-8",
+    )
+
+    result = tmdl_writer.set_dax_expression(
+        model_path=model_path,
+        table="Sales",
+        name="Revenue",
+        item_type="Measure",
+        dax_expression="DIVIDE(\n    SUM(Sales[Amount]),\n    100\n)",
+    )
+
+    assert result["ok"] is True
+    content = sales_file.read_text(encoding="utf-8")
+    assert "\tmeasure Revenue = DIVIDE(" in content
+    assert "SUM(Sales[Amount])," in content
+    assert "\t\tdisplayFolder: Core" in content
+
+
+def test_set_dax_expression_updates_calculated_column(tmp_path):
+    model_path = tmp_path / "Demo.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tcolumn MarginPct\n"
+        "\t\texpression = DIVIDE(Sales[Profit], Sales[Amount])\n"
+        "\t\thidden\n",
+        encoding="utf-8",
+    )
+
+    result = tmdl_writer.set_dax_expression(
+        model_path=model_path,
+        table="Sales",
+        name="MarginPct",
+        item_type="Calculated Column",
+        dax_expression="DIVIDE(\nSales[Profit],\nSales[Amount]\n)",
+    )
+
+    assert result["ok"] is True
+    content = sales_file.read_text(encoding="utf-8")
+    assert "\t\texpression = DIVIDE(" in content
+    assert "\t\t\tSales[Profit]," in content
+    assert "\t\thidden" in content

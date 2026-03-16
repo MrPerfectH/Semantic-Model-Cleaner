@@ -281,8 +281,9 @@ def parse_hierarchies(model_path: Path) -> list[HierarchyInfo]:
 
 def _extract_nameof_targets(text: str) -> list[tuple[str, str]]:
     targets = []
+    active_text, _ = _split_dax_comments(text)
     pattern = r"NAMEOF\s*\(\s*(?:'([^']+)'|([^\[\r\n]+?))\s*\[([^\]]+)\]\s*\)"
-    for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+    for match in re.finditer(pattern, active_text, flags=re.IGNORECASE):
         table = (match.group(1) or match.group(2) or "").strip().strip("'\"")
         name = match.group(3).strip()
         if table and name:
@@ -409,6 +410,7 @@ def resolve_field_parameter_targets(
     for info in field_parameters:
         resolved_targets = []
         seen_keys = set()
+        unresolved_targets = set()
 
         for target_table, target_name in info.targets:
             matches = item_index.get(normalize_key(target_table, target_name), [])
@@ -418,9 +420,20 @@ def resolve_field_parameter_targets(
                     resolved_targets.append(match)
                     seen_keys.add(match.key)
             elif len(matches) == 0:
-                # Ignore unresolved NAMEOF targets. In practice these can point at
-                # helper/function-like constructs that are not cleanup candidates.
-                # We still protect real model items via DAX dependency analysis.
+                unresolved_key = normalize_key(target_table, target_name)
+                if unresolved_key not in unresolved_targets:
+                    unresolved_targets.add(unresolved_key)
+                    _add_warning(
+                        warnings,
+                        "UNRESOLVED_NAMEOF_TARGET",
+                        (
+                            f"NAMEOF target {target_table}[{target_name}] from field parameter table "
+                            f"{info.table} does not resolve to a model item."
+                        ),
+                        model=model_name,
+                        table=info.table,
+                        source_file=info.source_file,
+                    )
                 continue
             else:
                 match_types = ", ".join(sorted(item.item_type for item in matches))
@@ -621,17 +634,20 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
             continue
 
         # Column declaration at 1-tab
-        c = re.match(r"^\tcolumn\s+'([^']+)'\s*$", line) or \
+        c = re.match(r"^\tcolumn\s+'([^']+)'\s*=\s*(.*)$", line) or \
+            re.match(r"^\tcolumn\s+(.+?)\s*=\s*(.*)$", line) or \
+            re.match(r"^\tcolumn\s+'([^']+)'\s*$", line) or \
             re.match(r"^\tcolumn\s+(.+?)\s*$", line)
         if c:
             name = c.group(1).strip().strip("'")
-            is_calculated = False
+            first_dax = c.group(2).strip() if c.lastindex and c.lastindex >= 2 and c.group(2) is not None else ""
+            is_calculated = bool(first_dax)
             display_folder = ""
             is_hidden = False
             is_key = False
             is_inferred = False
             sort_by_column = ""
-            dax_lines = []
+            dax_lines = [first_dax] if first_dax else []
             i += 1
 
             while i < len(lines):
@@ -1293,6 +1309,18 @@ def _extract_dax_unqualified_refs_from_text(text: str) -> set[str]:
     return refs
 
 
+def _extract_dax_table_refs_from_text(text: str) -> set[str]:
+    refs = set()
+    for m in re.finditer(r"'([^']+)'", text):
+        end = m.end()
+        while end < len(text) and text[end].isspace():
+            end += 1
+        if end < len(text) and text[end] == "[":
+            continue
+        refs.add(m.group(1))
+    return refs
+
+
 def _extract_dax_qualified_refs(dax_body: str) -> set[tuple[str, str]]:
     """Extract qualified refs: 'Table'[Name] and Table[Name]."""
     active_dax, _ = _split_dax_comments(dax_body)
@@ -1305,12 +1333,81 @@ def _extract_dax_unqualified_refs(dax_body: str) -> set[str]:
     return _extract_dax_unqualified_refs_from_text(active_dax)
 
 
+def _extract_dax_table_refs(dax_body: str) -> set[str]:
+    """Extract bare table refs: e.g. COUNTROWS('Table')."""
+    active_dax, _ = _split_dax_comments(dax_body)
+    return _extract_dax_table_refs_from_text(active_dax)
+
+
 def extract_dax_commented_refs(dax_body: str) -> set[str]:
     """Extract item-like refs found only in DAX comments for diagnostics."""
     _, comments = _split_dax_comments(dax_body)
     refs = {f"{table}[{name}]" for table, name in _extract_dax_qualified_refs_from_text(comments)}
     refs |= {f"[{name}]" for name in _extract_dax_unqualified_refs_from_text(comments)}
+    refs |= {f"{table}" for table in _extract_dax_table_refs_from_text(comments)}
     return refs
+
+
+def find_broken_dax_references(items: list[ModelItem]) -> dict[tuple[str, str], list[dict[str, str]]]:
+    """Return item_key -> structured unresolved DAX refs for measures/calc columns."""
+    existing_keys = {normalize_key(*item.key) for item in items}
+    same_table_column_keys = {
+        normalize_key(item.table, item.name)
+        for item in items
+        if item.item_type in ("Column", "Calculated Column")
+    }
+    measure_names = {item.name.casefold() for item in items if item.item_type == "Measure"}
+    table_names = {item.table.casefold() for item in items}
+    broken_refs: dict[tuple[str, str], list[dict[str, str]]] = {}
+
+    for item in items:
+        if item.item_type not in ("Measure", "Calculated Column") or not item.dax_body:
+            continue
+
+        missing: dict[tuple[str, str], dict[str, str]] = {}
+        for tbl, name in _extract_dax_qualified_refs(item.dax_body):
+            if normalize_key(tbl, name) not in existing_keys:
+                ref_text = format_item_ref((tbl, name))
+                table_exists = tbl.casefold() in table_names
+                missing[("column", ref_text.casefold())] = {
+                    "kind": "column",
+                    "ref": ref_text,
+                    "message": (
+                        f"Missing column: {ref_text}" if table_exists
+                        else f"Missing column (table not found): {ref_text}"
+                    ),
+                }
+
+        for name in _extract_dax_unqualified_refs(item.dax_body):
+            if item.item_type == "Calculated Column":
+                same_table_key = normalize_key(item.table, name)
+                if same_table_key not in same_table_column_keys and name.casefold() not in measure_names:
+                    ref_text = f"[{name}]"
+                    missing[("unqualified", ref_text.casefold())] = {
+                        "kind": "unqualified",
+                        "ref": ref_text,
+                        "message": f"Missing same-table column or measure: {ref_text}",
+                    }
+            elif name.casefold() not in measure_names:
+                ref_text = f"[{name}]"
+                missing[("measure", ref_text.casefold())] = {
+                    "kind": "measure",
+                    "ref": ref_text,
+                    "message": f"Missing measure: {ref_text}",
+                }
+
+        for table_name in _extract_dax_table_refs(item.dax_body):
+            if table_name.casefold() not in table_names:
+                missing[("table", table_name.casefold())] = {
+                    "kind": "table",
+                    "ref": table_name,
+                    "message": f"Missing table: {table_name}",
+                }
+
+        if missing:
+            broken_refs[item.key] = sorted(missing.values(), key=lambda x: x["ref"].casefold())
+
+    return broken_refs
 
 
 def build_dax_dependency_graph(items: list[ModelItem]) -> dict[tuple[str, str], set[tuple[str, str]]]:
@@ -1338,6 +1435,10 @@ def build_dax_dependency_graph(items: list[ModelItem]) -> dict[tuple[str, str], 
         deps[item.key] = refs
 
     return deps
+
+
+def is_used_status(status: str) -> bool:
+    return status.startswith("USED") or status.startswith("INDIRECT")
 
 
 def build_dax_column_deps(items: list[ModelItem]) -> dict[tuple[str, str], set[tuple[str, str]]]:
@@ -1481,6 +1582,7 @@ def build_table_summaries(
     all_usages: list[UsageRef],
     relationship_details: list[RelationshipInfo],
     dax_column_deps: dict[tuple[str, str], set[tuple[str, str]]],
+    field_parameter_issues: dict[str, list[str]] | None = None,
 ) -> list[dict]:
     rows_by_table: dict[str, list[dict]] = defaultdict(list)
     usage_by_table: dict[str, list[UsageRef]] = defaultdict(list)
@@ -1499,6 +1601,8 @@ def build_table_summaries(
 
     tables = sorted(rows_by_table.keys(), key=str.casefold)
     summaries = []
+
+    field_parameter_issues = field_parameter_issues or {}
 
     for table in tables:
         rows = rows_by_table[table]
@@ -1525,7 +1629,7 @@ def build_table_summaries(
             status = row["status"]
             if item.is_hidden:
                 hidden_count += 1
-            if status != "NOT USED":
+            if is_used_status(status):
                 used_count += 1
             if item.item_type == "Measure":
                 measure_count += 1
@@ -1552,6 +1656,8 @@ def build_table_summaries(
                 "status": status,
                 "removal_risk": row.get("removal_risk", "") or None,
                 "review_triggers": row.get("review_triggers", []),
+                "broken_dax_refs": row.get("broken_dax_refs", []),
+                "broken_dax_ref_details": row.get("broken_dax_ref_details", []),
                 "usage_count": len(row["usages"]),
             })
 
@@ -1623,6 +1729,12 @@ def build_table_summaries(
             noun = "column" if count == 1 else "columns"
             signals.append(f"{count} {noun} are only used for relationships.")
 
+        table_fp_issues = field_parameter_issues.get(table, [])
+        if table_fp_issues:
+            count = len(table_fp_issues)
+            noun = "target" if count == 1 else "targets"
+            signals.insert(0, f"Broken field parameter: {count} unresolved NAMEOF {noun}.")
+
         if single_column_measures:
             count = len(single_column_measures)
             noun = "measure" if count == 1 else "measures"
@@ -1659,6 +1771,7 @@ def build_table_summaries(
             "single_column_measures": single_column_measures,
             "relationships": relationship_items,
             "signals": signals,
+            "field_parameter_issues": table_fp_issues,
             "items": items_in_table,
         })
 
@@ -1780,6 +1893,7 @@ def analyze(
     # ── DAX dependencies ──
     dax_deps = build_dax_dependency_graph(all_items)
     dax_col_deps = build_dax_column_deps(all_items)
+    broken_dax_refs = find_broken_dax_references(all_items)
 
     directly_used_measures = set()
     directly_used_keys = set()
@@ -1850,7 +1964,11 @@ def analyze(
         is_hierarchy_col = nkey in hierarchy_col_keys
         is_sort_target = nkey in sort_by_map
 
-        if has_direct_usage:
+        if item.key in broken_dax_refs:
+            count = len(broken_dax_refs[item.key])
+            noun = "ref" if count == 1 else "refs"
+            status = f"BROKEN ({count} missing {noun})"
+        elif has_direct_usage:
             status = "USED"
         elif field_parameter_tables:
             parameter_tables = ", ".join(sorted(field_parameter_tables, key=str.casefold))
@@ -1889,7 +2007,10 @@ def analyze(
 
         # ── Removal risk ──
         review_triggers: list[str] = []
-        if status != "NOT USED":
+        if item.key in broken_dax_refs:
+            removal_risk = ""
+            review_triggers.extend([detail["message"] for detail in broken_dax_refs[item.key]])
+        elif status != "NOT USED":
             removal_risk = ""
         elif item.is_inferred:
             removal_risk = "Do not remove"
@@ -1923,14 +2044,22 @@ def analyze(
             "usages": usages,
             "removal_risk": removal_risk,
             "review_triggers": review_triggers,
+            "broken_dax_refs": [detail["ref"] for detail in broken_dax_refs.get(item.key, [])],
+            "broken_dax_ref_details": broken_dax_refs.get(item.key, []),
         })
 
     # ── Table-level summary ──
+    field_parameter_issues_by_table: dict[str, list[str]] = defaultdict(list)
+    for warning in warnings:
+        if warning.code in ("UNRESOLVED_NAMEOF_TARGET", "AMBIGUOUS_NAMEOF_TARGET") and warning.table:
+            field_parameter_issues_by_table[warning.table].append(warning.message)
+
     table_summaries = build_table_summaries(
         results,
         all_usages,
         all_relationship_details,
         dax_col_deps,
+        {table: sorted(set(messages), key=str.casefold) for table, messages in field_parameter_issues_by_table.items()},
     )
 
     table_stats: dict[str, dict] = defaultdict(lambda: {
@@ -1941,7 +2070,7 @@ def analyze(
     for r in results:
         tbl = r["item"].table
         is_measure = r["item"].item_type == "Measure"
-        is_used = r["status"] != "NOT USED"
+        is_used = is_used_status(r["status"])
         table_stats[tbl]["total"] += 1
         if is_used:
             table_stats[tbl]["used"] += 1
@@ -1971,6 +2100,7 @@ def analyze(
         "used_hierarchy": sum(1 for r in results if "Hierarchy" in r["status"]),
         "used_sort_column": sum(1 for r in results if "Sort Column" in r["status"]),
         "indirect": sum(1 for r in results if r["status"].startswith("INDIRECT")),
+        "broken": sum(1 for r in results if r["status"].startswith("BROKEN")),
         "not_used": sum(1 for r in results if r["status"] == "NOT USED"),
         "total_usage_refs": len(all_usages),
         "models": [m.name for m in models],
@@ -2038,6 +2168,7 @@ def format_full(results: dict) -> str:
     lines.append(f"| Used in hierarchy | {s['used_hierarchy']} |")
     lines.append(f"| Used as sort column | {s['used_sort_column']} |")
     lines.append(f"| Indirectly used (via DAX) | {s['indirect']} |")
+    lines.append(f"| Broken DAX items | {s.get('broken', 0)} |")
     lines.append(f"| **Not used** | **{s['not_used']}** |")
     lines.append(f"| Total usage references | {s['total_usage_refs']} |")
     lines.append("")
@@ -2064,12 +2195,14 @@ def format_full(results: dict) -> str:
 
     def sort_key(r):
         st = r["status"]
-        if st.startswith("INDIRECT"):
-            order = 1
-        elif st == "NOT USED":
+        if st.startswith("BROKEN"):
             order = 0
-        else:
+        elif st == "NOT USED":
+            order = 1
+        elif st.startswith("INDIRECT"):
             order = 2
+        else:
+            order = 3
         return (order, r["item"].table, r["item"].name)
 
     for r in sorted(results["items"], key=sort_key):
@@ -2167,8 +2300,10 @@ def format_json_output(results: dict) -> str:
             "sortByColumn": r["item"].sort_by_column or None,
             "status": r["status"],
             "removalRisk": r.get("removal_risk", "") or None,
-            "reviewTriggers": r.get("review_triggers", []),
-            "usages": [
+                "reviewTriggers": r.get("review_triggers", []),
+                "brokenDaxRefs": r.get("broken_dax_refs", []),
+                "brokenDaxRefDetails": r.get("broken_dax_ref_details", []),
+                "usages": [
                 {
                     "report": u.report,
                     "page": u.page,
@@ -2265,10 +2400,11 @@ def format_xlsx(results: dict, output_path: str, announce: bool = True) -> None:
     row += 2
     _section_banner(ws_sum, row, "Overall Metrics", 2)
     total_items = s["total_measures"] + s["total_columns"]
-    total_used = total_items - s["not_used"]
+    total_used = total_items - s["not_used"] - s.get("broken", 0)
     overall_metrics = [
         ("Total items", total_items),
         ("Total used", total_used),
+        ("Broken DAX items", s.get("broken", 0)),
         ("Total unused", s["not_used"]),
         ("Usage references", s["total_usage_refs"]),
     ]
@@ -2281,7 +2417,7 @@ def format_xlsx(results: dict, output_path: str, announce: bool = True) -> None:
     _section_banner(ws_sum, row, "Measures", 2)
     measures_used = sum(
         1 for r in results["items"]
-        if r["item"].item_type == "Measure" and r["status"] != "NOT USED"
+        if r["item"].item_type == "Measure" and is_used_status(r["status"])
     )
     measures_unused = s["total_measures"] - measures_used
     measure_metrics = [
@@ -2299,7 +2435,7 @@ def format_xlsx(results: dict, output_path: str, announce: bool = True) -> None:
     _section_banner(ws_sum, row, "Columns", 2)
     columns_used = sum(
         1 for r in results["items"]
-        if r["item"].item_type in ("Column", "Calculated Column") and r["status"] != "NOT USED"
+        if r["item"].item_type in ("Column", "Calculated Column") and is_used_status(r["status"])
     )
     columns_unused = s["total_columns"] - columns_used
     column_metrics = [
