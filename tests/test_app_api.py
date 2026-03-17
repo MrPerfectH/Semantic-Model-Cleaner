@@ -145,11 +145,26 @@ def _fake_column_results():
 
 
 def test_index_renders_packaged_template():
+    web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="stable")
     client = web_app.app.test_client()
     response = client.get("/")
 
     assert response.status_code == 200
     assert b"Semantic Model Cleaner" in response.data
+
+
+def test_index_shows_beta_banner_when_runtime_enabled():
+    web_app._state["runtime"] = web_app.experiments.runtime_config(
+        raw_channel="beta",
+        extra_experiments=["compare-models"],
+    )
+
+    client = web_app.app.test_client()
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"Beta channel enabled" in response.data
+    assert b"Model Compare" in response.data
     assert b"UI build identifier" in response.data
 
 

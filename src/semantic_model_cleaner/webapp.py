@@ -19,7 +19,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
 
-from . import __version__, analyzer, tmdl_writer
+from . import __version__, analyzer, experiments, tmdl_writer
 
 app = Flask(__name__)
 
@@ -29,6 +29,7 @@ _state = {
     "workspace": None,
     "model_search_roots": None,
     "report_search_roots": None,
+    "runtime": experiments.runtime_config(),
     "last_results": None,
     "model_paths": [],
     "report_paths": [],
@@ -444,6 +445,7 @@ def index():
         "index.html",
         build_stamp=_build_stamp(),
         default_root=_state.get("workspace") or str(_default_workspace_root()),
+        runtime=_state.get("runtime") or experiments.runtime_config(),
         initial_models=[{"path": str(m), "name": m.name.replace(".SemanticModel", "")} for m in selected_models],
         initial_reports=[{"path": str(r), "name": analyzer.report_display_name(r)} for r in selected_reports],
     )
@@ -710,9 +712,16 @@ def main():
                         help="Host to bind to (default: 127.0.0.1)")
     parser.add_argument("--debug", action="store_true",
                         help="Enable Flask debug mode and auto-reload")
+    parser.add_argument(
+        "--experimental",
+        action="append",
+        default=[],
+        help="Enable an experimental feature key such as compare-models",
+    )
 
     args = parser.parse_args()
 
+    _state["runtime"] = experiments.runtime_config(extra_experiments=args.experimental)
     configure_runtime(
         workspace=args.workspace,
         models_path=args.models_path,
