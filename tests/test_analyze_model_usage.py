@@ -5,6 +5,7 @@ from semantic_model_cleaner import analyzer
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+PUBLIC_DEMO_DIR = Path(__file__).resolve().parents[1] / "examples" / "public-demo-workspace"
 
 
 def _analyze_fixture(name: str) -> dict:
@@ -33,6 +34,19 @@ def test_field_parameter_targets_are_marked_used():
     assert margin["status"] == "USED (Field Parameter: Metric Parameter)"
     assert [u.context for u in revenue["usages"]] == ["Field Parameter"]
     assert [u.context for u in margin["usages"]] == ["Field Parameter"]
+
+
+def test_public_demo_workspace_analyzes_cleanly():
+    results = analyzer.analyze(PUBLIC_DEMO_DIR.resolve())
+
+    revenue = _find_item(results, "Sales", "Revenue", "Measure")
+    margin = _find_item(results, "Sales", "Margin %", "Measure")
+
+    assert results["summary"]["models"] == ["TestModel.SemanticModel"]
+    assert results["summary"]["reports"] == ["TestReport"]
+    assert revenue["status"] == "USED (Field Parameter: Metric Parameter)"
+    assert margin["status"] == "USED (Field Parameter: Metric Parameter)"
+    assert results["warnings"] == []
 
 
 def test_unused_field_parameter_table_does_not_promote_targets():

@@ -7,6 +7,8 @@ __pycache__/
 .coverage
 .DS_Store
 .venv/
+build/
+dist/
 *.code-workspace
 *_usage_analysis.xlsx
 *_usage_analysis.json
