@@ -1,34 +1,35 @@
 # Contributing
 
-This repository is maintained for internal team use.
+Thanks for contributing to Semantic Model Cleaner.
 
-## Setup
+## Development Setup
 
-Runtime only:
-
-```bash
-pip install -r requirements.txt
-```
-
-Development setup:
+Install the project in editable mode with development dependencies:
 
 ```bash
-pip install -r requirements-dev.txt
+python -m pip install -e .[dev]
 ```
 
-## Run the tool
+## Running the Tool
 
 CLI analyzer:
 
 ```bash
-python3 scripts/analyze_model_usage.py . --format full
-python3 scripts/analyze_model_usage.py . --format json -o analysis.json
-python3 scripts/analyze_model_usage.py . --format xlsx -o analysis.xlsx
+semantic-model-cleaner . --format full
+semantic-model-cleaner . --format json -o analysis.json
+semantic-model-cleaner . --format xlsx -o analysis.xlsx
 ```
 
-Web app:
+Local web app:
 
 ```bash
+semantic-model-cleaner-web .
+```
+
+Compatibility wrappers still work from a clone:
+
+```bash
+python3 scripts/analyze_model_usage.py .
 python3 scripts/app.py .
 ```
 
@@ -46,8 +47,21 @@ Run lint:
 python3 -m ruff check .
 ```
 
-## Repo hygiene
+Build distributions:
 
-- Do not commit generated analysis exports such as `*_usage_analysis.json` or `*_usage_analysis.xlsx`.
-- Do not commit personal editor workspace files such as `*.code-workspace`.
-- Do not commit Python cache artifacts such as `__pycache__/` or `*.pyc`.
+```bash
+python3 -m build
+```
+
+## Contribution Expectations
+
+- Keep changes scoped to a single concern when possible
+- Add or update tests for behavior changes
+- Preserve the local-first workflow and avoid introducing hosted-service assumptions
+- Document user-visible behavior changes in the README when they affect setup or usage
+
+## Repo Hygiene
+
+- Do not commit generated analysis exports such as `*_usage_analysis.json` or `*_usage_analysis.xlsx`
+- Do not commit personal editor workspace files such as `*.code-workspace`
+- Do not commit Python cache or build artifacts such as `__pycache__/`, `*.pyc`, `dist/`, or `build/`

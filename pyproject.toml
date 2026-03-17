@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,14 +7,35 @@ name = "semantic-model-cleaner"
 version = "0.1.0"
 description = "Analyze Power BI PBIR + TMDL projects and apply semantic model cleanup actions locally."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
+keywords = ["power-bi", "pbir", "tmdl", "semantic-model", "cli", "flask"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Framework :: Flask",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "flask>=3.1,<4",
     "openpyxl>=3.1,<4",
 ]
 
+[project.urls]
+Homepage = "https://github.com/MrPerfectH/Semantic-Model-Cleaner"
+Repository = "https://github.com/MrPerfectH/Semantic-Model-Cleaner"
+Issues = "https://github.com/MrPerfectH/Semantic-Model-Cleaner/issues"
+
 [project.optional-dependencies]
 dev = [
+    "build>=1.2,<2",
     "pytest>=9,<10",
     "ruff>=0.11,<1",
 ]

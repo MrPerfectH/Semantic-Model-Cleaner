@@ -29,7 +29,6 @@ _state = {
     "workspace": None,
     "model_search_roots": None,
     "report_search_roots": None,
-    "default_root": r"C:\Projects\TURBO\Enterprise Reporting",
     "last_results": None,
     "model_paths": [],
     "report_paths": [],
@@ -56,6 +55,11 @@ def _normalize_browse_path(raw: str) -> str:
     if _WINDOWS_DRIVE_PATH.match(path):
         path = path[:2] + "\\" + path[2:].lstrip("\\")
     return path
+
+
+def _default_workspace_root() -> Path:
+    """Use the current working directory as the local-first default root."""
+    return Path.cwd().resolve()
 
 
 def _extract_tmdl_table_source_details(model_path: Path | None) -> dict[str, str]:
@@ -141,7 +145,7 @@ def _table_usage_status(table_summary: dict) -> str:
 def _ensure_default_workspace_config() -> None:
     if _state["workspace"]:
         return
-    default_root = Path(_state["default_root"]).resolve()
+    default_root = _default_workspace_root()
     _state["workspace"] = str(default_root)
     if not _state["model_search_roots"]:
         _state["model_search_roots"] = [str(default_root)]
@@ -170,11 +174,6 @@ def _discover_initial_artifacts() -> tuple[list[Path], list[Path]]:
 def _default_model_selection(models: list[Path]) -> list[Path]:
     if not models:
         return []
-    preferred_names = ["LINDEN.SemanticModel", "Linden.SemanticModel"]
-    for preferred in preferred_names:
-        match = next((m for m in models if m.name == preferred), None)
-        if match:
-            return [match]
     return [models[0]]
 
 
@@ -407,7 +406,7 @@ def index():
     return render_template(
         "index.html",
         build_stamp=_build_stamp(),
-        default_root=_state.get("default_root") or "",
+        default_root=_state.get("workspace") or str(_default_workspace_root()),
         initial_models=[{"path": str(m), "name": m.name.replace(".SemanticModel", "")} for m in selected_models],
         initial_reports=[{"path": str(r), "name": analyzer.report_display_name(r)} for r in selected_reports],
     )
@@ -677,7 +676,7 @@ def main():
 
     args = parser.parse_args()
 
-    default_root = Path(_state["default_root"]).resolve()
+    default_root = _default_workspace_root()
     _state["workspace"] = str(default_root)
     _state["model_search_roots"] = [str(default_root)]
     _state["report_search_roots"] = [str(default_root)]

@@ -1,64 +1,72 @@
 # Semantic Model Cleaner
 
-Internal tool for analyzing Power BI PBIR + TMDL projects, finding unused semantic model items across selected reports, and applying cleanup actions locally.
+Semantic Model Cleaner analyzes Power BI PBIR + TMDL projects, shows which semantic model items appear to be unused across selected reports, and lets you apply cleanup actions locally.
 
-## Repo Status
+It is designed for local use against files on your machine. The current release target is early-stage open source for Power BI practitioners who already work with PBIR and TMDL.
 
-- Intended audience: internal team using a private GitHub repo
-- Current shape: installable Python package with CLI plus local Flask web app
-- Entry points: `semantic-model-cleaner`, `semantic-model-cleaner-web`, `smc`, and `smc-web`
+## Current Status
+
+- Project maturity: early-stage `0.x`
+- Runtime shape: Python package with a CLI plus a local web UI
+- Stable entry points: `semantic-model-cleaner`, `semantic-model-cleaner-web`, `smc`, and `smc-web`
+- Roadmap: public Windows packaging, beta feature isolation, and a public landing site
 
 ## What It Does
 
 - Scans exactly one `.SemanticModel` and one or more `.Report` folders
-- Detects direct report usage plus supported indirect/model-backed usage
+- Detects direct report usage plus supported indirect or model-backed usage
 - Surfaces warnings for unresolved or ambiguous dynamic references
-- Lets you review results in a local web UI and apply cleanup actions safely
+- Lets you review analysis results in a local web UI
+- Supports local cleanup actions such as move to folder, hide/unhide, and delete
 
-## Python Requirement
+## What It Does Not Do
+
+- It does not host or publish reports for you
+- It does not currently package a one-click Windows executable
+- It does not yet cover every Power BI metadata edge case
+
+## Requirements
 
 - Python `3.11+`
 
-## Setup
+## Install
 
-Runtime only:
+Runtime install:
 
 ```bash
 python -m pip install .
 ```
 
-Development setup:
+Development install:
 
 ```bash
 python -m pip install -e .[dev]
 ```
 
-## Analysis Surfaces
+## Quick Start
 
-### CLI analyzer
+### CLI
 
-The analyzer supports:
-
-- `--format full`
-- `--format unused`
-- `--format json`
-- `--format xlsx`
-
-Examples:
+Run the analyzer from a workspace root:
 
 ```bash
 semantic-model-cleaner . --format full
+```
+
+Export JSON or Excel:
+
+```bash
 semantic-model-cleaner . --format json -o analysis.json
 semantic-model-cleaner . --format xlsx -o analysis.xlsx
 ```
 
-Short aliases:
+Short alias:
 
 ```bash
 smc . --format full
 ```
 
-You can also use explicit paths:
+Use explicit paths when your model and report roots are separate:
 
 ```bash
 semantic-model-cleaner \
@@ -67,23 +75,15 @@ semantic-model-cleaner \
   --format unused
 ```
 
-Compatibility note:
-
-```bash
-python3 scripts/analyze_model_usage.py .
-```
-
-still works from a cloned repo, but the packaged command is now the preferred entrypoint.
-
 Module entrypoint:
 
 ```bash
 python3 -m semantic_model_cleaner . --format full
 ```
 
-### Web app
+### Local Web UI
 
-Start the local UI:
+Start the web app:
 
 ```bash
 semantic-model-cleaner-web .
@@ -95,14 +95,7 @@ Short alias:
 smc-web .
 ```
 
-Open `http://127.0.0.1:5001`.
-
-The web app supports:
-
-- browse/select model and reports
-- analyze and review results
-- export the latest analysis as `json` or `xlsx`
-- apply cleanup actions such as move to folder, hide/unhide, and delete
+Then open `http://127.0.0.1:5001`.
 
 Optional flags:
 
@@ -118,24 +111,21 @@ Module entrypoint:
 python3 -m semantic_model_cleaner.web .
 ```
 
+## Demo Workspace
+
+A small synthetic demo workspace is available under [`examples/public-demo-workspace`](examples/public-demo-workspace). It exists to support screenshots, quick validation, and safe public examples.
+
 ## Supported Exports
 
-### CLI exports
-
-- `json`
-- `xlsx`
-
-### Web UI exports
-
-- `Export JSON`
-- `Export Excel`
+- CLI: `json`, `xlsx`
+- Web UI: `Export JSON`, `Export Excel`
 
 Both web exports download the latest completed analysis without re-running it.
 
 ## Safety Notes
 
 - The workflow is intentionally `1 semantic model -> 1 or more reports`
-- The app creates a backup before destructive edits when requested
+- The app can create a backup before destructive edits when requested
 - Field parameters backed by `NAMEOF(...)` are supported
 - Remaining caveats include calculation groups, broader metadata indirection, and malformed or skipped JSON
 
@@ -153,16 +143,26 @@ Run lint:
 python3 -m ruff check .
 ```
 
-## Repo Layout
+Build distributions:
+
+```bash
+python3 -m build
+```
+
+## Repository Layout
 
 - `src/semantic_model_cleaner/analyzer.py`: CLI analyzer and export logic
 - `src/semantic_model_cleaner/webapp.py`: Flask app and API
 - `src/semantic_model_cleaner/tmdl_writer.py`: TMDL edit engine
 - `src/semantic_model_cleaner/templates/index.html`: single-page web UI template
+- `examples/public-demo-workspace/`: synthetic example workspace
 - `scripts/analyze_model_usage.py`: compatibility wrapper for the packaged CLI
-- `scripts/analyze_model_usage.README.md`: analyzer-specific behavior and limits
 - `scripts/app.py`: compatibility wrapper for the packaged web app
 - `tests/`: automated tests and fixtures
+
+## Contributing
+
+Contribution guidance is documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
@@ -171,3 +171,10 @@ Planned follow-up work is tracked in [BACKLOG.md](BACKLOG.md).
 ## More Detail
 
 Analyzer-specific usage and caveats are documented in [scripts/analyze_model_usage.README.md](scripts/analyze_model_usage.README.md).
+
+## Community & Support
+
+- License: [MIT](/Users/przemek.harazny/Projects/GitHub/smc-foundation/LICENSE)
+- Code of Conduct: [CODE_OF_CONDUCT.md](/Users/przemek.harazny/Projects/GitHub/smc-foundation/CODE_OF_CONDUCT.md)
+- Security reporting: [SECURITY.md](/Users/przemek.harazny/Projects/GitHub/smc-foundation/SECURITY.md)
+- Issues and discussions are monitored on the public [GitHub repository](https://github.com/MrPerfectH/Semantic-Model-Cleaner).

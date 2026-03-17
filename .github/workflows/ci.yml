@@ -31,3 +31,7 @@ jobs:
 
       - name: Test
         run: python -m pytest
+
+      - name: Build distributions
+        if: matrix.python-version == '3.11'
+        run: python -m build
