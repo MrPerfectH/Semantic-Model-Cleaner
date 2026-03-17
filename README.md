@@ -174,7 +174,7 @@ Analyzer-specific usage and caveats are documented in [scripts/analyze_model_usa
 
 ## Community & Support
 
-- License: [MIT](/Users/przemek.harazny/Projects/GitHub/smc-foundation/LICENSE)
-- Code of Conduct: [CODE_OF_CONDUCT.md](/Users/przemek.harazny/Projects/GitHub/smc-foundation/CODE_OF_CONDUCT.md)
-- Security reporting: [SECURITY.md](/Users/przemek.harazny/Projects/GitHub/smc-foundation/SECURITY.md)
+- License: [MIT](LICENSE)
+- Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- Security reporting: [SECURITY.md](SECURITY.md)
 - Issues and discussions are monitored on the public [GitHub repository](https://github.com/MrPerfectH/Semantic-Model-Cleaner).
