@@ -26,6 +26,7 @@ classifiers = [
 dependencies = [
     "flask>=3.1,<4",
     "openpyxl>=3.1,<4",
+    "waitress>=3.0,<4",
 ]
 
 [project.urls]
@@ -36,6 +37,7 @@ Issues = "https://github.com/MrPerfectH/Semantic-Model-Cleaner/issues"
 [project.optional-dependencies]
 dev = [
     "build>=1.2,<2",
+    "pyinstaller>=6.14,<7",
     "pytest>=9,<10",
     "ruff>=0.11,<1",
 ]
@@ -43,8 +45,10 @@ dev = [
 [project.scripts]
 semantic-model-cleaner = "semantic_model_cleaner.cli:main"
 semantic-model-cleaner-web = "semantic_model_cleaner.webapp:main"
+semantic-model-cleaner-desktop = "semantic_model_cleaner.windows_launcher:main"
 smc = "semantic_model_cleaner.cli:main"
 smc-web = "semantic_model_cleaner.web:main"
+smc-desktop = "semantic_model_cleaner.windows_launcher:main"
 
 [tool.setuptools]
 include-package-data = true

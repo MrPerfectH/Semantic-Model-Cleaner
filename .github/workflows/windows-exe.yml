@@ -1,0 +1,63 @@
+name: Windows EXE
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/windows-exe.yml"
+      - "packaging/windows/**"
+      - "pyproject.toml"
+      - "src/semantic_model_cleaner/**"
+      - "tests/**"
+  release:
+    types: [published, prereleased]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Determine package version
+        id: version
+        shell: pwsh
+        run: |
+          $version = python -c "from semantic_model_cleaner import __version__; print(__version__)"
+          "version=$($version.Trim())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Run lint
+        run: python -m ruff check .
+
+      - name: Run tests
+        run: python -m pytest
+
+      - name: Build Windows package
+        shell: pwsh
+        run: ./packaging/windows/build.ps1
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: semantic-model-cleaner-windows-x64
+          path: dist/semantic-model-cleaner-windows-x64-${{ steps.version.outputs.version }}.zip
+
+      - name: Attach asset to GitHub release
+        if: github.event_name == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/semantic-model-cleaner-windows-x64-${{ steps.version.outputs.version }}.zip --clobber
