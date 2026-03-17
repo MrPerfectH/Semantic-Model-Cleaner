@@ -179,6 +179,14 @@ Build the Windows package locally:
 pwsh -File packaging/windows/build.ps1
 ```
 
+## Stable vs Beta
+
+- The default `SMC_RELEASE_CHANNEL` is `stable`. Set `SMC_RELEASE_CHANNEL=beta` or `SMC_RELEASE_CHANNEL=prerelease` to exercise the beta UI that surfaces experimental flows and prerelease messaging.
+- Enable one or more experiments with `SMC_EXPERIMENTS=compare-models` (comma-separated for multiple keys). The web UI also accepts `--experimental compare-models` when you launch `semantic-model-cleaner-web`.
+- Stable releases hide beta banners and extra UI; beta/prerelease builds show a `Beta` banner and list the active experiments so users know they are on a fast-moving channel.
+
+See `tests/test_experiments.py` for the supported experiment keys and release-channel logic.
+
 ## Repository Layout
 
 - `src/semantic_model_cleaner/analyzer.py`: CLI analyzer and export logic
