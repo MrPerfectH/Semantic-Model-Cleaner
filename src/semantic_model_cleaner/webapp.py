@@ -177,6 +177,43 @@ def _default_model_selection(models: list[Path]) -> list[Path]:
     return [models[0]]
 
 
+def configure_runtime(
+    *,
+    workspace: str = ".",
+    models_path: list[str] | None = None,
+    reports_path: list[str] | None = None,
+) -> None:
+    root = _default_workspace_root()
+    _state["workspace"] = str(root)
+    _state["model_search_roots"] = [str(root)]
+    _state["report_search_roots"] = [str(root)]
+
+    if workspace and workspace != ".":
+        selected_root = str(Path(workspace).resolve())
+        _state["workspace"] = selected_root
+        _state["model_search_roots"] = [selected_root]
+        _state["report_search_roots"] = [selected_root]
+
+    if models_path:
+        _state["model_search_roots"] = [str(Path(p).resolve()) for p in models_path]
+    if reports_path:
+        _state["report_search_roots"] = [str(Path(p).resolve()) for p in reports_path]
+
+
+def print_startup_banner(host: str, port: int, *, debug: bool, mode: str = "web") -> None:
+    print("\n  Semantic Model Cleaner")
+    print("  ─────────────────────")
+    print(f"  Mode      : {mode}")
+    print(f"  Workspace : {_state['workspace']}")
+    if _state["model_search_roots"]:
+        print(f"  Models    : {', '.join(_state['model_search_roots'])}")
+    if _state["report_search_roots"]:
+        print(f"  Reports   : {', '.join(_state['report_search_roots'])}")
+    print(f"  URL       : http://{host}:{port}")
+    print(f"  Debug     : {'on' if debug else 'off'}")
+    print()
+
+
 def _serialize_results(results: dict) -> dict:
     """Serialize analyzer results for JSON API responses."""
     items_by_key = {r["item"].key: r["item"] for r in results["items"]}
@@ -676,29 +713,12 @@ def main():
 
     args = parser.parse_args()
 
-    default_root = _default_workspace_root()
-    _state["workspace"] = str(default_root)
-    _state["model_search_roots"] = [str(default_root)]
-    _state["report_search_roots"] = [str(default_root)]
-    if args.workspace and args.workspace != ".":
-        _state["workspace"] = str(Path(args.workspace).resolve())
-        _state["model_search_roots"] = [str(Path(args.workspace).resolve())]
-        _state["report_search_roots"] = [str(Path(args.workspace).resolve())]
-    if args.models_path:
-        _state["model_search_roots"] = [str(Path(p).resolve()) for p in args.models_path]
-    if args.reports_path:
-        _state["report_search_roots"] = [str(Path(p).resolve()) for p in args.reports_path]
-
-    print("\n  Semantic Model Cleaner")
-    print("  ─────────────────────")
-    print(f"  Workspace : {_state['workspace']}")
-    if _state["model_search_roots"]:
-        print(f"  Models    : {', '.join(_state['model_search_roots'])}")
-    if _state["report_search_roots"]:
-        print(f"  Reports   : {', '.join(_state['report_search_roots'])}")
-    print(f"  URL       : http://{args.host}:{args.port}")
-    print(f"  Debug     : {'on' if args.debug else 'off'}")
-    print()
+    configure_runtime(
+        workspace=args.workspace,
+        models_path=args.models_path,
+        reports_path=args.reports_path,
+    )
+    print_startup_banner(args.host, args.port, debug=args.debug)
 
     app.run(host=args.host, port=args.port, debug=args.debug)
 

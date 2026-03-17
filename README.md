@@ -7,9 +7,10 @@ It is designed for local use against files on your machine. The current release 
 ## Current Status
 
 - Project maturity: early-stage `0.x`
-- Runtime shape: Python package with a CLI plus a local web UI
+- Runtime shape: Python package with a CLI, a local web UI, and Windows desktop packaging
 - Stable entry points: `semantic-model-cleaner`, `semantic-model-cleaner-web`, `smc`, and `smc-web`
-- Roadmap: public Windows packaging, beta feature isolation, and a public landing site
+- Windows entry points: packaged `Semantic Model Cleaner.exe`, `semantic-model-cleaner-desktop`, and `smc-desktop`
+- Roadmap: beta feature isolation, release hardening, and a public landing site
 
 ## What It Does
 
@@ -22,7 +23,7 @@ It is designed for local use against files on your machine. The current release 
 ## What It Does Not Do
 
 - It does not host or publish reports for you
-- It does not currently package a one-click Windows executable
+- It does not yet ship a signed installer or auto-update flow
 - It does not yet cover every Power BI metadata edge case
 
 ## Requirements
@@ -42,6 +43,29 @@ Development install:
 ```bash
 python -m pip install -e .[dev]
 ```
+
+### Windows Packaged App
+
+For terminal-free Windows use, a packaged launcher is also available.
+
+Local launcher command:
+
+```bash
+semantic-model-cleaner-desktop .
+```
+
+Short alias:
+
+```bash
+smc-desktop .
+```
+
+Packaged runtime behavior:
+
+- starts the local app on `127.0.0.1`
+- prefers port `5001` and falls back to another free local port if needed
+- opens the default browser automatically
+- can skip browser launch with `--no-open-browser`
 
 ## Quick Start
 
@@ -149,6 +173,12 @@ Build distributions:
 python3 -m build
 ```
 
+Build the Windows package locally:
+
+```powershell
+pwsh -File packaging/windows/build.ps1
+```
+
 ## Repository Layout
 
 - `src/semantic_model_cleaner/analyzer.py`: CLI analyzer and export logic
@@ -174,7 +204,7 @@ Analyzer-specific usage and caveats are documented in [scripts/analyze_model_usa
 
 ## Community & Support
 
-- License: [MIT](/Users/przemek.harazny/Projects/GitHub/smc-foundation/LICENSE)
-- Code of Conduct: [CODE_OF_CONDUCT.md](/Users/przemek.harazny/Projects/GitHub/smc-foundation/CODE_OF_CONDUCT.md)
-- Security reporting: [SECURITY.md](/Users/przemek.harazny/Projects/GitHub/smc-foundation/SECURITY.md)
+- License: [MIT](LICENSE)
+- Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- Security reporting: [SECURITY.md](SECURITY.md)
 - Issues and discussions are monitored on the public [GitHub repository](https://github.com/MrPerfectH/Semantic-Model-Cleaner).

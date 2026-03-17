@@ -33,6 +33,12 @@ python3 scripts/analyze_model_usage.py .
 python3 scripts/app.py .
 ```
 
+Desktop launcher:
+
+```bash
+semantic-model-cleaner-desktop .
+```
+
 ## Checks
 
 Run tests:
