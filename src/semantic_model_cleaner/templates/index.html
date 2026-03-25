@@ -29,11 +29,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .beta-experiments { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
 .beta-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; background: #fde68a; color: #7c2d12; font-size: 11px; font-weight: 600; }
 .setup { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
-.setup h2 { font-size: 15px; margin-bottom: 14px; }
+.setup-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.setup h2 { font-size: 15px; margin-bottom: 0; }
+.setup-toggle { flex: 0 0 auto; }
 .setup-columns { display: flex; gap: 16px; align-items: flex-start; }
 .setup-col { flex: 1; min-width: 0; }
 .setup-col h3 { font-size: 12px; color: var(--text-light); text-transform: uppercase; letter-spacing: .4px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
 .setup-col h3 .count-badge { background: var(--primary); color: #fff; font-size: 10px; padding: 1px 7px; border-radius: 10px; }
+.setup-options { margin-top: 14px; padding-top: 14px; border-top: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.setup-options-grid { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: flex-start; flex: 1 1 auto; }
+.setup-export-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
 .pill-list { display: flex; flex-wrap: wrap; gap: 6px; min-height: 36px; padding: 8px; background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; }
 .pill-list.empty { align-items: center; justify-content: center; color: var(--text-light); font-size: 12px; font-style: italic; }
 .pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 14px; font-size: 12px; font-weight: 500; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -57,12 +62,36 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .summary-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; text-align: center; }
 .summary-card .value { font-size: 28px; font-weight: 700; color: var(--primary); }
-.summary-card .label { font-size: 11px; color: var(--text-light); margin-top: 2px; text-transform: uppercase; letter-spacing: .5px; }
-.filters-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
-.filters-bar .filter-group { display: flex; flex-direction: column; gap: 3px; min-width: 120px; }
+.summary-card .label { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 11px; color: var(--text-light); margin-top: 2px; text-transform: uppercase; letter-spacing: .5px; }
+.kpi-help { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #94a3b8; border-radius: 999px; background: #fff; color: var(--text-light); font-size: 10px; font-weight: 700; line-height: 1; cursor: help; text-transform: none; }
+.kpi-help::before,
+.kpi-help::after { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .15s ease; }
+.kpi-help::before { content: ''; position: absolute; left: 50%; bottom: calc(100% + 2px); transform: translateX(-50%); border: 6px solid transparent; border-top-color: #0f172a; }
+.kpi-help::after { content: attr(data-tooltip); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); width: min(220px, 60vw); padding: 8px 10px; border-radius: 6px; background: #0f172a; color: #fff; font-size: 11px; font-weight: 500; line-height: 1.4; letter-spacing: normal; text-transform: none; white-space: normal; box-shadow: 0 8px 24px rgba(15, 23, 42, .18); z-index: 10; }
+.kpi-help:hover::before,
+.kpi-help:hover::after,
+.kpi-help:focus-visible::before,
+.kpi-help:focus-visible::after { opacity: 1; visibility: visible; }
+.btn { padding: 8px 18px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background .15s; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: var(--danger-hover); }
+.btn-secondary { background: #e2e8f0; color: var(--text); }
+.btn-secondary:hover { background: #cbd5e1; }
+.btn-warning { background: var(--warning); color: #fff; }
+.btn-warning:hover { background: #d97706; }
+.btn-success { background: var(--success); color: #fff; }
+.btn-success:hover { background: #15803d; }
+.filters-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px; }
+.filters-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px; width: 100%; align-items: flex-end; }
+.filters-bar .filter-group { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .filters-bar .filter-group label { font-size: 11px; color: var(--text-light); font-weight: 500; text-transform: uppercase; letter-spacing: .3px; }
-.filters-bar input[type="text"] { padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; min-width: 180px; }
-.filter-dropdown { position: relative; min-width: 140px; }
+.filters-bar input[type="text"] { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; min-width: 0; }
+#filterSearch { min-height: 34px; }
+.filter-dropdown { position: relative; width: 100%; min-width: 0; }
 .filter-dropdown-toggle { position: relative; width: 100%; min-height: 34px; padding: 6px 34px 6px 10px; border: 1px solid var(--border); border-radius: 5px; background: #fff; color: var(--text); font-size: 13px; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .filter-dropdown-toggle::after { content: '\25BE'; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-light); font-size: 11px; pointer-events: none; }
 .filter-dropdown.is-open .filter-dropdown-toggle { border-color: #94a3b8; box-shadow: 0 0 0 3px rgba(37, 99, 235, .08); }
@@ -78,20 +107,34 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .filter-dropdown-option input { margin-top: 2px; }
 .filter-dropdown-empty { padding: 10px; font-size: 12px; color: var(--text-light); font-style: italic; }
 .detail-subtle { margin-top: 4px; font-size: 12px; color: var(--text-light); }
-.filters-bar .filter-hint { font-size: 11px; color: var(--text-light); align-self: flex-end; }
+.filters-meta { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; width: 100%; }
+.filters-bar .filter-hint { font-size: 11px; color: var(--text-light); }
 .filter-counts { margin-left: auto; font-size: 12px; color: var(--text-light); white-space: nowrap; }
-.export-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; justify-content: flex-end; }
+.export-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
 .export-bar .label { margin-right: auto; font-size: 12px; color: var(--text-light); text-transform: uppercase; letter-spacing: .3px; font-weight: 600; }
-.action-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.action-bar .selected-count { font-size: 13px; color: var(--text-light); margin-right: 8px; }
-.action-bar .folder-input { padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; width: 200px; }
-.table-container { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-thead th { position: sticky; top: 0; background: #f8fafc; border-bottom: 2px solid var(--border); padding: 10px 12px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .3px; color: var(--text-light); cursor: pointer; user-select: none; white-space: nowrap; position: sticky; }
+.action-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px; display: flex; gap: 10px; align-items: stretch; justify-content: flex-start; flex-wrap: wrap; }
+.action-bar .selected-count { font-size: 13px; color: var(--text-light); margin-right: 2px; }
+.action-bar .folder-input { padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; width: 180px; min-height: 36px; }
+.action-group-card { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-height: 56px; padding: 8px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+.action-selection-group { flex: 0 1 auto; }
+.action-cleanup-group { flex: 0 1 auto; }
+.action-cleanup-grid { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.action-apply-group { flex: 0 0 auto; justify-content: center; margin-left: auto; }
+.action-apply-btn { min-width: 140px; min-height: 40px; font-size: 14px; font-weight: 600; }
+.help-panel, .inline-help { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+.help-panel { margin-top: 14px; padding: 12px; }
+.inline-help { width: 100%; padding: 10px 12px; }
+.help-title { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: .35px; margin-bottom: 8px; }
+.help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 14px; }
+.help-item { font-size: 12px; line-height: 1.45; color: var(--text-light); }
+.help-item strong { color: var(--text); }
+.table-container { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); position: relative; overflow-y: auto; overflow-x: hidden; max-height: min(68vh, 720px); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+thead th { position: sticky; top: 0; z-index: 2; background: #f8fafc; border-bottom: 2px solid var(--border); padding: 10px 12px; text-align: left; font-weight: 600; font-size: 13px; text-transform: none; letter-spacing: normal; color: var(--text-light); cursor: pointer; user-select: none; white-space: normal; overflow-wrap: anywhere; }
 thead th:hover { color: var(--text); }
 thead th .sort-arrow { font-size: 10px; margin-left: 4px; }
 thead th .col-resizer { position: absolute; top: 0; right: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 3; }
-tbody td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
+tbody td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; overflow-wrap: anywhere; font-size: 13px; line-height: 1.4; }
 tbody tr:hover { background: var(--row-hover); }
 tbody tr.row-review td:first-child { border-left: 3px solid var(--warning); }
 tbody tr.row-caution td:first-child { border-left: 3px solid var(--danger); }
@@ -100,7 +143,7 @@ tbody tr.selected { background: #eff6ff; }
 tbody tr.row-pending { background: #fef9c3; }
 tbody tr.row-applied { background: #dcfce7; }
 tbody tr.row-failed { background: #fee2e2; }
-.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.badge { display: inline-flex; align-items: center; justify-content: center; padding: 2px 8px; border-radius: 10px; font-size: 13px; font-weight: 500; line-height: 1.4; white-space: nowrap; font-family: inherit; text-transform: none; letter-spacing: normal; }
 .badge-status { min-width: 86px; text-align: center; }
 .badge-safe { background: var(--safe); color: #166534; }
 .badge-review { background: var(--review); color: #92400e; }
@@ -160,7 +203,7 @@ tbody tr.row-failed { background: #fee2e2; }
 .explorer-type-label.report-label { background: #fef3c7; color: #92400e; }
 .explorer-check { flex-shrink: 0; }
 .explorer-empty { padding: 40px 20px; text-align: center; color: var(--text-light); font-size: 13px; }
-.explorer-footer { padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.explorer-footer { padding: 12px 20px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .explorer-footer .selected-summary { font-size: 12px; color: var(--text-light); }
 .view-tabs { display: flex; gap: 0; margin-bottom: 12px; }
 .view-tab { padding: 10px 20px; background: var(--card); border: 1px solid var(--border); font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-light); transition: all .15s; }
@@ -171,7 +214,7 @@ tbody tr.row-failed { background: #fee2e2; }
 body.is-resizing-columns { cursor: col-resize; user-select: none; }
 .cell-status, .cell-hidden, .cell-refs { white-space: nowrap; }
 .cell-risk { white-space: normal; }
-.risk-trigger-note { margin-top: 4px; font-size: 12px; line-height: 1.35; color: var(--text-light); }
+.risk-trigger-note { margin-top: 4px; font-size: 13px; line-height: 1.4; color: var(--text-light); }
 .item-link { color: inherit; text-decoration: none; cursor: pointer; }
 .item-link:hover { color: var(--primary); text-decoration: underline; }
 .detail-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
@@ -191,7 +234,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
 .role-fact-like { background: #dbeafe; color: #1e40af; }
 .role-mixed { background: #fef3c7; color: #92400e; }
 .role-unknown, .role-isolated { background: #e2e8f0; color: #475569; }
-.table-summary-text { font-size: 12px; line-height: 1.45; color: var(--text-light); }
+.table-summary-text { font-size: 13px; line-height: 1.4; color: var(--text-light); }
 .table-signals { list-style: none; margin: 0; padding: 0; }
 .table-signals li { padding: 4px 0; border-bottom: 1px solid #eef2f7; font-size: 13px; }
 .table-signals li:last-child { border-bottom: none; }
@@ -200,7 +243,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
 .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .detail-actions .folder-input { width: 220px; }
 .detail-action-status { margin-top: 8px; font-size: 12px; color: var(--text-light); }
-.table-row-actions { white-space: nowrap; }
+.table-row-actions { white-space: normal; }
 .detail-editor { width: 100%; min-height: 180px; resize: vertical; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 12px; line-height: 1.45; font-family: 'SF Mono', Monaco, Consolas, monospace; color: var(--text); background: #fff; }
 .editor-actions { margin-top: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .editor-status { margin-top: 6px; font-size: 12px; color: var(--text-light); }
@@ -209,6 +252,26 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
 .modal-list ul { list-style: none; margin: 0; padding: 0; }
 .modal-list li { font-size: 12px; padding: 4px 0; border-bottom: 1px solid #eef2f7; }
 .modal-list li:last-child { border-bottom: none; }
+@media (max-width: 1400px) {
+  .filters-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .filters-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .setup-export-actions { margin-left: 0; width: 100%; justify-content: flex-start; }
+  .action-bar { flex-direction: column; align-items: stretch; }
+  .action-group-card { width: 100%; }
+  .action-cleanup-grid .folder-input { width: 100%; }
+  .action-apply-group { margin-left: 0; }
+  .action-apply-btn { width: 100%; }
+}
+@media (max-width: 640px) {
+  .setup-header { align-items: flex-start; flex-wrap: wrap; }
+  .filters-grid { grid-template-columns: 1fr; }
+  .filters-meta { align-items: flex-start; }
+  .filter-counts { margin-left: 0; white-space: normal; }
+  .action-cleanup-grid { flex-direction: column; align-items: stretch; }
+  .action-cleanup-grid .folder-input { width: 100%; }
+}
 </style>
 </head>
 <body>
@@ -238,33 +301,49 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     {% endif %}
   </div>
   {% endif %}
-  <div class="setup">
-    <h2>1. Select Model &amp; Reports</h2>
+  <div class="setup" id="setupSection">
+    <div class="setup-header">
+      <h2>Select Model &amp; Reports</h2>
+      <button class="btn btn-secondary btn-sm setup-toggle" id="btnToggleSetup" type="button" aria-expanded="true" aria-controls="setupBody">Hide</button>
+    </div>
+    <div id="setupBody">
     <div class="setup-columns">
       <div class="setup-col">
         <h3>Semantic Model <span class="count-badge" id="modelCountBadge">0</span></h3>
         <div class="pill-list empty" id="modelPills">No model selected</div>
-        <button class="btn btn-secondary btn-sm" id="btnBrowseModels">Choose model...</button>
+        <button class="btn btn-secondary btn-sm" id="btnBrowseModels" title="Pick the single .SemanticModel folder to analyze">Choose model...</button>
       </div>
       <div class="setup-col">
         <h3>Reports <span class="count-badge" id="reportCountBadge">0</span></h3>
         <div class="pill-list empty" id="reportPills">No reports selected</div>
-        <button class="btn btn-secondary btn-sm" id="btnBrowseReports">Browse for reports...</button>
+        <button class="btn btn-secondary btn-sm" id="btnBrowseReports" title="Add one or more report folders to scan for usage">Browse for reports...</button>
       </div>
       <div class="setup-actions">
-        <button class="btn btn-primary" id="btnAnalyze" disabled>Analyze</button>
+        <button class="btn btn-primary" id="btnAnalyze" disabled title="Run the analysis for the selected model and reports">Analyze</button>
       </div>
+    </div>
+    <div class="setup-options">
+      <div class="setup-options-grid">
+        <label class="inline-checkbox" title="Run the analysis again after queued actions are written"><input type="checkbox" id="autoRefreshAfterApply" checked> Auto-refresh analysis after apply</label>
+        <label class="inline-checkbox" title="Required before applying queued delete actions"><input type="checkbox" id="confirmDeleteCheckbox"> Confirm delete</label>
+        <label class="inline-checkbox" title="Create a backup before writing queued actions"><input type="checkbox" id="applyBackupCheckbox" checked> Create backup before apply</label>
+      </div>
+      <div class="setup-export-actions hidden" id="exportSection">
+        <button class="btn btn-secondary" id="btnExportJson" title="Download the current analysis as JSON">Export JSON</button>
+        <button class="btn btn-secondary" id="btnExportExcel" title="Download the current analysis as an Excel workbook">Export Excel</button>
+      </div>
+    </div>
     </div>
   </div>
   <div class="summary-grid hidden" id="summarySection">
-    <div class="summary-card"><div class="value" id="sumTotal">0</div><div class="label">Total Items</div></div>
-    <div class="summary-card"><div class="value" id="sumUsed">0</div><div class="label">Used</div></div>
-    <div class="summary-card"><div class="value" id="sumUnused">0</div><div class="label">Not Used</div></div>
-    <div class="summary-card"><div class="value" id="sumMeasures">0</div><div class="label">Measures</div></div>
-    <div class="summary-card"><div class="value" id="sumColumns">0</div><div class="label">Columns</div></div>
-    <div class="summary-card"><div class="value" id="sumSafe">0</div><div class="label">Safe</div></div>
-    <div class="summary-card"><div class="value" id="sumReview">0</div><div class="label">Review</div></div>
-    <div class="summary-card"><div class="value" id="sumCaution">0</div><div class="label">Caution</div></div>
+    <div class="summary-card"><div class="value" id="sumTotal">0</div><div class="label">Total Items <span class="kpi-help" tabindex="0" data-tooltip="Total count of measures and columns found in the selected semantic model." aria-label="Explain total items">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumUsed">0</div><div class="label">Used <span class="kpi-help" tabindex="0" data-tooltip="Items directly used by reports or reached through required model dependencies." aria-label="Explain used">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumUnused">0</div><div class="label">Not Used <span class="kpi-help" tabindex="0" data-tooltip="Items for which no direct or indirect usage was found in the selected reports." aria-label="Explain not used">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumMeasures">0</div><div class="label">Measures <span class="kpi-help" tabindex="0" data-tooltip="Count of measures in the selected semantic model." aria-label="Explain measures">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumColumns">0</div><div class="label">Columns <span class="kpi-help" tabindex="0" data-tooltip="Count of columns in the selected semantic model." aria-label="Explain columns">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumSafe">0</div><div class="label">Safe <span class="kpi-help" tabindex="0" data-tooltip="Unused items with no dependent DAX items found. Lowest-risk cleanup candidates." aria-label="Explain safe">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumReview">0</div><div class="label">Review <span class="kpi-help" tabindex="0" data-tooltip="Unused items that need a manual check before cleanup, for example because they are hidden or key-like." aria-label="Explain review">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumCaution">0</div><div class="label">Caution <span class="kpi-help" tabindex="0" data-tooltip="Unused items that still appear to support other model logic. Removing them may break calculations." aria-label="Explain caution">?</span></div></div>
   </div>
   <div class="backup-banner hidden" id="backupBanner">Backup created: <span class="path" id="backupPath"></span></div>
   <div class="git-warning hidden" id="gitWarning"></div>
@@ -277,16 +356,20 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div id="warningList"></div>
   </div>
   <div class="filters-bar hidden" id="filtersSection">
-    <div class="filter-group"><label>Search</label><input type="text" id="filterSearch" placeholder="Name or table..."></div>
-    <div class="filter-group"><label>Status</label><div class="filter-dropdown" id="filterStatus"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
-    <div class="filter-group"><label>Risk</label><div class="filter-dropdown" id="filterRisk"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
-    <div class="filter-group"><label>Type</label><div class="filter-dropdown" id="filterType"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
-    <div class="filter-group"><label>Table</label><div class="filter-dropdown" id="filterTable"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
-    <div class="filter-group"><label>Hidden</label><div class="filter-dropdown" id="filterHidden"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
-    <div class="filter-group"><label>Folder</label><div class="filter-dropdown" id="filterFolder"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
-    <div class="filter-group"><label>Modified</label><div class="filter-dropdown" id="filterModified"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
-    <div class="filter-hint">Dropdown filters support multi-select. Use `Select all` or `Clear` inside each slicer.</div>
-    <div class="filter-counts" id="filterCounts"></div>
+    <div class="filters-grid">
+      <div class="filter-group"><label>Search</label><input type="text" id="filterSearch" placeholder="Name or table..."></div>
+      <div class="filter-group"><label>Status</label><div class="filter-dropdown" id="filterStatus"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+      <div class="filter-group"><label>Risk</label><div class="filter-dropdown" id="filterRisk"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+      <div class="filter-group"><label>Type</label><div class="filter-dropdown" id="filterType"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+      <div class="filter-group"><label>Table</label><div class="filter-dropdown" id="filterTable"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+      <div class="filter-group"><label>Hidden</label><div class="filter-dropdown" id="filterHidden"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+      <div class="filter-group"><label>Folder</label><div class="filter-dropdown" id="filterFolder"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+      <div class="filter-group"><label>Modified</label><div class="filter-dropdown" id="filterModified"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+    </div>
+    <div class="filters-meta">
+      <div class="filter-hint">Dropdown filters support multi-select. Use `Select all` or `Clear` inside each slicer.</div>
+      <div class="filter-counts" id="filterCounts"></div>
+    </div>
   </div>
   <div class="view-tabs hidden" id="viewTabs">
     <div class="view-tab active" data-view="details" id="tabDetails">Details <span class="tab-count" id="tabDetailsCount"></span></div>
@@ -295,25 +378,26 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="view-tab" data-view="item" id="tabItem">Item Details</div>
     <div class="view-tab" data-view="table" id="tabTable">Table Details</div>
   </div>
-  <div class="export-bar hidden" id="exportSection">
-    <span class="label">Export Current Analysis</span>
-    <button class="btn btn-secondary" id="btnExportJson">Export JSON</button>
-    <button class="btn btn-secondary" id="btnExportExcel">Export Excel</button>
-  </div>
   <div class="action-bar hidden" id="actionSection">
-    <span class="selected-count" id="selectedCount">0 selected</span>
-    <label class="inline-checkbox"><input type="checkbox" id="autoRefreshAfterApply" checked> Auto-refresh analysis after apply</label>
-    <button class="btn btn-secondary" id="btnSelectAllSafe">Select all Safe</button>
-    <button class="btn btn-secondary" id="btnSelectAllVisible">Select all visible</button>
-    <button class="btn btn-secondary" id="btnDeselectAll">Deselect all</button>
-    <span style="flex:1"></span>
-    <input type="text" class="folder-input" id="folderInput" placeholder="Display folder name..." value="Safe to delete">
-    <button class="btn btn-warning" id="btnMoveToFolder">Move to folder</button>
-    <button class="btn btn-secondary" id="btnHide">Hide</button>
-    <button class="btn btn-secondary" id="btnUnhide">Unhide</button>
-    <button class="btn btn-danger" id="btnDelete">Delete</button>
-    <button class="btn btn-secondary" id="btnReset" style="display:none">Reset</button>
-    <button class="btn btn-primary" id="btnApply" disabled>Apply</button>
+    <div class="action-group-card action-selection-group">
+      <span class="selected-count" id="selectedCount">0 selected</span>
+      <button class="btn btn-secondary" id="btnSelectAllSafe" title="Select rows currently marked Safe">Select all Safe</button>
+      <button class="btn btn-secondary" id="btnSelectAllVisible" title="Select visible rows that are not hidden">Select all visible</button>
+      <button class="btn btn-secondary" id="btnDeselectAll" title="Clear the current selection">Deselect all</button>
+    </div>
+    <div class="action-group-card action-cleanup-group">
+      <div class="action-cleanup-grid">
+        <input type="text" class="folder-input" id="folderInput" placeholder="Display folder name..." value="Safe to delete" title="Folder name used by Move to folder">
+        <button class="btn btn-warning" id="btnMoveToFolder" title="Queue a display folder change for the selected items">Move to folder</button>
+        <button class="btn btn-secondary" id="btnHide" title="Queue a hidden state for the selected items">Hide</button>
+        <button class="btn btn-secondary" id="btnUnhide" title="Queue a visible state for the selected items">Unhide</button>
+        <button class="btn btn-danger" id="btnDelete" title="Queue the selected items for deletion; confirmation happens on Apply">Delete</button>
+        <button class="btn btn-secondary" id="btnReset" style="display:none" title="Clear all queued actions and statuses">Reset</button>
+      </div>
+    </div>
+    <div class="action-group-card action-apply-group">
+      <button class="btn btn-primary action-apply-btn" id="btnApply" disabled title="Write all queued actions to the model files">Apply</button>
+    </div>
   </div>
   <div class="table-container hidden" id="tableSection">
     <table>
@@ -414,7 +498,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <textarea class="detail-editor hidden" id="detailDaxEditor" spellcheck="false"></textarea>
         <div class="editor-actions hidden" id="detailDaxActions">
           <label class="inline-checkbox"><input type="checkbox" id="detailDaxBackup" checked> Backup before first save</label>
-          <button class="btn btn-primary btn-sm" id="detailBtnSaveDax">Save DAX</button>
+          <button class="btn btn-primary btn-sm" id="detailBtnSaveDax" title="Save the edited DAX expression for this item">Save DAX</button>
         </div>
         <div class="editor-status" id="detailDaxStatus"></div>
       </div>
@@ -426,15 +510,26 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="detail-card">
       <h4>Cleanup Actions</h4>
       <div class="detail-actions">
-        <input type="text" class="folder-input" id="detailFolderInput" placeholder="Display folder name..." value="Safe to delete">
-        <button class="btn btn-warning btn-sm" id="detailBtnMoveToFolder">Move to folder</button>
-        <button class="btn btn-secondary btn-sm" id="detailBtnHide">Hide</button>
-        <button class="btn btn-secondary btn-sm" id="detailBtnUnhide">Unhide</button>
-        <button class="btn btn-danger btn-sm" id="detailBtnDelete">Delete</button>
-        <button class="btn btn-primary btn-sm" id="detailBtnApply">Apply queued</button>
-        <button class="btn btn-secondary btn-sm" id="detailBtnReset">Reset queued</button>
+        <input type="text" class="folder-input" id="detailFolderInput" placeholder="Display folder name..." value="Safe to delete" title="Folder name used by Move to folder">
+        <button class="btn btn-warning btn-sm" id="detailBtnMoveToFolder" title="Queue a display folder change for this item">Move to folder</button>
+        <button class="btn btn-secondary btn-sm" id="detailBtnHide" title="Queue this item to be hidden">Hide</button>
+        <button class="btn btn-secondary btn-sm" id="detailBtnUnhide" title="Queue this item to be visible">Unhide</button>
+        <button class="btn btn-danger btn-sm" id="detailBtnDelete" title="Queue this item for deletion; confirmation happens on Apply">Delete</button>
+        <button class="btn btn-primary btn-sm" id="detailBtnApply" title="Write every queued action to the model files">Apply queued</button>
+        <button class="btn btn-secondary btn-sm" id="detailBtnReset" title="Clear every queued action">Reset queued</button>
       </div>
       <div class="detail-action-status" id="detailActionStatus">Select an item to queue actions for it.</div>
+      <div class="help-panel">
+        <div class="help-title">Item action help</div>
+        <div class="help-grid">
+          <div class="help-item"><strong>Save DAX</strong> Saves only the edited DAX expression for the current item.</div>
+          <div class="help-item"><strong>Move to folder</strong> Queues a display folder change for the selected item.</div>
+          <div class="help-item"><strong>Hide / Unhide</strong> Queues a visibility change for the selected item.</div>
+          <div class="help-item"><strong>Delete</strong> Queues this item for deletion. The actual delete confirmation appears when you apply changes.</div>
+          <div class="help-item"><strong>Apply queued</strong> Writes all currently queued actions to the model files.</div>
+          <div class="help-item"><strong>Reset queued</strong> Clears all queued actions.</div>
+        </div>
+      </div>
     </div>
     <div class="detail-card">
       <h4>Direct Report References</h4>
@@ -495,11 +590,19 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="detail-card" style="margin-top:14px">
       <h4>Table Actions</h4>
       <div class="detail-actions">
-        <button class="btn btn-danger btn-sm" id="tableBtnDelete">Queue delete table</button>
-        <button class="btn btn-primary btn-sm" id="tableBtnApply">Apply queued</button>
-        <button class="btn btn-secondary btn-sm" id="tableBtnReset">Reset queued</button>
+        <button class="btn btn-danger btn-sm" id="tableBtnDelete" title="Queue a dependency-aware delete for this table">Queue delete table</button>
+        <button class="btn btn-primary btn-sm" id="tableBtnApply" title="Write every queued action to the model files">Apply queued</button>
+        <button class="btn btn-secondary btn-sm" id="tableBtnReset" title="Clear every queued action">Reset queued</button>
       </div>
       <div class="detail-action-status" id="tableActionStatus">Select a table to queue delete for all items in that table.</div>
+      <div class="help-panel">
+        <div class="help-title">Table action help</div>
+        <div class="help-grid">
+          <div class="help-item"><strong>Queue delete table</strong> Builds a dependency-aware delete set for the table and asks for confirmation before queueing it.</div>
+          <div class="help-item"><strong>Apply queued</strong> Writes all queued actions to the model files.</div>
+          <div class="help-item"><strong>Reset queued</strong> Clears all queued actions before they are applied.</div>
+        </div>
+      </div>
     </div>
     <div class="detail-card" style="margin-top:14px">
       <h4>Relationships In Detail</h4>
@@ -519,7 +622,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       <div class="explorer-path-bar">
         <button class="btn btn-secondary btn-sm" id="btnExplorerUp" title="Go to parent folder">Up</button>
         <input type="text" id="explorerPathInput" placeholder="Type a path and press Enter...">
-        <button class="btn btn-secondary btn-sm" id="btnExplorerGo">Go</button>
+        <button class="btn btn-secondary btn-sm" id="btnExplorerGo" title="Open the path typed in the field">Go</button>
       </div>
       <div class="breadcrumbs" id="explorerBreadcrumbs"></div>
     </div>
@@ -529,8 +632,17 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="explorer-footer">
       <span class="selected-summary" id="explorerSelectedSummary">0 selected</span>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-secondary" id="btnExplorerCancel">Cancel</button>
-        <button class="btn btn-primary" id="btnExplorerDone">Done</button>
+        <button class="btn btn-secondary" id="btnExplorerCancel" title="Close the picker without changing the selection">Cancel</button>
+        <button class="btn btn-primary" id="btnExplorerDone" title="Confirm the current selection">Done</button>
+      </div>
+      <div class="inline-help" style="margin-top:10px">
+        <div class="help-title">Picker help</div>
+        <div class="help-grid">
+          <div class="help-item"><strong>Up</strong> Moves to the parent folder.</div>
+          <div class="help-item"><strong>Go</strong> Opens the path typed in the input field.</div>
+          <div class="help-item"><strong>Done</strong> Confirms the selected model or reports.</div>
+          <div class="help-item"><strong>Cancel</strong> Closes the picker without saving changes.</div>
+        </div>
       </div>
     </div>
   </div>
@@ -539,9 +651,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
 <div class="modal-overlay hidden" id="deleteModal">
   <div class="modal">
     <h2>Confirm Delete</h2>
-    <p>This will permanently remove <strong id="deleteCount">0</strong> item(s) from the TMDL files. Type <strong>DELETE</strong> to confirm.</p>
-    <label style="display:flex;align-items:center;gap:6px;margin:8px 0;font-size:13px;cursor:pointer;"><input type="checkbox" id="backupCheckbox" checked> Create backup before applying</label>
-    <input type="text" id="deleteConfirmInput" placeholder="Type DELETE to confirm">
+    <p>This will permanently remove <strong id="deleteCount">0</strong> item(s) from the TMDL files.</p>
     <div class="modal-actions">
       <button class="btn btn-secondary" id="btnDeleteCancel">Cancel</button>
       <button class="btn btn-danger" id="btnDeleteConfirm" disabled>Delete</button>
@@ -658,8 +768,28 @@ var filterState = {
   filterModified: []
 };
 var filterDropdownEventsReady = false;
+var setupCollapsed = false;
+var setupCollapseStorageKey = 'smc.setupCollapsed';
 
 function $(id) { return document.getElementById(id); }
+
+function readSetupCollapsedPreference() {
+  try {
+    return window.localStorage.getItem(setupCollapseStorageKey) === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+function setSetupCollapsed(collapsed) {
+  setupCollapsed = !!collapsed;
+  $('setupBody').classList.toggle('hidden', setupCollapsed);
+  $('btnToggleSetup').textContent = setupCollapsed ? 'Show' : 'Hide';
+  $('btnToggleSetup').setAttribute('aria-expanded', setupCollapsed ? 'false' : 'true');
+  try {
+    window.localStorage.setItem(setupCollapseStorageKey, setupCollapsed ? '1' : '0');
+  } catch (e) {}
+}
 
 function hidePostRefreshDisclaimer() {
   $('postRefreshBanner').classList.add('hidden');
@@ -1042,50 +1172,15 @@ function setupFilterDropdowns() {
 function setupResizableTable(tableSectionId) {
   var table = document.querySelector('#' + tableSectionId + ' table');
   if (!table) return;
-  var headerCells = Array.from(table.querySelectorAll('thead th'));
-  if (!headerCells.length) return;
-
   var colgroup = table.querySelector('colgroup');
-  if (!colgroup) {
-    colgroup = document.createElement('colgroup');
-    headerCells.forEach(function() { colgroup.appendChild(document.createElement('col')); });
-    table.insertBefore(colgroup, table.firstChild);
+  if (colgroup) {
+    colgroup.remove();
   }
-
-  var cols = Array.from(colgroup.children);
-  headerCells.forEach(function(th, index) {
-    var col = cols[index];
-    if (!col.style.width && th.offsetWidth) {
-      col.style.width = Math.max(th.offsetWidth, 56) + 'px';
-    }
-    if (th.querySelector('.col-resizer')) return;
-
-    th.title = 'Click to sort. Drag the right edge to resize.';
-    var handle = document.createElement('span');
-    handle.className = 'col-resizer';
-    th.appendChild(handle);
-
-    handle.addEventListener('mousedown', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      document.body.classList.add('is-resizing-columns');
-      var startX = e.clientX;
-      var startWidth = th.getBoundingClientRect().width;
-
-      function onMove(moveEvent) {
-        var width = Math.max(56, startWidth + (moveEvent.clientX - startX));
-        col.style.width = width + 'px';
-      }
-
-      function onUp() {
-        document.body.classList.remove('is-resizing-columns');
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
-      }
-
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
-    });
+  table.querySelectorAll('.col-resizer').forEach(function(handle) {
+    handle.remove();
+  });
+  table.querySelectorAll('thead th').forEach(function(th) {
+    th.removeAttribute('title');
   });
   table.style.tableLayout = 'fixed';
 }
@@ -1655,7 +1750,7 @@ function renderRefsTable() {
     return '<tr class="' + riskClass + '">'
       + '<td>' + esc(r.type) + '</td>'
       + '<td>' + esc(r.table) + '</td>'
-      + '<td><strong><a href="#" class="item-link" data-item-key="' + esc(r.type + ':::' + r.table + ':::' + r.name) + '">' + esc(r.name) + '</a></strong></td>'
+      + '<td><a href="#" class="item-link" data-item-key="' + esc(r.type + ':::' + r.table + ':::' + r.name) + '">' + esc(r.name) + '</a></td>'
       + '<td>' + (r.isHidden ? '\uD83D\uDD12' : '') + '</td>'
       + '<td>' + esc(r.displayFolder || '') + '</td>'
       + '<td>' + esc(r.report || '') + '</td>'
@@ -1748,7 +1843,7 @@ function renderTable() {
       + '<td><input type="checkbox" class="row-check" ' + checked + ' data-key="' + esc(key) + '"></td>'
       + '<td>' + esc(item.type) + '</td>'
       + '<td>' + esc(item.table) + '</td>'
-      + '<td><strong><a href="#" class="item-link" data-item-key="' + esc(key) + '">' + esc(item.name) + '</a></strong></td>'
+      + '<td><a href="#" class="item-link" data-item-key="' + esc(key) + '">' + esc(item.name) + '</a></td>'
       + '<td>' + esc(item.displayFolder || '') + '</td>'
       + '<td class="cell-status">' + statusBadge(item.status) + '</td>'
       + '<td class="cell-risk">' + riskCellContent(item) + '</td>'
@@ -1786,7 +1881,7 @@ function renderTablesOverview() {
       ? '<ul class="table-signals">' + table.signals.slice(0, 3).map(function(signal) { return '<li>' + esc(signal) + '</li>'; }).join('') + '</ul>'
       : '<div class="detail-empty">No notable signals</div>';
     return '<tr>'
-      + '<td><strong><a href="#" class="table-link" data-table-name="' + esc(table.name) + '">' + esc(table.name) + '</a></strong></td>'
+      + '<td><a href="#" class="table-link" data-table-name="' + esc(table.name) + '">' + esc(table.name) + '</a></td>'
       + '<td>' + tableStatusBadge(table) + '</td>'
       + '<td>' + roleBadge(table) + '<div class="table-summary-text" style="margin-top:6px">' + esc(table.roleReason || '') + '</div></td>'
       + '<td>' + esc(String(table.itemCount || 0)) + '<div class="table-summary-text">Measures: ' + esc(String(table.measureCount || 0)) + ' | Columns: ' + esc(String(table.columnCount || 0)) + '</div></td>'
@@ -1796,7 +1891,7 @@ function renderTablesOverview() {
       + '<td>' + esc(String(table.relationshipCount || 0)) + '<div class="table-summary-text">Active: ' + esc(String(table.activeRelationshipCount || 0)) + ' | Inactive: ' + esc(String(table.inactiveRelationshipCount || 0)) + '</div></td>'
       + '<td>' + esc(String(table.usageRefCount || 0)) + '</td>'
       + '<td>' + signalText + '</td>'
-      + '<td class="table-row-actions"><button class="btn btn-danger btn-sm table-delete-btn" data-table-name="' + esc(table.name) + '">Queue delete</button></td>'
+      + '<td class="table-row-actions"><button class="btn btn-danger btn-sm table-delete-btn" title="Queue a dependency-aware delete for this table" data-table-name="' + esc(table.name) + '">Queue delete</button></td>'
       + '</tr>';
   }).join('');
   tbody.querySelectorAll('.table-link').forEach(function(link) {
@@ -1824,10 +1919,10 @@ function tableStatusBadge(table) {
 function statusBadge(status) {
   var label = statusLabel(status);
   var title = statusHelpText(status);
-  if (label === 'BROKEN') return '<span class="badge badge-status" style="background:#111827;color:#f9fafb" title="' + esc(title) + '">BROKEN</span>';
-  if (label === 'USED') return '<span class="badge badge-used badge-status" title="' + esc(title) + '">USED</span>';
-  if (label === 'NOT USED') return '<span class="badge badge-status" style="background:#fee2e2;color:#991b1b" title="' + esc(title) + '">NOT USED</span>';
-  if (label === 'INDIRECT') return '<span class="badge badge-status" style="background:#e0e7ff;color:#3730a3" title="' + esc(title) + '">INDIRECT</span>';
+  if (label === 'BROKEN') return '<span class="badge badge-status" style="background:#111827;color:#f9fafb" title="' + esc(title) + '">Broken</span>';
+  if (label === 'USED') return '<span class="badge badge-used badge-status" title="' + esc(title) + '">Used</span>';
+  if (label === 'NOT USED') return '<span class="badge badge-status" style="background:#fee2e2;color:#991b1b" title="' + esc(title) + '">Not used</span>';
+  if (label === 'INDIRECT') return '<span class="badge badge-status" style="background:#e0e7ff;color:#3730a3" title="' + esc(title) + '">Indirect</span>';
   return esc(status);
 }
 
@@ -2195,19 +2290,23 @@ function queueDetailAction(actionName, extra) {
 }
 
 function confirmDeleteApply(deleteCount) {
-  if (!deleteCount) return Promise.resolve({ confirmed: true, backup: false });
+  var wantBackup = $('applyBackupCheckbox').checked;
+  if (!deleteCount) return Promise.resolve({ confirmed: true, backup: wantBackup });
+  if (!$('confirmDeleteCheckbox').checked) {
+    alert('Check Confirm delete in the apply options section before applying deletions.');
+    return Promise.resolve({ confirmed: false, backup: wantBackup });
+  }
 
   $('deleteCount').textContent = deleteCount;
-  $('deleteConfirmInput').value = '';
-  $('btnDeleteConfirm').disabled = true;
-  $('backupCheckbox').checked = true;
+  $('btnDeleteConfirm').disabled = false;
   $('deleteModal').classList.remove('hidden');
-  $('deleteConfirmInput').focus();
+  $('btnDeleteConfirm').focus();
 
   return new Promise(function(resolve) {
     function cleanup() {
       $('btnDeleteCancel').onclick = null;
       $('btnDeleteConfirm').onclick = null;
+      $('confirmDeleteCheckbox').checked = false;
     }
     $('btnDeleteCancel').onclick = function() {
       $('deleteModal').classList.add('hidden');
@@ -2215,7 +2314,6 @@ function confirmDeleteApply(deleteCount) {
       resolve({ confirmed: false, backup: false });
     };
     $('btnDeleteConfirm').onclick = function() {
-      var wantBackup = $('backupCheckbox').checked;
       $('deleteModal').classList.add('hidden');
       cleanup();
       resolve({ confirmed: true, backup: wantBackup });
@@ -2309,8 +2407,6 @@ $('btnReset').onclick = function() {
 $('btnDelete').onclick = function() { queueSelectedAction('delete'); };
 $('btnApply').onclick = async function() { await applyQueuedActions(); };
 
-$('deleteConfirmInput').oninput = function() { $('btnDeleteConfirm').disabled = $('deleteConfirmInput').value.trim() !== 'DELETE'; };
-
 $('detailBtnMoveToFolder').onclick = function() {
   var folder = $('detailFolderInput').value.trim();
   if (!folder) {
@@ -2393,7 +2489,12 @@ async function reAnalyze(opts) {
   logEntry('Analysis refreshed', 'info');
 }
 
+$('btnToggleSetup').onclick = function() {
+  setSetupCollapsed(!setupCollapsed);
+};
+
 setupFilterDropdowns();
+setSetupCollapsed(readSetupCollapsedPreference());
 renderPills();
 </script>
 </body>
