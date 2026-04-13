@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proposal 2 - Compact Analyst</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body class="compact-hero">
+  <div class="page app-shell">
+    <section class="hero">
+      <div class="hero-card">
+        <div class="eyebrow">Proposal 2</div>
+        <h1>Compact Analyst</h1>
+        <p>
+          A denser version for large models. The page assumes that filters, sorting, and scan speed matter more
+          than large cards or decorative spacing. Still table-first, just tighter.
+        </p>
+        <div class="hero-tags">
+          <span class="tag tag-primary">Best for 1k+ items</span>
+          <span class="tag">Denser table</span>
+          <span class="tag">Fast filter loops</span>
+        </div>
+      </div>
+      <aside class="hero-side">
+        <h2>Why it exists</h2>
+        <p>
+          If the tool is used by people who live in tabular models all day, this layout optimizes for throughput:
+          more rows on screen, less header bulk, clearer counts.
+        </p>
+      </aside>
+    </section>
+
+    <section class="shell panel">
+      <div class="sticky-band">
+        <div class="band-group">
+          <span class="tab is-active">Details</span>
+          <span class="tab">Tables</span>
+          <span class="pick-pill">LINDEN</span>
+          <span class="pick-pill is-report">4 reports selected</span>
+        </div>
+        <div class="band-group">
+          <span class="micro-badge">618 items</span>
+          <span class="micro-badge">35 filtered</span>
+          <button class="quiet-btn">Analyze</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="compact-strip">
+      <div class="shell panel metric-stack">
+        <div class="compact-kpi">
+          <div class="row">
+            <div>
+              <div class="kpi-label">Usage split</div>
+              <div class="main" style="color:var(--blue)">47</div>
+            </div>
+            <span class="micro-badge">used or retained</span>
+          </div>
+          <div class="mini">
+            <div><span>In reports</span><span>28</span></div>
+            <div><span>Model only</span><span>7</span></div>
+            <div><span>Indirect</span><span>12</span></div>
+          </div>
+        </div>
+        <div class="compact-kpi">
+          <div class="row">
+            <div>
+              <div class="kpi-label">Cleanup pool</div>
+              <div class="main" style="color:var(--amber)">571</div>
+            </div>
+            <span class="micro-badge">review + safe</span>
+          </div>
+          <div class="mini">
+            <div><span>Safe</span><span>549</span></div>
+            <div><span>Review</span><span>17</span></div>
+            <div><span>Broken</span><span>5</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="shell panel filter-panel">
+        <div class="filter-row">
+          <div class="field">
+            <label class="filter-label">Search</label>
+            <input value="margin">
+          </div>
+          <div class="field">
+            <label class="filter-label">Status</label>
+            <select><option>In reports + indirect</option></select>
+          </div>
+          <div class="field">
+            <label class="filter-label">Type</label>
+            <select><option>Measure</option></select>
+          </div>
+          <div class="field">
+            <label class="filter-label">Table</label>
+            <select><option>Sales</option></select>
+          </div>
+          <div class="field">
+            <label class="filter-label">Risk</label>
+            <select><option>All risks</option></select>
+          </div>
+        </div>
+        <div class="filter-row is-secondary">
+          <div class="field">
+            <label class="filter-label">Folder</label>
+            <select><option>Executive Metrics</option></select>
+          </div>
+          <div class="field">
+            <label class="filter-label">Quick slices</label>
+            <div class="segmented">
+              <span class="seg-chip is-active">All</span>
+              <span class="seg-chip">Show hidden</span>
+              <span class="seg-chip">Only modified</span>
+              <span class="seg-chip">Top dependencies</span>
+            </div>
+          </div>
+          <div class="field">
+            <label class="filter-label">Sort</label>
+            <select><option>Pages desc</option></select>
+          </div>
+          <div class="toolbar-inline">
+            <button class="quiet-btn">Reset</button>
+            <button class="quiet-btn">Save filter set</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="shell panel">
+      <div class="table-panel-head">
+        <div class="table-title">
+          <h2>Details</h2>
+          <p>Dense operator view. Long page lists and dependency trees are hidden behind inspect.</p>
+        </div>
+        <div class="head-actions">
+          <button class="quiet-btn">Select visible</button>
+          <button class="quiet-btn">Export</button>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table class="data-table dense-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Status</th>
+              <th>Risk</th>
+              <th>Reports</th>
+              <th>Pages</th>
+              <th>Dependents</th>
+              <th>Folder</th>
+              <th>Summary</th>
+              <th>Inspect</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="row-item"><strong>Sales[Revenue]</strong><span>Measure · Sales</span></div></td>
+              <td><span class="status-badge report">In reports</span></td>
+              <td><span class="risk-badge blocked">In use</span></td>
+              <td class="num">3</td>
+              <td class="num">7</td>
+              <td class="num">6</td>
+              <td class="num">Executive Metrics</td>
+              <td class="reason">Used across card, matrix, scorecard</td>
+              <td><button class="soft-btn">Open</button></td>
+            </tr>
+            <tr>
+              <td><div class="row-item"><strong>Sales[Gross Margin %]</strong><span>Measure · Sales</span></div></td>
+              <td><span class="status-badge report">In reports</span></td>
+              <td><span class="risk-badge blocked">In use</span></td>
+              <td class="num">4</td>
+              <td class="num">11</td>
+              <td class="num">9</td>
+              <td class="num">Executive Metrics</td>
+              <td class="reason">Scorecard plus trend visuals</td>
+              <td><button class="soft-btn">Open</button></td>
+            </tr>
+            <tr>
+              <td><div class="row-item"><strong>Sales[Net Margin %]</strong><span>Measure · Sales</span></div></td>
+              <td><span class="status-badge indirect">Indirect</span></td>
+              <td><span class="risk-badge blocked">In use</span></td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">14</td>
+              <td class="num">Executive Metrics</td>
+              <td class="reason">Dependent measure chain only</td>
+              <td><button class="soft-btn">Open</button></td>
+            </tr>
+            <tr>
+              <td><div class="row-item"><strong>Finance[Adj EBITDA]</strong><span>Measure · Finance</span></div></td>
+              <td><span class="status-badge broken">Broken</span></td>
+              <td><span class="risk-badge review">Review</span></td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">2</td>
+              <td class="num">Legacy</td>
+              <td class="reason">Missing refs and owner unclear</td>
+              <td><button class="soft-btn">Open</button></td>
+            </tr>
+            <tr>
+              <td><div class="row-item"><strong>Sales[Promo Flag Legacy]</strong><span>Column · Sales</span></div></td>
+              <td><span class="status-badge unused">Not used</span></td>
+              <td><span class="risk-badge safe">Safe</span></td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">Legacy</td>
+              <td class="reason">No evidence, no dependents</td>
+              <td><button class="soft-btn">Queue</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-foot">
+        <div class="helper">Designed to keep more rows visible without losing the usage split.</div>
+        <div class="pager">
+          <button class="soft-btn">Prev</button>
+          <span class="counter">1-50 of 1,082</span>
+          <button class="soft-btn">Next</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

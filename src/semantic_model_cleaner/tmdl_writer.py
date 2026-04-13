@@ -191,6 +191,52 @@ def set_hidden(model_path: Path, table: str, name: str,
     return {"ok": True, "file": str(tmdl_file), "action": "set_hidden", "hidden": hidden}
 
 
+def set_table_group(model_path: Path, table: str, group_name: str) -> dict:
+    """Set or change the Tabular Editor table-group annotation on a table."""
+    tmdl_file = _find_tmdl_file(model_path, table)
+    if not tmdl_file:
+        return {"ok": False, "error": f"TMDL file not found for table '{table}'"}
+
+    lines = tmdl_file.read_text(encoding="utf-8").splitlines()
+    if not lines:
+        return {"ok": False, "error": f"TMDL file is empty for table '{table}'"}
+
+    table_line = None
+    for i, line in enumerate(lines):
+        if re.match(r"^table\s+", line):
+            table_line = i
+            break
+    if table_line is None:
+        return {"ok": False, "error": f"Table declaration not found in {tmdl_file.name}"}
+
+    annotation_name = "TabularEditor_TableGroup"
+    annotation_pattern = re.compile(
+        rf"^\tannotation\s+{re.escape(annotation_name)}\s*=\s*.*$",
+        re.IGNORECASE,
+    )
+    annotation_line = None
+    for i in range(table_line + 1, len(lines)):
+        if annotation_pattern.match(lines[i]):
+            annotation_line = i
+            break
+
+    if annotation_line is not None:
+        if group_name:
+            lines[annotation_line] = f"\tannotation {annotation_name} = {group_name}"
+        else:
+            lines.pop(annotation_line)
+    elif group_name:
+        lines.insert(table_line + 1, f"\tannotation {annotation_name} = {group_name}")
+
+    tmdl_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {
+        "ok": True,
+        "file": str(tmdl_file),
+        "action": "set_table_group",
+        "table_group": group_name,
+    }
+
+
 def _normalize_expression_lines(dax_expression: str) -> list[str]:
     lines = [line.rstrip() for line in str(dax_expression).splitlines()]
     while lines and not lines[0].strip():
@@ -473,11 +519,12 @@ def delete_item(model_path: Path, table: str, name: str, item_type: str) -> dict
 def apply_actions(model_path: Path, actions: list[dict]) -> list[dict]:
     """Apply a batch of actions. Each action dict:
     {
-        "action": "move_to_folder" | "hide" | "unhide" | "delete",
+        "action": "move_to_folder" | "move_to_table_group" | "hide" | "unhide" | "delete",
         "table": str,
         "name": str,
-        "item_type": str,  # "Measure", "Column", "Calculated Column"
-        "folder": str      # only for move_to_folder
+        "item_type": str,  # "Measure", "Column", "Calculated Column", "Table"
+        "folder": str,     # only for move_to_folder
+        "table_group": str # only for move_to_table_group
     }
     Returns list of result dicts.
     """
@@ -490,6 +537,8 @@ def apply_actions(model_path: Path, actions: list[dict]) -> list[dict]:
 
         if action == "move_to_folder":
             r = set_display_folder(model_path, table, name, item_type, act.get("folder", ""))
+        elif action == "move_to_table_group":
+            r = set_table_group(model_path, table, act.get("table_group", ""))
         elif action == "hide":
             r = set_hidden(model_path, table, name, item_type, hidden=True)
         elif action == "unhide":

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proposal 1 - Balanced Table</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <div class="page app-shell">
+    <section class="shell chrome">
+      <div class="brand">
+        <h1>Semantic Model Cleaner</h1>
+        <p>Polished current layout, still centered on filters and one scalable table.</p>
+      </div>
+      <div class="buildline">v0.1.x preview | details-layout-v2</div>
+    </section>
+
+    <section class="shell panel">
+      <div class="setup-bar">
+        <div class="picker-card">
+          <div class="picker-label">Semantic model</div>
+          <div class="pill-row">
+            <span class="pick-pill">LINDEN</span>
+          </div>
+        </div>
+        <div class="picker-card">
+          <div class="picker-label">Reports</div>
+          <div class="pill-row">
+            <span class="pick-pill is-report">Executive Summary</span>
+            <span class="pick-pill is-report">Sales Review</span>
+            <span class="pick-pill is-report">Finance Deck</span>
+            <span class="pick-pill is-report">Store Scorecard</span>
+          </div>
+        </div>
+        <button class="cta">Analyze</button>
+      </div>
+    </section>
+
+    <section class="shell panel">
+      <div class="tabs">
+        <span class="tab is-active">Details</span>
+        <span class="tab">Tables</span>
+      </div>
+    </section>
+
+    <section class="summary-strip">
+      <article class="kpi-card is-green">
+        <div class="kpi-top">
+          <div>
+            <div class="kpi-label">In reports</div>
+            <div class="kpi-value">28</div>
+          </div>
+          <span class="micro-badge">public signal</span>
+        </div>
+        <div class="submetrics">
+          <div class="submetric"><span>Reports touched</span><span>4</span></div>
+          <div class="submetric"><span>Pages touched</span><span>32</span></div>
+          <div class="submetric"><span>Visual refs</span><span>148</span></div>
+        </div>
+      </article>
+
+      <article class="kpi-card is-amber">
+        <div class="kpi-top">
+          <div>
+            <div class="kpi-label">Model only</div>
+            <div class="kpi-value">7</div>
+          </div>
+          <span class="micro-badge">structural</span>
+        </div>
+        <div class="submetrics">
+          <div class="submetric"><span>Relationships</span><span>3</span></div>
+          <div class="submetric"><span>Sort-by / hierarchy</span><span>2</span></div>
+          <div class="submetric"><span>RLS / key</span><span>2</span></div>
+        </div>
+      </article>
+
+      <article class="kpi-card is-blue">
+        <div class="kpi-top">
+          <div>
+            <div class="kpi-label">Indirect</div>
+            <div class="kpi-value">12</div>
+          </div>
+          <span class="micro-badge">dependency chain</span>
+        </div>
+        <div class="submetrics">
+          <div class="submetric"><span>Measures</span><span>10</span></div>
+          <div class="submetric"><span>Columns</span><span>2</span></div>
+          <div class="submetric"><span>Max dependents</span><span>31</span></div>
+        </div>
+      </article>
+
+      <article class="kpi-card is-red">
+        <div class="kpi-top">
+          <div>
+            <div class="kpi-label">Cleanup candidates</div>
+            <div class="kpi-value">571</div>
+          </div>
+          <span class="micro-badge">review + safe</span>
+        </div>
+        <div class="submetrics">
+          <div class="submetric"><span>Safe</span><span>549</span></div>
+          <div class="submetric"><span>Review</span><span>17</span></div>
+          <div class="submetric"><span>Broken</span><span>5</span></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="shell panel filter-panel">
+      <div class="filter-row">
+        <div class="field">
+          <label class="filter-label">Search</label>
+          <input value="date">
+        </div>
+        <div class="field">
+          <label class="filter-label">Type</label>
+          <select><option>All types</option></select>
+        </div>
+        <div class="field">
+          <label class="filter-label">Usage source</label>
+          <select><option>All statuses</option></select>
+        </div>
+        <div class="field">
+          <label class="filter-label">Risk</label>
+          <select><option>All risks</option></select>
+        </div>
+        <div class="field">
+          <label class="filter-label">Table</label>
+          <select><option>All tables</option></select>
+        </div>
+      </div>
+      <div class="filter-row is-secondary">
+        <div class="field">
+          <label class="filter-label">Folder</label>
+          <select><option>All folders</option></select>
+        </div>
+        <div class="field">
+          <label class="filter-label">Quick slices</label>
+          <div class="segmented">
+            <span class="seg-chip is-active">All</span>
+            <span class="seg-chip">Measures</span>
+            <span class="seg-chip">Columns</span>
+            <span class="seg-chip">Hidden only</span>
+            <span class="seg-chip">Modified</span>
+          </div>
+        </div>
+        <div class="field">
+          <label class="filter-label">Changed state</label>
+          <select><option>All changes</option></select>
+        </div>
+        <div class="toolbar-inline">
+          <button class="quiet-btn">Clear filters</button>
+          <button class="quiet-btn">Save view</button>
+        </div>
+      </div>
+      <div class="filter-note-row">
+        <div class="helper">Counts only in the grid. Long dependency and page lists open only on explicit inspect.</div>
+        <div class="counter">Showing 35 of 618 items</div>
+      </div>
+    </section>
+
+    <section class="shell panel">
+      <div class="table-panel-head">
+        <div class="table-title">
+          <h2>Details</h2>
+          <p>Table-first, with explicit usage semantics and no always-open details panel.</p>
+        </div>
+        <div class="head-actions">
+          <button class="quiet-btn">Export JSON</button>
+          <button class="quiet-btn">Export Excel</button>
+          <button class="quiet-btn">Inspect selected</button>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Type</th>
+              <th>Usage source</th>
+              <th>Risk</th>
+              <th>Reports</th>
+              <th>Pages</th>
+              <th>Dependents</th>
+              <th>Reason summary</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="row-item"><strong>Adjustments[date_key]</strong><span>Adjustments</span></div></td>
+              <td>Column</td>
+              <td><span class="status-badge model">Model only</span></td>
+              <td><span class="risk-badge blocked">In use</span></td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">1</td>
+              <td class="reason">Active relationship to Date[DateKey]</td>
+              <td><button class="soft-btn">Inspect</button></td>
+            </tr>
+            <tr>
+              <td><div class="row-item"><strong>Sales[Revenue]</strong><span>Sales</span></div></td>
+              <td>Measure</td>
+              <td><span class="status-badge report">In reports</span></td>
+              <td><span class="risk-badge blocked">In use</span></td>
+              <td class="num">3</td>
+              <td class="num">7</td>
+              <td class="num">6</td>
+              <td class="reason">Used in card, matrix, tooltip</td>
+              <td><button class="soft-btn">Inspect</button></td>
+            </tr>
+            <tr>
+              <td><div class="row-item"><strong>Sales[Net Margin %]</strong><span>Sales</span></div></td>
+              <td>Measure</td>
+              <td><span class="status-badge indirect">Indirect</span></td>
+              <td><span class="risk-badge blocked">In use</span></td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">14</td>
+              <td class="reason">Required by Executive Scorecard and variance measures</td>
+              <td><button class="soft-btn">Inspect</button></td>
+            </tr>
+            <tr>
+              <td><div class="row-item"><strong>Adjustments[legacy_reason_code]</strong><span>Adjustments</span></div></td>
+              <td>Column</td>
+              <td><span class="status-badge unused">Not used</span></td>
+              <td><span class="risk-badge safe">Safe</span></td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="reason">No report evidence and no model retention</td>
+              <td><button class="soft-btn">Queue</button></td>
+            </tr>
+            <tr>
+              <td><div class="row-item"><strong>Finance[Adj EBITDA]</strong><span>Finance</span></div></td>
+              <td>Measure</td>
+              <td><span class="status-badge broken">Broken</span></td>
+              <td><span class="risk-badge review">Review</span></td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">2</td>
+              <td class="reason">Missing DAX references need repair before cleanup</td>
+              <td><button class="soft-btn">Inspect</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-foot">
+        <div class="helper">Inspect opens a modal or drawer only when requested. The page itself stays compact.</div>
+        <div class="pager">
+          <button class="soft-btn">Previous</button>
+          <span class="counter">Page 1 of 18</span>
+          <button class="soft-btn">Next</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

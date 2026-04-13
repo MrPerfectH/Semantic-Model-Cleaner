@@ -90,3 +90,29 @@ def test_set_dax_expression_updates_calculated_column(tmp_path):
     assert "\t\texpression = DIVIDE(" in content
     assert "\t\t\tSales[Profit]," in content
     assert "\t\thidden" in content
+
+
+def test_set_table_group_inserts_and_updates_annotation(tmp_path):
+    model_path = tmp_path / "Demo.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tcolumn Id\n"
+        "\t\tdataType: int64\n",
+        encoding="utf-8",
+    )
+
+    result = tmdl_writer.set_table_group(model_path, "Sales", "PNL Actuals")
+
+    assert result["ok"] is True
+    content = sales_file.read_text(encoding="utf-8")
+    assert "\tannotation TabularEditor_TableGroup = PNL Actuals" in content
+
+    result = tmdl_writer.set_table_group(model_path, "Sales", "Actuals")
+
+    assert result["ok"] is True
+    updated = sales_file.read_text(encoding="utf-8")
+    assert "\tannotation TabularEditor_TableGroup = Actuals" in updated
+    assert "PNL Actuals" not in updated

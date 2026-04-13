@@ -22,7 +22,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .header .title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .header .build-stamp { margin-top: 4px; font-size: 11px; opacity: .9; font-family: 'SF Mono', Monaco, Consolas, monospace; }
 .beta-badge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; background: #f59e0b; color: #fff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .35px; }
-.container { max-width: 1600px; margin: 0 auto; padding: 16px 24px; }
+.container { max-width: 1600px; margin: 0 auto; padding: 16px 24px; display: flex; flex-direction: column; height: calc(100vh - 80px); overflow: hidden; }
+.container > * { flex-shrink: 0; }
+.table-container, .detail-panel { flex-shrink: 1 !important; }
 .beta-banner { background: #fffbeb; border: 1px solid #f59e0b; border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px; color: #92400e; }
 .beta-banner strong { font-size: 13px; }
 .beta-banner p { margin-top: 4px; font-size: 12px; line-height: 1.5; }
@@ -128,13 +130,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 14px; }
 .help-item { font-size: 12px; line-height: 1.45; color: var(--text-light); }
 .help-item strong { color: var(--text); }
-.table-container { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); position: relative; overflow-y: auto; overflow-x: hidden; max-height: min(68vh, 720px); }
+.table-container { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); position: relative; overflow-y: auto; overflow-x: auto; flex: 1 1 0; min-height: 200px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 thead th { position: sticky; top: 0; z-index: 2; background: #f8fafc; border-bottom: 2px solid var(--border); padding: 10px 12px; text-align: left; font-weight: 600; font-size: 13px; text-transform: none; letter-spacing: normal; color: var(--text-light); cursor: pointer; user-select: none; white-space: normal; overflow-wrap: anywhere; }
 thead th:hover { color: var(--text); }
+thead th.resize-hover { cursor: col-resize; }
 thead th .sort-arrow { font-size: 10px; margin-left: 4px; }
-thead th .col-resizer { position: absolute; top: 0; right: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 3; }
-tbody td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; overflow-wrap: anywhere; font-size: 13px; line-height: 1.4; }
+thead th .col-resizer { position: absolute; top: 0; right: -8px; width: 16px; height: 100%; cursor: col-resize; z-index: 4; touch-action: none; }
+thead th .col-resizer::before { content: ''; position: absolute; top: 8px; bottom: 8px; left: 50%; width: 2px; transform: translateX(-50%); border-radius: 999px; background: transparent; transition: background .12s ease; }
+thead th:hover .col-resizer::before,
+thead th.is-resizing .col-resizer::before { background: #cbd5e1; }
+thead th.is-resizing .col-resizer::before { background: var(--primary); }
+tbody td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; overflow-wrap: anywhere; font-size: 13px; line-height: 1.4; }
 tbody tr:hover { background: var(--row-hover); }
 tbody tr.row-review td:first-child { border-left: 3px solid var(--warning); }
 tbody tr.row-caution td:first-child { border-left: 3px solid var(--danger); }
@@ -151,6 +158,18 @@ tbody tr.row-failed { background: #fee2e2; }
 .badge-donotremove { background: var(--donotremove); color: #475569; }
 .badge-used { background: #dbeafe; color: #1e40af; }
 .badge-muted { background: #e2e8f0; color: #475569; }
+.cell-ellipsis { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-ellipsis-link { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; text-decoration: none; }
+.cell-ellipsis-link:hover { text-decoration: underline; }
+body.wrap-table-text .cell-ellipsis,
+body.wrap-table-text .cell-ellipsis-link { overflow: visible; text-overflow: clip; white-space: normal; word-break: break-word; }
+.table-wrap-link { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-wrap-link:hover { text-decoration: underline; }
+.table-summary-text { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-signals li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.wrap-table-text .table-wrap-link,
+body.wrap-table-text .table-summary-text,
+body.wrap-table-text .table-signals li { overflow: visible; text-overflow: clip; white-space: normal; word-break: break-word; }
 .status-log { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-top: 16px; max-height: 200px; overflow-y: auto; }
 .status-log h3 { font-size: 13px; margin-bottom: 8px; color: var(--text-light); }
 .status-log .log-entry { font-size: 12px; padding: 3px 0; font-family: 'SF Mono', Monaco, Consolas, monospace; }
@@ -205,19 +224,22 @@ tbody tr.row-failed { background: #fee2e2; }
 .explorer-empty { padding: 40px 20px; text-align: center; color: var(--text-light); font-size: 13px; }
 .explorer-footer { padding: 12px 20px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .explorer-footer .selected-summary { font-size: 12px; color: var(--text-light); }
-.view-tabs { display: flex; gap: 0; margin-bottom: 12px; }
+.view-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.view-tabs { display: flex; gap: 0; margin-bottom: 0; flex: 1 1 auto; min-width: 0; }
 .view-tab { padding: 10px 20px; background: var(--card); border: 1px solid var(--border); font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-light); transition: all .15s; }
 .view-tab:first-child { border-radius: var(--radius) 0 0 var(--radius); }
 .view-tab:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-left: none; }
 .view-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 .view-tab .tab-count { font-size: 11px; font-weight: 400; opacity: .8; margin-left: 6px; }
+.table-tools { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 0 0 auto; }
+.table-tools .inline-checkbox { color: var(--text); }
 body.is-resizing-columns { cursor: col-resize; user-select: none; }
 .cell-status, .cell-hidden, .cell-refs { white-space: nowrap; }
 .cell-risk { white-space: normal; }
 .risk-trigger-note { margin-top: 4px; font-size: 13px; line-height: 1.4; color: var(--text-light); }
 .item-link { color: inherit; text-decoration: none; cursor: pointer; }
 .item-link:hover { color: var(--primary); text-decoration: underline; }
-.detail-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+.detail-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; flex: 1 1 0; min-height: 0; overflow-y: auto; }
 .detail-panel h3 { font-size: 18px; margin-bottom: 6px; }
 .detail-panel .detail-meta { font-size: 12px; color: var(--text-light); margin-bottom: 16px; }
 .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 18px; }
@@ -258,6 +280,9 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
 @media (max-width: 900px) {
   .filters-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .setup-export-actions { margin-left: 0; width: 100%; justify-content: flex-start; }
+  .view-toolbar { align-items: flex-start; flex-direction: column; }
+  .view-tabs { width: 100%; overflow-x: auto; }
+  .table-tools { justify-content: flex-start; flex-wrap: wrap; width: 100%; }
   .action-bar { flex-direction: column; align-items: stretch; }
   .action-group-card { width: 100%; }
   .action-cleanup-grid .folder-input { width: 100%; }
@@ -324,9 +349,10 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     </div>
     <div class="setup-options">
       <div class="setup-options-grid">
-        <label class="inline-checkbox" title="Run the analysis again after queued actions are written"><input type="checkbox" id="autoRefreshAfterApply" checked> Auto-refresh analysis after apply</label>
-        <label class="inline-checkbox" title="Required before applying queued delete actions"><input type="checkbox" id="confirmDeleteCheckbox"> Confirm delete</label>
-        <label class="inline-checkbox" title="Create a backup before writing queued actions"><input type="checkbox" id="applyBackupCheckbox" checked> Create backup before apply</label>
+        <label class="inline-checkbox" title="When enabled, the analysis will automatically re-run after you apply changes. This refreshes usage counts and risk levels to reflect the new state of the model. Disable if you plan to apply multiple batches before reviewing."><input type="checkbox" id="autoRefreshAfterApply" checked> Auto-refresh analysis after apply</label>
+        <label class="inline-checkbox" title="When checked, you will be prompted to confirm before any deletion is applied."><input type="checkbox" id="confirmDeleteCheckbox"> Confirm delete</label>
+        <label class="inline-checkbox" title="Creates a timestamped copy of all affected TMDL files before writing any changes. Recommended so you can restore the original model if something goes wrong."><input type="checkbox" id="applyBackupCheckbox" checked> Create backup before apply</label>
+        <label class="inline-checkbox" title="Show or hide the action log panel at the bottom of the page. Log entries are still recorded even when the panel is hidden."><input type="checkbox" id="showActionLogCheckbox"> Show action log</label>
       </div>
       <div class="setup-export-actions hidden" id="exportSection">
         <button class="btn btn-secondary" id="btnExportJson" title="Download the current analysis as JSON">Export JSON</button>
@@ -371,12 +397,18 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       <div class="filter-counts" id="filterCounts"></div>
     </div>
   </div>
-  <div class="view-tabs hidden" id="viewTabs">
-    <div class="view-tab active" data-view="details" id="tabDetails">Details <span class="tab-count" id="tabDetailsCount"></span></div>
-    <div class="view-tab" data-view="tables" id="tabTables">Tables <span class="tab-count" id="tabTablesCount"></span></div>
-    <div class="view-tab" data-view="refs" id="tabRefs">All References <span class="tab-count" id="tabRefsCount"></span></div>
-    <div class="view-tab" data-view="item" id="tabItem">Item Details</div>
-    <div class="view-tab" data-view="table" id="tabTable">Table Details</div>
+  <div class="view-toolbar hidden" id="viewToolbar">
+    <div class="view-tabs" id="viewTabs">
+      <div class="view-tab active" data-view="details" id="tabDetails">Details <span class="tab-count" id="tabDetailsCount"></span></div>
+      <div class="view-tab" data-view="tables" id="tabTables">Tables <span class="tab-count" id="tabTablesCount"></span></div>
+      <div class="view-tab" data-view="refs" id="tabRefs">All References <span class="tab-count" id="tabRefsCount"></span></div>
+      <div class="view-tab" data-view="item" id="tabItem">Item Details</div>
+      <div class="view-tab" data-view="table" id="tabTable">Table Details</div>
+    </div>
+    <div class="table-tools" id="tableToolsSection">
+      <label class="inline-checkbox" title="Wrap long values inside table cells instead of truncating them with ellipsis. Use this when you need to read the full text without hovering."><input type="checkbox" id="wrapTableTextCheckbox"> Wrap long text</label>
+      <button class="btn btn-secondary" id="btnAutoSizeColumns" title="Resize the visible table columns based on current content and available width.">Auto-size columns</button>
+    </div>
   </div>
   <div class="action-bar hidden" id="actionSection">
     <div class="action-group-card action-selection-group">
@@ -389,6 +421,8 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       <div class="action-cleanup-grid">
         <input type="text" class="folder-input" id="folderInput" placeholder="Display folder name..." value="Safe to delete" title="Folder name used by Move to folder">
         <button class="btn btn-warning" id="btnMoveToFolder" title="Queue a display folder change for the selected items">Move to folder</button>
+        <input type="text" class="folder-input hidden" id="tableGroupInput" placeholder="Table group name..." value="PNL Actuals" title="Table group annotation used by Move to Table Group">
+        <button class="btn btn-warning hidden" id="btnMoveToTableGroup" title="Queue a Tabular Editor table-group change for the selected tables">Move to Table Group</button>
         <button class="btn btn-secondary" id="btnHide" title="Queue a hidden state for the selected items">Hide</button>
         <button class="btn btn-secondary" id="btnUnhide" title="Queue a visible state for the selected items">Unhide</button>
         <button class="btn btn-danger" id="btnDelete" title="Queue the selected items for deletion; confirmation happens on Apply">Delete</button>
@@ -407,11 +441,13 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <th data-col="table">Table <span class="sort-arrow"></span></th>
         <th data-col="name">Name <span class="sort-arrow"></span></th>
         <th data-col="displayFolder">Folder <span class="sort-arrow"></span></th>
-        <th data-col="status">Status <span class="sort-arrow"></span></th>
-        <th data-col="removalRisk">Risk <span class="sort-arrow"></span></th>
         <th data-col="isHidden">Hidden <span class="sort-arrow"></span></th>
-        <th data-col="pagesUsed">Pages <span class="sort-arrow"></span></th>
-        <th data-col="usageCount">Refs <span class="sort-arrow"></span></th>
+        <th data-col="reportUseSummary">Report Use <span class="sort-arrow"></span></th>
+        <th data-col="measureDependentCount">Used By Measures <span class="sort-arrow"></span></th>
+        <th data-col="reportUsedMeasureDependentCount">Used By Rpt-Used Measures <span class="sort-arrow"></span></th>
+        <th data-col="relationshipRefCount">Relationships <span class="sort-arrow"></span></th>
+        <th data-col="otherModelUseCount">Other Model Use <span class="sort-arrow"></span></th>
+        <th data-col="deleteSafety">Delete Safety <span class="sort-arrow"></span></th>
         <th>Action</th>
       </tr></thead>
       <tbody id="tableBody"></tbody>
@@ -420,12 +456,14 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
   <div class="table-container hidden" id="tablesOverviewSection">
     <table>
       <thead><tr>
+        <th style="width:36px"><input type="checkbox" id="checkAllTables"></th>
         <th data-tablecol="name">Table <span class="sort-arrow"></span></th>
-        <th data-tablecol="usageStatus">Usage Status <span class="sort-arrow"></span></th>
-        <th data-tablecol="roleLabel">Role <span class="sort-arrow"></span></th>
+        <th data-tablecol="directReportMeasureCount" title="Unique measures in this table directly referenced by the selected reports">Rpt Measures <span class="sort-arrow"></span></th>
+        <th data-tablecol="directReportColumnCount" title="Unique columns in this table directly referenced by the selected reports">Rpt Columns <span class="sort-arrow"></span></th>
+        <th data-tablecol="roleLabel" title="Relationship shape inferred from active relationships">Relationship Shape <span class="sort-arrow"></span></th>
         <th data-tablecol="itemCount">Items <span class="sort-arrow"></span></th>
-        <th data-tablecol="usedItemCount">Used <span class="sort-arrow"></span></th>
-        <th data-tablecol="unusedItemCount">Unused <span class="sort-arrow"></span></th>
+        <th data-tablecol="usedItemCount" title="Count of items in this table that are currently classified as used or indirectly used">Used Items <span class="sort-arrow"></span></th>
+        <th data-tablecol="unusedItemCount" title="Count of items in this table that are currently classified as not used">Unused Items <span class="sort-arrow"></span></th>
         <th data-tablecol="reportCount">Reports <span class="sort-arrow"></span></th>
         <th data-tablecol="relationshipCount">Relationships <span class="sort-arrow"></span></th>
         <th data-tablecol="usageRefCount">Refs <span class="sort-arrow"></span></th>
@@ -545,7 +583,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <div class="detail-value" id="tableDetailUsageStatus"></div>
       </div>
       <div class="detail-card">
-        <h4>Role Hint</h4>
+        <h4>Relationship Shape</h4>
         <div class="detail-value" id="tableDetailRole"></div>
       </div>
       <div class="detail-card">
@@ -590,14 +628,17 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="detail-card" style="margin-top:14px">
       <h4>Table Actions</h4>
       <div class="detail-actions">
+        <input type="text" class="folder-input" id="tableDetailGroupInput" placeholder="Table group name..." value="PNL Actuals" title="Tabular Editor table-group annotation value">
+        <button class="btn btn-warning btn-sm" id="tableBtnMoveToTableGroup" title="Queue a table-group annotation change for this table">Move to Table Group</button>
         <button class="btn btn-danger btn-sm" id="tableBtnDelete" title="Queue a dependency-aware delete for this table">Queue delete table</button>
         <button class="btn btn-primary btn-sm" id="tableBtnApply" title="Write every queued action to the model files">Apply queued</button>
         <button class="btn btn-secondary btn-sm" id="tableBtnReset" title="Clear every queued action">Reset queued</button>
       </div>
-      <div class="detail-action-status" id="tableActionStatus">Select a table to queue delete for all items in that table.</div>
+      <div class="detail-action-status" id="tableActionStatus">Select a table to queue delete or assign a table group.</div>
       <div class="help-panel">
         <div class="help-title">Table action help</div>
         <div class="help-grid">
+          <div class="help-item"><strong>Move to Table Group</strong> Queues a `TabularEditor_TableGroup` annotation update for the selected table.</div>
           <div class="help-item"><strong>Queue delete table</strong> Builds a dependency-aware delete set for the table and asks for confirmation before queueing it.</div>
           <div class="help-item"><strong>Apply queued</strong> Writes all queued actions to the model files.</div>
           <div class="help-item"><strong>Reset queued</strong> Clears all queued actions before they are applied.</div>
@@ -630,19 +671,14 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       <ul class="explorer-list" id="explorerList"></ul>
     </div>
     <div class="explorer-footer">
-      <span class="selected-summary" id="explorerSelectedSummary">0 selected</span>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span class="selected-summary" id="explorerSelectedSummary">0 selected</span>
+        <span class="selected-summary" id="explorerDefaultSummary">No default folder saved</span>
+      </div>
       <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" id="btnExplorerSetDefault" title="Save the current folder as the default start location for this picker">Set as default</button>
         <button class="btn btn-secondary" id="btnExplorerCancel" title="Close the picker without changing the selection">Cancel</button>
         <button class="btn btn-primary" id="btnExplorerDone" title="Confirm the current selection">Done</button>
-      </div>
-      <div class="inline-help" style="margin-top:10px">
-        <div class="help-title">Picker help</div>
-        <div class="help-grid">
-          <div class="help-item"><strong>Up</strong> Moves to the parent folder.</div>
-          <div class="help-item"><strong>Go</strong> Opens the path typed in the input field.</div>
-          <div class="help-item"><strong>Done</strong> Confirms the selected model or reports.</div>
-          <div class="help-item"><strong>Cancel</strong> Closes the picker without saving changes.</div>
-        </div>
       </div>
     </div>
   </div>
@@ -692,7 +728,7 @@ var initialConfig = {
   initialReports: {{ initial_reports|tojson }}
 };
 var selectedKeys = new Set();
-var sortCol = 'removalRisk';
+var sortCol = 'deleteSafety';
 var sortAsc = true;
 var tableSortCol = 'unusedItemCount';
 var tableSortAsc = false;
@@ -703,8 +739,10 @@ var chosenModels = (initialConfig.initialModels || []).slice();
 var chosenReports = (initialConfig.initialReports || []).slice();
 var pendingActions = new Map();
 var actionStatus = new Map();
+var selectedTableNames = new Set();
 var allWarnings = [];
 var riskOrder = { 'Safe': 0, 'Review': 1, 'Caution': 2, 'Do not remove': 3, '__not_applicable__': 4 };
+var deleteSafetyOrder = { 'Safe': 0, 'Review': 1, 'Blocked': 2, 'Do not remove': 3 };
 var explorerMode = 'model';
 var explorerPicked = new Map();
 var explorerCurrentPath = '';
@@ -770,12 +808,32 @@ var filterState = {
 var filterDropdownEventsReady = false;
 var setupCollapsed = false;
 var setupCollapseStorageKey = 'smc.setupCollapsed';
+var showActionLogStorageKey = 'smc.showActionLog';
+var wrapTableTextStorageKey = 'smc.wrapTableText';
+var columnWidthStoragePrefix = 'smc.columnWidths.';
+var explorerDefaultPathStoragePrefix = 'smc.explorerDefaultPath.';
 
 function $(id) { return document.getElementById(id); }
 
 function readSetupCollapsedPreference() {
   try {
     return window.localStorage.getItem(setupCollapseStorageKey) === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+function readShowActionLogPreference() {
+  try {
+    return window.localStorage.getItem(showActionLogStorageKey) === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+function readWrapTableTextPreference() {
+  try {
+    return window.localStorage.getItem(wrapTableTextStorageKey) === '1';
   } catch (e) {
     return false;
   }
@@ -789,6 +847,275 @@ function setSetupCollapsed(collapsed) {
   try {
     window.localStorage.setItem(setupCollapseStorageKey, setupCollapsed ? '1' : '0');
   } catch (e) {}
+}
+
+function setActionLogVisible(visible) {
+  $('statusLog').classList.toggle('hidden', !visible);
+  $('showActionLogCheckbox').checked = !!visible;
+  try {
+    window.localStorage.setItem(showActionLogStorageKey, visible ? '1' : '0');
+  } catch (e) {}
+}
+
+function setWrapTableTextEnabled(enabled) {
+  document.body.classList.toggle('wrap-table-text', !!enabled);
+  $('wrapTableTextCheckbox').checked = !!enabled;
+  try {
+    window.localStorage.setItem(wrapTableTextStorageKey, enabled ? '1' : '0');
+  } catch (e) {}
+}
+
+function readExplorerDefaultPath(mode) {
+  if (!mode) return '';
+  try {
+    return window.localStorage.getItem(explorerDefaultPathStoragePrefix + mode) || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function writeExplorerDefaultPath(mode, path) {
+  if (!mode) return;
+  try {
+    if (path) window.localStorage.setItem(explorerDefaultPathStoragePrefix + mode, path);
+    else window.localStorage.removeItem(explorerDefaultPathStoragePrefix + mode);
+  } catch (e) {}
+}
+
+function updateExplorerDefaultUI() {
+  var defaultPath = readExplorerDefaultPath(explorerMode);
+  $('btnExplorerSetDefault').disabled = !explorerCurrentPath;
+  if (!defaultPath) {
+    $('explorerDefaultSummary').textContent = 'No default folder saved';
+    $('btnExplorerSetDefault').textContent = 'Set as default';
+    return;
+  }
+
+  $('explorerDefaultSummary').textContent = 'Default: ' + defaultPath;
+  $('btnExplorerSetDefault').textContent = defaultPath === explorerCurrentPath ? 'Default saved' : 'Set as default';
+}
+
+function getTableSectionInfo(tableSectionId) {
+  var section = $(tableSectionId);
+  if (!section) return null;
+  var table = section.querySelector('table');
+  if (!table) return null;
+  var headers = Array.from(table.querySelectorAll('thead th'));
+  if (!headers.length) return null;
+  return { section: section, table: table, headers: headers };
+}
+
+function readStoredColumnWidths(tableSectionId) {
+  try {
+    var raw = window.localStorage.getItem(columnWidthStoragePrefix + tableSectionId);
+    var parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function writeStoredColumnWidths(tableSectionId, widths) {
+  try {
+    window.localStorage.setItem(columnWidthStoragePrefix + tableSectionId, JSON.stringify(widths));
+  } catch (e) {}
+}
+
+function minWidthForHeader(th, index) {
+  if (index === 0) return 36;
+  var text = (th.textContent || '').trim();
+  var wrapEnabled = document.body.classList.contains('wrap-table-text');
+  if (text === 'Name') return wrapEnabled ? 180 : 260;
+  if (text === 'Table' || text === 'Folder') return wrapEnabled ? 120 : 150;
+  if (text === 'Report Use') return wrapEnabled ? 140 : 170;
+  if (text === 'Used By Measures' || text === 'Relationships') return 120;
+  if (text === 'Used By Rpt-Used Measures') return wrapEnabled ? 150 : 190;
+  if (text === 'Other Model Use') return wrapEnabled ? 150 : 200;
+  if (text === 'Delete Safety') return 120;
+  if (text === 'Action' || text === 'Actions') return 110;
+  if (text === 'Signals' || text === 'Relationships In Detail') return 180;
+  if (text === 'Relationship Shape') return 170;
+  if (text === 'Status' || text === 'Risk') return 120;
+  if (text === 'Used Items' || text === 'Unused Items') return 96;
+  if (text === 'Reports' || text === 'Pages' || text === 'Refs') return 76;
+  return 80;
+}
+
+function maxWidthForHeader(th, index) {
+  if (index === 0) return 36;
+  var text = (th.textContent || '').trim();
+  if (text === 'Name') return 420;
+  if (text === 'Table' || text === 'Folder') return 220;
+  if (text === 'Relationship Shape') return 220;
+  if (text === 'Status' || text === 'Risk') return 130;
+  if (text === 'Used Items' || text === 'Unused Items') return 110;
+  if (text === 'Reports' || text === 'Pages' || text === 'Refs') return 90;
+  if (text === 'Action' || text === 'Actions') return 140;
+  return 220;
+}
+
+function defaultWidthForHeader(th, index) {
+  if (index === 0) return 36;
+  var text = (th.textContent || '').trim();
+  if (text === 'Type') return 120;
+  if (text === 'Table') return 180;
+  if (text === 'Name') return 340;
+  if (text === 'Folder') return 180;
+  if (text === 'Relationship Shape') return 190;
+  if (text === 'Status' || text === 'Risk') return 120;
+  if (text === 'Used Items' || text === 'Unused Items') return 100;
+  if (text === 'Hidden') return 90;
+  if (text === 'Reports' || text === 'Pages' || text === 'Refs') return 84;
+  if (text === 'Items') return 120;
+  if (text === 'Relationships') return 140;
+  if (text === 'Signals') return 260;
+  if (text === 'Action' || text === 'Actions') return 130;
+  return Math.min(maxWidthForHeader(th, index), Math.max(minWidthForHeader(th, index), 140));
+}
+
+function calculateDefaultWidths(tableSectionId) {
+  var info = getTableSectionInfo(tableSectionId);
+  if (!info) return null;
+  return info.headers.map(function(th, index) {
+    return Math.min(maxWidthForHeader(th, index), Math.max(minWidthForHeader(th, index), defaultWidthForHeader(th, index)));
+  });
+}
+
+function buildTableColgroup(table, widths) {
+  var existing = table.querySelector('colgroup');
+  if (existing) existing.remove();
+  var colgroup = document.createElement('colgroup');
+  widths.forEach(function(width) {
+    var col = document.createElement('col');
+    col.style.width = width + 'px';
+    colgroup.appendChild(col);
+  });
+  table.insertBefore(colgroup, table.firstChild);
+  return colgroup;
+}
+
+function applyTableWidths(tableSectionId, widths) {
+  var info = getTableSectionInfo(tableSectionId);
+  if (!info || !widths || widths.length !== info.headers.length) return;
+  var activeColgroup = buildTableColgroup(info.table, widths);
+  Array.from(activeColgroup.children).forEach(function(col, index) {
+    info.headers[index].style.width = widths[index] + 'px';
+    col.style.width = widths[index] + 'px';
+  });
+  var totalWidth = widths.reduce(function(sum, width) { return sum + width; }, 0);
+  info.table.style.width = Math.max(info.section.clientWidth || 0, totalWidth) + 'px';
+}
+
+function normalizeWidthsToTarget(widths, mins, targetWidth) {
+  var next = widths.slice();
+  var total = next.reduce(function(sum, width) { return sum + width; }, 0);
+  if (!targetWidth || targetWidth <= 0 || !next.length) return next;
+
+  if (total > targetWidth) {
+    var need = total - targetWidth;
+    var shrinkable = next.reduce(function(sum, width, index) {
+      return sum + Math.max(0, width - mins[index]);
+    }, 0);
+    if (shrinkable > 0) {
+      next = next.map(function(width, index) {
+        var capacity = Math.max(0, width - mins[index]);
+        var shrink = need * (capacity / shrinkable);
+        return Math.max(mins[index], Math.floor(width - shrink));
+      });
+    }
+  } else if (total < targetWidth) {
+    var grow = targetWidth - total;
+    var flexIndices = next.map(function(_, index) { return index; }).filter(function(index) { return index !== 0; });
+    var flexBase = flexIndices.reduce(function(sum, index) { return sum + next[index]; }, 0) || flexIndices.length || 1;
+    next = next.map(function(width, index) {
+      if (flexIndices.indexOf(index) === -1) return width;
+      return width + Math.floor(grow * (width / flexBase));
+    });
+  }
+
+  var adjustedTotal = next.reduce(function(sum, width) { return sum + width; }, 0);
+  var delta = targetWidth - adjustedTotal;
+  if (delta !== 0) {
+    var adjustable = next.map(function(_, index) { return index; }).filter(function(index) { return delta > 0 || next[index] > mins[index]; });
+    var cursor = adjustable.length - 1;
+    while (delta !== 0 && adjustable.length) {
+      var idx = adjustable[cursor];
+      if (delta > 0) {
+        next[idx] += 1;
+        delta -= 1;
+      } else if (next[idx] > mins[idx]) {
+        next[idx] -= 1;
+        delta += 1;
+      }
+      cursor -= 1;
+      if (cursor < 0) cursor = adjustable.length - 1;
+      if (delta < 0 && !adjustable.some(function(index) { return next[index] > mins[index]; })) break;
+    }
+  }
+
+  return next.map(function(width, index) {
+    return Math.max(mins[index], width);
+  });
+}
+
+function measureTextWidth(text, font) {
+  if (!measureTextWidth._canvas) measureTextWidth._canvas = document.createElement('canvas');
+  var context = measureTextWidth._canvas.getContext('2d');
+  context.font = font;
+  return String(text || '').split(/\n+/).reduce(function(maxWidth, line) {
+    return Math.max(maxWidth, context.measureText(line).width);
+  }, 0);
+}
+
+function measureNodeContentWidth(node) {
+  var style = window.getComputedStyle(node);
+  var font = [style.fontStyle, style.fontVariant, style.fontWeight, style.fontSize, style.fontFamily].join(' ');
+  var text = (node.innerText || node.textContent || '').replace(/\s+\n/g, '\n').trim();
+  if (!text) return 0;
+  return Math.ceil(measureTextWidth(text, font)) + 24;
+}
+
+function calculateAutoFitWidths(tableSectionId) {
+  var info = getTableSectionInfo(tableSectionId);
+  if (!info) return null;
+  var rows = Array.from(info.table.querySelectorAll('tbody tr')).slice(0, 30);
+  return info.headers.map(function(th, index) {
+    var width = Math.max(minWidthForHeader(th, index), measureNodeContentWidth(th));
+    rows.forEach(function(row) {
+      var cell = row.children[index];
+      if (cell) width = Math.max(width, measureNodeContentWidth(cell));
+    });
+    return Math.min(Math.max(width, minWidthForHeader(th, index)), maxWidthForHeader(th, index));
+  });
+}
+
+function fitCurrentTableColumnsToScreen() {
+  var tableSectionId = currentView === 'details'
+    ? 'tableSection'
+    : currentView === 'tables'
+      ? 'tablesOverviewSection'
+      : currentView === 'refs'
+        ? 'refsTableSection'
+        : null;
+  if (!tableSectionId) return;
+
+  var info = getTableSectionInfo(tableSectionId);
+  if (!info) return;
+
+  var widths = calculateAutoFitWidths(tableSectionId);
+  if (!widths) return;
+
+  var mins = info.headers.map(function(th, index) { return minWidthForHeader(th, index); });
+  var targetWidth = Math.max(info.section.clientWidth || 0, mins.reduce(function(sum, width) { return sum + width; }, 0));
+  widths = normalizeWidthsToTarget(widths, mins, targetWidth);
+  applyTableWidths(tableSectionId, widths);
+  writeStoredColumnWidths(tableSectionId, widths);
+}
+
+function updateColumnActionButtons() {
+  var enabled = currentView === 'details' || currentView === 'tables' || currentView === 'refs';
+  $('tableToolsSection').classList.toggle('hidden', !enabled);
+  $('btnAutoSizeColumns').disabled = !enabled;
 }
 
 function hidePostRefreshDisclaimer() {
@@ -807,6 +1134,7 @@ function esc(s) {
 }
 
 function itemKey(item) { return item.type + ':::' + item.table + ':::' + item.name; }
+function tableActionKey(tableName) { return 'Table:::' + tableName + ':::' + tableName; }
 
 function itemRefText(item) {
   return item.table + '[' + item.name + ']';
@@ -860,6 +1188,17 @@ function computeTableDeletePlan(tableName) {
     var key = itemKey(item);
     planned.set(key, item);
     queue.push(item);
+  });
+
+  allItems.forEach(function(item) {
+    var dependsOnTables = item.dependsOnTables || [];
+    if (item.table !== tableName && dependsOnTables.indexOf(tableName) !== -1) {
+      var depKey = itemKey(item);
+      if (!planned.has(depKey)) {
+        planned.set(depKey, item);
+        queue.push(item);
+      }
+    }
   });
 
   while (queue.length) {
@@ -932,6 +1271,7 @@ function confirmTableDeletePlan(plan) {
 function actionLabel(action) {
   if (!action || !action.action) return '';
   if (action.action === 'move_to_folder') return 'Move to folder (' + (action.folder || '') + ')';
+  if (action.action === 'move_to_table_group') return 'Move to Table Group (' + (action.table_group || '') + ')';
   if (action.action === 'hide') return 'Hide';
   if (action.action === 'unhide') return 'Unhide';
   if (action.action === 'delete') return 'Delete';
@@ -1170,19 +1510,107 @@ function setupFilterDropdowns() {
 }
 
 function setupResizableTable(tableSectionId) {
-  var table = document.querySelector('#' + tableSectionId + ' table');
-  if (!table) return;
-  var colgroup = table.querySelector('colgroup');
-  if (colgroup) {
-    colgroup.remove();
-  }
+  var info = getTableSectionInfo(tableSectionId);
+  if (!info || info.section.classList.contains('hidden')) return;
+
+  var table = info.table;
+  var headers = info.headers;
+  var resizeEdgeThreshold = 14;
+  var storedWidths = readStoredColumnWidths(tableSectionId);
+  var widths = storedWidths.length === headers.length
+    ? headers.map(function(th, index) {
+      return Math.max(minWidthForHeader(th, index), storedWidths[index] || minWidthForHeader(th, index));
+    })
+    : calculateDefaultWidths(tableSectionId);
+
   table.querySelectorAll('.col-resizer').forEach(function(handle) {
     handle.remove();
   });
   table.querySelectorAll('thead th').forEach(function(th) {
     th.removeAttribute('title');
+    th.classList.remove('is-resizing');
   });
   table.style.tableLayout = 'fixed';
+  if (!widths || widths.length !== headers.length) {
+    widths = headers.map(function(th, index) { return minWidthForHeader(th, index); });
+  }
+  applyTableWidths(tableSectionId, widths);
+
+  headers.forEach(function(th, index) {
+    if (index === headers.length - 1) return;
+    function beginResize(e) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var startX = e.clientX;
+      var startWidth = widths[index];
+      var minWidth = minWidthForHeader(th, index);
+      var pointerId = e.pointerId;
+
+      document.body.classList.add('is-resizing-columns');
+      th.classList.add('is-resizing');
+      if (handle.setPointerCapture) {
+        try { handle.setPointerCapture(pointerId); } catch (err) {}
+      }
+
+      function onPointerMove(moveEvent) {
+        if (moveEvent.pointerId !== pointerId) return;
+        widths[index] = Math.max(minWidth, startWidth + (moveEvent.clientX - startX));
+        applyTableWidths(tableSectionId, widths);
+      }
+
+      function finishResize(endEvent) {
+        if (endEvent.pointerId !== pointerId) return;
+        document.body.classList.remove('is-resizing-columns');
+        th.classList.remove('is-resizing');
+        writeStoredColumnWidths(tableSectionId, widths);
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', finishResize);
+        window.removeEventListener('pointercancel', finishResize);
+        if (handle.releasePointerCapture) {
+          try { handle.releasePointerCapture(pointerId); } catch (err) {}
+        }
+      }
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', finishResize);
+      window.addEventListener('pointercancel', finishResize);
+    }
+
+    var handle = document.createElement('span');
+    handle.className = 'col-resizer';
+    handle.setAttribute('role', 'separator');
+    handle.setAttribute('aria-orientation', 'vertical');
+    handle.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    handle.ondblclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var optimized = calculateAutoFitWidths(tableSectionId);
+      if (!optimized) return;
+      widths[index] = optimized[index];
+      applyTableWidths(tableSectionId, widths);
+      writeStoredColumnWidths(tableSectionId, widths);
+    };
+    handle.onpointerdown = beginResize;
+    th.onpointermove = function(e) {
+      var rect = th.getBoundingClientRect();
+      th.classList.toggle('resize-hover', rect.right - e.clientX <= resizeEdgeThreshold);
+    };
+    th.onpointerleave = function() {
+      th.classList.remove('resize-hover');
+    };
+    th.onpointerdown = function(e) {
+      if (e.target.closest('.col-resizer')) return;
+      var rect = th.getBoundingClientRect();
+      if (rect.right - e.clientX > resizeEdgeThreshold) return;
+      beginResize(e);
+    };
+    th.appendChild(handle);
+  });
 }
 
 function setupResizableTables() {
@@ -1211,6 +1639,7 @@ function updateApplyButtonState() {
 
 function pruneActionState() {
   var valid = new Set(allItems.map(function(item) { return itemKey(item); }));
+  allTables.forEach(function(table) { valid.add(tableActionKey(table.name)); });
   pendingActions.forEach(function(_, key) {
     if (!valid.has(key)) pendingActions.delete(key);
   });
@@ -1303,9 +1732,15 @@ function parentDir(path) {
   return info.root + info.segments.join(info.separator);
 }
 
+function reportStartPathFromModel(modelPath) {
+  return parentDir(parentDir(modelPath));
+}
+
 function explorerStartPath(mode, existing) {
+  var savedDefault = readExplorerDefaultPath(mode);
   if (existing.length) return parentDir(existing[0].path);
-  if (mode === 'report' && chosenModels.length) return parentDir(chosenModels[0].path);
+  if (savedDefault) return savedDefault;
+  if (mode === 'report' && chosenModels.length) return reportStartPathFromModel(chosenModels[0].path);
   return initialConfig.defaultRoot || '';
 }
 
@@ -1332,10 +1767,12 @@ async function browseDir(dirPath) {
     renderBreadcrumbs(data.current);
     renderExplorerList(data.entries || [], explorerParentPath);
     updateExplorerSummary();
+    updateExplorerDefaultUI();
   } catch (err) {
     console.error('Failed to browse directory', err);
     renderBreadcrumbs(dirPath || '');
     renderExplorerList([], '');
+    updateExplorerDefaultUI();
     alert('Unable to load that folder. Check the path and try again.');
   }
 }
@@ -1466,6 +1903,11 @@ function updateExplorerSummary() {
 $('explorerPathInput').onkeydown = function(e) { if (e.key === 'Enter') browseDir($('explorerPathInput').value.trim()); };
 $('btnExplorerUp').onclick = function() { if (explorerParentPath) browseDir(explorerParentPath); };
 $('btnExplorerGo').onclick = function() { browseDir($('explorerPathInput').value.trim()); };
+$('btnExplorerSetDefault').onclick = function() {
+  if (!explorerCurrentPath) return;
+  writeExplorerDefaultPath(explorerMode, explorerCurrentPath);
+  updateExplorerDefaultUI();
+};
 $('btnExplorerCancel').onclick = function() { $('explorerModal').classList.add('hidden'); };
 $('btnExplorerDone').onclick = function() {
   var pickedModels = [];
@@ -1486,6 +1928,7 @@ $('btnBrowseModels').onclick = function() { openExplorer('model'); };
 $('btnBrowseReports').onclick = function() { openExplorer('report'); };
 $('btnExportJson').onclick = function() { window.location.href = '/api/export?format=json'; };
 $('btnExportExcel').onclick = function() { window.location.href = '/api/export?format=xlsx'; };
+$('btnAutoSizeColumns').onclick = function() { fitCurrentTableColumnsToScreen(); };
 
 /* == Analyze == */
 $('btnAnalyze').onclick = async function() {
@@ -1510,7 +1953,7 @@ function loadResults(data) {
   setResultsData(data, false);
   $('summarySection').classList.remove('hidden');
   $('filtersSection').classList.remove('hidden');
-  $('viewTabs').classList.remove('hidden');
+  $('viewToolbar').classList.remove('hidden');
   $('exportSection').classList.remove('hidden');
   switchView(currentView);
   requestAnimationFrame(function() {
@@ -1526,12 +1969,17 @@ function setResultsData(data, preserveActionState) {
   allWarnings = data.warnings || [];
   if (preserveActionState) {
     var valid = new Set(allItems.map(function(item) { return itemKey(item); }));
+    var validTables = new Set(allTables.map(function(table) { return table.name; }));
     selectedKeys.forEach(function(key) {
       if (!valid.has(key)) selectedKeys.delete(key);
+    });
+    selectedTableNames.forEach(function(name) {
+      if (!validTables.has(name)) selectedTableNames.delete(name);
     });
     pruneActionState();
   } else {
     selectedKeys.clear();
+    selectedTableNames.clear();
     pendingActions.clear();
     actionStatus.clear();
     hidePostRefreshDisclaimer();
@@ -1545,6 +1993,7 @@ function setResultsData(data, preserveActionState) {
   populateFilterOptions();
   applyFilters();
   updateApplyButtonState();
+  updateColumnActionButtons();
 }
 
 function renderWarnings() {
@@ -1668,16 +2117,37 @@ function updateFilterCounts() {
 }
 
 /* == View Tabs == */
+function updateActionBarForView() {
+  var isTablesView = currentView === 'tables';
+  $('folderInput').classList.toggle('hidden', isTablesView);
+  $('btnMoveToFolder').classList.toggle('hidden', isTablesView);
+  $('btnHide').classList.toggle('hidden', isTablesView);
+  $('btnUnhide').classList.toggle('hidden', isTablesView);
+  $('btnSelectAllVisible').classList.toggle('hidden', isTablesView);
+  $('tableGroupInput').classList.toggle('hidden', !isTablesView);
+  $('btnMoveToTableGroup').classList.toggle('hidden', !isTablesView);
+  $('btnSelectAllSafe').textContent = isTablesView ? 'Select not used tables' : 'Select all Safe';
+  $('btnSelectAllSafe').title = isTablesView
+    ? 'Select tables currently marked Not used'
+    : 'Select rows currently marked Safe';
+  $('btnDelete').title = isTablesView
+    ? 'Queue a dependency-aware delete for the selected tables; confirmation happens before queueing'
+    : 'Queue the selected items for deletion; confirmation happens on Apply';
+}
+
 function switchView(view) {
   currentView = view;
   document.querySelectorAll('.view-tab').forEach(function(t) { t.classList.toggle('active', t.dataset.view === view); });
   $('tableSection').classList.toggle('hidden', view !== 'details');
   $('tablesOverviewSection').classList.toggle('hidden', view !== 'tables');
-  $('actionSection').classList.toggle('hidden', view !== 'details');
+  $('actionSection').classList.toggle('hidden', view !== 'details' && view !== 'tables');
   $('refsTableSection').classList.toggle('hidden', view !== 'refs');
   $('itemDetailSection').classList.toggle('hidden', view !== 'item');
   $('tableDetailSection').classList.toggle('hidden', view !== 'table');
+  updateActionBarForView();
+  updateColumnActionButtons();
   updateFilterCounts();
+  updateSelectedCount();
   if (view === 'refs') { applyRefFilters(); }
   if (view === 'item') { renderItemDetails(); }
   if (view === 'table') { renderTableDetails(); }
@@ -1807,11 +2277,14 @@ function sortItems() {
     var va = a[sortCol] != null ? a[sortCol] : '';
     var vb = b[sortCol] != null ? b[sortCol] : '';
     if (sortCol === 'removalRisk') { va = riskOrder[riskDisplayValue(a)] != null ? riskOrder[riskDisplayValue(a)] : 99; vb = riskOrder[riskDisplayValue(b)] != null ? riskOrder[riskDisplayValue(b)] : 99; }
+    if (sortCol === 'deleteSafety') {
+      va = deleteSafetyOrder[deleteSafetyValue(a)] != null ? deleteSafetyOrder[deleteSafetyValue(a)] : 99;
+      vb = deleteSafetyOrder[deleteSafetyValue(b)] != null ? deleteSafetyOrder[deleteSafetyValue(b)] : 99;
+    }
     if (sortCol === 'status') {
       va = { 'BROKEN': 0, 'NOT USED': 1, 'INDIRECT': 2, 'USED': 3 }[statusLabel(a.status)] != null ? { 'BROKEN': 0, 'NOT USED': 1, 'INDIRECT': 2, 'USED': 3 }[statusLabel(a.status)] : 99;
       vb = { 'BROKEN': 0, 'NOT USED': 1, 'INDIRECT': 2, 'USED': 3 }[statusLabel(b.status)] != null ? { 'BROKEN': 0, 'NOT USED': 1, 'INDIRECT': 2, 'USED': 3 }[statusLabel(b.status)] : 99;
     }
-    if (sortCol === 'pagesUsed') { va = (va || []).join(', '); vb = (vb || []).join(', '); }
     if (typeof va === 'number' && typeof vb === 'number') return sortAsc ? va - vb : vb - va;
     va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
     return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
@@ -1842,14 +2315,16 @@ function renderTable() {
     return '<tr class="' + riskClass + ' ' + sel + ' ' + actionClass + '" data-key="' + esc(key) + '">'
       + '<td><input type="checkbox" class="row-check" ' + checked + ' data-key="' + esc(key) + '"></td>'
       + '<td>' + esc(item.type) + '</td>'
-      + '<td>' + esc(item.table) + '</td>'
-      + '<td><a href="#" class="item-link" data-item-key="' + esc(key) + '">' + esc(item.name) + '</a></td>'
-      + '<td>' + esc(item.displayFolder || '') + '</td>'
-      + '<td class="cell-status">' + statusBadge(item.status) + '</td>'
-      + '<td class="cell-risk">' + riskCellContent(item) + '</td>'
-      + '<td class="cell-hidden">' + (item.isHidden ? '\uD83D\uDD12' : '') + '</td>'
-      + '<td>' + esc((item.pagesUsed || []).join(', ')) + '</td>'
-      + '<td class="cell-refs">' + (item.usageCount || 0) + '</td>'
+      + '<td><div class="cell-ellipsis" title="' + esc(item.table) + '">' + esc(item.table) + '</div></td>'
+      + '<td><a href="#" class="item-link cell-ellipsis-link" data-item-key="' + esc(key) + '" title="' + esc(item.name) + '">' + esc(item.name) + '</a></td>'
+      + '<td><div class="cell-ellipsis" title="' + esc(item.displayFolder || '') + '">' + esc(item.displayFolder || '') + '</div></td>'
+      + '<td class="cell-hidden">' + hiddenCellContent(item) + '</td>'
+      + '<td>' + reportUseCellContent(item) + '</td>'
+      + '<td>' + esc(String(item.measureDependentCount || 0)) + '</td>'
+      + '<td>' + esc(String(item.reportUsedMeasureDependentCount || 0)) + '</td>'
+      + '<td>' + esc(String(item.relationshipRefCount || 0)) + '</td>'
+      + '<td>' + otherModelUseCellContent(item) + '</td>'
+      + '<td class="cell-risk">' + deleteSafetyBadge(item) + '</td>'
       + '<td>' + actionStatusBadge(key) + '</td>'
       + '</tr>';
   }).join('');
@@ -1869,9 +2344,33 @@ function renderTable() {
 }
 
 function roleBadge(table) {
-  var label = table.roleLabel || 'unknown';
-  var cls = 'role-' + label.replace(/\s+/g, '-');
-  return '<span class="badge ' + cls + '">' + esc(label) + '</span>';
+  var rawLabel = table.roleLabel || 'unknown';
+  var cls = 'role-' + rawLabel.replace(/\s+/g, '-');
+  var displayLabel = {
+    'dimension-like': 'One-side',
+    'fact-like': 'Many-side',
+    'mixed': 'Mixed sides',
+    'unknown': 'Unclear',
+    'isolated': 'No active rels'
+  }[rawLabel] || rawLabel;
+  return '<span class="badge ' + cls + '" title="' + esc(table.roleReason || '') + '">' + esc(displayLabel) + '</span>';
+}
+
+function isTablePendingDelete(tableName) {
+  var items = getItemsByTableName(tableName);
+  if (!items.length) return false;
+  return items.every(function(item) {
+    var act = pendingActions.get(itemKey(item));
+    return act && act.action === 'delete';
+  });
+}
+
+function tablePendingCount(tableName) {
+  var items = getItemsByTableName(tableName);
+  return items.filter(function(item) {
+    var act = pendingActions.get(itemKey(item));
+    return act && act.action === 'delete';
+  }).length;
 }
 
 function renderTablesOverview() {
@@ -1880,20 +2379,45 @@ function renderTablesOverview() {
     var signalText = table.signals && table.signals.length
       ? '<ul class="table-signals">' + table.signals.slice(0, 3).map(function(signal) { return '<li>' + esc(signal) + '</li>'; }).join('') + '</ul>'
       : '<div class="detail-empty">No notable signals</div>';
-    return '<tr>'
-      + '<td><a href="#" class="table-link" data-table-name="' + esc(table.name) + '">' + esc(table.name) + '</a></td>'
-      + '<td>' + tableStatusBadge(table) + '</td>'
-      + '<td>' + roleBadge(table) + '<div class="table-summary-text" style="margin-top:6px">' + esc(table.roleReason || '') + '</div></td>'
-      + '<td>' + esc(String(table.itemCount || 0)) + '<div class="table-summary-text">Measures: ' + esc(String(table.measureCount || 0)) + ' | Columns: ' + esc(String(table.columnCount || 0)) + '</div></td>'
+    var pending = isTablePendingDelete(table.name);
+    var pendingN = tablePendingCount(table.name);
+    var tableStatus = actionStatusBadge(tableActionKey(table.name));
+    var isSelected = selectedTableNames.has(table.name);
+    var rowClass = (pending || pendingN > 0 ? ' row-pending' : '') + (isSelected ? ' selected' : '');
+    var actionCell;
+    if (pending) {
+      actionCell = '<span class="badge badge-caution">Pending: Delete (' + pendingN + ')</span>';
+    } else if (pendingN > 0) {
+      actionCell = '<span class="badge badge-review">Pending: Delete (' + pendingN + '/' + (table.itemCount || 0) + ')</span>'
+        + ' <button class="btn btn-danger btn-sm table-delete-btn" data-table-name="' + esc(table.name) + '">Queue delete</button>';
+    } else {
+      actionCell = '<button class="btn btn-danger btn-sm table-delete-btn" title="Queue a dependency-aware delete for this table" data-table-name="' + esc(table.name) + '">Queue delete</button>';
+    }
+    if (tableStatus) actionCell = tableStatus + ' ' + actionCell;
+    return '<tr class="' + rowClass.trim() + '">'
+      + '<td><input type="checkbox" class="table-row-check" ' + (isSelected ? 'checked' : '') + ' data-table-name="' + esc(table.name) + '"></td>'
+      + '<td><a href="#" class="table-link table-wrap-link" data-table-name="' + esc(table.name) + '" title="' + esc(table.name) + '">' + esc(table.name) + '</a></td>'
+      + '<td>' + esc(String(table.directReportMeasureCount || 0)) + '</td>'
+      + '<td>' + esc(String(table.directReportColumnCount || 0)) + '</td>'
+      + '<td>' + roleBadge(table) + '<div class="table-summary-text" style="margin-top:6px" title="' + esc(table.roleReason || '') + '">' + esc(table.roleReason || '') + '</div></td>'
+      + '<td>' + esc(String(table.itemCount || 0)) + '<div class="table-summary-text" title="Measures: ' + esc(String(table.measureCount || 0)) + ' | Columns: ' + esc(String(table.columnCount || 0)) + '">Measures: ' + esc(String(table.measureCount || 0)) + ' | Columns: ' + esc(String(table.columnCount || 0)) + '</div></td>'
       + '<td>' + esc(String(table.usedItemCount || 0)) + '</td>'
       + '<td>' + esc(String(table.unusedItemCount || 0)) + '</td>'
       + '<td>' + esc(String(table.reportCount || 0)) + '</td>'
-      + '<td>' + esc(String(table.relationshipCount || 0)) + '<div class="table-summary-text">Active: ' + esc(String(table.activeRelationshipCount || 0)) + ' | Inactive: ' + esc(String(table.inactiveRelationshipCount || 0)) + '</div></td>'
+      + '<td>' + esc(String(table.relationshipCount || 0)) + '<div class="table-summary-text" title="Active: ' + esc(String(table.activeRelationshipCount || 0)) + ' | Inactive: ' + esc(String(table.inactiveRelationshipCount || 0)) + '">Active: ' + esc(String(table.activeRelationshipCount || 0)) + ' | Inactive: ' + esc(String(table.inactiveRelationshipCount || 0)) + '</div></td>'
       + '<td>' + esc(String(table.usageRefCount || 0)) + '</td>'
       + '<td>' + signalText + '</td>'
-      + '<td class="table-row-actions"><button class="btn btn-danger btn-sm table-delete-btn" title="Queue a dependency-aware delete for this table" data-table-name="' + esc(table.name) + '">Queue delete</button></td>'
+      + '<td class="table-row-actions">' + actionCell + '</td>'
       + '</tr>';
   }).join('');
+  tbody.querySelectorAll('.table-row-check').forEach(function(cb) {
+    cb.onchange = function() {
+      if (cb.checked) selectedTableNames.add(cb.dataset.tableName);
+      else selectedTableNames.delete(cb.dataset.tableName);
+      cb.closest('tr').classList.toggle('selected', cb.checked);
+      updateSelectedCount();
+    };
+  });
   tbody.querySelectorAll('.table-link').forEach(function(link) {
     link.onclick = function(e) {
       e.preventDefault();
@@ -1903,6 +2427,7 @@ function renderTablesOverview() {
   tbody.querySelectorAll('.table-delete-btn').forEach(function(btn) {
     btn.onclick = async function() {
       await queueTableDelete(btn.dataset.tableName);
+      renderTablesOverview();
     };
   });
 }
@@ -1914,6 +2439,28 @@ function formatCodeBlock(text, emptyText) {
 
 function tableStatusBadge(table) {
   return statusBadge(table.usageStatus || 'NOT USED');
+}
+
+function hiddenCellContent(item) {
+  if (!item.isHidden) return '';
+  return '<span class="badge badge-muted" title="Hidden item" aria-label="Hidden">'
+    + '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" style="display:block">'
+    + '<path d="M3 3l18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"></path>'
+    + '<path d="M10.6 10.7a2 2 0 0 0 2.7 2.7" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"></path>'
+    + '<path d="M9.4 5.5A10.7 10.7 0 0 1 12 5c5.5 0 9.5 5.5 9.5 7s-1.2 3.3-3.2 4.8M6.5 6.6C3.9 8.4 2.5 10.9 2.5 12c0 1.5 4 7 9.5 7 1.6 0 3.1-.4 4.4-1.1" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"></path>'
+    + '</svg></span>';
+}
+
+function reportUseCellContent(item) {
+  if (!item.usageCount) return '<span class="badge badge-muted">No</span>';
+  return '<span title="' + esc(item.reportUseSummary || '') + '">' + esc(item.reportUseSummary || '') + '</span>';
+}
+
+function otherModelUseCellContent(item) {
+  if (!item.otherModelUses || !item.otherModelUses.length) return '<span class="detail-empty">None</span>';
+  return item.otherModelUses.map(function(label) {
+    return '<span class="badge badge-muted" style="margin-right:4px">' + esc(label) + '</span>';
+  }).join('');
 }
 
 function statusBadge(status) {
@@ -1931,6 +2478,19 @@ function riskBadge(itemOrRisk) {
   if (risk === '__not_applicable__') return '<span class="badge badge-muted" title="' + esc(riskHelpText(risk)) + '">In use</span>';
   var cls = { 'Safe': 'badge-safe', 'Review': 'badge-review', 'Caution': 'badge-caution', 'Do not remove': 'badge-donotremove' }[risk] || '';
   return '<span class="badge ' + cls + '" title="' + esc(riskHelpText(risk)) + '">' + esc(risk) + '</span>';
+}
+
+function deleteSafetyValue(item) {
+  return item && item.deleteSafety ? item.deleteSafety : 'Review';
+}
+
+function deleteSafetyBadge(item) {
+  var value = deleteSafetyValue(item);
+  if (value === 'Blocked') return '<span class="badge badge-caution" title="Still used directly or indirectly by reports or model dependencies.">Blocked</span>';
+  if (value === 'Review') return '<span class="badge badge-review" title="Not obviously blocked, but still needs a manual check before deletion.">Review</span>';
+  if (value === 'Safe') return '<span class="badge badge-safe" title="No report usage or blocking model dependency was found.">Safe</span>';
+  if (value === 'Do not remove') return '<span class="badge badge-donotremove" title="System-generated or inferred item.">Do not remove</span>';
+  return '<span class="badge badge-muted">' + esc(value) + '</span>';
 }
 
 function riskText(item) {
@@ -2060,7 +2620,10 @@ function renderItemDetails() {
   $('detailStatus').innerHTML = statusBadge(item.status) + '<div class="detail-value" style="margin-top:8px">' + esc(statusHelpText(item.status)) + '</div>'
     + (item.statusDetail && item.statusDetail !== statusLabel(item.status) ? '<div class="detail-value" style="margin-top:8px"><strong>Raw status:</strong> ' + esc(item.statusDetail) + '</div>' : '');
   $('detailRisk').innerHTML = riskDetailContent(item);
-  $('detailDependsOn').innerHTML = formatDetailList((item.dependsOnMeasures || []).concat(item.dependsOnColumns || []), { linkItems: true });
+  $('detailDependsOn').innerHTML = formatDetailList(
+    (item.dependsOnMeasures || []).concat(item.dependsOnColumns || []).concat(item.dependsOnTables || []),
+    { linkItems: true }
+  );
   $('detailUsedBy').innerHTML = formatDetailList(item.usedByItems || [], { linkItems: true });
   $('detailIndirectVia').innerHTML = formatDetailList(item.indirectVia || [], { linkItems: true });
   $('detailPagesUsed').innerHTML = formatDetailList(item.pagesUsed || []);
@@ -2129,10 +2692,12 @@ function renderTableDetails() {
     + ' | Columns: ' + esc(String(table.columnCount || 0))
     + ' | Hidden: ' + esc(String(table.hiddenItemCount || 0))
     + '</div>'
-    + '<div class="detail-value" style="margin-top:8px">Used: ' + esc(String(table.usedItemCount || 0))
-    + ' | Unused: ' + esc(String(table.unusedItemCount || 0)) + '</div>';
+    + '<div class="detail-value" style="margin-top:8px">Used items in table: ' + esc(String(table.usedItemCount || 0))
+    + ' | Unused items in table: ' + esc(String(table.unusedItemCount || 0)) + '</div>';
   $('tableDetailUsage').innerHTML =
-    '<div class="detail-value">Reports: ' + esc(String(table.reportCount || 0))
+    '<div class="detail-value">Direct report usage | Measures: ' + esc(String(table.directReportMeasureCount || 0))
+    + ' | Columns: ' + esc(String(table.directReportColumnCount || 0)) + '</div>'
+    + '<div class="detail-value" style="margin-top:8px">Reports: ' + esc(String(table.reportCount || 0))
     + ' | Pages: ' + esc(String(table.pageCount || 0))
     + ' | Refs: ' + esc(String(table.usageRefCount || 0)) + '</div>'
     + formatDetailList(table.reports || []);
@@ -2174,9 +2739,11 @@ function renderTableDetails() {
     return queued && queued.action === 'delete';
   }).length;
   var dependentCount = plan ? plan.dependentItems.length : 0;
-  $('tableActionStatus').textContent = pendingCount
+  var tableGroupStatus = actionStatusText(tableActionKey(table.name));
+  var deleteStatus = pendingCount
     ? ('Delete queued for ' + pendingCount + ' item(s) in table dependency set (' + dependentCount + ' dependent).')
     : ('No queued table-delete actions. Dependency set currently includes ' + dependentCount + ' dependent item(s).');
+  $('tableActionStatus').textContent = tableGroupStatus ? (tableGroupStatus + ' | ' + deleteStatus) : deleteStatus;
   $('tableDetailRelationshipList').innerHTML = (table.relationships && table.relationships.length)
     ? '<ul class="detail-list">' + table.relationships.map(function(rel) {
       return '<li>'
@@ -2219,6 +2786,13 @@ async function queueTableDelete(tableName) {
 
 /* == Selection == */
 function updateSelectedCount() {
+  if (currentView === 'tables') {
+    var tableVis = filteredTables.filter(function(table) { return selectedTableNames.has(table.name); }).length;
+    $('selectedCount').textContent = tableVis + ' selected';
+    $('checkAllTables').checked = filteredTables.length > 0 && tableVis === filteredTables.length;
+    $('checkAllTables').indeterminate = tableVis > 0 && tableVis < filteredTables.length;
+    return;
+  }
   var vis = filteredItems.filter(function(i) { return selectedKeys.has(itemKey(i)); }).length;
   $('selectedCount').textContent = vis + ' selected';
   $('checkAll').checked = filteredItems.length > 0 && vis === filteredItems.length;
@@ -2231,7 +2805,25 @@ $('checkAll').onchange = function() {
   renderTable(); updateSelectedCount();
 };
 
+$('checkAllTables').onchange = function() {
+  var c = $('checkAllTables').checked;
+  filteredTables.forEach(function(table) {
+    if (c) selectedTableNames.add(table.name);
+    else selectedTableNames.delete(table.name);
+  });
+  renderTablesOverview();
+  updateSelectedCount();
+};
+
 $('btnSelectAllSafe').onclick = function() {
+  if (currentView === 'tables') {
+    filteredTables.filter(function(table) { return (table.usageStatus || '') === 'NOT USED'; }).forEach(function(table) {
+      selectedTableNames.add(table.name);
+    });
+    renderTablesOverview();
+    updateSelectedCount();
+    return;
+  }
   filteredItems.filter(function(i) { return i.removalRisk === 'Safe'; }).forEach(function(i) { selectedKeys.add(itemKey(i)); });
   renderTable(); updateSelectedCount();
 };
@@ -2240,11 +2832,19 @@ $('btnSelectAllVisible').onclick = function() {
   renderTable(); updateSelectedCount();
 };
 $('btnDeselectAll').onclick = function() {
-  selectedKeys.clear(); renderTable(); updateSelectedCount();
+  if (currentView === 'tables') {
+    selectedTableNames.clear();
+    renderTablesOverview();
+  } else {
+    selectedKeys.clear();
+    renderTable();
+  }
+  updateSelectedCount();
 };
 
 /* == Actions == */
 function getSelectedItems() { return allItems.filter(function(i) { return selectedKeys.has(itemKey(i)); }); }
+function getSelectedTables() { return allTables.filter(function(table) { return selectedTableNames.has(table.name); }); }
 function getModelPath() { return chosenModels.length ? chosenModels[0].path : null; }
 
 function logEntry(msg, cls) {
@@ -2252,6 +2852,7 @@ function logEntry(msg, cls) {
   el.className = 'log-entry log-' + cls;
   el.textContent = msg;
   $('logEntries').prepend(el);
+  if ($('showActionLogCheckbox').checked) $('statusLog').classList.remove('hidden');
 }
 
 function queueActionsForItems(items, actionName, extra) {
@@ -2267,12 +2868,92 @@ function queueActionsForItems(items, actionName, extra) {
     queued += 1;
   });
   selectedKeys.clear();
-  $('statusLog').classList.remove('hidden');
   logEntry('Queued ' + actionLabel({ action: actionName, folder: extra.folder }) + ' for ' + queued + ' item(s)', 'info');
   renderTable();
   updateSelectedCount();
   updateApplyButtonState();
   renderItemDetails();
+}
+
+function queueActionsForTables(tables, actionName, extra) {
+  extra = extra || {};
+  if (!tables.length) { alert('No tables selected'); return; }
+  var queued = 0;
+  tables.forEach(function(table) {
+    var key = tableActionKey(table.name);
+    var act = { action: actionName, table: table.name, name: table.name, item_type: 'Table' };
+    for (var k in extra) act[k] = extra[k];
+    pendingActions.set(key, act);
+    actionStatus.set(key, 'Pending: ' + actionLabel(act));
+    queued += 1;
+  });
+  selectedTableNames.clear();
+  logEntry('Queued ' + actionLabel({ action: actionName, table_group: extra.table_group }) + ' for ' + queued + ' table(s)', 'info');
+  renderTablesOverview();
+  renderTableDetails();
+  updateSelectedCount();
+  updateApplyButtonState();
+}
+
+function computeMultiTableDeletePlan(tableNames) {
+  var planned = new Map();
+  var selectedSet = new Set(tableNames);
+  tableNames.forEach(function(tableName) {
+    var plan = computeTableDeletePlan(tableName);
+    if (!plan) return;
+    plan.allItems.forEach(function(item) {
+      planned.set(itemKey(item), item);
+    });
+  });
+  var allPlanned = sortItemsForDisplay(Array.from(planned.values()));
+  return {
+    tableNames: tableNames.slice(),
+    allItems: allPlanned,
+    inTableItems: allPlanned.filter(function(item) { return selectedSet.has(item.table); }),
+    dependentItems: allPlanned.filter(function(item) { return !selectedSet.has(item.table); }),
+    measures: allPlanned.filter(function(item) { return item.type === 'Measure'; }),
+    nonMeasures: allPlanned.filter(function(item) { return item.type !== 'Measure'; }),
+  };
+}
+
+async function queueSelectedTableDeletes() {
+  var tables = getSelectedTables();
+  if (!tables.length) {
+    alert('No tables selected');
+    return;
+  }
+  if (tables.length === 1) {
+    await queueTableDelete(tables[0].name);
+    selectedTableNames.clear();
+    renderTablesOverview();
+    updateSelectedCount();
+    return;
+  }
+  var plan = computeMultiTableDeletePlan(tables.map(function(table) { return table.name; }));
+  if (!plan || !plan.allItems.length) {
+    alert('No items found in the selected tables');
+    return;
+  }
+  var confirmed = window.confirm(
+    'Queue delete for ' + tables.length + ' selected tables? This will queue '
+      + plan.allItems.length + ' items total (' + plan.inTableItems.length
+      + ' in selected tables, ' + plan.dependentItems.length + ' dependent).'
+  );
+  if (!confirmed) {
+    logEntry('Bulk table delete queue canceled', 'info');
+    return;
+  }
+  queueActionsForItems(plan.allItems, 'delete');
+  logEntry(
+    'Queued dependency delete for ' + tables.length + ' selected tables'
+      + ' (' + plan.inTableItems.length + ' in selected tables, '
+      + plan.dependentItems.length + ' dependent, total ' + plan.allItems.length + ')',
+    'info'
+  );
+  selectedTableNames.clear();
+  renderTablesOverview();
+  renderTableDetails();
+  updateSelectedCount();
 }
 
 function queueSelectedAction(actionName, extra) {
@@ -2292,10 +2973,6 @@ function queueDetailAction(actionName, extra) {
 function confirmDeleteApply(deleteCount) {
   var wantBackup = $('applyBackupCheckbox').checked;
   if (!deleteCount) return Promise.resolve({ confirmed: true, backup: wantBackup });
-  if (!$('confirmDeleteCheckbox').checked) {
-    alert('Check Confirm delete in the apply options section before applying deletions.');
-    return Promise.resolve({ confirmed: false, backup: wantBackup });
-  }
 
   $('deleteCount').textContent = deleteCount;
   $('btnDeleteConfirm').disabled = false;
@@ -2332,12 +3009,16 @@ async function applyQueuedActions() {
     return a.action === 'delete' && a.item_type === 'Measure';
   }).length;
   var deleteCount = actions.filter(function(a) { return a.action === 'delete'; }).length;
-  var result = await confirmDeleteApply(deleteCount);
-  if (!result.confirmed) {
-    logEntry('Apply canceled', 'info');
-    return;
+  if (deleteCount && $('confirmDeleteCheckbox').checked) {
+    var result = await confirmDeleteApply(deleteCount);
+    if (!result.confirmed) {
+      logEntry('Apply canceled', 'info');
+      return;
+    }
+    var createBackup = result.backup;
+  } else {
+    var createBackup = $('applyBackupCheckbox').checked;
   }
-  var createBackup = result.backup;
 
   var btn = $('btnApply');
   btn.disabled = true;
@@ -2356,7 +3037,6 @@ async function applyQueuedActions() {
 
   if (data.backup_path) { $('backupBanner').classList.remove('hidden'); $('backupPath').textContent = data.backup_path; }
   if (data.git_warning) { $('gitWarning').classList.remove('hidden'); $('gitWarning').textContent = data.git_warning; }
-  $('statusLog').classList.remove('hidden');
 
   var ok = 0, fail = 0;
   data.results.forEach(function(r) {
@@ -2367,19 +3047,24 @@ async function applyQueuedActions() {
     if (r.ok) {
       ok++;
       actionStatus.set(key, 'Applied: ' + label);
-      logEntry('Applied ' + label + ' to ' + r.table + '[' + r.name + ']', 'ok');
+      if (r.item_type === 'Table') logEntry('Applied ' + label + ' to table ' + r.table, 'ok');
+      else logEntry('Applied ' + label + ' to ' + r.table + '[' + r.name + ']', 'ok');
     } else {
       fail++;
       actionStatus.set(key, 'Failed: ' + (r.error || 'Unknown error'));
-      logEntry('Failed ' + label + ' for ' + r.table + '[' + r.name + ']: ' + (r.error || 'Unknown error'), 'err');
+      if (r.item_type === 'Table') logEntry('Failed ' + label + ' for table ' + r.table + ': ' + (r.error || 'Unknown error'), 'err');
+      else logEntry('Failed ' + label + ' for ' + r.table + '[' + r.name + ']: ' + (r.error || 'Unknown error'), 'err');
     }
   });
   logEntry('Apply complete: ' + ok + ' succeeded, ' + fail + ' failed', 'info');
   selectedKeys.clear();
+  selectedTableNames.clear();
   updateApplyButtonState();
   renderTable();
+  renderTablesOverview();
   updateSelectedCount();
   renderItemDetails();
+  renderTableDetails();
   if (autoRefresh) {
     await reAnalyze({ showPostDeleteDisclaimer: deletedMeasureCount > 0 });
   } else {
@@ -2392,19 +3077,33 @@ $('btnMoveToFolder').onclick = async function() {
   if (!folder) { alert('Enter a folder name'); return; }
   queueSelectedAction('move_to_folder', { folder: folder });
 };
+$('btnMoveToTableGroup').onclick = function() {
+  var group = $('tableGroupInput').value.trim();
+  if (!group) { alert('Enter a table group name'); return; }
+  queueActionsForTables(getSelectedTables(), 'move_to_table_group', { table_group: group });
+};
 $('btnHide').onclick = function() { queueSelectedAction('hide'); };
 $('btnUnhide').onclick = function() { queueSelectedAction('unhide'); };
 $('btnReset').onclick = function() {
   pendingActions.clear();
   actionStatus.clear();
   selectedKeys.clear();
+  selectedTableNames.clear();
   updateApplyButtonState();
   renderTable();
   updateSelectedCount();
   renderItemDetails();
+  renderTablesOverview();
+  renderTableDetails();
   logEntry('Reset all pending actions and statuses', 'info');
 };
-$('btnDelete').onclick = function() { queueSelectedAction('delete'); };
+$('btnDelete').onclick = async function() {
+  if (currentView === 'tables') {
+    await queueSelectedTableDeletes();
+    return;
+  }
+  queueSelectedAction('delete');
+};
 $('btnApply').onclick = async function() { await applyQueuedActions(); };
 
 $('detailBtnMoveToFolder').onclick = function() {
@@ -2471,6 +3170,20 @@ $('tableBtnDelete').onclick = async function() {
     return;
   }
   await queueTableDelete(detailTableName);
+  renderTablesOverview();
+  updateSelectedCount();
+};
+$('tableBtnMoveToTableGroup').onclick = function() {
+  if (!detailTableName) {
+    alert('Select a table first');
+    return;
+  }
+  var group = $('tableDetailGroupInput').value.trim();
+  if (!group) {
+    alert('Enter a table group name');
+    return;
+  }
+  queueActionsForTables([{ name: detailTableName }], 'move_to_table_group', { table_group: group });
 };
 $('tableBtnApply').onclick = async function() { await applyQueuedActions(); };
 $('tableBtnReset').onclick = function() { $('btnReset').click(); };
@@ -2492,9 +3205,18 @@ async function reAnalyze(opts) {
 $('btnToggleSetup').onclick = function() {
   setSetupCollapsed(!setupCollapsed);
 };
+$('wrapTableTextCheckbox').onchange = function() {
+  setWrapTableTextEnabled($('wrapTableTextCheckbox').checked);
+};
+$('showActionLogCheckbox').onchange = function() {
+  setActionLogVisible($('showActionLogCheckbox').checked);
+};
 
 setupFilterDropdowns();
 setSetupCollapsed(readSetupCollapsedPreference());
+setWrapTableTextEnabled(readWrapTableTextPreference());
+setActionLogVisible(readShowActionLogPreference());
+updateColumnActionButtons();
 renderPills();
 </script>
 </body>

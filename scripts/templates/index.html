@@ -459,9 +459,13 @@ function parentDir(path) {
   return info.root + info.segments.join(info.separator);
 }
 
+function reportStartPathFromModel(modelPath) {
+  return parentDir(parentDir(modelPath));
+}
+
 function explorerStartPath(mode, existing) {
+  if (mode === 'report' && chosenModels.length) return reportStartPathFromModel(chosenModels[0].path);
   if (existing.length) return parentDir(existing[0].path);
-  if (mode === 'report' && chosenModels.length) return parentDir(chosenModels[0].path);
   return '';
 }
 

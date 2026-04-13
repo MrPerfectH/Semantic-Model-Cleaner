@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proposal 2 - Split Workspace</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body class="theme-2">
+  <div class="page">
+    <section class="hero">
+      <div class="hero-card">
+        <div class="hero-kicker">Proposal 2</div>
+        <h1>Split Workspace</h1>
+        <p>
+          This version treats <code>Details</code> as an analysis workspace, not just a data table.
+          Items are grouped by usage source, the inspector is stronger, and the page feels more like a guided review surface.
+          It explains more, but it also asks more from the user.
+        </p>
+        <div class="hero-meta">
+          <span class="pill is-warning">Best for beta</span>
+          <span class="pill">Grouped by meaning</span>
+          <span class="pill is-primary">High explainability</span>
+        </div>
+      </div>
+      <aside class="nav-card">
+        <h2>Why this direction</h2>
+        <p>
+          Strongest if you want the product to feel more premium and less spreadsheet-like.
+          Risk: it may become too heavy for very large models and needs careful simplification later.
+        </p>
+        <ul class="nav-list">
+          <li><a href="index.html"><strong>Back to comparison</strong><span>Return to the proposal index.</span></a></li>
+        </ul>
+      </aside>
+    </section>
+
+    <div class="proposal-note">
+      <strong>Intent:</strong> the user should not have to mentally translate `USED` into three different meanings.
+      The page itself becomes the explanation: report-driven evidence, model-only retention, and cleanup candidates live in separate visual zones.
+    </div>
+
+    <div class="layout sidebar">
+      <aside class="stack">
+        <section class="panel">
+          <div class="panel-title"><h3>Workspace scope</h3></div>
+          <div class="stack">
+            <div class="info-card">
+              <h4>Model</h4>
+              <p><strong>LINDEN</strong></p>
+            </div>
+            <div class="info-card">
+              <h4>Reports</h4>
+              <p>4 selected</p>
+              <ul>
+                <li>Executive Summary</li>
+                <li>Sales Review</li>
+                <li>Finance Deck</li>
+                <li>Store Scorecard</li>
+              </ul>
+            </div>
+            <div class="info-card">
+              <h4>Lens</h4>
+              <div class="item-meta">
+                <span class="mini-pill is-active">All items</span>
+                <span class="mini-pill">Measures</span>
+                <span class="mini-pill">Columns</span>
+              </div>
+              <div class="item-meta">
+                <span class="mini-pill is-active">Usage source</span>
+                <span class="mini-pill">Cleanup risk</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <main class="stack">
+        <div class="metric-strip">
+          <div class="metric-card is-green"><div class="metric-label">In reports</div><div class="metric-value">28</div><div class="metric-note">High-confidence business visibility</div></div>
+          <div class="metric-card is-amber"><div class="metric-label">Model only</div><div class="metric-value">7</div><div class="metric-note">Retained structurally, not by report usage</div></div>
+          <div class="metric-card is-blue"><div class="metric-label">Indirect</div><div class="metric-value">12</div><div class="metric-note">Hidden behind another calculation</div></div>
+          <div class="metric-card"><div class="metric-label">Candidates</div><div class="metric-value">566</div><div class="metric-note">Need cleanup scoring and review</div></div>
+        </div>
+
+        <section class="group-grid">
+          <div class="group-column">
+            <h3>In reports</h3>
+            <p>Business-visible items. This group should answer "where do we actually use this?"</p>
+            <div class="item-card">
+              <strong>Sales[Revenue]</strong>
+              <div class="item-meta">
+                <span class="source-badge report">In reports</span>
+                <span class="risk-badge">In use</span>
+              </div>
+              <p>Used on 7 pages across 3 reports. Card, matrix, and tooltip contexts are visible immediately.</p>
+            </div>
+            <div class="item-card">
+              <strong>Sales[Gross Margin %]</strong>
+              <div class="item-meta">
+                <span class="source-badge report">In reports</span>
+                <span class="risk-badge">In use</span>
+              </div>
+              <p>Used in KPI, scatter legend, and executive scorecard.</p>
+            </div>
+          </div>
+
+          <div class="group-column">
+            <h3>Model only</h3>
+            <p>Important distinction: retained by semantic model rules, but not directly consumed in reports.</p>
+            <div class="item-card">
+              <strong>Adjustments[date_key]</strong>
+              <div class="item-meta">
+                <span class="source-badge model">Model only</span>
+                <span class="risk-badge">In use</span>
+              </div>
+              <p>Retained by relationship to <code>Date[DateKey]</code>. Zero direct report pages.</p>
+            </div>
+            <div class="item-card">
+              <strong>Customer[Customer Code]</strong>
+              <div class="item-meta">
+                <span class="source-badge model">Model only</span>
+                <span class="risk-badge">In use</span>
+              </div>
+              <p>Sort target for <code>Customer[Customer Name]</code>. Structural retention only.</p>
+            </div>
+          </div>
+
+          <div class="group-column">
+            <h3>Cleanup candidates</h3>
+            <p>Items the user will likely act on next. This area can later become the action queue.</p>
+            <div class="item-card">
+              <strong>Adjustments[legacy_reason_code]</strong>
+              <div class="item-meta">
+                <span class="source-badge unused">Not used</span>
+                <span class="risk-badge">Safe</span>
+              </div>
+              <p>No report references, no model-only retention, no DAX dependents.</p>
+            </div>
+            <div class="item-card">
+              <strong>Finance[Adj EBITDA]</strong>
+              <div class="item-meta">
+                <span class="source-badge broken">Broken</span>
+                <span class="risk-badge">Review</span>
+              </div>
+              <p>Broken references block cleanup until the measure is fixed or retired.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">
+            <div>
+              <h2>Inspector</h2>
+              <div class="panel-subtitle">Always-on contextual explanation for the selected item.</div>
+            </div>
+          </div>
+          <div class="drawer-grid">
+            <div class="info-card">
+              <h4>Selected</h4>
+              <div class="big">Sales[Revenue]</div>
+              <p>Measure · Folder: Executive Metrics</p>
+            </div>
+            <div class="info-card">
+              <h4>Usage evidence</h4>
+              <ul>
+                <li>Executive Summary · Overview · Card</li>
+                <li>Sales Review · Margin Trends · Matrix</li>
+                <li>Finance Deck · QTD Bridge · Tooltip</li>
+              </ul>
+            </div>
+            <div class="info-card">
+              <h4>Model context</h4>
+              <p>Referenced by <code>Sales[Executive Scorecard]</code> and <code>Sales[Revenue Variance %]</code>.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <p class="footer-note">
+      This proposal is the most explanatory but also the hardest to keep compact. I would keep it behind beta until we know how much density real users can tolerate.
+    </p>
+  </div>
+</body>
+</html>

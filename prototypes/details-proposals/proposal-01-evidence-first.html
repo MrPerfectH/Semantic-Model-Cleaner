@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proposal 1 - Evidence First</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div class="hero-card">
+        <div class="hero-kicker">Proposal 1</div>
+        <h1>Evidence First</h1>
+        <p>
+          The page still feels familiar, but the core semantic problem is fixed: <strong>used in report</strong>,
+          <strong>model only</strong>, and <strong>indirect</strong> are no longer collapsed into one vague `USED` bucket.
+          This is the cleanest candidate for a public release.
+        </p>
+        <div class="hero-meta">
+          <span class="pill is-primary">Best for stable</span>
+          <span class="pill">Keeps a table</span>
+          <span class="pill is-success">Strongest semantic clarity</span>
+        </div>
+      </div>
+      <aside class="nav-card">
+        <h2>Why this direction</h2>
+        <p>
+          Users can answer two separate questions fast:
+          <br>1. Is this used by a report?
+          <br>2. If not, is it still retained by the model?
+        </p>
+        <ul class="nav-list">
+          <li><a href="index.html"><strong>Back to comparison</strong><span>Return to the proposal index.</span></a></li>
+        </ul>
+      </aside>
+    </section>
+
+    <div class="metric-strip">
+      <div class="metric-card is-blue"><div class="metric-label">Total items</div><div class="metric-value">618</div><div class="metric-note">Entire semantic model scope</div></div>
+      <div class="metric-card is-green"><div class="metric-label">In reports</div><div class="metric-value">28</div><div class="metric-note">Direct report usage only</div></div>
+      <div class="metric-card is-amber"><div class="metric-label">Model only</div><div class="metric-value">7</div><div class="metric-note">Retained by relationships, RLS, hierarchy, or sort</div></div>
+      <div class="metric-card is-blue"><div class="metric-label">Indirect</div><div class="metric-value">12</div><div class="metric-note">Required by dependent DAX logic</div></div>
+      <div class="metric-card"><div class="metric-label">Not used</div><div class="metric-value">566</div><div class="metric-note">No direct or indirect retention</div></div>
+      <div class="metric-card is-red"><div class="metric-label">Broken</div><div class="metric-value">5</div><div class="metric-note">Needs review before cleanup</div></div>
+    </div>
+
+    <div class="panel toolbar">
+      <div class="field">
+        <label>Search</label>
+        <input value="date">
+      </div>
+      <div class="field">
+        <label>Usage Source</label>
+        <div class="segmented">
+          <span class="mini-pill is-active">All</span>
+          <span class="mini-pill">In reports</span>
+          <span class="mini-pill">Model only</span>
+          <span class="mini-pill">Indirect</span>
+          <span class="mini-pill">Not used</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Risk</label>
+        <select><option>Review + Safe only</option></select>
+      </div>
+      <div class="field">
+        <label>Table</label>
+        <select><option>All tables</option></select>
+      </div>
+    </div>
+
+    <div class="layout two-column">
+      <section class="panel">
+        <div class="panel-title">
+          <div>
+            <h2>Details</h2>
+            <div class="panel-subtitle">The table stays, but the status language is now explicit and useful.</div>
+          </div>
+          <div class="muted">Showing 17 of 618 items</div>
+        </div>
+        <div class="table-shell">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Usage source</th>
+                <th>Risk</th>
+                <th>Reports</th>
+                <th>Pages</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="is-active">
+                <td>
+                  <div class="entity">
+                    <strong>Adjustments[date_key]</strong>
+                    <span>Column · Adjustments</span>
+                  </div>
+                </td>
+                <td><span class="source-badge model">Model only</span></td>
+                <td><span class="risk-badge">In use</span></td>
+                <td class="muted">0</td>
+                <td class="muted">0</td>
+                <td class="muted">Active relationship to Date[DateKey]</td>
+              </tr>
+              <tr>
+                <td><div class="entity"><strong>Sales[Revenue]</strong><span>Measure · Sales</span></div></td>
+                <td><span class="source-badge report">In reports</span></td>
+                <td><span class="risk-badge">In use</span></td>
+                <td>3</td>
+                <td>7</td>
+                <td class="muted">Cards, matrix, tooltip</td>
+              </tr>
+              <tr>
+                <td><div class="entity"><strong>Sales[Net Margin %]</strong><span>Measure · Sales</span></div></td>
+                <td><span class="source-badge indirect">Indirect</span></td>
+                <td><span class="risk-badge">In use</span></td>
+                <td class="muted">0</td>
+                <td class="muted">0</td>
+                <td class="muted">Required by Sales[Executive Scorecard]</td>
+              </tr>
+              <tr>
+                <td><div class="entity"><strong>Adjustments[legacy_reason_code]</strong><span>Column · Adjustments</span></div></td>
+                <td><span class="source-badge unused">Not used</span></td>
+                <td><span class="risk-badge">Safe</span></td>
+                <td class="muted">0</td>
+                <td class="muted">0</td>
+                <td class="muted">No report or model retention detected</td>
+              </tr>
+              <tr>
+                <td><div class="entity"><strong>Finance[Adj EBITDA]</strong><span>Measure · Finance</span></div></td>
+                <td><span class="source-badge broken">Broken</span></td>
+                <td><span class="risk-badge">Review</span></td>
+                <td class="muted">0</td>
+                <td class="muted">0</td>
+                <td class="muted">Missing DAX references</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="stack">
+        <section class="panel">
+          <div class="panel-title">
+            <h3>Selected item</h3>
+            <span class="source-badge model">Model only</span>
+          </div>
+          <div class="stack">
+            <div class="info-card">
+              <h4>What this means</h4>
+              <div class="big">Not used in reports</div>
+              <p>The item does not appear on report pages, but the semantic model still depends on it.</p>
+            </div>
+            <div class="info-card">
+              <h4>Retention reason</h4>
+              <p><strong>Active relationship</strong> keeps this column in use.</p>
+              <ul>
+                <li>Local: <code>Adjustments[date_key]</code></li>
+                <li>Other side: <code>Date[DateKey]</code></li>
+                <li>Cardinality: <code>*:1</code></li>
+              </ul>
+            </div>
+            <div class="info-card">
+              <h4>Report evidence</h4>
+              <p>No direct report references were found in the selected reports.</p>
+            </div>
+            <div class="info-card">
+              <h4>Recommended action</h4>
+              <p>Do not queue cleanup automatically. This is a model-retained item, not a report-used item.</p>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <p class="footer-note">
+      This direction keeps the page efficient while fixing the core semantics. It is the least risky path to replace the current `USED / In use` repetition.
+    </p>
+  </div>
+</body>
+</html>
