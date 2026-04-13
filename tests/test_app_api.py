@@ -1,3 +1,5 @@
+import json
+
 from semantic_model_cleaner import analyzer, webapp as web_app
 
 
@@ -206,9 +208,13 @@ def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):
     assert payload["items"][0]["reportUsedMeasureDependentCount"] == 0
     assert payload["items"][0]["relationshipRefCount"] == 0
     assert payload["items"][0]["otherModelUses"] == []
+    assert payload["items"][0]["usageState"] == "Unused"
+    assert payload["items"][0]["issueState"] == ""
     assert payload["items"][0]["deleteSafety"] == "Safe"
     assert payload["tables"][0]["name"] == "Sales"
     assert payload["tables"][0]["usageStatus"] == "NOT USED"
+    assert payload["tables"][0]["usageState"] == "Unused"
+    assert payload["tables"][0]["issueState"] == ""
     assert payload["tables"][0]["directReportMeasureCount"] == 0
     assert payload["tables"][0]["directReportColumnCount"] == 0
     assert payload["tables"][0]["signals"] == ["No direct report references were found for this table."]
@@ -463,6 +469,64 @@ def test_api_action_accepts_move_to_table_group(monkeypatch, tmp_path):
     assert captured["actions"][0]["table_group"] == "PNL Actuals"
 
 
+def test_api_migrate_report_measure_promotes_extension_to_model(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    report_path = tmp_path / "Executive.Report"
+    tables_dir = model_path / "definition" / "tables"
+    report_def_dir = report_path / "definition"
+    tables_dir.mkdir(parents=True)
+    report_def_dir.mkdir(parents=True)
+    web_app._state["backup_path"] = None
+
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tmeasure Existing = 1\n",
+        encoding="utf-8",
+    )
+    (report_def_dir / "reportExtensions.json").write_text(
+        json.dumps(
+            {
+                "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/reportExtension/1.0.0/schema.json",
+                "name": "extension",
+                "entities": [
+                    {
+                        "name": "Sales",
+                        "measures": [
+                            {
+                                "name": "Report Revenue",
+                                "dataType": "Double",
+                                "expression": "[Existing] + 1",
+                            }
+                        ],
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/report-measure/migrate",
+        json={
+            "model_path": str(model_path),
+            "report_path": str(report_path),
+            "table": "Sales",
+            "name": "Report Revenue",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["result"]["ok"] is True
+    assert "\tmeasure 'Report Revenue' = [Existing] + 1" in (tables_dir / "Sales.tmdl").read_text(encoding="utf-8")
+    updated_extensions = json.loads((report_def_dir / "reportExtensions.json").read_text(encoding="utf-8"))
+    assert updated_extensions["entities"] == []
+
+
 def test_api_export_json_returns_latest_analysis():
     web_app._state["last_results"] = _fake_results()
 
@@ -532,25 +596,47 @@ def test_index_renders_empty_selection_state():
     assert 'id="tableToolsSection"' in html
     assert 'id="wrapTableTextCheckbox"' in html
     assert 'id="btnAutoSizeColumns"' in html
-    assert 'data-col="reportUseSummary"' in html
+    assert 'id="pageSizeSelect"' in html
+    assert 'id="btnPrevPage"' in html
+    assert 'id="btnNextPage"' in html
+    assert 'id="filterCounts"' not in html
+    assert "Dropdown filters support multi-select" not in html
+    assert 'data-col="usageState"' in html
+    assert 'data-col="issueState"' in html
+    assert 'data-col="reportCount"' in html
+    assert 'data-col="pageCount"' in html
+    assert 'data-col="usageCount"' in html
     assert 'data-col="measureDependentCount"' in html
-    assert 'data-col="reportUsedMeasureDependentCount"' in html
+    assert 'data-col="reportUsedMeasureDependentCount"' not in html
     assert 'data-col="relationshipRefCount"' in html
     assert 'data-col="otherModelUseCount"' in html
     assert 'data-col="deleteSafety"' in html
+    assert 'data-col="usageState" title=' in html
+    assert 'data-col="issueState" title=' in html
+    assert 'data-col="sourceKind" title=' in html
+    assert 'data-col="measureDependentCount" title=' in html
+    assert 'Used measures <span class="header-help"' not in html
+    assert 'data-col="deleteSafety" title=' in html
     assert 'data-tablecol="directReportMeasureCount"' in html
     assert 'data-tablecol="directReportColumnCount"' in html
+    assert 'data-tablecol="roleLabel"' not in html
     assert ".cell-ellipsis" in html
+    assert ".cell-nowrap" in html
+    assert ".header-help" in html
     assert "body.wrap-table-text .cell-ellipsis" in html
+    assert "function getPagedRows(rows, viewName) {" in html
+    assert "function updatePageControls() {" in html
+    assert "initializeHeaderTooltips();" in html
     assert "setActionLogVisible(readShowActionLogPreference());" in html
     assert "setWrapTableTextEnabled(readWrapTableTextPreference());" in html
     assert "var wrapTableTextStorageKey = 'smc.wrapTableText';" in html
+    assert "var pageSizeStorageKey = 'smc.pageSize';" in html
     assert "var explorerDefaultPathStoragePrefix = 'smc.explorerDefaultPath.';" in html
     assert "var columnWidthStoragePrefix = 'smc.columnWidths.'" in html
     assert "function fitCurrentTableColumnsToScreen() {" in html
+    assert "function fitMinWidthForHeader(th, index) {" in html
     assert "function calculateDefaultWidths(tableSectionId) {" in html
     assert "function setupResizableTable(tableSectionId) {" in html
-    assert "function reportUseCellContent(item) {" in html
     assert "function otherModelUseCellContent(item) {" in html
     assert "function deleteSafetyBadge(item) {" in html
     assert 'id="btnExplorerUp"' in html

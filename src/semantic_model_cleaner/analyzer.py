@@ -40,6 +40,10 @@ class ModelItem:
     is_key: bool = False
     is_inferred: bool = False
     sort_by_column: str = ""
+    source_kind: str = "model"
+    source_artifact: str = ""
+    format_string: str = ""
+    explicit_measure_refs: tuple[tuple[str, str], ...] = ()
 
     @property
     def key(self) -> tuple:
@@ -709,6 +713,98 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
     return items
 
 
+def parse_report_extension_measures(
+    report_path: Path,
+    warnings: Optional[list[AnalyzerWarning]] = None,
+) -> list[ModelItem]:
+    report_extensions = report_path / "definition" / "reportExtensions.json"
+    if not report_extensions.exists():
+        return []
+
+    try:
+        data = json.loads(report_extensions.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        if warnings is not None:
+            _add_warning(
+                warnings,
+                code="INVALID_REPORT_EXTENSION_JSON",
+                message=f"Could not parse reportExtensions.json in {report_display_name(report_path)}: {exc}",
+                source_file=report_extensions,
+            )
+        return []
+
+    items = []
+    for entity in data.get("entities", []):
+        if not isinstance(entity, dict):
+            continue
+        entity_name = str(entity.get("name", "")).strip()
+        if not entity_name:
+            continue
+        for measure in entity.get("measures", []):
+            if not isinstance(measure, dict):
+                continue
+            measure_name = str(measure.get("name", "")).strip()
+            expression = str(measure.get("expression", "") or "")
+            if not measure_name or not expression:
+                continue
+            explicit_refs = []
+            references = measure.get("references", {})
+            if isinstance(references, dict):
+                for ref in references.get("measures", []):
+                    if not isinstance(ref, dict):
+                        continue
+                    ref_entity = str(ref.get("entity", "")).strip()
+                    ref_name = str(ref.get("name", "")).strip()
+                    if ref_entity and ref_name:
+                        explicit_refs.append((ref_entity, ref_name))
+
+            items.append(ModelItem(
+                item_type="Measure",
+                table=entity_name,
+                name=measure_name,
+                display_folder=str(measure.get("displayFolder", "") or ""),
+                dax_body=expression,
+                is_hidden=bool(measure.get("hidden", False)),
+                source_kind="report",
+                source_artifact=report_display_name(report_path),
+                format_string=str(measure.get("formatString", "") or ""),
+                explicit_measure_refs=tuple(explicit_refs),
+            ))
+
+    return items
+
+
+def _dedupe_items_with_warnings(
+    items: list[ModelItem],
+    warnings: list[AnalyzerWarning],
+) -> list[ModelItem]:
+    seen: dict[tuple[str, str, str], ModelItem] = {}
+    duplicates: dict[tuple[str, str, str], list[ModelItem]] = defaultdict(list)
+
+    for item in items:
+        nkey = normalize_key(*item.key) + (item.item_type.casefold(),)
+        if nkey in seen:
+            duplicates[nkey].append(item)
+            continue
+        seen[nkey] = item
+
+    for nkey, dup_items in duplicates.items():
+        first = seen[nkey]
+        dup_labels = [f"{first.source_kind}:{first.source_artifact or '-'}"]
+        dup_labels.extend(f"{item.source_kind}:{item.source_artifact or '-'}" for item in dup_items)
+        _add_warning(
+            warnings,
+            code="DUPLICATE_ITEM_KEY",
+            message=(
+                f"Duplicate item key {format_item_ref(first.key)} was found across sources "
+                f"({', '.join(dup_labels)}). Keeping the first occurrence only."
+            ),
+            table=first.table,
+        )
+
+    return list(seen.values())
+
+
 def _parse_relationship_ref(value: str) -> tuple[str, str] | None:
     match = re.match(
         r"(?:'([^']+)'|([^\s.]+))\.(?:'([^']+)'|(\S+))",
@@ -1365,6 +1461,15 @@ def find_broken_dax_references(items: list[ModelItem]) -> dict[tuple[str, str], 
             continue
 
         missing: dict[tuple[str, str], dict[str, str]] = {}
+        for tbl, name in item.explicit_measure_refs:
+            if normalize_key(tbl, name) not in existing_keys:
+                ref_text = format_item_ref((tbl, name))
+                missing[("explicit-measure", ref_text.casefold())] = {
+                    "kind": "measure",
+                    "ref": ref_text,
+                    "message": f"Missing measure: {ref_text}",
+                }
+
         for tbl, name in _extract_dax_qualified_refs(item.dax_body):
             if normalize_key(tbl, name) not in existing_keys:
                 ref_text = format_item_ref((tbl, name))
@@ -1424,6 +1529,11 @@ def build_dax_dependency_graph(items: list[ModelItem]) -> dict[tuple[str, str], 
             continue
 
         refs: set[tuple[str, str]] = set()
+        for tbl, name in item.explicit_measure_refs:
+            key = measure_key_index.get(normalize_key(tbl, name))
+            if key and key != item.key:
+                refs.add(key)
+
         for tbl, name in _extract_dax_qualified_refs(item.dax_body):
             key = measure_key_index.get(normalize_key(tbl, name))
             if key and key != item.key:
@@ -1887,6 +1997,11 @@ def analyze(
             )
         )
 
+    for report_path in reports:
+        all_items.extend(parse_report_extension_measures(report_path, warnings))
+
+    all_items = _dedupe_items_with_warnings(all_items, warnings)
+
     # ── Scan reports ──
     all_visual_usages = []
     all_interaction_usages = []
@@ -2136,6 +2251,14 @@ def analyze(
     # ── Summary stats ──
     summary = {
         "total_measures": sum(1 for i in all_items if i.item_type == "Measure"),
+        "total_model_measures": sum(
+            1 for i in all_items
+            if i.item_type == "Measure" and i.source_kind == "model"
+        ),
+        "total_report_measures": sum(
+            1 for i in all_items
+            if i.item_type == "Measure" and i.source_kind == "report"
+        ),
         "total_columns": sum(1 for i in all_items if i.item_type in ("Column", "Calculated Column")),
         "total_calc_columns": sum(1 for i in all_items if i.item_type == "Calculated Column"),
         "used_in_visuals": sum(
@@ -2341,7 +2464,10 @@ def format_json_output(results: dict) -> str:
             "type": r["item"].item_type,
             "table": r["item"].table,
             "name": r["item"].name,
+            "sourceKind": r["item"].source_kind,
+            "sourceArtifact": r["item"].source_artifact or None,
             "displayFolder": r["item"].display_folder,
+            "formatString": r["item"].format_string or None,
             "isHidden": r["item"].is_hidden,
             "isKey": r["item"].is_key,
             "isInferred": r["item"].is_inferred,

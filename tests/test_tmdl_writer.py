@@ -116,3 +116,33 @@ def test_set_table_group_inserts_and_updates_annotation(tmp_path):
     updated = sales_file.read_text(encoding="utf-8")
     assert "\tannotation TabularEditor_TableGroup = Actuals" in updated
     assert "PNL Actuals" not in updated
+
+
+def test_create_measure_appends_properties(tmp_path):
+    model_path = tmp_path / "Demo.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tmeasure Existing = 1\n",
+        encoding="utf-8",
+    )
+
+    result = tmdl_writer.create_measure(
+        model_path=model_path,
+        table="Sales",
+        name="Report Revenue",
+        dax_expression="DIVIDE(\n    [Existing],\n    2\n)",
+        display_folder="Executive",
+        format_string="0.0",
+        hidden=True,
+    )
+
+    assert result["ok"] is True
+    content = sales_file.read_text(encoding="utf-8")
+    assert "\tmeasure 'Report Revenue' = DIVIDE(" in content
+    assert "\t\t\t    [Existing]," in content
+    assert "\t\tformatString: 0.0" in content
+    assert "\t\tdisplayFolder: Executive" in content
+    assert "\t\tisHidden" in content

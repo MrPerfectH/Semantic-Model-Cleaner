@@ -30,6 +30,12 @@ def _find_tmdl_file(model_path: Path, table: str) -> Path | None:
     return None
 
 
+def _quote_tmdl_name(name: str) -> str:
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+        return name
+    return "'" + name.replace("'", "''") + "'"
+
+
 def _find_item_block(lines: list[str], name: str, item_type: str) -> tuple[int, int] | None:
     """Find start/end line indices for a measure or column block.
 
@@ -235,6 +241,48 @@ def set_table_group(model_path: Path, table: str, group_name: str) -> dict:
         "action": "set_table_group",
         "table_group": group_name,
     }
+
+
+def create_measure(
+    model_path: Path,
+    table: str,
+    name: str,
+    dax_expression: str,
+    *,
+    display_folder: str = "",
+    format_string: str = "",
+    hidden: bool = False,
+) -> dict:
+    """Append a new measure block to an existing table file."""
+    expression_lines = _normalize_expression_lines(dax_expression)
+    if not expression_lines:
+        return {"ok": False, "error": "DAX expression cannot be empty"}
+
+    tmdl_file = _find_tmdl_file(model_path, table)
+    if not tmdl_file:
+        return {"ok": False, "error": f"TMDL file not found for table '{table}'"}
+
+    lines = tmdl_file.read_text(encoding="utf-8").splitlines()
+    if _find_item_block(lines, name, "Measure"):
+        return {"ok": False, "error": f"Item '{name}' already exists in {tmdl_file.name}"}
+
+    new_lines = list(lines)
+    while new_lines and not new_lines[-1].strip():
+        new_lines.pop()
+    if new_lines:
+        new_lines.append("")
+
+    new_lines.append(f"\tmeasure {_quote_tmdl_name(name)} = {expression_lines[0]}")
+    new_lines.extend(f"\t\t\t{line}" for line in expression_lines[1:])
+    if format_string:
+        new_lines.append(f"\t\tformatString: {format_string}")
+    if display_folder:
+        new_lines.append(f"\t\tdisplayFolder: {display_folder}")
+    if hidden:
+        new_lines.append("\t\tisHidden")
+
+    tmdl_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    return {"ok": True, "file": str(tmdl_file), "action": "create_measure"}
 
 
 def _normalize_expression_lines(dax_expression: str) -> list[str]:
