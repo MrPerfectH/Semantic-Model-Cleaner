@@ -123,6 +123,30 @@ def test_dax_dependency_graph_excludes_self_references():
     assert deps[item.key] == set()
 
 
+def test_unused_measure_with_dax_dependents_is_caution(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Test.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    report.mkdir(parents=True)
+
+    (tables_dir / "Measures.tmdl").write_text(
+        "table Measures\n"
+        "\tmeasure A = 1\n"
+        "\tmeasure B = [A] + 1\n",
+        encoding="utf-8",
+    )
+    (report / "definition.pbir").write_text('{"version":"4.0"}', encoding="utf-8")
+    (report / "report.json").write_text('{"sections":[]}', encoding="utf-8")
+
+    results = analyzer.analyze(workspace)
+    measure_a = _find_item(results, "Measures", "A", "Measure")
+
+    assert measure_a["status"] == "NOT USED"
+    assert measure_a["removal_risk"] == "Caution"
+
+
 def test_unresolved_field_parameter_targets_emit_warnings(tmp_path):
     warnings = []
     info = analyzer.FieldParameterInfo(
@@ -166,8 +190,10 @@ def test_table_summaries_capture_role_patterns_and_single_column_measures(tmp_pa
     report = workspace / "Reports" / "Executive.Report"
     tables_dir = model / "definition" / "tables"
     pages_dir = report / "definition" / "pages" / "Page 1"
+    visual_dir = pages_dir / "visuals" / "visual1"
     tables_dir.mkdir(parents=True)
     pages_dir.mkdir(parents=True)
+    visual_dir.mkdir(parents=True)
 
     (tables_dir / "Sales.tmdl").write_text(
         "table Sales\n"
@@ -193,6 +219,44 @@ def test_table_summaries_capture_role_patterns_and_single_column_measures(tmp_pa
         encoding="utf-8",
     )
     (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
+    (visual_dir / "visual.json").write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "visualType": "tableEx",
+                    "query": {
+                        "queryState": {
+                            "Values": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Measure": {
+                                                "Property": "Order Date Count",
+                                                "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                            }
+                                        }
+                                    }
+                                ]
+                            },
+                            "Category": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Column": {
+                                                "Property": "CalendarDate",
+                                                "Expression": {"SourceRef": {"Entity": "Date"}},
+                                            }
+                                        }
+                                    }
+                                ]
+                            },
+                        }
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
 
     results = analyzer.analyze(workspace.resolve())
     table_summaries = {row["name"]: row for row in results["table_summaries"]}
@@ -200,6 +264,10 @@ def test_table_summaries_capture_role_patterns_and_single_column_measures(tmp_pa
     assert table_summaries["Date"]["role_label"] == "dimension-like"
     assert table_summaries["Sales"]["role_label"] == "fact-like"
     assert table_summaries["Date"]["relationship_only_columns"] == ["Date[DateKey]"]
+    assert table_summaries["Date"]["direct_report_measure_count"] == 0
+    assert table_summaries["Date"]["direct_report_column_count"] == 1
+    assert table_summaries["Sales"]["direct_report_measure_count"] == 1
+    assert table_summaries["Sales"]["direct_report_column_count"] == 0
     assert table_summaries["Sales"]["single_column_measures"] == [
         {"measure": "Sales[Order Date Count]", "column": "Sales[OrderDateKey]"}
     ]
@@ -267,6 +335,35 @@ def test_bare_table_refs_are_flagged_as_broken(tmp_path):
         {"kind": "table", "ref": "Account", "message": "Missing table: Account"},
     ]
     assert results["summary"]["broken"] == 1
+
+
+def test_bare_table_refs_are_exposed_in_table_dependency_signals(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    report.mkdir(parents=True)
+
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "Measures.tmdl").write_text(
+        "table Measures\n"
+        "\tmeasure Row Count = COUNTROWS('Sales')\n",
+        encoding="utf-8",
+    )
+
+    (report / "definition.pbir").write_text('{"version":"4.0"}', encoding="utf-8")
+    (report / "report.json").write_text('{"sections":[]}', encoding="utf-8")
+
+    results = analyzer.analyze(workspace)
+    table_summaries = {row["name"]: row for row in results["table_summaries"]}
+
+    assert table_summaries["Sales"]["external_dax_dependents"] == ["Measures[Row Count]"]
+    assert "1 DAX item outside this table depends on it." in table_summaries["Sales"]["signals"]
 
 
 def test_valid_quoted_column_refs_do_not_trigger_false_broken_table_refs(tmp_path):

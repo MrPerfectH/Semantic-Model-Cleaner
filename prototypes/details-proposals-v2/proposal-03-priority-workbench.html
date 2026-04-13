@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proposal 3 - Priority Workbench</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body class="priority-hero">
+  <div class="page app-shell">
+    <section class="hero">
+      <div class="hero-card">
+        <div class="eyebrow">Proposal 3</div>
+        <h1>Priority Workbench</h1>
+        <p>
+          Still table-first, but the surrounding layout helps the user decide what to do next.
+          This is useful if the page should feel like a cleanup workbench without abandoning scale.
+        </p>
+        <div class="hero-tags">
+          <span class="tag tag-warm">Cleanup-oriented</span>
+          <span class="tag">Table remains central</span>
+          <span class="tag">Smaller KPI set</span>
+        </div>
+      </div>
+      <aside class="hero-side">
+        <h2>When to use it</h2>
+        <p>
+          Best if you want one page to answer both questions:
+          what is this item, and should I act on it now?
+        </p>
+      </aside>
+    </section>
+
+    <section class="shell panel">
+      <div class="tabs">
+        <span class="tab is-active">Details</span>
+        <span class="tab">Tables</span>
+      </div>
+      <div class="soft-banner" style="margin-top:12px">
+        <p><strong>Current focus:</strong> 22 items need human review before cleanup. Safe items stay visible, but the page does not let them dominate the narrative.</p>
+        <div class="toolbar-inline">
+          <span class="micro-badge">LINDEN</span>
+          <span class="micro-badge">4 reports</span>
+          <button class="quiet-btn">Analyze</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="priority-strip">
+      <div class="shell panel">
+        <div class="section-head">
+          <h2>Main KPI</h2>
+        </div>
+        <div class="focus-grid">
+          <div class="focus-box">
+            <div class="title">Used in reports</div>
+            <div class="value" style="color:var(--green)">28</div>
+            <div class="meta">4 reports, 32 pages, 148 visual refs</div>
+          </div>
+          <div class="focus-box">
+            <div class="title">Model only</div>
+            <div class="value" style="color:var(--amber)">7</div>
+            <div class="meta">Relationships, sort-by, hierarchy, RLS</div>
+          </div>
+          <div class="focus-box">
+            <div class="title">Indirect</div>
+            <div class="value" style="color:var(--blue)">12</div>
+            <div class="meta">Hidden dependency chain, not report-visible</div>
+          </div>
+          <div class="focus-box">
+            <div class="title">Cleanup pool</div>
+            <div class="value" style="color:var(--red)">571</div>
+            <div class="meta">549 safe, 17 review, 5 broken</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="shell panel">
+        <div class="section-head">
+          <h2>Current review focus</h2>
+        </div>
+        <div class="submetrics">
+          <div class="submetric"><span>Broken measures</span><span>5</span></div>
+          <div class="submetric"><span>Model-only columns</span><span>4</span></div>
+          <div class="submetric"><span>Large dependent chains (&gt;10)</span><span>8</span></div>
+          <div class="submetric"><span>Recently modified</span><span>11</span></div>
+        </div>
+        <div class="note" style="margin-top:14px">
+          The idea is not more KPI cards. It is a smaller KPI set with useful secondary numbers inside each card or focus block.
+        </div>
+      </div>
+    </section>
+
+    <section class="shell panel filter-panel">
+      <div class="filter-row">
+        <div class="field">
+          <label class="filter-label">Search</label>
+          <input value="legacy">
+        </div>
+        <div class="field">
+          <label class="filter-label">Status</label>
+          <select><option>Review + not used + broken</option></select>
+        </div>
+        <div class="field">
+          <label class="filter-label">Type</label>
+          <select><option>All types</option></select>
+        </div>
+        <div class="field">
+          <label class="filter-label">Table</label>
+          <select><option>All tables</option></select>
+        </div>
+        <div class="field">
+          <label class="filter-label">Risk</label>
+          <select><option>Review focus</option></select>
+        </div>
+      </div>
+      <div class="filter-row is-secondary">
+        <div class="field">
+          <label class="filter-label">Hidden</label>
+          <select><option>All visibility</option></select>
+        </div>
+        <div class="field">
+          <label class="filter-label">Quick slices</label>
+          <div class="segmented">
+            <span class="seg-chip is-active">Review now</span>
+            <span class="seg-chip">Safe only</span>
+            <span class="seg-chip">Broken only</span>
+            <span class="seg-chip">Model only</span>
+          </div>
+        </div>
+        <div class="field">
+          <label class="filter-label">Folder</label>
+          <select><option>All folders</option></select>
+        </div>
+        <div class="toolbar-inline">
+          <button class="quiet-btn">Select all safe</button>
+          <button class="quiet-btn">Deselect</button>
+        </div>
+      </div>
+      <div class="filter-note-row">
+        <div class="helper">Review-led framing, but still one table and one filter system.</div>
+        <div class="counter">Showing 22 review items</div>
+      </div>
+    </section>
+
+    <section class="shell panel">
+      <div class="table-panel-head">
+        <div class="table-title">
+          <h2>Details</h2>
+          <p>Rows still carry the page. Surrounding chrome simply tells you where to focus first.</p>
+        </div>
+        <div class="head-actions">
+          <button class="quiet-btn">Move to folder</button>
+          <button class="quiet-btn">Hide</button>
+          <button class="quiet-btn">Delete</button>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Usage source</th>
+              <th>Risk</th>
+              <th>Reports</th>
+              <th>Pages</th>
+              <th>Dependents</th>
+              <th>Review cue</th>
+              <th>Inspect</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="row-item"><strong>Finance[Adj EBITDA]</strong><span>Measure · Finance</span></div></td>
+              <td><span class="status-badge broken">Broken</span></td>
+              <td><span class="risk-badge review">Review</span></td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">2</td>
+              <td class="reason">Broken DAX refs, no recent report evidence</td>
+              <td><button class="soft-btn">Inspect</button></td>
+            </tr>
+            <tr>
+              <td><div class="row-item"><strong>Adjustments[date_key]</strong><span>Column · Adjustments</span></div></td>
+              <td><span class="status-badge model">Model only</span></td>
+              <td><span class="risk-badge blocked">In use</span></td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">1</td>
+              <td class="reason">Structural retention only, likely keep</td>
+              <td><button class="soft-btn">Inspect</button></td>
+            </tr>
+            <tr>
+              <td><div class="row-item"><strong>Sales[Promo Flag Legacy]</strong><span>Column · Sales</span></div></td>
+              <td><span class="status-badge unused">Not used</span></td>
+              <td><span class="risk-badge safe">Safe</span></td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="reason">Good queue candidate if owner confirms</td>
+              <td><button class="soft-btn">Queue</button></td>
+            </tr>
+            <tr>
+              <td><div class="row-item"><strong>Sales[Net Margin %]</strong><span>Measure · Sales</span></div></td>
+              <td><span class="status-badge indirect">Indirect</span></td>
+              <td><span class="risk-badge blocked">In use</span></td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">14</td>
+              <td class="reason">Heavy dependency chain, do not touch casually</td>
+              <td><button class="soft-btn">Inspect</button></td>
+            </tr>
+            <tr>
+              <td><div class="row-item"><strong>Sales[Revenue]</strong><span>Measure · Sales</span></div></td>
+              <td><span class="status-badge report">In reports</span></td>
+              <td><span class="risk-badge blocked">In use</span></td>
+              <td class="num">3</td>
+              <td class="num">7</td>
+              <td class="num">6</td>
+              <td class="reason">High business visibility across reports</td>
+              <td><button class="soft-btn">Inspect</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-foot">
+        <div class="helper">Good if you want the page to drive cleanup decisions without removing the table-first model.</div>
+        <div class="pager">
+          <button class="soft-btn">Previous</button>
+          <span class="counter">22 of 618 in focus</span>
+          <button class="soft-btn">Next focus</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

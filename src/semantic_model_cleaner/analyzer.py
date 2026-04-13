@@ -1472,6 +1472,26 @@ def build_dax_column_deps(items: list[ModelItem]) -> dict[tuple[str, str], set[t
     return deps
 
 
+def build_dax_table_deps(items: list[ModelItem]) -> dict[tuple[str, str], set[str]]:
+    """Build item_key -> {referenced table names via bare table refs in DAX} graph."""
+    table_name_index = {item.table.casefold(): item.table for item in items}
+
+    deps: dict[tuple[str, str], set[str]] = {}
+    for item in items:
+        if not item.dax_body or item.item_type not in ("Measure", "Calculated Column"):
+            continue
+
+        refs: set[str] = set()
+        for table_name in _extract_dax_table_refs(item.dax_body):
+            resolved = table_name_index.get(table_name.casefold())
+            if resolved:
+                refs.add(resolved)
+
+        deps[item.key] = refs
+
+    return deps
+
+
 def resolve_indirect_measures(
     all_items: list[ModelItem],
     directly_used_measures: set[tuple[str, str]],
@@ -1582,6 +1602,7 @@ def build_table_summaries(
     all_usages: list[UsageRef],
     relationship_details: list[RelationshipInfo],
     dax_column_deps: dict[tuple[str, str], set[tuple[str, str]]],
+    dax_table_deps: dict[tuple[str, str], set[str]],
     field_parameter_issues: dict[str, list[str]] | None = None,
 ) -> list[dict]:
     rows_by_table: dict[str, list[dict]] = defaultdict(list)
@@ -1620,6 +1641,8 @@ def build_table_summaries(
         items_in_table = []
         hidden_count = 0
         used_count = 0
+        direct_report_measure_count = 0
+        direct_report_column_count = 0
         measure_count = 0
         column_count = 0
         calc_column_count = 0
@@ -1627,12 +1650,15 @@ def build_table_summaries(
         for row in sorted(rows, key=lambda r: (r["item"].item_type, r["item"].name.casefold())):
             item = row["item"]
             status = row["status"]
+            has_direct_usage = bool(row.get("has_direct_usage"))
             if item.is_hidden:
                 hidden_count += 1
             if is_used_status(status):
                 used_count += 1
             if item.item_type == "Measure":
                 measure_count += 1
+                if has_direct_usage:
+                    direct_report_measure_count += 1
                 column_deps = sorted(dax_column_deps.get(item.key, set()))
                 if len(column_deps) == 1:
                     dep_table, dep_column = column_deps[0]
@@ -1643,8 +1669,12 @@ def build_table_summaries(
             elif item.item_type == "Calculated Column":
                 calc_column_count += 1
                 column_count += 1
+                if has_direct_usage:
+                    direct_report_column_count += 1
             else:
                 column_count += 1
+                if has_direct_usage:
+                    direct_report_column_count += 1
 
             if item.item_type in ("Column", "Calculated Column") and status == "USED (Relationship)":
                 relationship_only_columns.append(format_item_ref(item.key))
@@ -1735,6 +1765,18 @@ def build_table_summaries(
             noun = "target" if count == 1 else "targets"
             signals.insert(0, f"Broken field parameter: {count} unresolved NAMEOF {noun}.")
 
+        external_dax_dependents = sorted({
+            format_item_ref(row["item"].key)
+            for row in results
+            if row["item"].table.casefold() != table.casefold()
+            and table in dax_table_deps.get(row["item"].key, set())
+        }, key=str.casefold)
+        if external_dax_dependents:
+            count = len(external_dax_dependents)
+            noun = "item" if count == 1 else "items"
+            verb = "depends" if count == 1 else "depend"
+            signals.append(f"{count} DAX {noun} outside this table {verb} on it.")
+
         if single_column_measures:
             count = len(single_column_measures)
             noun = "measure" if count == 1 else "measures"
@@ -1751,6 +1793,8 @@ def build_table_summaries(
             "measure_count": measure_count,
             "column_count": column_count,
             "calculated_column_count": calc_column_count,
+            "direct_report_measure_count": direct_report_measure_count,
+            "direct_report_column_count": direct_report_column_count,
             "used_item_count": used_count,
             "unused_item_count": len(rows) - used_count,
             "hidden_item_count": hidden_count,
@@ -1769,6 +1813,7 @@ def build_table_summaries(
             "related_tables": related_tables,
             "relationship_only_columns": relationship_only_columns,
             "single_column_measures": single_column_measures,
+            "external_dax_dependents": external_dax_dependents,
             "relationships": relationship_items,
             "signals": signals,
             "field_parameter_issues": table_fp_issues,
@@ -1893,6 +1938,7 @@ def analyze(
     # ── DAX dependencies ──
     dax_deps = build_dax_dependency_graph(all_items)
     dax_col_deps = build_dax_column_deps(all_items)
+    dax_table_deps = build_dax_table_deps(all_items)
     broken_dax_refs = find_broken_dax_references(all_items)
 
     directly_used_measures = set()
@@ -2033,15 +2079,16 @@ def analyze(
                     review_triggers.append("Item is hidden")
                 if item.is_key:
                     review_triggers.append("Item is marked as a key")
-            if review_triggers:
-                removal_risk = "Review"
-            else:
-                removal_risk = "Safe"
+                if review_triggers:
+                    removal_risk = "Review"
+                else:
+                    removal_risk = "Safe"
 
         results.append({
             "item": item,
             "status": status,
             "usages": usages,
+            "has_direct_usage": has_direct_usage,
             "removal_risk": removal_risk,
             "review_triggers": review_triggers,
             "broken_dax_refs": [detail["ref"] for detail in broken_dax_refs.get(item.key, [])],
@@ -2059,6 +2106,7 @@ def analyze(
         all_usages,
         all_relationship_details,
         dax_col_deps,
+        dax_table_deps,
         {table: sorted(set(messages), key=str.casefold) for table, messages in field_parameter_issues_by_table.items()},
     )
 

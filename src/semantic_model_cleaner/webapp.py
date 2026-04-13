@@ -217,14 +217,49 @@ def print_startup_banner(host: str, port: int, *, debug: bool, mode: str = "web"
 
 def _serialize_results(results: dict) -> dict:
     """Serialize analyzer results for JSON API responses."""
+    def _delete_safety(item_payload: dict) -> str:
+        if item_payload.get("isInferred"):
+            return "Do not remove"
+        if item_payload.get("status", "").startswith("BROKEN"):
+            return "Blocked"
+        risk = item_payload.get("removalRisk") or ""
+        if risk == "Safe":
+            return "Safe"
+        if risk == "Review":
+            return "Review"
+        if risk == "Do not remove":
+            return "Do not remove"
+        if risk == "Caution":
+            return "Blocked"
+        if analyzer.is_used_status(item_payload.get("status", "")):
+            return "Blocked"
+        return "Review"
+
     items_by_key = {r["item"].key: r["item"] for r in results["items"]}
+    rows_by_key = {r["item"].key: r for r in results["items"]}
     model_name = results.get("summary", {}).get("models", [""])[0]
     model_path = next((Path(p) for p in _state.get("model_paths", []) if Path(p).name == model_name), None)
     table_source_details = _extract_tmdl_table_source_details(model_path)
     dax_measure_deps = analyzer.build_dax_dependency_graph(list(items_by_key.values()))
     dax_column_deps = analyzer.build_dax_column_deps(list(items_by_key.values()))
+    dax_table_deps = analyzer.build_dax_table_deps(list(items_by_key.values()))
+    relationship_details = analyzer.parse_relationship_details(model_path) if model_path else []
+    rls_refs = analyzer.parse_rls_roles(model_path) if model_path else []
     reverse_measure_deps: dict[tuple[str, str], set[tuple[str, str]]] = {}
     reverse_column_deps: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    relationship_counts: dict[tuple[str, str], int] = {}
+    rls_keys = {analyzer.normalize_key(tbl, col) for _, tbl, col in rls_refs}
+    sort_target_keys: set[tuple[str, str]] = set()
+
+    for item in items_by_key.values():
+        if item.sort_by_column and item.item_type in ("Column", "Calculated Column"):
+            sort_target_keys.add(analyzer.normalize_key(item.table, item.sort_by_column))
+
+    for rel in relationship_details:
+        from_key = analyzer.normalize_key(rel.from_table, rel.from_column)
+        to_key = analyzer.normalize_key(rel.to_table, rel.to_column)
+        relationship_counts[from_key] = relationship_counts.get(from_key, 0) + 1
+        relationship_counts[to_key] = relationship_counts.get(to_key, 0) + 1
 
     for source_key, deps in dax_measure_deps.items():
         for dep_key in deps:
@@ -236,6 +271,7 @@ def _serialize_results(results: dict) -> dict:
 
     items = []
     for r in results["items"]:
+        reports_used = sorted({u.report for u in r["usages"] if u.report})
         pages_used = sorted({u.page for u in r["usages"] if u.page})
         visual_types = sorted({u.visual_type for u in r["usages"] if u.visual_type})
         contexts = sorted({u.context for u in r["usages"] if u.context})
@@ -247,8 +283,34 @@ def _serialize_results(results: dict) -> dict:
         indirect_via = []
         if status.startswith("INDIRECT (via: ") and status.endswith(")"):
             indirect_via = [part.strip() for part in status[15:-1].split(",") if part.strip()]
+        dependent_measure_keys = sorted(
+            key_ref for key_ref in
+            (reverse_measure_deps.get(key, set()) | reverse_column_deps.get(key, set()))
+            if items_by_key.get(key_ref) and items_by_key[key_ref].item_type == "Measure"
+        )
+        report_used_measure_keys = [
+            dep_key for dep_key in dependent_measure_keys
+            if rows_by_key.get(dep_key, {}).get("usages")
+        ]
+        relationship_ref_count = relationship_counts.get(analyzer.normalize_key(*key), 0)
+        other_model_uses = []
+        if status.startswith("USED (Field Parameter:"):
+            other_model_uses.append("Field param")
+        if analyzer.normalize_key(*key) in rls_keys:
+            other_model_uses.append("RLS")
+        if item.is_key:
+            other_model_uses.append("Key")
+        if analyzer.normalize_key(*key) in sort_target_keys:
+            other_model_uses.append("Sort")
+        if "Hierarchy" in status:
+            other_model_uses.append("Hierarchy")
+        report_use_summary = (
+            "No"
+            if not r["usages"]
+            else f"{len(reports_used)} rpt | {len(pages_used)} pg | {len(r['usages'])} refs"
+        )
 
-        items.append({
+        payload_item = {
             "type": item.item_type,
             "table": item.table,
             "name": item.name,
@@ -265,13 +327,24 @@ def _serialize_results(results: dict) -> dict:
             "reviewTriggers": r.get("review_triggers", []),
             "brokenDaxRefs": r.get("broken_dax_refs", []),
             "brokenDaxRefDetails": r.get("broken_dax_ref_details", []),
+            "reportCount": len(reports_used),
+            "pageCount": len(pages_used),
             "pagesUsed": pages_used,
             "visualTypes": visual_types,
             "contexts": contexts,
             "usageCount": len(r["usages"]),
+            "reportUseSummary": report_use_summary,
+            "measureDependentCount": len(dependent_measure_keys),
+            "measureDependentItems": sorted(analyzer.format_item_ref(dep) for dep in dependent_measure_keys),
+            "reportUsedMeasureDependentCount": len(report_used_measure_keys),
+            "reportUsedMeasureDependentItems": sorted(analyzer.format_item_ref(dep) for dep in report_used_measure_keys),
+            "relationshipRefCount": relationship_ref_count,
+            "otherModelUses": other_model_uses,
+            "otherModelUseCount": len(other_model_uses),
             "indirectVia": indirect_via,
             "dependsOnMeasures": sorted(analyzer.format_item_ref(dep) for dep in dax_measure_deps.get(key, set())),
             "dependsOnColumns": sorted(analyzer.format_item_ref(dep) for dep in dax_column_deps.get(key, set())),
+            "dependsOnTables": sorted(dax_table_deps.get(key, set()), key=str.casefold),
             "commentedRefs": sorted(analyzer.extract_dax_commented_refs(item.dax_body or "")),
             "usedByItems": sorted(
                 analyzer.format_item_ref(dep) for dep in
@@ -288,7 +361,9 @@ def _serialize_results(results: dict) -> dict:
                 }
                 for u in r["usages"]
             ],
-        })
+        }
+        payload_item["deleteSafety"] = _delete_safety(payload_item)
+        items.append(payload_item)
 
     references = []
     for r in results["items"]:
@@ -345,6 +420,8 @@ def _serialize_results(results: dict) -> dict:
             "measureCount": table.get("measure_count", 0),
             "columnCount": table.get("column_count", 0),
             "calculatedColumnCount": table.get("calculated_column_count", 0),
+            "directReportMeasureCount": table.get("direct_report_measure_count", 0),
+            "directReportColumnCount": table.get("direct_report_column_count", 0),
             "usedItemCount": table.get("used_item_count", 0),
             "unusedItemCount": table.get("unused_item_count", 0),
             "hiddenItemCount": table.get("hidden_item_count", 0),
@@ -363,6 +440,7 @@ def _serialize_results(results: dict) -> dict:
             "relatedTables": table.get("related_tables", []),
             "relationshipOnlyColumns": table.get("relationship_only_columns", []),
             "singleColumnMeasures": table.get("single_column_measures", []),
+            "externalDaxDependents": table.get("external_dax_dependents", []),
             "relationships": [
                 {
                     "name": rel.get("name", ""),
@@ -589,7 +667,7 @@ def api_export():
 
 @app.route("/api/action", methods=["POST"])
 def api_action():
-    """Apply actions (move_to_folder, hide, unhide, delete) to selected items."""
+    """Apply actions (move_to_folder, move_to_table_group, hide, unhide, delete)."""
     try:
         data = request.get_json()
         if not data:
@@ -620,7 +698,7 @@ def api_action():
 
         # Validate actions
         for act in actions:
-            if act.get("action") not in ("move_to_folder", "hide", "unhide", "delete"):
+            if act.get("action") not in ("move_to_folder", "move_to_table_group", "hide", "unhide", "delete"):
                 return jsonify({"error": f"Invalid action: {act.get('action')}"}), 400
             for field in ("table", "name", "item_type"):
                 if not act.get(field):

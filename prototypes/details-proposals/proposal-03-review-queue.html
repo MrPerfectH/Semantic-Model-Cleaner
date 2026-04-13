@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proposal 3 - Review Queue</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body class="theme-3">
+  <div class="page">
+    <section class="hero">
+      <div class="hero-card">
+        <div class="hero-kicker">Proposal 3</div>
+        <h1>Review Queue</h1>
+        <p>
+          This direction assumes the tool's main job is not passive exploration but cleanup decisions.
+          The page becomes a queue-based workbench: what needs review, what is model-only, what is broken,
+          and what is safe to queue next.
+        </p>
+        <div class="hero-meta">
+          <span class="pill is-success">Best for cleanup flow</span>
+          <span class="pill">Action-oriented</span>
+          <span class="pill is-warning">Less lineage-centric</span>
+        </div>
+      </div>
+      <aside class="nav-card">
+        <h2>Why this direction</h2>
+        <p>
+          Instead of showing every item equally, the page prioritizes the next decision. Strong candidate if the product should feel more operational and less like a report browser.
+        </p>
+        <ul class="nav-list">
+          <li><a href="index.html"><strong>Back to comparison</strong><span>Return to the proposal index.</span></a></li>
+        </ul>
+      </aside>
+    </section>
+
+    <div class="queue-header">
+      <div class="queue-pill is-active"><span>Review now</span><span>41</span></div>
+      <div class="queue-pill"><span>Model only</span><span>7</span></div>
+      <div class="queue-pill"><span>Broken</span><span>5</span></div>
+      <div class="queue-pill"><span>Safe cleanup</span><span>549</span></div>
+      <div class="queue-pill"><span>In reports</span><span>28</span></div>
+    </div>
+
+    <div class="layout review">
+      <aside class="stack">
+        <section class="panel">
+          <div class="panel-title">
+            <div>
+              <h2>Current queue</h2>
+              <div class="panel-subtitle">Items that are not report-used, but still need a human decision.</div>
+            </div>
+          </div>
+          <div class="queue-list">
+            <div class="queue-row">
+              <div class="top">
+                <div>
+                  <strong>Adjustments[date_key]</strong>
+                  <span>Column · Adjustments</span>
+                </div>
+                <span class="source-badge model">Model only</span>
+              </div>
+              <div class="item-meta">
+                <span class="risk-badge">In use</span>
+                <span class="mini-pill">No report pages</span>
+              </div>
+            </div>
+            <div class="queue-row">
+              <div class="top">
+                <div>
+                  <strong>Finance[Adj EBITDA]</strong>
+                  <span>Measure · Finance</span>
+                </div>
+                <span class="source-badge broken">Broken</span>
+              </div>
+              <div class="item-meta">
+                <span class="risk-badge">Review</span>
+                <span class="mini-pill">Missing refs</span>
+              </div>
+            </div>
+            <div class="queue-row">
+              <div class="top">
+                <div>
+                  <strong>Customer[Customer Code]</strong>
+                  <span>Column · Customer</span>
+                </div>
+                <span class="source-badge model">Model only</span>
+              </div>
+              <div class="item-meta">
+                <span class="risk-badge">In use</span>
+                <span class="mini-pill">Sort target</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <main class="stack">
+        <section class="panel">
+          <div class="panel-title">
+            <div>
+              <h2>Queue table</h2>
+              <div class="panel-subtitle">Only the active queue is rendered. The page avoids loading giant "all references" grids by default.</div>
+            </div>
+            <div class="muted">41 items in current queue</div>
+          </div>
+          <div class="table-shell">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Queue</th>
+                  <th>Reason</th>
+                  <th>Suggested action</th>
+                  <th>Owner signal</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="is-active">
+                  <td>
+                    <div class="entity">
+                      <strong>Adjustments[date_key]</strong>
+                      <span>Column · Adjustments</span>
+                    </div>
+                  </td>
+                  <td><span class="source-badge model">Model only</span></td>
+                  <td class="muted">Relationship dependency, but no report evidence</td>
+                  <td><span class="mini-pill is-active">Leave in model</span></td>
+                  <td class="muted">Needs table-level review</td>
+                </tr>
+                <tr>
+                  <td><div class="entity"><strong>Finance[Adj EBITDA]</strong><span>Measure · Finance</span></div></td>
+                  <td><span class="source-badge broken">Broken</span></td>
+                  <td class="muted">Broken DAX references block cleanup</td>
+                  <td><span class="mini-pill">Repair or archive</span></td>
+                  <td class="muted">Owner unknown</td>
+                </tr>
+                <tr>
+                  <td><div class="entity"><strong>Customer[Customer Code]</strong><span>Column · Customer</span></div></td>
+                  <td><span class="source-badge model">Model only</span></td>
+                  <td class="muted">Sort-by retention only</td>
+                  <td><span class="mini-pill">Keep unless remapping</span></td>
+                  <td class="muted">Low urgency</td>
+                </tr>
+                <tr>
+                  <td><div class="entity"><strong>Sales[Promo Flag Legacy]</strong><span>Column · Sales</span></div></td>
+                  <td><span class="source-badge unused">Not used</span></td>
+                  <td class="muted">No report usage, no model retention</td>
+                  <td><span class="mini-pill">Queue delete</span></td>
+                  <td class="muted">Safe candidate</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="drawer">
+          <h3>Selected item drill-through</h3>
+          <div class="drawer-grid">
+            <div class="info-card">
+              <h4>Status</h4>
+              <div class="big">Model only</div>
+              <p>Not visible in the selected reports.</p>
+            </div>
+            <div class="info-card">
+              <h4>Decision support</h4>
+              <p>Keep by default. Move to dedicated "structural columns" folder if the team wants clearer hygiene.</p>
+            </div>
+            <div class="info-card">
+              <h4>Proof</h4>
+              <ul>
+                <li>No report pages found</li>
+                <li>Relationship to Date[DateKey]</li>
+                <li>Table role: fact-like</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <p class="footer-note">
+      This is the strongest option if the product should optimize for action. It intentionally de-emphasizes the "show me everything" mindset.
+    </p>
+  </div>
+</body>
+</html>

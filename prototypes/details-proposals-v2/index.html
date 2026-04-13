@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Details Proposals V2</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div class="hero-card">
+        <div class="eyebrow">Round 2</div>
+        <h1>Table-first proposals for the <code>Details</code> page</h1>
+        <p>
+          These three directions keep the current product shape: strong filters, one scalable table,
+          reduced KPI noise, and on-demand details only. The goal here is refinement, not reinvention.
+        </p>
+        <div class="hero-tags">
+          <span class="tag tag-primary">Filters stay</span>
+          <span class="tag">Table stays</span>
+          <span class="tag">Counts over long lists</span>
+          <span class="tag tag-warm">Details on demand</span>
+        </div>
+      </div>
+      <aside class="hero-side">
+        <h2>What changed from round 1</h2>
+        <ul class="plain-list">
+          <li>No persistent inspector-heavy layouts.</li>
+          <li>No assumptions about small models or short dependency lists.</li>
+          <li>Much stronger focus on table readability, filters, and visual polish.</li>
+        </ul>
+      </aside>
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <h2>Comparison</h2>
+      </div>
+      <div class="table-shell">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>Proposal</th>
+              <th>Main shape</th>
+              <th>Best for</th>
+              <th>Strength</th>
+              <th>Tradeoff</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="proposal-01-balanced-table.html"><strong>1. Balanced Table</strong></a></td>
+              <td>Calmer redesign of the current page with four KPI cards and one strong filter shelf.</td>
+              <td>Stable/public</td>
+              <td>Closest to current app, easiest to trust</td>
+              <td>Least opinionated visually</td>
+            </tr>
+            <tr>
+              <td><a href="proposal-02-compact-analyst.html"><strong>2. Compact Analyst</strong></a></td>
+              <td>Denser, more scalable operator layout for large models and heavy filtering.</td>
+              <td>Power users, large models</td>
+              <td>Best density and scan speed</td>
+              <td>Feels more technical</td>
+            </tr>
+            <tr>
+              <td><a href="proposal-03-priority-workbench.html"><strong>3. Priority Workbench</strong></a></td>
+              <td>Still table-first, but with stronger review and cleanup focus in the surrounding chrome.</td>
+              <td>Cleanup-led workflows</td>
+              <td>Best decision support</td>
+              <td>More specialized tone</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">
+        Current recommendation: start from <strong>Proposal 1</strong>, steal density ideas from <strong>Proposal 2</strong>,
+        and borrow prioritization cues selectively from <strong>Proposal 3</strong>.
+      </p>
+    </section>
+  </div>
+</body>
+</html>

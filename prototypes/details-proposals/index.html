@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Details Proposals</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div class="hero-card">
+        <div class="hero-kicker">Design Study</div>
+        <h1>Three directions for the <code>Details</code> page</h1>
+        <p>
+          These prototypes respond to the same product problem: the current UI mixes report usage,
+          model retention reasons, heavy technical views, and cleanup actions in one surface.
+          The proposals below separate those concerns in three different ways.
+        </p>
+        <div class="hero-meta">
+          <span class="pill is-primary">Goal: public-ready Details page</span>
+          <span class="pill is-warning">No backend wiring yet</span>
+          <span class="pill is-success">Static prototypes only</span>
+        </div>
+      </div>
+      <aside class="nav-card">
+        <h2>Quick recommendation</h2>
+        <p>
+          If the next release needs one safe direction, start from Proposal 1. Proposal 3 is a strong
+          follow-up if the product should become more cleanup-oriented. Proposal 2 is best kept in beta.
+        </p>
+        <ul class="nav-list">
+          <li><a href="proposal-01-evidence-first.html"><strong>Proposal 1: Evidence First</strong><span>Best public candidate. Clean split between report usage and model-only retention.</span></a></li>
+          <li><a href="proposal-02-split-workspace.html"><strong>Proposal 2: Split Workspace</strong><span>More ambitious analytical view with grouped sections and a stronger inspector.</span></a></li>
+          <li><a href="proposal-03-review-queue.html"><strong>Proposal 3: Review Queue</strong><span>Cleanup-first layout organized around decisions and queues, not one giant table.</span></a></li>
+        </ul>
+      </aside>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">
+        <h2>Comparison</h2>
+      </div>
+      <div class="table-shell">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Proposal</th>
+              <th>Main idea</th>
+              <th>Best for</th>
+              <th>Biggest strength</th>
+              <th>Main risk</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>1. Evidence First</strong></td>
+              <td>Keep a table, but explicitly separate report usage from model-only retention and indirect dependencies.</td>
+              <td>Stable/public release</td>
+              <td>Most understandable for new users</td>
+              <td>Still table-driven, so it can feel conventional if not polished well</td>
+            </tr>
+            <tr>
+              <td><strong>2. Split Workspace</strong></td>
+              <td>Turn the page into a richer analytical workspace with grouped sections and an inspector.</td>
+              <td>Beta / internal exploration</td>
+              <td>Best explanatory power</td>
+              <td>Can become too dense for large models</td>
+            </tr>
+            <tr>
+              <td><strong>3. Review Queue</strong></td>
+              <td>Reframe the page as a cleanup workbench with queues, actions, and decision support.</td>
+              <td>Action-heavy cleanup workflows</td>
+              <td>Most purpose-built for the tool's core job</td>
+              <td>Less useful for pure exploration and lineage browsing</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="footer-note">
+        All three intentionally remove the idea that top-level `Item Details` and `Table Details` should be separate tabs.
+        In every proposal, details behave like drill-through or inspector content instead.
+      </p>
+    </section>
+  </div>
+</body>
+</html>
