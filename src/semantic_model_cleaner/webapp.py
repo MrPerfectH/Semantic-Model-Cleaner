@@ -19,7 +19,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
 
-from . import __version__, analyzer, experiments, tmdl_writer
+from . import __version__, analyzer, experiments, report_writer, tmdl_writer
 
 app = Flask(__name__)
 
@@ -143,6 +143,20 @@ def _table_usage_status(table_summary: dict) -> str:
     return "USED"
 
 
+def _table_usage_state(table_summary: dict) -> str:
+    used_items = int(table_summary.get("used_item_count", 0) or 0)
+    usage_refs = int(table_summary.get("usage_ref_count", 0) or 0)
+    if used_items == 0:
+        return "Unused"
+    if usage_refs == 0:
+        return "Indirect"
+    return "Used"
+
+
+def _table_issue_state(table_summary: dict) -> str:
+    return "Broken" if table_summary.get("field_parameter_issues") else ""
+
+
 def _ensure_default_workspace_config() -> None:
     if _state["workspace"]:
         return
@@ -217,9 +231,31 @@ def print_startup_banner(host: str, port: int, *, debug: bool, mode: str = "web"
 
 def _serialize_results(results: dict) -> dict:
     """Serialize analyzer results for JSON API responses."""
+    def _issue_state(status: str, broken_refs: list[str] | None) -> str:
+        return "Broken" if (status or "").startswith("BROKEN") or broken_refs else ""
+
+    def _usage_state(
+        *,
+        status: str,
+        usage_count: int,
+        measure_dependent_count: int,
+        relationship_ref_count: int,
+        other_model_use_count: int,
+    ) -> str:
+        if usage_count > 0:
+            return "Used"
+        if (
+            (status or "").startswith("INDIRECT")
+            or measure_dependent_count > 0
+            or relationship_ref_count > 0
+            or other_model_use_count > 0
+        ):
+            return "Indirect"
+        return "Unused"
+
     def _delete_safety(item_payload: dict) -> str:
         if item_payload.get("isInferred"):
-            return "Do not remove"
+            return "Keep"
         if item_payload.get("status", "").startswith("BROKEN"):
             return "Blocked"
         risk = item_payload.get("removalRisk") or ""
@@ -228,7 +264,7 @@ def _serialize_results(results: dict) -> dict:
         if risk == "Review":
             return "Review"
         if risk == "Do not remove":
-            return "Do not remove"
+            return "Keep"
         if risk == "Caution":
             return "Blocked"
         if analyzer.is_used_status(item_payload.get("status", "")):
@@ -314,7 +350,10 @@ def _serialize_results(results: dict) -> dict:
             "type": item.item_type,
             "table": item.table,
             "name": item.name,
+            "sourceKind": item.source_kind,
+            "sourceArtifact": item.source_artifact or None,
             "displayFolder": item.display_folder,
+            "formatString": item.format_string or None,
             "isHidden": item.is_hidden,
             "isKey": item.is_key,
             "isInferred": item.is_inferred,
@@ -362,29 +401,57 @@ def _serialize_results(results: dict) -> dict:
                 for u in r["usages"]
             ],
         }
+        payload_item["usageState"] = _usage_state(
+            status=status,
+            usage_count=payload_item["usageCount"],
+            measure_dependent_count=payload_item["measureDependentCount"],
+            relationship_ref_count=payload_item["relationshipRefCount"],
+            other_model_use_count=payload_item["otherModelUseCount"],
+        )
+        payload_item["issueState"] = _issue_state(status, payload_item["brokenDaxRefs"])
         payload_item["deleteSafety"] = _delete_safety(payload_item)
         items.append(payload_item)
+
+    item_display_state = {
+        (payload_item["type"], payload_item["table"], payload_item["name"]): {
+            "usageState": payload_item["usageState"],
+            "issueState": payload_item["issueState"],
+            "deleteSafety": payload_item["deleteSafety"],
+        }
+        for payload_item in items
+    }
 
     references = []
     for r in results["items"]:
         item = r["item"]
         status = r["status"]
         risk = r.get("removal_risk", "") or None
+        display_state = item_display_state.get((item.item_type, item.table, item.name), {})
         if r["usages"]:
             for u in r["usages"]:
                 references.append({
                     "type": item.item_type,
                     "table": item.table,
                     "name": item.name,
+                    "sourceKind": item.source_kind,
+                    "sourceArtifact": item.source_artifact or None,
                     "isHidden": item.is_hidden,
                     "displayFolder": item.display_folder,
+                    "formatString": item.format_string or None,
                     "report": u.report,
                     "page": u.page,
                     "visualType": u.visual_type,
                     "visualTitle": u.visual_title or "",
                     "context": u.context,
                     "status": status,
+                    "usageState": display_state.get("usageState", "Unused"),
+                    "issueState": display_state.get("issueState", _issue_state(status, r.get("broken_dax_refs", []))),
                     "removalRisk": risk,
+                    "deleteSafety": display_state.get("deleteSafety", _delete_safety({
+                        "status": status,
+                        "isInferred": item.is_inferred,
+                        "removalRisk": risk,
+                    })),
                     "reviewTriggers": r.get("review_triggers", []),
                     "brokenDaxRefs": r.get("broken_dax_refs", []),
                     "brokenDaxRefDetails": r.get("broken_dax_ref_details", []),
@@ -394,15 +461,25 @@ def _serialize_results(results: dict) -> dict:
                 "type": item.item_type,
                 "table": item.table,
                 "name": item.name,
+                "sourceKind": item.source_kind,
+                "sourceArtifact": item.source_artifact or None,
                 "isHidden": item.is_hidden,
                 "displayFolder": item.display_folder,
+                "formatString": item.format_string or None,
                 "report": "",
                 "page": "",
                 "visualType": "",
                 "visualTitle": "",
                 "context": "",
                 "status": status,
+                "usageState": display_state.get("usageState", "Unused"),
+                "issueState": display_state.get("issueState", _issue_state(status, r.get("broken_dax_refs", []))),
                 "removalRisk": risk,
+                "deleteSafety": display_state.get("deleteSafety", _delete_safety({
+                    "status": status,
+                    "isInferred": item.is_inferred,
+                    "removalRisk": risk,
+                })),
                 "reviewTriggers": r.get("review_triggers", []),
                 "brokenDaxRefs": r.get("broken_dax_refs", []),
                 "brokenDaxRefDetails": r.get("broken_dax_ref_details", []),
@@ -416,6 +493,8 @@ def _serialize_results(results: dict) -> dict:
             "roleLabel": table.get("role_label", ""),
             "roleReason": table.get("role_reason", ""),
             "usageStatus": table_usage_status,
+            "usageState": _table_usage_state(table),
+            "issueState": _table_issue_state(table),
             "itemCount": table.get("item_count", 0),
             "measureCount": table.get("measure_count", 0),
             "columnCount": table.get("column_count", 0),
@@ -757,6 +836,59 @@ def api_dax():
         return jsonify({
             "result": result,
             "backup_path": _state["backup_path"],
+            "git_warning": git_warning,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/report-measure/migrate", methods=["POST"])
+def api_migrate_report_measure():
+    """Promote a report-level measure into the semantic model."""
+    try:
+        data = request.get_json(silent=True) or {}
+        model_path_str = data.get("model_path") or (_state["model_paths"][0] if _state["model_paths"] else None)
+        report_path_str = data.get("report_path") or (_state["report_paths"][0] if _state["report_paths"] else None)
+        table = (data.get("table") or "").strip()
+        name = (data.get("name") or "").strip()
+        target_table = (data.get("target_table") or "").strip() or None
+        target_name = (data.get("target_name") or "").strip() or None
+
+        if not model_path_str or not report_path_str:
+            return jsonify({"error": "Model path and report path are required"}), 400
+        if not table or not name:
+            return jsonify({"error": "Missing required fields: table, name"}), 400
+
+        model_path = Path(model_path_str)
+        report_path = Path(report_path_str)
+        if not model_path.exists():
+            return jsonify({"error": f"Model path not found: {model_path}"}), 400
+        if not report_path.exists():
+            return jsonify({"error": f"Report path not found: {report_path}"}), 400
+
+        backup_paths = {}
+        if data.get("create_backup", False):
+            if _state["backup_path"] is None:
+                _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
+            backup_paths["model"] = _state["backup_path"]
+            backup_paths["report"] = str(report_writer.create_backup(report_path))
+
+        git_warning = tmdl_writer.check_git_dirty(model_path)
+        result = report_writer.migrate_measure_to_model(
+            model_path=model_path,
+            report_path=report_path,
+            entity_name=table,
+            measure_name=name,
+            target_table=target_table,
+            target_name=target_name,
+        )
+        if not result.get("ok"):
+            return jsonify(result), 400
+
+        return jsonify({
+            "result": result,
+            "backup_path": _state["backup_path"],
+            "backup_paths": backup_paths or None,
             "git_warning": git_warning,
         })
     except Exception as e:

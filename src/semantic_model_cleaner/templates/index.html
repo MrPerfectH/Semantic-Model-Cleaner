@@ -30,10 +30,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .beta-banner p { margin-top: 4px; font-size: 12px; line-height: 1.5; }
 .beta-experiments { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
 .beta-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; background: #fde68a; color: #7c2d12; font-size: 11px; font-weight: 600; }
-.setup { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
-.setup-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.setup { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; transition: padding .15s ease, margin-bottom .15s ease; }
+.setup-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; transition: margin-bottom .15s ease; }
 .setup h2 { font-size: 15px; margin-bottom: 0; }
 .setup-toggle { flex: 0 0 auto; }
+.setup.is-collapsed { padding: 12px 16px; margin-bottom: 10px; }
+.setup.is-collapsed .setup-header { margin-bottom: 0; }
+.setup.is-collapsed h2 { font-size: 14px; }
+.setup.is-collapsed .setup-toggle { padding-top: 4px; padding-bottom: 4px; }
 .setup-columns { display: flex; gap: 16px; align-items: flex-start; }
 .setup-col { flex: 1; min-width: 0; }
 .setup-col h3 { font-size: 12px; color: var(--text-light); text-transform: uppercase; letter-spacing: .4px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
@@ -88,7 +92,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .btn-success { background: var(--success); color: #fff; }
 .btn-success:hover { background: #15803d; }
 .filters-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px; }
-.filters-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px; width: 100%; align-items: flex-end; }
+.filters-grid { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 12px; width: 100%; align-items: flex-end; }
 .filters-bar .filter-group { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .filters-bar .filter-group label { font-size: 11px; color: var(--text-light); font-weight: 500; text-transform: uppercase; letter-spacing: .3px; }
 .filters-bar input[type="text"] { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; min-width: 0; }
@@ -109,9 +113,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .filter-dropdown-option input { margin-top: 2px; }
 .filter-dropdown-empty { padding: 10px; font-size: 12px; color: var(--text-light); font-style: italic; }
 .detail-subtle { margin-top: 4px; font-size: 12px; color: var(--text-light); }
-.filters-meta { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; width: 100%; }
-.filters-bar .filter-hint { font-size: 11px; color: var(--text-light); }
-.filter-counts { margin-left: auto; font-size: 12px; color: var(--text-light); white-space: nowrap; }
 .export-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
 .export-bar .label { margin-right: auto; font-size: 12px; color: var(--text-light); text-transform: uppercase; letter-spacing: .3px; font-weight: 600; }
 .action-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px; display: flex; gap: 10px; align-items: stretch; justify-content: flex-start; flex-wrap: wrap; }
@@ -132,10 +133,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .help-item strong { color: var(--text); }
 .table-container { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); position: relative; overflow-y: auto; overflow-x: auto; flex: 1 1 0; min-height: 200px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
-thead th { position: sticky; top: 0; z-index: 2; background: #f8fafc; border-bottom: 2px solid var(--border); padding: 10px 12px; text-align: left; font-weight: 600; font-size: 13px; text-transform: none; letter-spacing: normal; color: var(--text-light); cursor: pointer; user-select: none; white-space: normal; overflow-wrap: anywhere; }
+thead th { position: sticky; top: 0; z-index: 2; background: #f8fafc; border-bottom: 2px solid var(--border); padding: 10px 12px; text-align: left; font-weight: 600; font-size: 13px; text-transform: none; letter-spacing: normal; color: var(--text-light); cursor: pointer; user-select: none; white-space: nowrap; overflow-wrap: normal; overflow: hidden; text-overflow: ellipsis; }
 thead th:hover { color: var(--text); }
 thead th.resize-hover { cursor: col-resize; }
 thead th .sort-arrow { font-size: 10px; margin-left: 4px; }
+thead th .header-help { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 16px; height: 16px; margin-left: 6px; border: 1px solid #94a3b8; border-radius: 999px; background: #fff; color: var(--text-light); font-size: 10px; font-weight: 700; line-height: 1; cursor: help; vertical-align: middle; }
+thead th .header-help::before,
+thead th .header-help::after { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .15s ease; }
+thead th .header-help::before { content: ''; position: absolute; left: 50%; top: calc(100% + 2px); transform: translateX(-50%); border: 5px solid transparent; border-bottom-color: #0f172a; }
+thead th .header-help::after { content: attr(data-tooltip); position: absolute; left: 50%; top: calc(100% + 8px); transform: translateX(-50%); width: min(220px, 50vw); padding: 7px 9px; border-radius: 6px; background: #0f172a; color: #fff; font-size: 11px; font-weight: 500; line-height: 1.4; letter-spacing: normal; text-transform: none; white-space: normal; box-shadow: 0 8px 24px rgba(15, 23, 42, .18); z-index: 15; }
+thead th .header-help:hover::before,
+thead th .header-help:hover::after,
+thead th .header-help:focus-visible::before,
+thead th .header-help:focus-visible::after { opacity: 1; visibility: visible; }
 thead th .col-resizer { position: absolute; top: 0; right: -8px; width: 16px; height: 100%; cursor: col-resize; z-index: 4; touch-action: none; }
 thead th .col-resizer::before { content: ''; position: absolute; top: 8px; bottom: 8px; left: 50%; width: 2px; transform: translateX(-50%); border-radius: 999px; background: transparent; transition: background .12s ease; }
 thead th:hover .col-resizer::before,
@@ -233,9 +243,14 @@ body.wrap-table-text .table-signals li { overflow: visible; text-overflow: clip;
 .view-tab .tab-count { font-size: 11px; font-weight: 400; opacity: .8; margin-left: 6px; }
 .table-tools { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 0 0 auto; }
 .table-tools .inline-checkbox { color: var(--text); }
+.table-tools .rows-control { display: inline-flex; align-items: center; gap: 8px; color: var(--text-light); font-size: 13px; }
+.table-tools .rows-control select { min-height: 34px; padding: 6px 28px 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text); font-size: 13px; }
+.table-tools .pager { display: inline-flex; align-items: center; gap: 8px; }
+.table-tools .pager-status { min-width: 110px; text-align: center; color: var(--text-light); font-size: 12px; white-space: nowrap; }
 body.is-resizing-columns { cursor: col-resize; user-select: none; }
 .cell-status, .cell-hidden, .cell-refs { white-space: nowrap; }
 .cell-risk { white-space: normal; }
+.cell-nowrap { white-space: nowrap; }
 .risk-trigger-note { margin-top: 4px; font-size: 13px; line-height: 1.4; color: var(--text-light); }
 .item-link { color: inherit; text-decoration: none; cursor: pointer; }
 .item-link:hover { color: var(--primary); text-decoration: underline; }
@@ -362,14 +377,14 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     </div>
   </div>
   <div class="summary-grid hidden" id="summarySection">
-    <div class="summary-card"><div class="value" id="sumTotal">0</div><div class="label">Total Items <span class="kpi-help" tabindex="0" data-tooltip="Total count of measures and columns found in the selected semantic model." aria-label="Explain total items">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumTotal">0</div><div class="label">Total Items <span class="kpi-help" tabindex="0" data-tooltip="Total count of measures and columns found across the selected semantic model and report metadata." aria-label="Explain total items">?</span></div></div>
     <div class="summary-card"><div class="value" id="sumUsed">0</div><div class="label">Used <span class="kpi-help" tabindex="0" data-tooltip="Items directly used by reports or reached through required model dependencies." aria-label="Explain used">?</span></div></div>
     <div class="summary-card"><div class="value" id="sumUnused">0</div><div class="label">Not Used <span class="kpi-help" tabindex="0" data-tooltip="Items for which no direct or indirect usage was found in the selected reports." aria-label="Explain not used">?</span></div></div>
-    <div class="summary-card"><div class="value" id="sumMeasures">0</div><div class="label">Measures <span class="kpi-help" tabindex="0" data-tooltip="Count of measures in the selected semantic model." aria-label="Explain measures">?</span></div></div>
-    <div class="summary-card"><div class="value" id="sumColumns">0</div><div class="label">Columns <span class="kpi-help" tabindex="0" data-tooltip="Count of columns in the selected semantic model." aria-label="Explain columns">?</span></div></div>
-    <div class="summary-card"><div class="value" id="sumSafe">0</div><div class="label">Safe <span class="kpi-help" tabindex="0" data-tooltip="Unused items with no dependent DAX items found. Lowest-risk cleanup candidates." aria-label="Explain safe">?</span></div></div>
-    <div class="summary-card"><div class="value" id="sumReview">0</div><div class="label">Review <span class="kpi-help" tabindex="0" data-tooltip="Unused items that need a manual check before cleanup, for example because they are hidden or key-like." aria-label="Explain review">?</span></div></div>
-    <div class="summary-card"><div class="value" id="sumCaution">0</div><div class="label">Caution <span class="kpi-help" tabindex="0" data-tooltip="Unused items that still appear to support other model logic. Removing them may break calculations." aria-label="Explain caution">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumMeasures">0</div><div class="label">Measures <span class="kpi-help" tabindex="0" data-tooltip="Count of model measures plus report-level measures found in the selected artifacts." aria-label="Explain measures">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumColumns">0</div><div class="label">Columns <span class="kpi-help" tabindex="0" data-tooltip="Count of semantic-model columns found in the selected artifacts." aria-label="Explain columns">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumSafe">0</div><div class="label">Safe <span class="kpi-help" tabindex="0" data-tooltip="Items that look low-risk to clean up." aria-label="Explain safe">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumReview">0</div><div class="label">Review <span class="kpi-help" tabindex="0" data-tooltip="Items that may be removable, but still need a manual check first." aria-label="Explain review">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumCaution">0</div><div class="label">Blocked <span class="kpi-help" tabindex="0" data-tooltip="Items that still have direct or indirect dependencies and should not be deleted now." aria-label="Explain blocked">?</span></div></div>
   </div>
   <div class="backup-banner hidden" id="backupBanner">Backup created: <span class="path" id="backupPath"></span></div>
   <div class="git-warning hidden" id="gitWarning"></div>
@@ -384,17 +399,14 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
   <div class="filters-bar hidden" id="filtersSection">
     <div class="filters-grid">
       <div class="filter-group"><label>Search</label><input type="text" id="filterSearch" placeholder="Name or table..."></div>
-      <div class="filter-group"><label>Status</label><div class="filter-dropdown" id="filterStatus"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
-      <div class="filter-group"><label>Risk</label><div class="filter-dropdown" id="filterRisk"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+      <div class="filter-group"><label>Usage</label><div class="filter-dropdown" id="filterStatus"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+      <div class="filter-group"><label>Cleanup</label><div class="filter-dropdown" id="filterRisk"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
       <div class="filter-group"><label>Type</label><div class="filter-dropdown" id="filterType"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
       <div class="filter-group"><label>Table</label><div class="filter-dropdown" id="filterTable"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
       <div class="filter-group"><label>Hidden</label><div class="filter-dropdown" id="filterHidden"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
       <div class="filter-group"><label>Folder</label><div class="filter-dropdown" id="filterFolder"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
       <div class="filter-group"><label>Modified</label><div class="filter-dropdown" id="filterModified"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
-    </div>
-    <div class="filters-meta">
-      <div class="filter-hint">Dropdown filters support multi-select. Use `Select all` or `Clear` inside each slicer.</div>
-      <div class="filter-counts" id="filterCounts"></div>
+      <div class="filter-group"><label>Source</label><div class="filter-dropdown" id="filterSource"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
     </div>
   </div>
   <div class="view-toolbar hidden" id="viewToolbar">
@@ -406,8 +418,21 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       <div class="view-tab" data-view="table" id="tabTable">Table Details</div>
     </div>
     <div class="table-tools" id="tableToolsSection">
+      <label class="rows-control" title="Limit how many rows are rendered at once. Lower values keep the page responsive on larger models.">Rows
+        <select id="pageSizeSelect">
+          <option value="50">50</option>
+          <option value="100" selected>100</option>
+          <option value="250">250</option>
+          <option value="500">500</option>
+        </select>
+      </label>
+      <div class="pager">
+        <button class="btn btn-secondary btn-sm" id="btnPrevPage" title="Show the previous page">Prev</button>
+        <span class="pager-status" id="pageStatus">0-0 of 0</span>
+        <button class="btn btn-secondary btn-sm" id="btnNextPage" title="Show the next page">Next</button>
+      </div>
       <label class="inline-checkbox" title="Wrap long values inside table cells instead of truncating them with ellipsis. Use this when you need to read the full text without hovering."><input type="checkbox" id="wrapTableTextCheckbox"> Wrap long text</label>
-      <button class="btn btn-secondary" id="btnAutoSizeColumns" title="Resize the visible table columns based on current content and available width.">Auto-size columns</button>
+      <button class="btn btn-secondary" id="btnAutoSizeColumns" title="Fit all visible columns into the available table width.">Fit all columns</button>
     </div>
   </div>
   <div class="action-bar hidden" id="actionSection">
@@ -440,14 +465,18 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <th data-col="type">Type <span class="sort-arrow"></span></th>
         <th data-col="table">Table <span class="sort-arrow"></span></th>
         <th data-col="name">Name <span class="sort-arrow"></span></th>
+        <th data-col="sourceKind" title="Whether the item comes from the model or exists only in a report.">Origin <span class="sort-arrow"></span></th>
         <th data-col="displayFolder">Folder <span class="sort-arrow"></span></th>
         <th data-col="isHidden">Hidden <span class="sort-arrow"></span></th>
-        <th data-col="reportUseSummary">Report Use <span class="sort-arrow"></span></th>
-        <th data-col="measureDependentCount">Used By Measures <span class="sort-arrow"></span></th>
-        <th data-col="reportUsedMeasureDependentCount">Used By Rpt-Used Measures <span class="sort-arrow"></span></th>
-        <th data-col="relationshipRefCount">Relationships <span class="sort-arrow"></span></th>
-        <th data-col="otherModelUseCount">Other Model Use <span class="sort-arrow"></span></th>
-        <th data-col="deleteSafety">Delete Safety <span class="sort-arrow"></span></th>
+        <th data-col="usageState" title="Whether the item is directly used, only indirectly needed, or unused.">Usage <span class="sort-arrow"></span></th>
+        <th data-col="issueState" title="Problem signals for the item. Broken means the analyzer found unresolved references.">Issues <span class="sort-arrow"></span></th>
+        <th data-col="reportCount" title="How many selected reports reference this item directly.">Reports <span class="sort-arrow"></span></th>
+        <th data-col="pageCount" title="How many report pages reference this item directly.">Pages <span class="sort-arrow"></span></th>
+        <th data-col="usageCount" title="Direct report references found for this item.">Direct <span class="sort-arrow"></span></th>
+        <th data-col="measureDependentCount" title="Measures that depend on this item, whether or not those measures are report-used.">Measures <span class="sort-arrow"></span></th>
+        <th data-col="relationshipRefCount" title="Relationships that use this column.">Relationships <span class="sort-arrow"></span></th>
+        <th data-col="otherModelUseCount" title="Other model-only uses such as sort-by, hierarchies, field parameters, or key metadata.">Flags <span class="sort-arrow"></span></th>
+        <th data-col="deleteSafety" title="Cleanup recommendation. Safe means low-risk cleanup; Keep means treat as required metadata.">Cleanup <span class="sort-arrow"></span></th>
         <th>Action</th>
       </tr></thead>
       <tbody id="tableBody"></tbody>
@@ -460,12 +489,13 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <th data-tablecol="name">Table <span class="sort-arrow"></span></th>
         <th data-tablecol="directReportMeasureCount" title="Unique measures in this table directly referenced by the selected reports">Rpt Measures <span class="sort-arrow"></span></th>
         <th data-tablecol="directReportColumnCount" title="Unique columns in this table directly referenced by the selected reports">Rpt Columns <span class="sort-arrow"></span></th>
-        <th data-tablecol="roleLabel" title="Relationship shape inferred from active relationships">Relationship Shape <span class="sort-arrow"></span></th>
-        <th data-tablecol="itemCount">Items <span class="sort-arrow"></span></th>
+        <th data-tablecol="measureCount">Measures <span class="sort-arrow"></span></th>
+        <th data-tablecol="columnCount">Columns <span class="sort-arrow"></span></th>
         <th data-tablecol="usedItemCount" title="Count of items in this table that are currently classified as used or indirectly used">Used Items <span class="sort-arrow"></span></th>
         <th data-tablecol="unusedItemCount" title="Count of items in this table that are currently classified as not used">Unused Items <span class="sort-arrow"></span></th>
         <th data-tablecol="reportCount">Reports <span class="sort-arrow"></span></th>
-        <th data-tablecol="relationshipCount">Relationships <span class="sort-arrow"></span></th>
+        <th data-tablecol="activeRelationshipCount">Active <span class="sort-arrow"></span></th>
+        <th data-tablecol="inactiveRelationshipCount">Inactive <span class="sort-arrow"></span></th>
         <th data-tablecol="usageRefCount">Refs <span class="sort-arrow"></span></th>
         <th>Signals</th>
         <th>Actions</th>
@@ -479,6 +509,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <th data-refcol="type">Type <span class="sort-arrow"></span></th>
         <th data-refcol="table">Table <span class="sort-arrow"></span></th>
         <th data-refcol="name">Name <span class="sort-arrow"></span></th>
+        <th data-refcol="sourceKind">Source <span class="sort-arrow"></span></th>
         <th data-refcol="isHidden">Hidden <span class="sort-arrow"></span></th>
         <th data-refcol="displayFolder">Folder <span class="sort-arrow"></span></th>
         <th data-refcol="report">Report <span class="sort-arrow"></span></th>
@@ -486,8 +517,9 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <th data-refcol="visualType">Visual Type <span class="sort-arrow"></span></th>
         <th data-refcol="visualTitle">Visual Title <span class="sort-arrow"></span></th>
         <th data-refcol="context">Context <span class="sort-arrow"></span></th>
-        <th data-refcol="status">Status <span class="sort-arrow"></span></th>
-        <th data-refcol="removalRisk">Risk <span class="sort-arrow"></span></th>
+        <th data-refcol="usageState">Usage <span class="sort-arrow"></span></th>
+        <th data-refcol="issueState">Issues <span class="sort-arrow"></span></th>
+        <th data-refcol="deleteSafety">Cleanup <span class="sort-arrow"></span></th>
       </tr></thead>
       <tbody id="refsTableBody"></tbody>
     </table>
@@ -497,11 +529,11 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="detail-meta" id="detailMeta">Select a measure or column to inspect its usage and dependency details.</div>
     <div class="detail-grid">
       <div class="detail-card">
-        <h4>Status</h4>
+        <h4>Usage</h4>
         <div class="detail-value" id="detailStatus"></div>
       </div>
       <div class="detail-card">
-        <h4>Risk</h4>
+        <h4>Cleanup</h4>
         <div class="detail-value" id="detailRisk"></div>
       </div>
       <div class="detail-card">
@@ -527,7 +559,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <div class="detail-value" id="detailCommentedRefs"></div>
       </div>
       <div class="detail-card">
-        <h4>Broken DAX References</h4>
+        <h4>Issue Details</h4>
         <div class="detail-value" id="detailBrokenRefs"></div>
       </div>
       <div class="detail-card">
@@ -544,6 +576,15 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <h4>Power Query / M Source</h4>
         <div class="detail-value" id="detailMSource"></div>
       </div>
+    </div>
+    <div class="detail-card hidden" id="detailReportMeasureSection">
+      <h4>Report Measure Migration</h4>
+      <div class="detail-value" id="detailReportMeasureInfo"></div>
+      <div class="detail-actions" style="margin-top:10px">
+        <label class="inline-checkbox"><input type="checkbox" id="detailMigrateBackup" checked> Backup before migrate</label>
+        <button class="btn btn-primary btn-sm" id="detailBtnMigrateReportMeasure" title="Create a same-name semantic-model measure and remove the report-level version">Promote to model</button>
+      </div>
+      <div class="detail-action-status" id="detailReportMeasureStatus"></div>
     </div>
     <div class="detail-card">
       <h4>Cleanup Actions</h4>
@@ -741,8 +782,9 @@ var pendingActions = new Map();
 var actionStatus = new Map();
 var selectedTableNames = new Set();
 var allWarnings = [];
-var riskOrder = { 'Safe': 0, 'Review': 1, 'Caution': 2, 'Do not remove': 3, '__not_applicable__': 4 };
-var deleteSafetyOrder = { 'Safe': 0, 'Review': 1, 'Blocked': 2, 'Do not remove': 3 };
+var usageOrder = { 'Used': 0, 'Indirect': 1, 'Unused': 2 };
+var issueOrder = { 'Broken': 0, '': 1 };
+var deleteSafetyOrder = { 'Safe': 0, 'Review': 1, 'Blocked': 2, 'Keep': 3 };
 var explorerMode = 'model';
 var explorerPicked = new Map();
 var explorerCurrentPath = '';
@@ -751,22 +793,20 @@ var detailItemKey = null;
 var detailTableName = null;
 var filterDefinitions = {
   filterStatus: {
-    allLabel: 'All statuses',
+    allLabel: 'All usage',
     options: [
-      { value: 'BROKEN', label: 'Broken' },
-      { value: 'NOT USED', label: 'Not Used' },
-      { value: 'USED', label: 'Used' },
-      { value: 'INDIRECT', label: 'Indirect' }
+      { value: 'Used', label: 'Used' },
+      { value: 'Indirect', label: 'Indirect' },
+      { value: 'Unused', label: 'Unused' }
     ]
   },
   filterRisk: {
-    allLabel: 'All risks',
+    allLabel: 'All cleanup',
     options: [
       { value: 'Safe', label: 'Safe' },
       { value: 'Review', label: 'Review' },
-      { value: 'Caution', label: 'Caution' },
-      { value: 'Do not remove', label: 'Do not remove' },
-      { value: '__not_applicable__', label: 'Not applicable' }
+      { value: 'Blocked', label: 'Blocked' },
+      { value: 'Keep', label: 'Keep' }
     ]
   },
   filterType: {
@@ -794,6 +834,13 @@ var filterDefinitions = {
       { value: 'failed', label: 'Failed' },
       { value: 'none', label: 'Not modified' }
     ]
+  },
+  filterSource: {
+    allLabel: 'All sources',
+    options: [
+      { value: 'model', label: 'Model' },
+      { value: 'report', label: 'Report' }
+    ]
   }
 };
 var filterState = {
@@ -803,15 +850,18 @@ var filterState = {
   filterTable: [],
   filterHidden: [],
   filterFolder: [],
-  filterModified: []
+  filterModified: [],
+  filterSource: []
 };
 var filterDropdownEventsReady = false;
 var setupCollapsed = false;
 var setupCollapseStorageKey = 'smc.setupCollapsed';
 var showActionLogStorageKey = 'smc.showActionLog';
 var wrapTableTextStorageKey = 'smc.wrapTableText';
+var pageSizeStorageKey = 'smc.pageSize';
 var columnWidthStoragePrefix = 'smc.columnWidths.';
 var explorerDefaultPathStoragePrefix = 'smc.explorerDefaultPath.';
+var currentPageByView = { details: 1, tables: 1, refs: 1 };
 
 function $(id) { return document.getElementById(id); }
 
@@ -839,8 +889,24 @@ function readWrapTableTextPreference() {
   }
 }
 
+function readPageSizePreference() {
+  try {
+    var value = parseInt(window.localStorage.getItem(pageSizeStorageKey) || '100', 10);
+    return [50, 100, 250, 500].indexOf(value) !== -1 ? value : 100;
+  } catch (e) {
+    return 100;
+  }
+}
+
+function writePageSizePreference(value) {
+  try {
+    window.localStorage.setItem(pageSizeStorageKey, String(value));
+  } catch (e) {}
+}
+
 function setSetupCollapsed(collapsed) {
   setupCollapsed = !!collapsed;
+  $('setupSection').classList.toggle('is-collapsed', setupCollapsed);
   $('setupBody').classList.toggle('hidden', setupCollapsed);
   $('btnToggleSetup').textContent = setupCollapsed ? 'Show' : 'Hide';
   $('btnToggleSetup').setAttribute('aria-expanded', setupCollapsed ? 'false' : 'true');
@@ -921,56 +987,94 @@ function writeStoredColumnWidths(tableSectionId, widths) {
   } catch (e) {}
 }
 
+function headerKey(th) {
+  return th.dataset.col || th.dataset.tablecol || th.dataset.refcol || (th.textContent || '').trim();
+}
+
 function minWidthForHeader(th, index) {
   if (index === 0) return 36;
-  var text = (th.textContent || '').trim();
+  var text = headerKey(th);
   var wrapEnabled = document.body.classList.contains('wrap-table-text');
-  if (text === 'Name') return wrapEnabled ? 180 : 260;
-  if (text === 'Table' || text === 'Folder') return wrapEnabled ? 120 : 150;
-  if (text === 'Report Use') return wrapEnabled ? 140 : 170;
-  if (text === 'Used By Measures' || text === 'Relationships') return 120;
-  if (text === 'Used By Rpt-Used Measures') return wrapEnabled ? 150 : 190;
-  if (text === 'Other Model Use') return wrapEnabled ? 150 : 200;
-  if (text === 'Delete Safety') return 120;
+  if (text === 'name') return wrapEnabled ? 180 : 260;
+  if (text === 'table' || text === 'displayFolder' || text === 'Folder') return wrapEnabled ? 120 : 150;
+  if (text === 'type') return 72;
+  if (text === 'sourceKind') return 92;
+  if (text === 'isHidden') return 58;
+  if (text === 'usageState') return 104;
+  if (text === 'issueState') return 92;
+  if (text === 'usageCount') return 74;
+  if (text === 'measureDependentCount' || text === 'relationshipRefCount' || text === 'relationshipCount') return 92;
+  if (text === 'otherModelUseCount') return wrapEnabled ? 84 : 96;
+  if (text === 'deleteSafety') return 82;
   if (text === 'Action' || text === 'Actions') return 110;
   if (text === 'Signals' || text === 'Relationships In Detail') return 180;
-  if (text === 'Relationship Shape') return 170;
-  if (text === 'Status' || text === 'Risk') return 120;
-  if (text === 'Used Items' || text === 'Unused Items') return 96;
-  if (text === 'Reports' || text === 'Pages' || text === 'Refs') return 76;
+  if (text === 'roleLabel' || text === 'Relationship Shape') return 170;
+  if (text === 'Status' || text === 'Risk' || text === 'usageStatus') return 120;
+  if (text === 'usedItemCount' || text === 'unusedItemCount' || text === 'Used Items' || text === 'Unused Items') return 96;
+  if (text === 'reportCount' || text === 'pageCount' || text === 'usageRefCount' || text === 'Reports' || text === 'Pages' || text === 'Refs') return 70;
   return 80;
 }
 
 function maxWidthForHeader(th, index) {
   if (index === 0) return 36;
-  var text = (th.textContent || '').trim();
-  if (text === 'Name') return 420;
-  if (text === 'Table' || text === 'Folder') return 220;
-  if (text === 'Relationship Shape') return 220;
-  if (text === 'Status' || text === 'Risk') return 130;
-  if (text === 'Used Items' || text === 'Unused Items') return 110;
-  if (text === 'Reports' || text === 'Pages' || text === 'Refs') return 90;
+  var text = headerKey(th);
+  if (text === 'name') return 420;
+  if (text === 'table' || text === 'displayFolder' || text === 'Folder') return 220;
+  if (text === 'roleLabel' || text === 'Relationship Shape') return 220;
+  if (text === 'usageState') return 120;
+  if (text === 'issueState') return 100;
+  if (text === 'Status' || text === 'Risk' || text === 'usageStatus') return 130;
+  if (text === 'usedItemCount' || text === 'unusedItemCount' || text === 'Used Items' || text === 'Unused Items') return 110;
+  if (text === 'reportCount' || text === 'pageCount' || text === 'usageRefCount' || text === 'Reports' || text === 'Pages' || text === 'Refs') return 90;
   if (text === 'Action' || text === 'Actions') return 140;
   return 220;
 }
 
 function defaultWidthForHeader(th, index) {
   if (index === 0) return 36;
-  var text = (th.textContent || '').trim();
-  if (text === 'Type') return 120;
-  if (text === 'Table') return 180;
-  if (text === 'Name') return 340;
-  if (text === 'Folder') return 180;
-  if (text === 'Relationship Shape') return 190;
-  if (text === 'Status' || text === 'Risk') return 120;
-  if (text === 'Used Items' || text === 'Unused Items') return 100;
-  if (text === 'Hidden') return 90;
-  if (text === 'Reports' || text === 'Pages' || text === 'Refs') return 84;
+  var text = headerKey(th);
+  if (text === 'type') return 88;
+  if (text === 'table') return 180;
+  if (text === 'name') return 340;
+  if (text === 'displayFolder' || text === 'Folder') return 180;
+  if (text === 'sourceKind') return 96;
+  if (text === 'roleLabel' || text === 'Relationship Shape') return 190;
+  if (text === 'usageState') return 112;
+  if (text === 'issueState') return 96;
+  if (text === 'Status' || text === 'Risk' || text === 'usageStatus') return 120;
+  if (text === 'usedItemCount' || text === 'unusedItemCount' || text === 'Used Items' || text === 'Unused Items') return 100;
+  if (text === 'isHidden' || text === 'Hidden') return 62;
+  if (text === 'reportCount' || text === 'pageCount' || text === 'usageRefCount' || text === 'Reports' || text === 'Pages' || text === 'Refs') return 80;
+  if (text === 'usageCount') return 76;
+  if (text === 'measureDependentCount' || text === 'relationshipRefCount' || text === 'relationshipCount') return 96;
+  if (text === 'otherModelUseCount') return 88;
+  if (text === 'deleteSafety') return 84;
   if (text === 'Items') return 120;
   if (text === 'Relationships') return 140;
   if (text === 'Signals') return 260;
   if (text === 'Action' || text === 'Actions') return 130;
   return Math.min(maxWidthForHeader(th, index), Math.max(minWidthForHeader(th, index), 140));
+}
+
+function fitMinWidthForHeader(th, index) {
+  if (index === 0) return 32;
+  var text = headerKey(th);
+  if (text === 'type') return 72;
+  if (text === 'table') return 88;
+  if (text === 'name') return 110;
+  if (text === 'sourceKind') return 82;
+  if (text === 'displayFolder' || text === 'Folder') return 88;
+  if (text === 'isHidden' || text === 'Hidden') return 44;
+  if (text === 'usageState') return 88;
+  if (text === 'issueState') return 80;
+  if (text === 'reportCount' || text === 'pageCount' || text === 'usageCount' || text === 'usageRefCount') return 48;
+  if (text === 'measureDependentCount' || text === 'relationshipRefCount' || text === 'relationshipCount') return 56;
+  if (text === 'otherModelUseCount') return 56;
+  if (text === 'deleteSafety') return 62;
+  if (text === 'roleLabel') return 90;
+  if (text === 'usedItemCount' || text === 'unusedItemCount') return 64;
+  if (text === 'Action' || text === 'Actions') return 88;
+  return 60;
 }
 
 function calculateDefaultWidths(tableSectionId) {
@@ -1075,17 +1179,19 @@ function measureNodeContentWidth(node) {
   return Math.ceil(measureTextWidth(text, font)) + 24;
 }
 
-function calculateAutoFitWidths(tableSectionId) {
+function calculateAutoFitWidths(tableSectionId, opts) {
+  opts = opts || {};
+  var minWidthFn = opts.minWidthFn || minWidthForHeader;
   var info = getTableSectionInfo(tableSectionId);
   if (!info) return null;
   var rows = Array.from(info.table.querySelectorAll('tbody tr')).slice(0, 30);
   return info.headers.map(function(th, index) {
-    var width = Math.max(minWidthForHeader(th, index), measureNodeContentWidth(th));
+    var width = Math.max(minWidthFn(th, index), measureNodeContentWidth(th));
     rows.forEach(function(row) {
       var cell = row.children[index];
       if (cell) width = Math.max(width, measureNodeContentWidth(cell));
     });
-    return Math.min(Math.max(width, minWidthForHeader(th, index)), maxWidthForHeader(th, index));
+    return Math.min(Math.max(width, minWidthFn(th, index)), maxWidthForHeader(th, index));
   });
 }
 
@@ -1102,11 +1208,11 @@ function fitCurrentTableColumnsToScreen() {
   var info = getTableSectionInfo(tableSectionId);
   if (!info) return;
 
-  var widths = calculateAutoFitWidths(tableSectionId);
+  var widths = calculateAutoFitWidths(tableSectionId, { minWidthFn: fitMinWidthForHeader });
   if (!widths) return;
 
-  var mins = info.headers.map(function(th, index) { return minWidthForHeader(th, index); });
-  var targetWidth = Math.max(info.section.clientWidth || 0, mins.reduce(function(sum, width) { return sum + width; }, 0));
+  var mins = info.headers.map(function(th, index) { return fitMinWidthForHeader(th, index); });
+  var targetWidth = info.section.clientWidth || 0;
   widths = normalizeWidthsToTarget(widths, mins, targetWidth);
   applyTableWidths(tableSectionId, widths);
   writeStoredColumnWidths(tableSectionId, widths);
@@ -1116,6 +1222,16 @@ function updateColumnActionButtons() {
   var enabled = currentView === 'details' || currentView === 'tables' || currentView === 'refs';
   $('tableToolsSection').classList.toggle('hidden', !enabled);
   $('btnAutoSizeColumns').disabled = !enabled;
+  updatePageControls();
+}
+
+function initializeHeaderTooltips() {
+  document.querySelectorAll('.header-help').forEach(function(el) {
+    if (!el.getAttribute('title') && el.dataset.tooltip) {
+      el.setAttribute('title', el.dataset.tooltip);
+      el.setAttribute('aria-label', el.dataset.tooltip);
+    }
+  });
 }
 
 function hidePostRefreshDisclaimer() {
@@ -1134,6 +1250,15 @@ function esc(s) {
 }
 
 function itemKey(item) { return item.type + ':::' + item.table + ':::' + item.name; }
+function isReportItem(item) { return item && item.sourceKind === 'report'; }
+function sourceKindLabel(value) {
+  return value === 'report' ? 'Report' : 'Model';
+}
+function sourceSummary(item) {
+  if (!item) return '';
+  if (isReportItem(item)) return 'Report' + (item.sourceArtifact ? ' (' + item.sourceArtifact + ')' : '');
+  return 'Model';
+}
 function tableActionKey(tableName) { return 'Table:::' + tableName + ':::' + tableName; }
 
 function itemRefText(item) {
@@ -1237,7 +1362,7 @@ function renderTableDeletePlanList(listId, items, emptyText) {
     return;
   }
   el.innerHTML = items.map(function(item) {
-    return '<li>' + esc(itemRefText(item)) + ' | ' + esc(item.type) + ' | ' + esc(statusLabel(item.status)) + '</li>';
+    return '<li>' + esc(itemRefText(item)) + ' | ' + esc(item.type) + ' | ' + esc(usageValue(item)) + '</li>';
   }).join('');
 }
 
@@ -1293,43 +1418,45 @@ function actionStatusBadge(key) {
   return esc(text);
 }
 
-function statusLabel(status) {
-  if (!status) return '';
-  if (status.startsWith('BROKEN')) return 'BROKEN';
-  if (status === 'NOT USED') return 'NOT USED';
-  if (status.startsWith('INDIRECT')) return 'INDIRECT';
-  if (status.startsWith('USED')) return 'USED';
-  return status;
+function usageValue(itemOrStatus) {
+  if (itemOrStatus && typeof itemOrStatus === 'object') return itemOrStatus.usageState || 'Unused';
+  if (String(itemOrStatus || '').startsWith('INDIRECT')) return 'Indirect';
+  if (String(itemOrStatus || '').startsWith('USED')) return 'Used';
+  return 'Unused';
 }
 
-function statusHelpText(status) {
-  var label = statusLabel(status);
+function usageHelpText(itemOrStatus) {
+  var rawStatus = itemOrStatus && typeof itemOrStatus === 'object' ? (itemOrStatus.statusDetail || itemOrStatus.status || '') : String(itemOrStatus || '');
+  var label = usageValue(itemOrStatus);
   var base = {
-    'BROKEN': 'The item contains DAX references that do not resolve to model objects in the current semantic model.',
-    'USED': 'Directly referenced by at least one report visual or required model dependency.',
-    'NOT USED': 'No direct or indirect usage was found in the selected reports.',
-    'INDIRECT': 'Reached through another item such as a dependent measure, calculation, or relationship chain.'
-  }[label] || 'Analyzer status for this item.';
-  return status && status !== label ? base + ' Details: ' + status : base;
+    'Used': 'Directly referenced by at least one selected report.',
+    'Indirect': 'Not directly referenced by a report, but still needed through model dependencies such as measures, relationships, sort-by, hierarchies, or field parameters.',
+    'Unused': 'No direct report usage or indirect model dependency was found.'
+  }[label] || 'Usage classification for this item.';
+  return rawStatus && rawStatus !== label ? base + ' Raw analyzer status: ' + rawStatus : base;
 }
 
-function riskDisplayValue(itemOrRisk, maybeStatus) {
-  if (itemOrRisk && typeof itemOrRisk === 'object') {
-    if (itemOrRisk.removalRisk) return itemOrRisk.removalRisk;
-    return itemOrRisk.status === 'NOT USED' ? '__not_applicable__' : '__not_applicable__';
+function issueValue(itemOrStatus) {
+  if (itemOrStatus && typeof itemOrStatus === 'object') return itemOrStatus.issueState || '';
+  return String(itemOrStatus || '').startsWith('BROKEN') ? 'Broken' : '';
+}
+
+function issueHelpText(itemOrStatus) {
+  var rawStatus = itemOrStatus && typeof itemOrStatus === 'object' ? (itemOrStatus.statusDetail || itemOrStatus.status || '') : String(itemOrStatus || '');
+  if (issueValue(itemOrStatus) === 'Broken') {
+    return rawStatus ? 'The analyzer found unresolved references. Raw analyzer status: ' + rawStatus : 'The analyzer found unresolved references.';
   }
-  return itemOrRisk || '__not_applicable__';
+  return 'No issue signal was detected for this item.';
 }
 
-function riskHelpText(risk) {
+function cleanupHelpText(value) {
   var text = {
-    'Safe': 'No dependent DAX items were found. This item looks unused and low risk to review for cleanup.',
-    'Review': 'Unused, but hidden or key-like characteristics mean it needs a manual check before removal.',
-    'Caution': 'Unused in reports, but other model logic appears to depend on it. Removal may break calculations.',
-    'Do not remove': 'System-generated or inferred item. Treat as required metadata unless you know exactly why it exists.',
-    '__not_applicable__': 'Risk is only scored for items that are NOT USED. Used or indirect items are not cleanup candidates.'
-  }[risk || '__not_applicable__'];
-  return text || 'Analyzer risk classification.';
+    'Safe': 'No report usage or blocking model dependency was found. Lowest-risk cleanup candidate.',
+    'Review': 'Not clearly blocked, but still needs a manual check before deletion.',
+    'Blocked': 'Still used directly or indirectly by reports or model dependencies.',
+    'Keep': 'Treat as intentional metadata or required structure, not as a cleanup target.'
+  }[value || 'Review'];
+  return text || 'Cleanup recommendation for this item.';
 }
 
 function warningHelpText(warning) {
@@ -1929,6 +2056,34 @@ $('btnBrowseReports').onclick = function() { openExplorer('report'); };
 $('btnExportJson').onclick = function() { window.location.href = '/api/export?format=json'; };
 $('btnExportExcel').onclick = function() { window.location.href = '/api/export?format=xlsx'; };
 $('btnAutoSizeColumns').onclick = function() { fitCurrentTableColumnsToScreen(); };
+$('pageSizeSelect').value = String(readPageSizePreference());
+$('pageSizeSelect').onchange = function() {
+  writePageSizePreference(parseInt($('pageSizeSelect').value || '100', 10));
+  resetPageForDataViews();
+  renderTable();
+  renderTablesOverview();
+  renderRefsTable();
+  updateSelectedCount();
+};
+$('btnPrevPage').onclick = function() {
+  if (!(currentView === 'details' || currentView === 'tables' || currentView === 'refs')) return;
+  currentPageByView[currentView] = Math.max(1, (currentPageByView[currentView] || 1) - 1);
+  if (currentView === 'details') renderTable();
+  else if (currentView === 'tables') renderTablesOverview();
+  else renderRefsTable();
+  updateSelectedCount();
+};
+$('btnNextPage').onclick = function() {
+  if (!(currentView === 'details' || currentView === 'tables' || currentView === 'refs')) return;
+  var rows = getCurrentRowsForView(currentView);
+  var pageSize = parseInt($('pageSizeSelect').value || '100', 10);
+  var totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  currentPageByView[currentView] = Math.min(totalPages, (currentPageByView[currentView] || 1) + 1);
+  if (currentView === 'details') renderTable();
+  else if (currentView === 'tables') renderTablesOverview();
+  else renderRefsTable();
+  updateSelectedCount();
+};
 
 /* == Analyze == */
 $('btnAnalyze').onclick = async function() {
@@ -2010,9 +2165,9 @@ function updateSummary(s) {
   $('sumUnused').textContent = s.not_used;
   $('sumMeasures').textContent = s.total_measures;
   $('sumColumns').textContent = s.total_columns;
-  $('sumSafe').textContent = allItems.filter(function(i) { return i.removalRisk === 'Safe'; }).length;
-  $('sumReview').textContent = allItems.filter(function(i) { return i.removalRisk === 'Review'; }).length;
-  $('sumCaution').textContent = allItems.filter(function(i) { return i.removalRisk === 'Caution'; }).length;
+  $('sumSafe').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Safe'; }).length;
+  $('sumReview').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Review'; }).length;
+  $('sumCaution').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Blocked'; }).length;
 }
 
 /* == Filters == */
@@ -2025,9 +2180,14 @@ function populateFilterOptions() {
   setFilterOptions('filterFolder', [{ value: '__none__', label: '(No folder)' }].concat(folders.map(function(folder) {
     return { value: folder, label: folder };
   })));
+  var sources = Array.from(new Set(allItems.map(function(i) { return i.sourceKind || 'model'; }))).sort();
+  setFilterOptions('filterSource', sources.map(function(source) {
+    return { value: source, label: sourceKindLabel(source) };
+  }));
 }
 
 function applyFilters() {
+  resetPageForDataViews();
   var search = $('filterSearch').value.toLowerCase();
   var statuses = getSelectedValues('filterStatus');
   var risks = getSelectedValues('filterRisk');
@@ -2036,19 +2196,12 @@ function applyFilters() {
   var hiddenValues = getSelectedValues('filterHidden');
   var folders = getSelectedValues('filterFolder');
   var modifiedValues = getSelectedValues('filterModified');
+  var sourceValues = getSelectedValues('filterSource');
   filteredItems = allItems.filter(function(item) {
-    if (search && !item.name.toLowerCase().includes(search) && !item.table.toLowerCase().includes(search)) return false;
-    if (statuses.length) {
-      var matchedStatus = statuses.some(function(status) {
-        if (status === 'BROKEN') return item.status.startsWith('BROKEN');
-        if (status === 'USED') return item.status.startsWith('USED');
-        if (status === 'NOT USED') return item.status === 'NOT USED';
-        if (status === 'INDIRECT') return item.status.startsWith('INDIRECT');
-        return false;
-      });
-      if (!matchedStatus) return false;
-    }
-    if (!matchesSelectedValues(riskDisplayValue(item), risks)) return false;
+    var sourceText = (sourceSummary(item) + ' ' + (item.sourceArtifact || '')).toLowerCase();
+    if (search && !item.name.toLowerCase().includes(search) && !item.table.toLowerCase().includes(search) && !sourceText.includes(search)) return false;
+    if (!matchesSelectedValues(usageValue(item), statuses)) return false;
+    if (!matchesSelectedValues(deleteSafetyValue(item), risks)) return false;
     if (!matchesSelectedValues(item.type, types)) return false;
     if (!matchesSelectedValues(item.table, tables)) return false;
     if (hiddenValues.length) {
@@ -2059,6 +2212,7 @@ function applyFilters() {
       var folderValue = item.displayFolder || '__none__';
       if (!matchesSelectedValues(folderValue, folders)) return false;
     }
+    if (!matchesSelectedValues(item.sourceKind || 'model', sourceValues)) return false;
     if (modifiedValues.length) {
       var key = itemKey(item);
       var st = actionStatus.get(key) || '';
@@ -2076,16 +2230,7 @@ function applyFilters() {
       if (search && !table.name.toLowerCase().includes(search) && !roleText.includes(search) && !signalText.includes(search) && !relatedText.includes(search) && !fieldParameterIssueText.includes(search)) {
         return false;
       }
-      if (statuses.length) {
-        var matchedTableStatus = statuses.some(function(status) {
-          if (status === 'BROKEN') return (table.usageStatus || '').startsWith('BROKEN');
-          if (status === 'USED') return (table.usageStatus || '').startsWith('USED');
-          if (status === 'NOT USED') return (table.usageStatus || '') === 'NOT USED';
-          if (status === 'INDIRECT') return (table.usageStatus || '').startsWith('INDIRECT');
-          return false;
-        });
-        if (!matchedTableStatus) return false;
-      }
+      if (!matchesSelectedValues(table.usageState || 'Unused', statuses)) return false;
       if (!matchesSelectedValues(table.name, tables)) return false;
       return true;
     });
@@ -2104,16 +2249,55 @@ function applyFilters() {
 $('filterSearch').addEventListener('input', applyFilters);
 
 function updateFilterCounts() {
-  if (currentView === 'details') {
-    $('filterCounts').textContent = 'Showing ' + filteredItems.length + ' of ' + allItems.length + ' items';
-  } else if (currentView === 'tables' || currentView === 'table') {
-    $('filterCounts').textContent = 'Showing ' + filteredTables.length + ' of ' + allTables.length + ' tables';
-  } else {
-    $('filterCounts').textContent = 'Showing ' + filteredRefs.length + ' of ' + allRefs.length + ' references';
-  }
   $('tabDetailsCount').textContent = '(' + filteredItems.length + '/' + allItems.length + ')';
   $('tabTablesCount').textContent = '(' + filteredTables.length + '/' + allTables.length + ')';
   $('tabRefsCount').textContent = '(' + filteredRefs.length + '/' + allRefs.length + ')';
+}
+
+function getPagedRows(rows, viewName) {
+  var pageSize = parseInt($('pageSizeSelect').value || '100', 10);
+  var totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  currentPageByView[viewName] = Math.min(Math.max(currentPageByView[viewName] || 1, 1), totalPages);
+  var start = (currentPageByView[viewName] - 1) * pageSize;
+  return rows.slice(start, start + pageSize);
+}
+
+function getCurrentRowsForView(viewName) {
+  if (viewName === 'details') return filteredItems;
+  if (viewName === 'tables') return filteredTables;
+  if (viewName === 'refs') return filteredRefs;
+  return [];
+}
+
+function getVisibleRowsForCurrentView() {
+  return getPagedRows(getCurrentRowsForView(currentView), currentView);
+}
+
+function resetPageForDataViews() {
+  currentPageByView.details = 1;
+  currentPageByView.tables = 1;
+  currentPageByView.refs = 1;
+}
+
+function updatePageControls() {
+  var enabled = currentView === 'details' || currentView === 'tables' || currentView === 'refs';
+  $('pageSizeSelect').disabled = !enabled;
+  $('btnPrevPage').disabled = !enabled;
+  $('btnNextPage').disabled = !enabled;
+  if (!enabled) {
+    $('pageStatus').textContent = '0-0 of 0';
+    return;
+  }
+  var rows = getCurrentRowsForView(currentView);
+  var pageSize = parseInt($('pageSizeSelect').value || '100', 10);
+  var totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  var currentPage = Math.min(Math.max(currentPageByView[currentView] || 1, 1), totalPages);
+  currentPageByView[currentView] = currentPage;
+  var start = rows.length ? ((currentPage - 1) * pageSize) + 1 : 0;
+  var end = Math.min(rows.length, currentPage * pageSize);
+  $('pageStatus').textContent = start + '-' + end + ' of ' + rows.length;
+  $('btnPrevPage').disabled = currentPage <= 1;
+  $('btnNextPage').disabled = currentPage >= totalPages;
 }
 
 /* == View Tabs == */
@@ -2176,25 +2360,19 @@ function filterRefs() {
   var tables = getSelectedValues('filterTable');
   var hiddenValues = getSelectedValues('filterHidden');
   var folders = getSelectedValues('filterFolder');
+  var sourceValues = getSelectedValues('filterSource');
   return allRefs.filter(function(r) {
+    var sourceText = ((sourceKindLabel(r.sourceKind || 'model')) + ' ' + (r.sourceArtifact || '')).toLowerCase();
     if (search && !r.name.toLowerCase().includes(search) && !r.table.toLowerCase().includes(search)
         && !(r.report || '').toLowerCase().includes(search) && !(r.page || '').toLowerCase().includes(search)
-        && !(r.visualTitle || '').toLowerCase().includes(search)) return false;
-    if (statuses.length) {
-      var matchedStatus = statuses.some(function(status) {
-        if (status === 'BROKEN') return r.status.startsWith('BROKEN');
-        if (status === 'USED') return r.status.startsWith('USED');
-        if (status === 'NOT USED') return r.status === 'NOT USED';
-        if (status === 'INDIRECT') return r.status.startsWith('INDIRECT');
-        return false;
-      });
-      if (!matchedStatus) return false;
-    }
-    if (!matchesSelectedValues(riskDisplayValue(r), risks)) return false;
+        && !(r.visualTitle || '').toLowerCase().includes(search) && !sourceText.includes(search)) return false;
+    if (!matchesSelectedValues(usageValue(r), statuses)) return false;
+    if (!matchesSelectedValues(deleteSafetyValue(r), risks)) return false;
     if (!matchesSelectedValues(r.type, types)) return false;
     if (!matchesSelectedValues(r.table, tables)) return false;
     if (hiddenValues.length && !matchesSelectedValues(r.isHidden ? 'yes' : 'no', hiddenValues)) return false;
     if (folders.length && !matchesSelectedValues(r.displayFolder || '__none__', folders)) return false;
+    if (!matchesSelectedValues(r.sourceKind || 'model', sourceValues)) return false;
     return true;
   });
 }
@@ -2202,10 +2380,17 @@ function filterRefs() {
 function sortRefs() {
   filteredRefs.sort(function(a, b) {
     var va = a[refSortCol], vb = b[refSortCol];
-    if (refSortCol === 'removalRisk') { va = riskOrder[riskDisplayValue(a)] != null ? riskOrder[riskDisplayValue(a)] : 99; vb = riskOrder[riskDisplayValue(b)] != null ? riskOrder[riskDisplayValue(b)] : 99; }
-    if (refSortCol === 'status') {
-      va = { 'BROKEN': 0, 'NOT USED': 1, 'INDIRECT': 2, 'USED': 3 }[statusLabel(a.status)] != null ? { 'BROKEN': 0, 'NOT USED': 1, 'INDIRECT': 2, 'USED': 3 }[statusLabel(a.status)] : 99;
-      vb = { 'BROKEN': 0, 'NOT USED': 1, 'INDIRECT': 2, 'USED': 3 }[statusLabel(b.status)] != null ? { 'BROKEN': 0, 'NOT USED': 1, 'INDIRECT': 2, 'USED': 3 }[statusLabel(b.status)] : 99;
+    if (refSortCol === 'deleteSafety') {
+      va = deleteSafetyOrder[deleteSafetyValue(a)] != null ? deleteSafetyOrder[deleteSafetyValue(a)] : 99;
+      vb = deleteSafetyOrder[deleteSafetyValue(b)] != null ? deleteSafetyOrder[deleteSafetyValue(b)] : 99;
+    }
+    if (refSortCol === 'usageState') {
+      va = usageOrder[usageValue(a)] != null ? usageOrder[usageValue(a)] : 99;
+      vb = usageOrder[usageValue(b)] != null ? usageOrder[usageValue(b)] : 99;
+    }
+    if (refSortCol === 'issueState') {
+      va = issueOrder[issueValue(a)] != null ? issueOrder[issueValue(a)] : 99;
+      vb = issueOrder[issueValue(b)] != null ? issueOrder[issueValue(b)] : 99;
     }
     if (typeof va === 'number' && typeof vb === 'number') return refSortAsc ? va - vb : vb - va;
     va = String(va || '').toLowerCase(); vb = String(vb || '').toLowerCase();
@@ -2215,21 +2400,24 @@ function sortRefs() {
 
 function renderRefsTable() {
   var tbody = $('refsTableBody');
-  tbody.innerHTML = filteredRefs.map(function(r) {
+  var visibleRefs = getPagedRows(filteredRefs, 'refs');
+  tbody.innerHTML = visibleRefs.map(function(r) {
     var riskClass = r.removalRisk ? 'row-' + r.removalRisk.toLowerCase().replace(/\s+/g, '') : '';
     return '<tr class="' + riskClass + '">'
-      + '<td>' + esc(r.type) + '</td>'
-      + '<td>' + esc(r.table) + '</td>'
-      + '<td><a href="#" class="item-link" data-item-key="' + esc(r.type + ':::' + r.table + ':::' + r.name) + '">' + esc(r.name) + '</a></td>'
+      + '<td><div class="cell-ellipsis" title="' + esc(r.type) + '">' + esc(r.type) + '</div></td>'
+      + '<td><div class="cell-ellipsis" title="' + esc(r.table) + '">' + esc(r.table) + '</div></td>'
+      + '<td><a href="#" class="item-link cell-ellipsis-link" data-item-key="' + esc(r.type + ':::' + r.table + ':::' + r.name) + '" title="' + esc(r.name) + '">' + esc(r.name) + '</a></td>'
+      + '<td>' + esc(sourceKindLabel(r.sourceKind || 'model')) + (r.sourceArtifact ? '<div class="table-summary-text">' + esc(r.sourceArtifact) + '</div>' : '') + '</td>'
       + '<td>' + (r.isHidden ? '\uD83D\uDD12' : '') + '</td>'
-      + '<td>' + esc(r.displayFolder || '') + '</td>'
-      + '<td>' + esc(r.report || '') + '</td>'
-      + '<td>' + esc(r.page || '') + '</td>'
-      + '<td>' + esc(r.visualType || '') + '</td>'
-      + '<td>' + esc(r.visualTitle || '') + '</td>'
-      + '<td>' + esc(r.context || '') + '</td>'
-      + '<td class="cell-status">' + statusBadge(r.status) + '</td>'
-      + '<td class="cell-risk">' + riskBadge(r) + '</td>'
+      + '<td><div class="cell-ellipsis" title="' + esc(r.displayFolder || '') + '">' + esc(r.displayFolder || '') + '</div></td>'
+      + '<td><div class="cell-ellipsis" title="' + esc(r.report || '') + '">' + esc(r.report || '') + '</div></td>'
+      + '<td><div class="cell-ellipsis" title="' + esc(r.page || '') + '">' + esc(r.page || '') + '</div></td>'
+      + '<td><div class="cell-ellipsis" title="' + esc(r.visualType || '') + '">' + esc(r.visualType || '') + '</div></td>'
+      + '<td><div class="cell-ellipsis" title="' + esc(r.visualTitle || '') + '">' + esc(r.visualTitle || '') + '</div></td>'
+      + '<td><div class="cell-ellipsis" title="' + esc(r.context || '') + '">' + esc(r.context || '') + '</div></td>'
+      + '<td class="cell-status">' + usageBadge(r) + '</td>'
+      + '<td class="cell-status">' + issueBadge(r) + '</td>'
+      + '<td class="cell-risk">' + deleteSafetyBadge(r) + '</td>'
       + '</tr>';
   }).join('');
   tbody.querySelectorAll('.item-link').forEach(function(link) {
@@ -2238,11 +2426,13 @@ function renderRefsTable() {
       openItemDetails(link.dataset.itemKey);
     };
   });
+  updatePageControls();
 }
 
 /* == Sort == */
 document.querySelectorAll('thead th[data-col]').forEach(function(th) {
-  th.onclick = function() {
+  th.onclick = function(e) {
+    if (e.target.closest('.header-help')) return;
     var col = th.dataset.col;
     if (sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = true; }
     document.querySelectorAll('#tableSection .sort-arrow').forEach(function(s) { s.textContent = ''; });
@@ -2252,7 +2442,8 @@ document.querySelectorAll('thead th[data-col]').forEach(function(th) {
   };
 });
 document.querySelectorAll('thead th[data-refcol]').forEach(function(th) {
-  th.onclick = function() {
+  th.onclick = function(e) {
+    if (e.target.closest('.header-help')) return;
     var col = th.dataset.refcol;
     if (refSortCol === col) refSortAsc = !refSortAsc; else { refSortCol = col; refSortAsc = true; }
     document.querySelectorAll('#refsTableSection .sort-arrow').forEach(function(s) { s.textContent = ''; });
@@ -2262,7 +2453,8 @@ document.querySelectorAll('thead th[data-refcol]').forEach(function(th) {
   };
 });
 document.querySelectorAll('thead th[data-tablecol]').forEach(function(th) {
-  th.onclick = function() {
+  th.onclick = function(e) {
+    if (e.target.closest('.header-help')) return;
     var col = th.dataset.tablecol;
     if (tableSortCol === col) tableSortAsc = !tableSortAsc; else { tableSortCol = col; tableSortAsc = true; }
     document.querySelectorAll('#tablesOverviewSection .sort-arrow').forEach(function(s) { s.textContent = ''; });
@@ -2276,14 +2468,17 @@ function sortItems() {
   filteredItems.sort(function(a, b) {
     var va = a[sortCol] != null ? a[sortCol] : '';
     var vb = b[sortCol] != null ? b[sortCol] : '';
-    if (sortCol === 'removalRisk') { va = riskOrder[riskDisplayValue(a)] != null ? riskOrder[riskDisplayValue(a)] : 99; vb = riskOrder[riskDisplayValue(b)] != null ? riskOrder[riskDisplayValue(b)] : 99; }
+    if (sortCol === 'usageState') {
+      va = usageOrder[usageValue(a)] != null ? usageOrder[usageValue(a)] : 99;
+      vb = usageOrder[usageValue(b)] != null ? usageOrder[usageValue(b)] : 99;
+    }
+    if (sortCol === 'issueState') {
+      va = issueOrder[issueValue(a)] != null ? issueOrder[issueValue(a)] : 99;
+      vb = issueOrder[issueValue(b)] != null ? issueOrder[issueValue(b)] : 99;
+    }
     if (sortCol === 'deleteSafety') {
       va = deleteSafetyOrder[deleteSafetyValue(a)] != null ? deleteSafetyOrder[deleteSafetyValue(a)] : 99;
       vb = deleteSafetyOrder[deleteSafetyValue(b)] != null ? deleteSafetyOrder[deleteSafetyValue(b)] : 99;
-    }
-    if (sortCol === 'status') {
-      va = { 'BROKEN': 0, 'NOT USED': 1, 'INDIRECT': 2, 'USED': 3 }[statusLabel(a.status)] != null ? { 'BROKEN': 0, 'NOT USED': 1, 'INDIRECT': 2, 'USED': 3 }[statusLabel(a.status)] : 99;
-      vb = { 'BROKEN': 0, 'NOT USED': 1, 'INDIRECT': 2, 'USED': 3 }[statusLabel(b.status)] != null ? { 'BROKEN': 0, 'NOT USED': 1, 'INDIRECT': 2, 'USED': 3 }[statusLabel(b.status)] : 99;
     }
     if (typeof va === 'number' && typeof vb === 'number') return sortAsc ? va - vb : vb - va;
     va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
@@ -2305,7 +2500,8 @@ function sortTables() {
 /* == Table == */
 function renderTable() {
   var tbody = $('tableBody');
-  tbody.innerHTML = filteredItems.map(function(item) {
+  var visibleItems = getPagedRows(filteredItems, 'details');
+  tbody.innerHTML = visibleItems.map(function(item) {
     var key = itemKey(item);
     var checked = selectedKeys.has(key) ? 'checked' : '';
     var riskClass = item.removalRisk ? 'row-' + item.removalRisk.toLowerCase().replace(/\s+/g, '') : '';
@@ -2314,14 +2510,18 @@ function renderTable() {
     var actionClass = pendingActions.has(key) ? 'row-pending' : st.startsWith('Applied:') ? 'row-applied' : st.startsWith('Failed:') ? 'row-failed' : '';
     return '<tr class="' + riskClass + ' ' + sel + ' ' + actionClass + '" data-key="' + esc(key) + '">'
       + '<td><input type="checkbox" class="row-check" ' + checked + ' data-key="' + esc(key) + '"></td>'
-      + '<td>' + esc(item.type) + '</td>'
+      + '<td><div class="cell-ellipsis cell-nowrap" title="' + esc(item.type) + '">' + esc(item.type) + '</div></td>'
       + '<td><div class="cell-ellipsis" title="' + esc(item.table) + '">' + esc(item.table) + '</div></td>'
       + '<td><a href="#" class="item-link cell-ellipsis-link" data-item-key="' + esc(key) + '" title="' + esc(item.name) + '">' + esc(item.name) + '</a></td>'
+      + '<td>' + sourceCellContent(item) + '</td>'
       + '<td><div class="cell-ellipsis" title="' + esc(item.displayFolder || '') + '">' + esc(item.displayFolder || '') + '</div></td>'
       + '<td class="cell-hidden">' + hiddenCellContent(item) + '</td>'
-      + '<td>' + reportUseCellContent(item) + '</td>'
+      + '<td class="cell-status">' + usageBadge(item) + '</td>'
+      + '<td class="cell-status">' + issueBadge(item) + '</td>'
+      + '<td>' + esc(String(item.reportCount || 0)) + '</td>'
+      + '<td>' + esc(String(item.pageCount || 0)) + '</td>'
+      + '<td class="cell-refs">' + esc(String(item.usageCount || 0)) + '</td>'
       + '<td>' + esc(String(item.measureDependentCount || 0)) + '</td>'
-      + '<td>' + esc(String(item.reportUsedMeasureDependentCount || 0)) + '</td>'
       + '<td>' + esc(String(item.relationshipRefCount || 0)) + '</td>'
       + '<td>' + otherModelUseCellContent(item) + '</td>'
       + '<td class="cell-risk">' + deleteSafetyBadge(item) + '</td>'
@@ -2341,6 +2541,7 @@ function renderTable() {
       openItemDetails(link.dataset.itemKey);
     };
   });
+  updatePageControls();
 }
 
 function roleBadge(table) {
@@ -2350,7 +2551,7 @@ function roleBadge(table) {
     'dimension-like': 'One-side',
     'fact-like': 'Many-side',
     'mixed': 'Mixed sides',
-    'unknown': 'Unclear',
+    'unknown': 'Irregular',
     'isolated': 'No active rels'
   }[rawLabel] || rawLabel;
   return '<span class="badge ' + cls + '" title="' + esc(table.roleReason || '') + '">' + esc(displayLabel) + '</span>';
@@ -2375,7 +2576,8 @@ function tablePendingCount(tableName) {
 
 function renderTablesOverview() {
   var tbody = $('tablesOverviewBody');
-  tbody.innerHTML = filteredTables.map(function(table) {
+  var visibleTables = getPagedRows(filteredTables, 'tables');
+  tbody.innerHTML = visibleTables.map(function(table) {
     var signalText = table.signals && table.signals.length
       ? '<ul class="table-signals">' + table.signals.slice(0, 3).map(function(signal) { return '<li>' + esc(signal) + '</li>'; }).join('') + '</ul>'
       : '<div class="detail-empty">No notable signals</div>';
@@ -2399,12 +2601,13 @@ function renderTablesOverview() {
       + '<td><a href="#" class="table-link table-wrap-link" data-table-name="' + esc(table.name) + '" title="' + esc(table.name) + '">' + esc(table.name) + '</a></td>'
       + '<td>' + esc(String(table.directReportMeasureCount || 0)) + '</td>'
       + '<td>' + esc(String(table.directReportColumnCount || 0)) + '</td>'
-      + '<td>' + roleBadge(table) + '<div class="table-summary-text" style="margin-top:6px" title="' + esc(table.roleReason || '') + '">' + esc(table.roleReason || '') + '</div></td>'
-      + '<td>' + esc(String(table.itemCount || 0)) + '<div class="table-summary-text" title="Measures: ' + esc(String(table.measureCount || 0)) + ' | Columns: ' + esc(String(table.columnCount || 0)) + '">Measures: ' + esc(String(table.measureCount || 0)) + ' | Columns: ' + esc(String(table.columnCount || 0)) + '</div></td>'
+      + '<td>' + esc(String(table.measureCount || 0)) + '</td>'
+      + '<td>' + esc(String(table.columnCount || 0)) + '</td>'
       + '<td>' + esc(String(table.usedItemCount || 0)) + '</td>'
       + '<td>' + esc(String(table.unusedItemCount || 0)) + '</td>'
       + '<td>' + esc(String(table.reportCount || 0)) + '</td>'
-      + '<td>' + esc(String(table.relationshipCount || 0)) + '<div class="table-summary-text" title="Active: ' + esc(String(table.activeRelationshipCount || 0)) + ' | Inactive: ' + esc(String(table.inactiveRelationshipCount || 0)) + '">Active: ' + esc(String(table.activeRelationshipCount || 0)) + ' | Inactive: ' + esc(String(table.inactiveRelationshipCount || 0)) + '</div></td>'
+      + '<td>' + esc(String(table.activeRelationshipCount || 0)) + '</td>'
+      + '<td>' + esc(String(table.inactiveRelationshipCount || 0)) + '</td>'
       + '<td>' + esc(String(table.usageRefCount || 0)) + '</td>'
       + '<td>' + signalText + '</td>'
       + '<td class="table-row-actions">' + actionCell + '</td>'
@@ -2430,6 +2633,7 @@ function renderTablesOverview() {
       renderTablesOverview();
     };
   });
+  updatePageControls();
 }
 
 function formatCodeBlock(text, emptyText) {
@@ -2438,7 +2642,7 @@ function formatCodeBlock(text, emptyText) {
 }
 
 function tableStatusBadge(table) {
-  return statusBadge(table.usageStatus || 'NOT USED');
+  return usageBadge({ usageState: table.usageState || usageValue(table.usageStatus || 'NOT USED'), statusDetail: table.usageStatus || '' });
 }
 
 function hiddenCellContent(item) {
@@ -2451,11 +2655,6 @@ function hiddenCellContent(item) {
     + '</svg></span>';
 }
 
-function reportUseCellContent(item) {
-  if (!item.usageCount) return '<span class="badge badge-muted">No</span>';
-  return '<span title="' + esc(item.reportUseSummary || '') + '">' + esc(item.reportUseSummary || '') + '</span>';
-}
-
 function otherModelUseCellContent(item) {
   if (!item.otherModelUses || !item.otherModelUses.length) return '<span class="detail-empty">None</span>';
   return item.otherModelUses.map(function(label) {
@@ -2463,21 +2662,30 @@ function otherModelUseCellContent(item) {
   }).join('');
 }
 
-function statusBadge(status) {
-  var label = statusLabel(status);
-  var title = statusHelpText(status);
-  if (label === 'BROKEN') return '<span class="badge badge-status" style="background:#111827;color:#f9fafb" title="' + esc(title) + '">Broken</span>';
-  if (label === 'USED') return '<span class="badge badge-used badge-status" title="' + esc(title) + '">Used</span>';
-  if (label === 'NOT USED') return '<span class="badge badge-status" style="background:#fee2e2;color:#991b1b" title="' + esc(title) + '">Not used</span>';
-  if (label === 'INDIRECT') return '<span class="badge badge-status" style="background:#e0e7ff;color:#3730a3" title="' + esc(title) + '">Indirect</span>';
-  return esc(status);
+function sourceCellContent(item) {
+  var label = sourceKindLabel(item.sourceKind || 'model');
+  if (isReportItem(item)) {
+    var title = item.sourceArtifact ? ' title="' + esc('Defined in report: ' + item.sourceArtifact) + '"' : '';
+    var suffix = item.sourceArtifact ? '<div class="table-summary-text">' + esc(item.sourceArtifact) + '</div>' : '';
+    return '<span class="badge badge-review"' + title + '>' + esc(label) + '</span>' + suffix;
+  }
+  return '<span class="badge badge-muted">' + esc(label) + '</span>';
 }
 
-function riskBadge(itemOrRisk) {
-  var risk = riskDisplayValue(itemOrRisk);
-  if (risk === '__not_applicable__') return '<span class="badge badge-muted" title="' + esc(riskHelpText(risk)) + '">In use</span>';
-  var cls = { 'Safe': 'badge-safe', 'Review': 'badge-review', 'Caution': 'badge-caution', 'Do not remove': 'badge-donotremove' }[risk] || '';
-  return '<span class="badge ' + cls + '" title="' + esc(riskHelpText(risk)) + '">' + esc(risk) + '</span>';
+function usageBadge(itemOrStatus) {
+  var label = usageValue(itemOrStatus);
+  var title = usageHelpText(itemOrStatus);
+  if (label === 'Used') return '<span class="badge badge-used badge-status" title="' + esc(title) + '">Used</span>';
+  if (label === 'Unused') return '<span class="badge badge-status" style="background:#fee2e2;color:#991b1b" title="' + esc(title) + '">Unused</span>';
+  if (label === 'Indirect') return '<span class="badge badge-status" style="background:#e0e7ff;color:#3730a3" title="' + esc(title) + '">Indirect</span>';
+  return '<span class="badge badge-muted" title="' + esc(title) + '">' + esc(label) + '</span>';
+}
+
+function issueBadge(itemOrStatus) {
+  var value = issueValue(itemOrStatus);
+  if (!value) return '<span class="detail-empty">None</span>';
+  if (value === 'Broken') return '<span class="badge badge-status" style="background:#111827;color:#f9fafb" title="' + esc(issueHelpText(itemOrStatus)) + '">Broken</span>';
+  return '<span class="badge badge-muted" title="' + esc(issueHelpText(itemOrStatus)) + '">' + esc(value) + '</span>';
 }
 
 function deleteSafetyValue(item) {
@@ -2486,41 +2694,25 @@ function deleteSafetyValue(item) {
 
 function deleteSafetyBadge(item) {
   var value = deleteSafetyValue(item);
-  if (value === 'Blocked') return '<span class="badge badge-caution" title="Still used directly or indirectly by reports or model dependencies.">Blocked</span>';
-  if (value === 'Review') return '<span class="badge badge-review" title="Not obviously blocked, but still needs a manual check before deletion.">Review</span>';
-  if (value === 'Safe') return '<span class="badge badge-safe" title="No report usage or blocking model dependency was found.">Safe</span>';
-  if (value === 'Do not remove') return '<span class="badge badge-donotremove" title="System-generated or inferred item.">Do not remove</span>';
+  if (value === 'Blocked') return '<span class="badge badge-caution" title="' + esc(cleanupHelpText(value)) + '">Blocked</span>';
+  if (value === 'Review') return '<span class="badge badge-review" title="' + esc(cleanupHelpText(value)) + '">Review</span>';
+  if (value === 'Safe') return '<span class="badge badge-safe" title="' + esc(cleanupHelpText(value)) + '">Safe</span>';
+  if (value === 'Keep') return '<span class="badge badge-donotremove" title="' + esc(cleanupHelpText(value)) + '">Keep</span>';
   return '<span class="badge badge-muted">' + esc(value) + '</span>';
-}
-
-function riskText(item) {
-  var risk = riskDisplayValue(item);
-  return risk === '__not_applicable__' ? 'In use / not applicable' : risk;
 }
 
 function reviewTriggers(item) {
   return item && typeof item === 'object' && Array.isArray(item.reviewTriggers) ? item.reviewTriggers.slice() : [];
 }
 
-function riskCellContent(item) {
-  var badge = riskBadge(item);
-  if (riskDisplayValue(item) !== 'Review') return badge;
-  var triggerText = reviewTriggers(item).join('; ');
-  if (!triggerText) return badge;
-  return badge + '<div class="risk-trigger-note" title="' + esc(triggerText) + '">' + esc(triggerText) + '</div>';
-}
-
-function riskDetailContent(item) {
-  var badge = riskBadge(item);
-  if (riskDisplayValue(item) === 'Review') {
-    var triggers = reviewTriggers(item);
-    if (triggers.length) {
-      return badge
-        + '<div class="detail-value" style="margin-top:8px"><strong>Triggered by:</strong></div>'
-        + formatDetailList(triggers);
-    }
+function cleanupDetailContent(item) {
+  var badge = deleteSafetyBadge(item);
+  if (deleteSafetyValue(item) !== 'Review') {
+    return badge + '<div class="detail-value" style="margin-top:8px">' + esc(cleanupHelpText(deleteSafetyValue(item))) + '</div>';
   }
-  return badge + '<div class="detail-value" style="margin-top:8px">' + esc(riskHelpText(riskDisplayValue(item))) + '</div>';
+  var triggerText = reviewTriggers(item).join('; ');
+  if (!triggerText) return badge + '<div class="detail-value" style="margin-top:8px">' + esc(cleanupHelpText(deleteSafetyValue(item))) + '</div>';
+  return badge + '<div class="risk-trigger-note" title="' + esc(triggerText) + '">' + esc(triggerText) + '</div>';
 }
 
 function getItemByKey(key) {
@@ -2584,6 +2776,17 @@ function renderUsageDetails(item) {
   }).join('') + '</ul>';
 }
 
+function setDetailActionAvailability(item) {
+  var reportItem = isReportItem(item);
+  $('detailBtnMoveToFolder').disabled = !!reportItem;
+  $('detailBtnHide').disabled = !!reportItem;
+  $('detailBtnUnhide').disabled = !!reportItem;
+  $('detailBtnDelete').disabled = !!reportItem;
+  $('detailBtnApply').disabled = !!reportItem;
+  $('detailFolderInput').disabled = !!reportItem;
+  $('detailReportMeasureSection').classList.toggle('hidden', !(reportItem && item.type === 'Measure'));
+}
+
 function renderItemDetails() {
   var section = $('itemDetailSection');
   if (!detailItemKey) {
@@ -2603,6 +2806,9 @@ function renderItemDetails() {
     $('detailDaxEditor').value = '';
     $('detailDaxStatus').textContent = '';
     $('detailMSource').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailReportMeasureInfo').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailReportMeasureStatus').textContent = '';
+    setDetailActionAvailability(null);
     $('detailActionStatus').textContent = 'Select an item to queue actions for it.';
     $('detailUsageList').innerHTML = '<div class="detail-empty">Select an item from the table.</div>';
     return;
@@ -2616,10 +2822,11 @@ function renderItemDetails() {
   }
 
   $('detailTitle').textContent = itemRefText(item);
-  $('detailMeta').textContent = item.type + (item.displayFolder ? ' | Folder: ' + item.displayFolder : '') + (item.sortByColumn ? ' | Sorts by: ' + item.sortByColumn : '');
-  $('detailStatus').innerHTML = statusBadge(item.status) + '<div class="detail-value" style="margin-top:8px">' + esc(statusHelpText(item.status)) + '</div>'
-    + (item.statusDetail && item.statusDetail !== statusLabel(item.status) ? '<div class="detail-value" style="margin-top:8px"><strong>Raw status:</strong> ' + esc(item.statusDetail) + '</div>' : '');
-  $('detailRisk').innerHTML = riskDetailContent(item);
+  $('detailMeta').textContent = item.type + ' | Source: ' + sourceSummary(item) + (item.displayFolder ? ' | Folder: ' + item.displayFolder : '') + (item.sortByColumn ? ' | Sorts by: ' + item.sortByColumn : '');
+  $('detailStatus').innerHTML = usageBadge(item) + '<div class="detail-value" style="margin-top:8px">' + esc(usageHelpText(item)) + '</div>'
+    + (item.statusDetail && item.statusDetail !== usageValue(item) ? '<div class="detail-value" style="margin-top:8px"><strong>Raw analyzer status:</strong> ' + esc(item.statusDetail) + '</div>' : '')
+    + '<div class="detail-value" style="margin-top:8px"><strong>Issues:</strong> ' + esc(issueValue(item) || 'None') + '</div>';
+  $('detailRisk').innerHTML = cleanupDetailContent(item);
   $('detailDependsOn').innerHTML = formatDetailList(
     (item.dependsOnMeasures || []).concat(item.dependsOnColumns || []).concat(item.dependsOnTables || []),
     { linkItems: true }
@@ -2628,14 +2835,21 @@ function renderItemDetails() {
   $('detailIndirectVia').innerHTML = formatDetailList(item.indirectVia || [], { linkItems: true });
   $('detailPagesUsed').innerHTML = formatDetailList(item.pagesUsed || []);
   $('detailCommentedRefs').innerHTML = formatDetailList(item.commentedRefs || []);
-    $('detailBrokenRefs').innerHTML = formatBrokenRefDetails(item.brokenDaxRefDetails || [], item.brokenDaxRefs || []);
-  if (item.type === 'Measure' || item.type === 'Calculated Column') {
+  $('detailBrokenRefs').innerHTML = formatBrokenRefDetails(item.brokenDaxRefDetails || [], item.brokenDaxRefs || []);
+  if (!isReportItem(item) && (item.type === 'Measure' || item.type === 'Calculated Column')) {
     $('detailExpression').innerHTML = '<div class="detail-value">Editable DAX expression</div>';
     $('detailDaxEditor').classList.remove('hidden');
     $('detailDaxActions').classList.remove('hidden');
     $('detailDaxEditor').value = item.daxExpression || '';
     $('detailDaxStatus').textContent = '';
     $('detailMSource').innerHTML = '<div class="detail-empty">Power Query / M source details are shown for regular columns when available.</div>';
+  } else if (isReportItem(item) && item.type === 'Measure') {
+    $('detailExpression').innerHTML = '<div class="detail-value">Report-level DAX expression</div>' + formatCodeBlock(item.daxExpression, 'No DAX expression recorded.');
+    $('detailDaxEditor').classList.add('hidden');
+    $('detailDaxActions').classList.add('hidden');
+    $('detailDaxEditor').value = '';
+    $('detailDaxStatus').textContent = 'Report-level DAX editing is not supported here yet.';
+    $('detailMSource').innerHTML = '<div class="detail-empty">This measure is defined in report metadata, not in Power Query or TMDL.</div>';
   } else {
     $('detailExpression').innerHTML = '<div class="detail-empty">Regular columns do not include a DAX expression block.</div>';
     $('detailDaxEditor').classList.add('hidden');
@@ -2644,7 +2858,15 @@ function renderItemDetails() {
     $('detailDaxStatus').textContent = '';
     $('detailMSource').innerHTML = formatCodeBlock(item.mSourceDetails, 'No table-level Power Query / M source details were detected.');
   }
-  $('detailActionStatus').innerHTML = actionStatusBadge(itemKey(item)) || '<span class="detail-empty">No queued or applied action for this item.</span>';
+  $('detailReportMeasureInfo').innerHTML = isReportItem(item)
+    ? '<div class="detail-value">Creates a same-name semantic-model measure in <strong>' + esc(item.table) + '</strong>, then removes the report-level definition so existing references resolve to the model.</div>'
+      + '<div class="detail-subtle">This is explicit only. Nothing is migrated unless you click Promote to model.</div>'
+    : '<span class="detail-empty">This item already belongs to the semantic model.</span>';
+  $('detailReportMeasureStatus').textContent = '';
+  setDetailActionAvailability(item);
+  $('detailActionStatus').innerHTML = isReportItem(item)
+    ? '<span class="detail-empty">Standard Apply actions are disabled for report-level items.</span>'
+    : (actionStatusBadge(itemKey(item)) || '<span class="detail-empty">No queued or applied action for this item.</span>');
   $('detailUsageList').innerHTML = renderUsageDetails(item);
   bindDetailLinks($('itemDetailSection'));
 }
@@ -2684,7 +2906,8 @@ function renderTableDetails() {
 
   $('tableDetailTitle').textContent = table.name;
   $('tableDetailMeta').textContent = 'Table summary with relationship shape, usage patterns, and item-level signals.';
-  $('tableDetailUsageStatus').innerHTML = tableStatusBadge(table) + '<div class="detail-value" style="margin-top:8px">' + esc(statusHelpText(table.usageStatus || 'NOT USED')) + '</div>';
+  $('tableDetailUsageStatus').innerHTML = tableStatusBadge(table) + '<div class="detail-value" style="margin-top:8px">' + esc(usageHelpText({ usageState: table.usageState || 'Unused', statusDetail: table.usageStatus || '' })) + '</div>'
+    + '<div class="detail-value" style="margin-top:8px"><strong>Issues:</strong> ' + esc(table.issueState || 'None') + '</div>';
   $('tableDetailRole').innerHTML = roleBadge(table) + '<div class="detail-value" style="margin-top:8px">' + esc(table.roleReason || '') + '</div>';
   $('tableDetailCounts').innerHTML =
     '<div class="detail-value">Items: ' + esc(String(table.itemCount || 0))
@@ -2729,7 +2952,7 @@ function renderTableDetails() {
   $('tableDetailItems').innerHTML = (table.items && table.items.length)
     ? '<ul class="detail-list">' + table.items.map(function(item) {
       var linkedRef = formatLinkedRef(item.ref);
-      return '<li>' + linkedRef + ' | ' + esc(item.type) + ' | ' + esc(statusLabel(item.status)) + ' | refs: ' + esc(String(item.usageCount || 0)) + '</li>';
+      return '<li>' + linkedRef + ' | ' + esc(item.type) + ' | ' + esc(usageValue(item)) + ' | refs: ' + esc(String(item.usageCount || 0)) + '</li>';
     }).join('') + '</ul>'
     : '<div class="detail-empty">No items recorded</div>';
   var plan = computeTableDeletePlan(table.name);
@@ -2787,27 +3010,29 @@ async function queueTableDelete(tableName) {
 /* == Selection == */
 function updateSelectedCount() {
   if (currentView === 'tables') {
-    var tableVis = filteredTables.filter(function(table) { return selectedTableNames.has(table.name); }).length;
+    var tableVis = getPagedRows(filteredTables, 'tables').filter(function(table) { return selectedTableNames.has(table.name); }).length;
     $('selectedCount').textContent = tableVis + ' selected';
-    $('checkAllTables').checked = filteredTables.length > 0 && tableVis === filteredTables.length;
-    $('checkAllTables').indeterminate = tableVis > 0 && tableVis < filteredTables.length;
+    var visibleTables = getPagedRows(filteredTables, 'tables');
+    $('checkAllTables').checked = visibleTables.length > 0 && tableVis === visibleTables.length;
+    $('checkAllTables').indeterminate = tableVis > 0 && tableVis < visibleTables.length;
     return;
   }
-  var vis = filteredItems.filter(function(i) { return selectedKeys.has(itemKey(i)); }).length;
+  var vis = getPagedRows(filteredItems, 'details').filter(function(i) { return selectedKeys.has(itemKey(i)); }).length;
   $('selectedCount').textContent = vis + ' selected';
-  $('checkAll').checked = filteredItems.length > 0 && vis === filteredItems.length;
-  $('checkAll').indeterminate = vis > 0 && vis < filteredItems.length;
+  var visibleItems = getPagedRows(filteredItems, 'details');
+  $('checkAll').checked = visibleItems.length > 0 && vis === visibleItems.length;
+  $('checkAll').indeterminate = vis > 0 && vis < visibleItems.length;
 }
 
 $('checkAll').onchange = function() {
   var c = $('checkAll').checked;
-  filteredItems.forEach(function(item) { var k = itemKey(item); if (c) selectedKeys.add(k); else selectedKeys.delete(k); });
+  getPagedRows(filteredItems, 'details').forEach(function(item) { var k = itemKey(item); if (c) selectedKeys.add(k); else selectedKeys.delete(k); });
   renderTable(); updateSelectedCount();
 };
 
 $('checkAllTables').onchange = function() {
   var c = $('checkAllTables').checked;
-  filteredTables.forEach(function(table) {
+  getPagedRows(filteredTables, 'tables').forEach(function(table) {
     if (c) selectedTableNames.add(table.name);
     else selectedTableNames.delete(table.name);
   });
@@ -2817,18 +3042,18 @@ $('checkAllTables').onchange = function() {
 
 $('btnSelectAllSafe').onclick = function() {
   if (currentView === 'tables') {
-    filteredTables.filter(function(table) { return (table.usageStatus || '') === 'NOT USED'; }).forEach(function(table) {
+    getPagedRows(filteredTables, 'tables').filter(function(table) { return (table.usageState || 'Unused') === 'Unused'; }).forEach(function(table) {
       selectedTableNames.add(table.name);
     });
     renderTablesOverview();
     updateSelectedCount();
     return;
   }
-  filteredItems.filter(function(i) { return i.removalRisk === 'Safe'; }).forEach(function(i) { selectedKeys.add(itemKey(i)); });
+  getPagedRows(filteredItems, 'details').filter(function(i) { return deleteSafetyValue(i) === 'Safe'; }).forEach(function(i) { selectedKeys.add(itemKey(i)); });
   renderTable(); updateSelectedCount();
 };
 $('btnSelectAllVisible').onclick = function() {
-  filteredItems.filter(function(i) { return !i.isHidden; }).forEach(function(i) { selectedKeys.add(itemKey(i)); });
+  getPagedRows(filteredItems, 'details').filter(function(i) { return !i.isHidden; }).forEach(function(i) { selectedKeys.add(itemKey(i)); });
   renderTable(); updateSelectedCount();
 };
 $('btnDeselectAll').onclick = function() {
@@ -2846,6 +3071,11 @@ $('btnDeselectAll').onclick = function() {
 function getSelectedItems() { return allItems.filter(function(i) { return selectedKeys.has(itemKey(i)); }); }
 function getSelectedTables() { return allTables.filter(function(table) { return selectedTableNames.has(table.name); }); }
 function getModelPath() { return chosenModels.length ? chosenModels[0].path : null; }
+function getReportPathByName(name) {
+  var match = chosenReports.find(function(report) { return report.name === name; });
+  if (match) return match.path;
+  return chosenReports.length === 1 ? chosenReports[0].path : null;
+}
 
 function logEntry(msg, cls) {
   var el = document.createElement('div');
@@ -2858,8 +3088,14 @@ function logEntry(msg, cls) {
 function queueActionsForItems(items, actionName, extra) {
   extra = extra || {};
   if (!items.length) { alert('No items selected'); return; }
+  var modelItems = items.filter(function(item) { return !isReportItem(item); });
+  var skipped = items.length - modelItems.length;
+  if (!modelItems.length) {
+    alert('The selected items are report-level items. Use Promote to model on an item detail instead of Apply.');
+    return;
+  }
   var queued = 0;
-  items.forEach(function(item) {
+  modelItems.forEach(function(item) {
     var key = itemKey(item);
     var act = { action: actionName, table: item.table, name: item.name, item_type: item.type };
     for (var k in extra) act[k] = extra[k];
@@ -2869,6 +3105,7 @@ function queueActionsForItems(items, actionName, extra) {
   });
   selectedKeys.clear();
   logEntry('Queued ' + actionLabel({ action: actionName, folder: extra.folder }) + ' for ' + queued + ' item(s)', 'info');
+  if (skipped) logEntry('Skipped ' + skipped + ' report-level item(s); use Promote to model for those.', 'info');
   renderTable();
   updateSelectedCount();
   updateApplyButtonState();
@@ -3126,6 +3363,10 @@ async function saveCurrentItemDax() {
     alert('Select an item first');
     return;
   }
+  if (isReportItem(item)) {
+    alert('Report-level DAX editing is not supported here yet. Use Promote to model first if you want to manage it as a semantic-model measure.');
+    return;
+  }
   if (!(item.type === 'Measure' || item.type === 'Calculated Column')) {
     alert('DAX editing is only available for measures and calculated columns');
     return;
@@ -3164,6 +3405,56 @@ async function saveCurrentItemDax() {
 }
 
 $('detailBtnSaveDax').onclick = async function() { await saveCurrentItemDax(); };
+async function migrateCurrentReportMeasure() {
+  var item = getItemByKey(detailItemKey);
+  if (!item) {
+    alert('Select an item first');
+    return;
+  }
+  if (!isReportItem(item) || item.type !== 'Measure') {
+    alert('Select a report-level measure first');
+    return;
+  }
+  var modelPath = getModelPath();
+  var reportPath = getReportPathByName(item.sourceArtifact);
+  if (!modelPath) {
+    alert('No model selected');
+    return;
+  }
+  if (!reportPath) {
+    alert('Could not determine which selected report owns this report-level measure.');
+    return;
+  }
+  $('detailReportMeasureStatus').textContent = 'Promoting report measure...';
+  try {
+    var data = await apiPost('/api/report-measure/migrate', {
+      model_path: modelPath,
+      report_path: reportPath,
+      table: item.table,
+      name: item.name,
+      create_backup: $('detailMigrateBackup').checked
+    });
+    if (data.error || (data.result && !data.result.ok)) {
+      throw new Error(data.error || data.result.error || 'Failed to migrate report measure');
+    }
+    if (data.backup_path) {
+      $('backupBanner').classList.remove('hidden');
+      $('backupPath').textContent = data.backup_path;
+    }
+    if (data.git_warning) {
+      $('gitWarning').classList.remove('hidden');
+      $('gitWarning').textContent = data.git_warning;
+    }
+    $('detailReportMeasureStatus').textContent = 'Promoted. Re-analyzing...';
+    logEntry('Promoted report-level measure ' + item.table + '[' + item.name + '] to the semantic model', 'ok');
+    await reAnalyze({});
+    $('detailReportMeasureStatus').textContent = 'Promoted successfully.';
+  } catch (err) {
+    $('detailReportMeasureStatus').textContent = 'Promote failed: ' + (err && err.message ? err.message : err);
+    logEntry('Promote failed: ' + (err && err.message ? err.message : err), 'err');
+  }
+}
+$('detailBtnMigrateReportMeasure').onclick = async function() { await migrateCurrentReportMeasure(); };
 $('tableBtnDelete').onclick = async function() {
   if (!detailTableName) {
     alert('Select a table first');
@@ -3213,6 +3504,7 @@ $('showActionLogCheckbox').onchange = function() {
 };
 
 setupFilterDropdowns();
+initializeHeaderTooltips();
 setSetupCollapsed(readSetupCollapsedPreference());
 setWrapTableTextEnabled(readWrapTableTextPreference());
 setActionLogVisible(readShowActionLogPreference());

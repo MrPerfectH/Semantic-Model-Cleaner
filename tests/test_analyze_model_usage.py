@@ -110,6 +110,105 @@ def test_unused_hidden_column_includes_review_triggers(tmp_path):
     assert payload_item["reviewTriggers"] == ["Item is hidden"]
 
 
+def test_report_extension_measures_are_analyzed_and_promote_model_dependencies(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    page_dir = report / "definition" / "pages" / "Page 1"
+    visual_dir = page_dir / "visuals" / "visual1"
+    tables_dir.mkdir(parents=True)
+    visual_dir.mkdir(parents=True)
+
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tmeasure 'Base Measure' = 1\n",
+        encoding="utf-8",
+    )
+    (page_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
+    (visual_dir / "visual.json").write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "visualType": "card",
+                    "query": {
+                        "queryState": {
+                            "Values": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Measure": {
+                                                "Property": "Report Revenue",
+                                                "Expression": {
+                                                    "SourceRef": {
+                                                        "Entity": "Sales"
+                                                    }
+                                                },
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (report / "definition" / "reportExtensions.json").write_text(
+        json.dumps(
+            {
+                "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/reportExtension/1.0.0/schema.json",
+                "name": "extension",
+                "entities": [
+                    {
+                        "name": "Sales",
+                        "measures": [
+                            {
+                                "name": "Report Revenue",
+                                "dataType": "Double",
+                                "expression": "[Base Measure] + 1",
+                                "displayFolder": "Executive",
+                                "formatString": "0.0",
+                                "references": {
+                                    "measures": [
+                                        {
+                                            "entity": "Sales",
+                                            "name": "Base Measure",
+                                        }
+                                    ]
+                                },
+                            }
+                        ],
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    results = analyzer.analyze(workspace.resolve())
+    report_measure = _find_item(results, "Sales", "Report Revenue", "Measure")
+    base_measure = _find_item(results, "Sales", "Base Measure", "Measure")
+
+    assert report_measure["item"].source_kind == "report"
+    assert report_measure["item"].source_artifact == "Executive"
+    assert report_measure["item"].format_string == "0.0"
+    assert report_measure["status"] == "USED"
+    assert report_measure["usages"][0].report == "Executive"
+    assert base_measure["status"].startswith("INDIRECT")
+    assert results["summary"]["total_report_measures"] == 1
+
+    payload = json.loads(analyzer.format_json_output(results))
+    payload_item = next(item for item in payload["items"] if item["name"] == "Report Revenue")
+    assert payload_item["sourceKind"] == "report"
+    assert payload_item["sourceArtifact"] == "Executive"
+    assert payload_item["formatString"] == "0.0"
+
+
 def test_dax_dependency_graph_excludes_self_references():
     item = analyzer.ModelItem(
         item_type="Measure",
