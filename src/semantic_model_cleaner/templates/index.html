@@ -587,6 +587,14 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       <div class="detail-action-status" id="detailReportMeasureStatus"></div>
     </div>
     <div class="detail-card">
+      <h4>Stale Report References</h4>
+      <div id="detailStaleUsageList"></div>
+      <div class="detail-actions" style="margin-top:10px">
+        <button class="btn btn-secondary btn-sm" id="detailBtnCleanStale" title="Remove stale formatting selectors for this item from the selected report PBIR files">Clean stale PBIR</button>
+      </div>
+      <div class="detail-action-status" id="detailStaleStatus"></div>
+    </div>
+    <div class="detail-card">
       <h4>Cleanup Actions</h4>
       <div class="detail-actions">
         <input type="text" class="folder-input" id="detailFolderInput" placeholder="Display folder name..." value="Safe to delete" title="Folder name used by Move to folder">
@@ -782,8 +790,8 @@ var pendingActions = new Map();
 var actionStatus = new Map();
 var selectedTableNames = new Set();
 var allWarnings = [];
-var usageOrder = { 'Used': 0, 'Indirect': 1, 'Unused': 2 };
-var issueOrder = { 'Broken': 0, '': 1 };
+var usageOrder = { 'Used': 0, 'Indirect': 1, 'Stale only': 2, 'Unused': 3 };
+var issueOrder = { 'Broken': 0, 'Broken + Stale': 1, 'Stale': 2, '': 3 };
 var deleteSafetyOrder = { 'Safe': 0, 'Review': 1, 'Blocked': 2, 'Keep': 3 };
 var explorerMode = 'model';
 var explorerPicked = new Map();
@@ -797,6 +805,7 @@ var filterDefinitions = {
     options: [
       { value: 'Used', label: 'Used' },
       { value: 'Indirect', label: 'Indirect' },
+      { value: 'Stale only', label: 'Stale only' },
       { value: 'Unused', label: 'Unused' }
     ]
   },
@@ -1431,6 +1440,7 @@ function usageHelpText(itemOrStatus) {
   var base = {
     'Used': 'Directly referenced by at least one selected report.',
     'Indirect': 'Not directly referenced by a report, but still needed through model dependencies such as measures, relationships, sort-by, hierarchies, or field parameters.',
+    'Stale only': 'No live report usage was found, but stale formatting selectors still reference this item in PBIR.',
     'Unused': 'No direct report usage or indirect model dependency was found.'
   }[label] || 'Usage classification for this item.';
   return rawStatus && rawStatus !== label ? base + ' Raw analyzer status: ' + rawStatus : base;
@@ -1445,6 +1455,12 @@ function issueHelpText(itemOrStatus) {
   var rawStatus = itemOrStatus && typeof itemOrStatus === 'object' ? (itemOrStatus.statusDetail || itemOrStatus.status || '') : String(itemOrStatus || '');
   if (issueValue(itemOrStatus) === 'Broken') {
     return rawStatus ? 'The analyzer found unresolved references. Raw analyzer status: ' + rawStatus : 'The analyzer found unresolved references.';
+  }
+  if (issueValue(itemOrStatus) === 'Stale') {
+    return 'The analyzer found stale PBIR formatting selectors that no longer match the visual query.';
+  }
+  if (issueValue(itemOrStatus) === 'Broken + Stale') {
+    return 'The analyzer found both unresolved references and stale PBIR formatting selectors.';
   }
   return 'No issue signal was detected for this item.';
 }
@@ -2678,6 +2694,7 @@ function usageBadge(itemOrStatus) {
   if (label === 'Used') return '<span class="badge badge-used badge-status" title="' + esc(title) + '">Used</span>';
   if (label === 'Unused') return '<span class="badge badge-status" style="background:#fee2e2;color:#991b1b" title="' + esc(title) + '">Unused</span>';
   if (label === 'Indirect') return '<span class="badge badge-status" style="background:#e0e7ff;color:#3730a3" title="' + esc(title) + '">Indirect</span>';
+  if (label === 'Stale only') return '<span class="badge badge-status" style="background:#fff7ed;color:#9a3412" title="' + esc(title) + '">Stale only</span>';
   return '<span class="badge badge-muted" title="' + esc(title) + '">' + esc(label) + '</span>';
 }
 
@@ -2685,6 +2702,8 @@ function issueBadge(itemOrStatus) {
   var value = issueValue(itemOrStatus);
   if (!value) return '<span class="detail-empty">None</span>';
   if (value === 'Broken') return '<span class="badge badge-status" style="background:#111827;color:#f9fafb" title="' + esc(issueHelpText(itemOrStatus)) + '">Broken</span>';
+  if (value === 'Stale') return '<span class="badge badge-status" style="background:#fff7ed;color:#9a3412" title="' + esc(issueHelpText(itemOrStatus)) + '">Stale</span>';
+  if (value === 'Broken + Stale') return '<span class="badge badge-status" style="background:#7c2d12;color:#ffedd5" title="' + esc(issueHelpText(itemOrStatus)) + '">Broken + Stale</span>';
   return '<span class="badge badge-muted" title="' + esc(issueHelpText(itemOrStatus)) + '">' + esc(value) + '</span>';
 }
 
@@ -2754,25 +2773,134 @@ function bindDetailLinks(container) {
     }).join('') + '</ul>';
   }
 
-  function formatBrokenRefDetails(details, refs) {
-    if (details && details.length) {
+function formatBrokenRefDetails(details, refs) {
+  if (details && details.length) {
       return '<ul class="detail-list">' + details.map(function(detail) {
         return '<li><strong>' + esc(detail.kind || 'missing') + ':</strong> ' + esc(detail.ref || '') + (detail.message ? '<div class="detail-subtle">' + esc(detail.message) + '</div>' : '') + '</li>';
       }).join('') + '</ul>';
-    }
-    return formatDetailList(refs || []);
   }
+  return formatDetailList(refs || []);
+}
+
+function usageLocatorKey(usage) {
+  return [
+    usage.report || '',
+    usage.page || '',
+    usage.artifactKind || '',
+    usage.artifactPath || '',
+    usage.visualId || '',
+    usage.visualType || '',
+    usage.visualTitle || '',
+    usage.context || '',
+  ].join('||');
+}
+
+function summarizeUsageLocation(usage) {
+  var location = [];
+  if (usage.report) location.push(usage.report);
+  if (usage.page) location.push(usage.page);
+  if (usage.artifactKind === 'Bookmark') {
+    location.push('Bookmark "' + (usage.visualTitle || usage.visualId || 'Unnamed') + '"');
+  } else if (usage.artifactKind === 'Visual') {
+    location.push(usage.visualTitle ? '"' + usage.visualTitle + '"' : (usage.visualType || 'Visual'));
+  } else if (usage.artifactKind === 'Page') {
+    location.push(usage.context || 'Page metadata');
+  } else if (usage.artifactKind) {
+    location.push(usage.artifactKind);
+  } else if (usage.context) {
+    location.push(usage.context);
+  }
+  return location.join(' / ');
+}
 
 function renderUsageDetails(item) {
   if (!item.usageDetails || !item.usageDetails.length) return '<div class="detail-empty">No direct report references recorded.</div>';
-  return '<ul class="detail-list">' + item.usageDetails.map(function(usage) {
-    var parts = [];
-    if (usage.report) parts.push(usage.report);
-    if (usage.page) parts.push(usage.page);
-    if (usage.context) parts.push(usage.context);
-    if (usage.visualType) parts.push(usage.visualType);
-    if (usage.visualTitle) parts.push('"' + usage.visualTitle + '"');
-    return '<li>' + esc(parts.join(' | ')) + '</li>';
+  var grouped = [];
+  item.usageDetails.forEach(function(usage) {
+    var key = usageLocatorKey(usage);
+    var bucket = grouped.find(function(entry) { return entry.key === key; });
+    if (!bucket) {
+      bucket = {
+        key: key,
+        usage: usage,
+        sourcePaths: [],
+        sourcePathSet: new Set(),
+        refTypes: [],
+        refTypeSet: new Set(),
+        count: 0,
+      };
+      grouped.push(bucket);
+    }
+    bucket.count += 1;
+    if (usage.sourcePath && !bucket.sourcePathSet.has(usage.sourcePath)) {
+      bucket.sourcePathSet.add(usage.sourcePath);
+      bucket.sourcePaths.push(usage.sourcePath);
+    }
+    if (usage.refType && !bucket.refTypeSet.has(usage.refType)) {
+      bucket.refTypeSet.add(usage.refType);
+      bucket.refTypes.push(usage.refType);
+    }
+  });
+  return '<ul class="detail-list">' + grouped.map(function(entry) {
+    var usage = entry.usage;
+    var summary = summarizeUsageLocation(usage);
+    var details = [];
+    if (usage.context) details.push('<div class="detail-subtle"><strong>Context:</strong> ' + esc(usage.context) + '</div>');
+    if (usage.visualType && usage.artifactKind !== 'Bookmark') details.push('<div class="detail-subtle"><strong>Visual:</strong> ' + esc(usage.visualType) + '</div>');
+    if (usage.visualId) details.push('<div class="detail-subtle"><strong>Visual ID:</strong> <code>' + esc(usage.visualId) + '</code></div>');
+    if (usage.artifactPath) details.push('<div class="detail-subtle"><strong>PBIR file:</strong> <code>' + esc(usage.artifactPath) + '</code></div>');
+    if (entry.sourcePaths.length) {
+      details.push('<div class="detail-subtle"><strong>JSON path' + (entry.sourcePaths.length > 1 ? 's' : '') + ':</strong> '
+        + entry.sourcePaths.map(function(path) { return '<code>' + esc(path) + '</code>'; }).join(', ')
+        + '</div>');
+    }
+    if (entry.refTypes.length) details.push('<div class="detail-subtle"><strong>Match type:</strong> ' + esc(entry.refTypes.join(', ')) + '</div>');
+    if (entry.count > 1) details.push('<div class="detail-subtle"><strong>Matches:</strong> ' + esc(String(entry.count)) + '</div>');
+    return '<li><strong>' + esc(summary || 'Report metadata') + '</strong>' + details.join('') + '</li>';
+  }).join('') + '</ul>';
+}
+
+function renderStaleUsageDetails(item) {
+  if (!item.staleUsageDetails || !item.staleUsageDetails.length) return '<div class="detail-empty">No stale formatting selectors recorded.</div>';
+  var grouped = [];
+  item.staleUsageDetails.forEach(function(usage) {
+    var key = usageLocatorKey(usage) + '||' + (usage.selectorValue || '');
+    var bucket = grouped.find(function(entry) { return entry.key === key; });
+    if (!bucket) {
+      bucket = {
+        key: key,
+        usage: usage,
+        sourcePaths: [],
+        sourcePathSet: new Set(),
+        count: 0,
+      };
+      grouped.push(bucket);
+    }
+    bucket.count += 1;
+    if (usage.sourcePath && !bucket.sourcePathSet.has(usage.sourcePath)) {
+      bucket.sourcePathSet.add(usage.sourcePath);
+      bucket.sourcePaths.push(usage.sourcePath);
+    }
+  });
+  return '<ul class="detail-list">' + grouped.map(function(entry) {
+    var usage = entry.usage;
+    var summary = summarizeUsageLocation(usage);
+    var details = [];
+    if (usage.staleKind === 'bookmark_projection_entry' && usage.selectorValue) {
+      details.push('<div class="detail-subtle"><strong>Bucket:</strong> <code>' + esc(usage.selectorValue) + '</code></div>');
+    } else if (usage.selectorValue) {
+      details.push('<div class="detail-subtle"><strong>Stale selector:</strong> <code>' + esc(usage.selectorValue) + '</code></div>');
+    }
+    if (usage.visualType && usage.artifactKind !== 'Bookmark') details.push('<div class="detail-subtle"><strong>Visual:</strong> ' + esc(usage.visualType) + '</div>');
+    if (usage.visualId) details.push('<div class="detail-subtle"><strong>Visual ID:</strong> <code>' + esc(usage.visualId) + '</code></div>');
+    if (usage.artifactPath) details.push('<div class="detail-subtle"><strong>PBIR file:</strong> <code>' + esc(usage.artifactPath) + '</code></div>');
+    if (entry.sourcePaths.length) {
+      details.push('<div class="detail-subtle"><strong>JSON path' + (entry.sourcePaths.length > 1 ? 's' : '') + ':</strong> '
+        + entry.sourcePaths.map(function(path) { return '<code>' + esc(path) + '</code>'; }).join(', ')
+        + '</div>');
+    }
+    if (entry.count > 1) details.push('<div class="detail-subtle"><strong>Matches:</strong> ' + esc(String(entry.count)) + '</div>');
+    return '<li><strong>' + esc(summary || 'Report metadata') + '</strong>' + details.join('') + '</li>';
   }).join('') + '</ul>';
 }
 
@@ -2811,6 +2939,9 @@ function renderItemDetails() {
     setDetailActionAvailability(null);
     $('detailActionStatus').textContent = 'Select an item to queue actions for it.';
     $('detailUsageList').innerHTML = '<div class="detail-empty">Select an item from the table.</div>';
+    $('detailStaleUsageList').innerHTML = '<div class="detail-empty">Select an item from the table.</div>';
+    $('detailStaleStatus').textContent = '';
+    $('detailBtnCleanStale').disabled = true;
     return;
   }
 
@@ -2868,6 +2999,9 @@ function renderItemDetails() {
     ? '<span class="detail-empty">Standard Apply actions are disabled for report-level items.</span>'
     : (actionStatusBadge(itemKey(item)) || '<span class="detail-empty">No queued or applied action for this item.</span>');
   $('detailUsageList').innerHTML = renderUsageDetails(item);
+  $('detailStaleUsageList').innerHTML = renderStaleUsageDetails(item);
+  $('detailStaleStatus').textContent = '';
+  $('detailBtnCleanStale').disabled = !(item.staleUsageDetails && item.staleUsageDetails.length);
   bindDetailLinks($('itemDetailSection'));
 }
 
@@ -3356,6 +3490,61 @@ $('detailBtnUnhide').onclick = function() { queueDetailAction('unhide'); };
 $('detailBtnDelete').onclick = function() { queueDetailAction('delete'); };
 $('detailBtnApply').onclick = async function() { await applyQueuedActions(); };
 $('detailBtnReset').onclick = function() { $('btnReset').click(); };
+
+async function cleanCurrentItemStaleRefs() {
+  var item = getItemByKey(detailItemKey);
+  if (!item) {
+    alert('Select an item first');
+    return;
+  }
+  if (!item.staleUsageDetails || !item.staleUsageDetails.length) {
+    alert('No stale PBIR selectors were recorded for this item');
+    return;
+  }
+  var seen = new Set();
+  var entries = item.staleUsageDetails.map(function(ref) {
+    var reportPath = getReportPathByName(ref.report);
+    if (!reportPath || !ref.artifactPath || !ref.sourcePath) return null;
+    var dedupeKey = ref.staleKind === 'bookmark_projection_entry'
+      ? ref.sourcePath.replace(/(\.singleVisual\.projections\.[^.]+\.\[\d+\]).*/, '$1')
+      : [ref.artifactPath, ref.selectorValue || ref.sourcePath].join('|||');
+    var key = [reportPath, ref.staleKind || '', dedupeKey].join('|||');
+    if (seen.has(key)) return null;
+    seen.add(key);
+    return {
+      report_path: reportPath,
+      artifact_path: ref.artifactPath,
+      selector_value: ref.selectorValue,
+      source_path: ref.sourcePath,
+      stale_kind: ref.staleKind || ''
+    };
+  }).filter(Boolean);
+  if (!entries.length) {
+    alert('Could not resolve stale references to the selected report files.');
+    return;
+  }
+  $('detailStaleStatus').textContent = 'Cleaning stale PBIR selectors...';
+  try {
+    var data = await apiPost('/api/report/cleanup-stale', {
+      entries: entries,
+      create_backup: $('applyBackupCheckbox').checked
+    });
+    if (data.error) throw new Error(data.error);
+    if (data.backup_paths && data.backup_paths.length) {
+      $('backupBanner').classList.remove('hidden');
+      $('backupPath').textContent = data.backup_paths.join(' | ');
+    }
+    $('detailStaleStatus').textContent = 'Cleaned stale PBIR selectors. Re-analyzing...';
+    logEntry('Removed ' + (data.removed_count || 0) + ' stale PBIR selector(s)', 'ok');
+    await reAnalyze({});
+    $('detailStaleStatus').textContent = 'Stale PBIR selectors cleaned.';
+  } catch (err) {
+    $('detailStaleStatus').textContent = 'Stale cleanup failed: ' + (err && err.message ? err.message : err);
+    logEntry('Stale cleanup failed: ' + (err && err.message ? err.message : err), 'err');
+  }
+}
+
+$('detailBtnCleanStale').onclick = async function() { await cleanCurrentItemStaleRefs(); };
 
 async function saveCurrentItemDax() {
   var item = getItemByKey(detailItemKey);

@@ -59,7 +59,14 @@ class UsageRef:
     page: str = ""
     visual_type: str = ""
     visual_title: str = ""
+    visual_id: str = ""
     context: str = ""
+    source_path: str = ""
+    artifact_kind: str = ""
+    artifact_path: str = ""
+    selector_value: str = ""
+    is_stale: bool = False
+    stale_kind: str = ""
 
 
 @dataclass
@@ -953,6 +960,27 @@ def parse_rls_roles(model_path: Path) -> list[tuple[str, str, str]]:
 # ── JSON Reference Scanning ──────────────────────────────────────────────────
 
 
+def _split_top_level_query_ref(value: str) -> tuple[str, str] | None:
+    depth_paren = 0
+    depth_bracket = 0
+    for idx, ch in enumerate(value):
+        if ch == "(":
+            depth_paren += 1
+        elif ch == ")":
+            depth_paren = max(0, depth_paren - 1)
+        elif ch == "[":
+            depth_bracket += 1
+        elif ch == "]":
+            depth_bracket = max(0, depth_bracket - 1)
+        elif ch == "." and depth_paren == 0 and depth_bracket == 0:
+            left = value[:idx].strip()
+            right = value[idx + 1 :].strip()
+            if left and right:
+                return left, right
+            return None
+    return None
+
+
 def _find_json_refs(obj, path_parts: Optional[list] = None) -> list[dict]:
     """Recursively find all Entity/Property measure/column references in JSON."""
     if path_parts is None:
@@ -995,13 +1023,14 @@ def _find_json_refs(obj, path_parts: Optional[list] = None) -> list[dict]:
         # Metadata selector: flat "Table.Name" string
         if "metadata" in obj and isinstance(obj["metadata"], str):
             meta = obj["metadata"]
-            if "." in meta:
-                parts = meta.split(".", 1)
+            parts = _split_top_level_query_ref(meta)
+            if parts:
                 refs.append({
                     "table": parts[0],
                     "name": parts[1],
                     "ref_type": "metadata",
                     "path": ".".join(path_parts + ["metadata"]),
+                    "raw_value": meta,
                 })
 
         # HierarchyLevel reference object
@@ -1034,6 +1063,43 @@ def _find_json_refs(obj, path_parts: Optional[list] = None) -> list[dict]:
             refs.extend(_find_json_refs(item, path_parts + [f"[{i}]"]))
 
     return refs
+
+
+def _extract_query_refs(obj) -> set[str]:
+    refs: set[str] = set()
+    if isinstance(obj, dict):
+        query_ref = obj.get("queryRef")
+        if isinstance(query_ref, str) and query_ref:
+            refs.add(query_ref)
+        query_refs = obj.get("queryRefs")
+        if isinstance(query_refs, list):
+            refs |= {value for value in query_refs if isinstance(value, str) and value}
+        for value in obj.values():
+            refs |= _extract_query_refs(value)
+    elif isinstance(obj, list):
+        for item in obj:
+            refs |= _extract_query_refs(item)
+    return refs
+
+
+def _extract_field_parameter_buckets(query_state: dict) -> set[str]:
+    buckets: set[str] = set()
+    if not isinstance(query_state, dict):
+        return buckets
+    for bucket, config in query_state.items():
+        if isinstance(config, dict) and isinstance(config.get("fieldParameters"), list) and config.get("fieldParameters"):
+            buckets.add(bucket)
+    return buckets
+
+
+def _is_selector_metadata_path(path: str) -> bool:
+    return ".selector.metadata" in path or path.endswith("selector.metadata")
+
+
+def _selector_entry_prefix(path: str) -> str:
+    if _is_selector_metadata_path(path):
+        return path.rsplit(".selector.metadata", 1)[0]
+    return path
 
 
 def _determine_context(path: str) -> str:
@@ -1102,18 +1168,45 @@ def _get_page_name(page_dir: Path) -> str:
     return page_dir.name
 
 
+def _artifact_rel_path(report_path: Path, file_path: Path) -> str:
+    try:
+        return file_path.relative_to(report_path).as_posix()
+    except ValueError:
+        return file_path.name
+
+
+def _page_name_for_section(report_path: Path, section_id: str) -> str:
+    page_dir = report_path / "definition" / "pages" / section_id
+    if page_dir.exists():
+        return _get_page_name(page_dir)
+    return section_id
+
+
+def _bookmark_visual_ref_parts(path: str) -> tuple[str, str] | None:
+    m = re.search(r"explorationState\.sections\.([^.]+)\.visualContainers\.([^.]+)\.", path)
+    if not m:
+        return None
+    return m.group(1), m.group(2)
+
+
+def _bookmark_projection_entry_prefix(path: str) -> str:
+    m = re.search(r"(.*\.singleVisual\.projections\.[^.]+\.\[\d+\])", path)
+    return m.group(1) if m else path
+
+
 # ── Report Scanning ───────────────────────────────────────────────────────────
 
 
-def scan_report_visuals(report_path: Path) -> tuple[list[UsageRef], dict]:
-    """Returns (usages, visual_meta) where visual_meta maps visual_id -> info."""
+def scan_report_visuals(report_path: Path) -> tuple[list[UsageRef], list[UsageRef], dict]:
+    """Returns (live_usages, stale_usages, visual_meta) where visual_meta maps visual_id -> info."""
     rpt_name = report_display_name(report_path)
     pages_dir = report_path / "definition" / "pages"
     usages = []
+    stale_usages = []
     visual_meta = {}
 
     if not pages_dir.exists():
-        return usages, visual_meta
+        return usages, stale_usages, visual_meta
 
     for page_dir in sorted(pages_dir.iterdir()):
         if not page_dir.is_dir():
@@ -1140,10 +1233,27 @@ def scan_report_visuals(report_path: Path) -> tuple[list[UsageRef], dict]:
             visual_type, visual_title = _get_visual_info(data)
             visual_id = visual_dir.name
             visual_refs_local = []
+            live_query_refs = _extract_query_refs(data.get("visual", {}).get("query", {}).get("queryState", {}))
+            field_parameter_buckets = _extract_field_parameter_buckets(data.get("visual", {}).get("query", {}).get("queryState", {}))
 
             refs = _find_json_refs(data)
+            stale_entry_selectors: dict[str, str] = {}
+            for ref in refs:
+                raw_value = ref.get("raw_value", "")
+                if (
+                    ref["ref_type"] == "metadata"
+                    and _is_selector_metadata_path(ref["path"])
+                    and raw_value
+                    and raw_value not in live_query_refs
+                ):
+                    stale_entry_selectors[_selector_entry_prefix(ref["path"])] = raw_value
             for ref in refs:
                 context = _determine_context(ref["path"])
+                entry_selector_value = next(
+                    (selector_value for prefix, selector_value in stale_entry_selectors.items() if ref["path"].startswith(prefix)),
+                    "",
+                )
+                is_stale_selector = bool(entry_selector_value)
                 u = UsageRef(
                     table=ref["table"],
                     name=ref["name"],
@@ -1152,19 +1262,30 @@ def scan_report_visuals(report_path: Path) -> tuple[list[UsageRef], dict]:
                     page=page_name,
                     visual_type=visual_type,
                     visual_title=visual_title,
+                    visual_id=visual_id,
                     context=context,
+                    source_path=ref["path"],
+                    artifact_kind="Visual",
+                    artifact_path=_artifact_rel_path(report_path, visual_json),
+                    selector_value=entry_selector_value,
+                    is_stale=is_stale_selector,
                 )
-                usages.append(u)
-                visual_refs_local.append((ref["table"], ref["name"]))
+                if is_stale_selector:
+                    u.context = "Stale Formatting"
+                    stale_usages.append(u)
+                else:
+                    usages.append(u)
+                    visual_refs_local.append((ref["table"], ref["name"]))
 
             visual_meta[visual_id] = {
                 "type": visual_type,
                 "title": visual_title,
                 "page": page_name,
                 "refs": visual_refs_local,
+                "field_parameter_buckets": field_parameter_buckets,
             }
 
-    return usages, visual_meta
+    return usages, stale_usages, visual_meta
 
 
 def scan_visual_interactions(report_path: Path, visual_meta: dict) -> list[UsageRef]:
@@ -1216,7 +1337,11 @@ def scan_visual_interactions(report_path: Path, visual_meta: dict) -> list[Usage
                         page=page_name,
                         visual_type=f"slicer \u2192 {target_label}",
                         visual_title=source_meta.get("title", ""),
+                        visual_id=source_id,
                         context="Slicer Interaction",
+                        source_path="visualInteractions",
+                        artifact_kind="Page",
+                        artifact_path=_artifact_rel_path(report_path, page_json),
                     ))
 
         # ── Page-level filters ──
@@ -1235,7 +1360,11 @@ def scan_visual_interactions(report_path: Path, visual_meta: dict) -> list[Usage
                         page=page_name,
                         visual_type="Page Filter",
                         visual_title="",
+                        visual_id="",
                         context="Page Filter",
+                        source_path=ref["path"],
+                        artifact_kind="Page",
+                        artifact_path=_artifact_rel_path(report_path, page_json),
                     ))
 
         # ── Drillthrough target fields ──
@@ -1254,7 +1383,11 @@ def scan_visual_interactions(report_path: Path, visual_meta: dict) -> list[Usage
                         page=page_name,
                         visual_type="Drillthrough",
                         visual_title="",
+                        visual_id="",
                         context="Drillthrough",
+                        source_path=ref["path"],
+                        artifact_kind="Page",
+                        artifact_path=_artifact_rel_path(report_path, page_json),
                     ))
         elif isinstance(drillthrough, dict):
             refs = _find_json_refs(drillthrough)
@@ -1267,19 +1400,25 @@ def scan_visual_interactions(report_path: Path, visual_meta: dict) -> list[Usage
                     page=page_name,
                     visual_type="Drillthrough",
                     visual_title="",
+                    visual_id="",
                     context="Drillthrough",
+                    source_path=ref["path"],
+                    artifact_kind="Page",
+                    artifact_path=_artifact_rel_path(report_path, page_json),
                 ))
 
     return usages
 
 
-def scan_bookmarks(report_path: Path) -> list[UsageRef]:
+def scan_bookmarks(report_path: Path, visual_meta: dict | None = None) -> tuple[list[UsageRef], list[UsageRef]]:
     rpt_name = report_display_name(report_path)
     bookmarks_dir = report_path / "definition" / "bookmarks"
     usages = []
+    stale_usages = []
+    visual_meta = visual_meta or {}
 
     if not bookmarks_dir.exists():
-        return usages
+        return usages, stale_usages
 
     for bm_file in sorted(bookmarks_dir.glob("*.bookmark.json")):
         try:
@@ -1288,21 +1427,111 @@ def scan_bookmarks(report_path: Path) -> list[UsageRef]:
             continue
 
         bm_name = data.get("displayName", bm_file.stem)
+        stale_entry_prefixes: dict[str, dict] = {}
+        sections = data.get("explorationState", {}).get("sections", {})
+        if isinstance(sections, dict):
+            for section_id, section in sections.items():
+                if not isinstance(section, dict):
+                    continue
+                visual_containers = section.get("visualContainers", {})
+                if not isinstance(visual_containers, dict):
+                    continue
+                for visual_id, container in visual_containers.items():
+                    if not isinstance(container, dict):
+                        continue
+                    single_visual = container.get("singleVisual", {})
+                    if not isinstance(single_visual, dict):
+                        continue
+                    bookmark_params = single_visual.get("parameters", {})
+                    bookmark_proj = single_visual.get("projections", {})
+                    visual_info = visual_meta.get(visual_id, {})
+                    field_parameter_buckets = set(visual_info.get("field_parameter_buckets", set()))
+                    if isinstance(bookmark_params, dict):
+                        field_parameter_buckets |= {bucket for bucket, values in bookmark_params.items() if isinstance(values, list) and values}
+                    for bucket in field_parameter_buckets:
+                        entries = bookmark_proj.get(bucket, [])
+                        if not isinstance(entries, list):
+                            continue
+                        for idx, entry in enumerate(entries):
+                            refs_in_entry = _find_json_refs(
+                                entry,
+                                [
+                                    "explorationState",
+                                    "sections",
+                                    section_id,
+                                    "visualContainers",
+                                    visual_id,
+                                    "singleVisual",
+                                    "projections",
+                                    bucket,
+                                    f"[{idx}]",
+                                ],
+                            )
+                            if not refs_in_entry:
+                                continue
+                            stale_entry_prefixes[
+                                ".".join([
+                                    "explorationState",
+                                    "sections",
+                                    section_id,
+                                    "visualContainers",
+                                    visual_id,
+                                    "singleVisual",
+                                    "projections",
+                                    bucket,
+                                    f"[{idx}]",
+                                ])
+                            ] = {
+                                "bucket": bucket,
+                                "page": visual_info.get("page") or _page_name_for_section(report_path, section_id),
+                                "visual_type": visual_info.get("type") or single_visual.get("visualType", "Bookmark"),
+                                "visual_title": visual_info.get("title", ""),
+                                "visual_id": visual_id,
+                            }
         refs = _find_json_refs(data)
 
         for ref in refs:
-            usages.append(UsageRef(
+            ref_location = _bookmark_visual_ref_parts(ref["path"])
+            if ref_location:
+                section_id, visual_id = ref_location
+                visual_info = visual_meta.get(visual_id, {})
+                page_name = visual_info.get("page") or _page_name_for_section(report_path, section_id)
+                visual_type = visual_info.get("type") or "Bookmark"
+                visual_title = visual_info.get("title", "")
+            else:
+                page_name = ""
+                visual_type = "Bookmark"
+                visual_title = bm_name
+                visual_id = bm_file.stem
+
+            matched_stale = next(
+                (info for prefix, info in stale_entry_prefixes.items() if ref["path"].startswith(prefix)),
+                None,
+            )
+            usage_ref = UsageRef(
                 table=ref["table"],
                 name=ref["name"],
                 ref_type=ref["ref_type"],
                 report=rpt_name,
-                page="\u2014",
-                visual_type=f"Bookmark: {bm_name}",
-                visual_title="",
+                page=page_name,
+                visual_type=visual_type,
+                visual_title=visual_title or bm_name,
+                visual_id=visual_id,
                 context="Bookmark",
-            ))
+                source_path=ref["path"],
+                artifact_kind="Bookmark",
+                artifact_path=_artifact_rel_path(report_path, bm_file),
+                is_stale=bool(matched_stale),
+                stale_kind="bookmark_projection_entry" if matched_stale else "",
+                selector_value=matched_stale["bucket"] if matched_stale else "",
+            )
+            if matched_stale:
+                usage_ref.context = "Stale Bookmark"
+                stale_usages.append(usage_ref)
+            else:
+                usages.append(usage_ref)
 
-    return usages
+    return usages, stale_usages
 
 
 def scan_additional_definition_json(
@@ -1330,17 +1559,20 @@ def scan_additional_definition_json(
         if not refs:
             continue
 
-        rel_path = json_file.relative_to(definition_dir).as_posix()
         for ref in refs:
             usages.append(UsageRef(
                 table=ref["table"],
                 name=ref["name"],
                 ref_type=ref["ref_type"],
                 report=rpt_name,
-                page="\u2014",
-                visual_type=f"Definition JSON: {rel_path}",
+                page="",
+                visual_type="Definition JSON",
                 visual_title="",
+                visual_id="",
                 context="Definition Metadata",
+                source_path=ref["path"],
+                artifact_kind="Definition JSON",
+                artifact_path=_artifact_rel_path(report_path, json_file),
             ))
 
     return usages
@@ -2004,15 +2236,20 @@ def analyze(
 
     # ── Scan reports ──
     all_visual_usages = []
+    all_stale_visual_usages = []
     all_interaction_usages = []
     all_bookmark_usages = []
+    all_stale_bookmark_usages = []
     all_definition_meta_usages = []
 
     for report_path in reports:
-        visual_usages, visual_meta = scan_report_visuals(report_path)
+        visual_usages, stale_visual_usages, visual_meta = scan_report_visuals(report_path)
         all_visual_usages.extend(visual_usages)
+        all_stale_visual_usages.extend(stale_visual_usages)
         all_interaction_usages.extend(scan_visual_interactions(report_path, visual_meta))
-        all_bookmark_usages.extend(scan_bookmarks(report_path))
+        bookmark_usages, stale_bookmark_usages = scan_bookmarks(report_path, visual_meta)
+        all_bookmark_usages.extend(bookmark_usages)
+        all_stale_bookmark_usages.extend(stale_bookmark_usages)
 
         excluded_files = set(report_path.glob("definition/pages/*/visuals/*/visual.json"))
         excluded_files |= set(report_path.glob("definition/pages/*/page.json"))
@@ -2032,6 +2269,10 @@ def analyze(
     direct_usage_index: dict[tuple[str, str], list[UsageRef]] = defaultdict(list)
     for u in direct_usages:
         direct_usage_index[normalize_key(u.table, u.name)].append(u)
+
+    stale_usage_index: dict[tuple[str, str], list[UsageRef]] = defaultdict(list)
+    for u in all_stale_visual_usages + all_stale_bookmark_usages:
+        stale_usage_index[normalize_key(u.table, u.name)].append(u)
 
     synthetic_field_parameter_usages, field_parameter_targets = promote_field_parameter_usages(
         direct_usages,
@@ -2115,6 +2356,7 @@ def analyze(
     for item in all_items:
         nkey = normalize_key(*item.key)
         usages = usage_index.get(nkey, [])
+        stale_usages = stale_usage_index.get(nkey, [])
         has_direct_usage = nkey in direct_usage_index
         field_parameter_tables = field_parameter_targets.get(nkey, set())
         is_relationship = nkey in relationship_keys
@@ -2203,6 +2445,7 @@ def analyze(
             "item": item,
             "status": status,
             "usages": usages,
+            "stale_usages": stale_usages,
             "has_direct_usage": has_direct_usage,
             "removal_risk": removal_risk,
             "review_triggers": review_triggers,
