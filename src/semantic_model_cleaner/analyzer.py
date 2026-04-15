@@ -1559,7 +1559,6 @@ def scan_additional_definition_json(
         if not refs:
             continue
 
-        rel_path = json_file.relative_to(definition_dir).as_posix()
         for ref in refs:
             usages.append(UsageRef(
                 table=ref["table"],
