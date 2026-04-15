@@ -2,6 +2,7 @@
 """Report definition write helpers for PBIR artifacts."""
 
 import json
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -138,4 +139,173 @@ def migrate_measure_to_model(
         "table": entity_name,
         "name": measure_name,
         "updated_reference_count": updated_reference_count,
+    }
+
+
+def _collect_query_refs(obj) -> set[str]:
+    refs: set[str] = set()
+    if isinstance(obj, dict):
+        query_ref = obj.get("queryRef")
+        if isinstance(query_ref, str) and query_ref:
+            refs.add(query_ref)
+        query_refs = obj.get("queryRefs")
+        if isinstance(query_refs, list):
+            refs |= {value for value in query_refs if isinstance(value, str) and value}
+        for value in obj.values():
+            refs |= _collect_query_refs(value)
+    elif isinstance(obj, list):
+        for item in obj:
+            refs |= _collect_query_refs(item)
+    return refs
+
+
+def _path_tokens(path: str) -> list[str]:
+    return [part for part in path.split(".") if part]
+
+
+def _remove_path_index_entry(payload, prefix_path: str) -> bool:
+    tokens = _path_tokens(prefix_path)
+    if not tokens:
+        return False
+    cursor = payload
+    for token in tokens[:-1]:
+        if token.startswith("[") and token.endswith("]"):
+            if not isinstance(cursor, list):
+                return False
+            idx = int(token[1:-1])
+            if idx < 0 or idx >= len(cursor):
+                return False
+            cursor = cursor[idx]
+        else:
+            if not isinstance(cursor, dict) or token not in cursor:
+                return False
+            cursor = cursor[token]
+    last = tokens[-1]
+    if not (last.startswith("[") and last.endswith("]")):
+        return False
+    if not isinstance(cursor, list):
+        return False
+    idx = int(last[1:-1])
+    if idx < 0 or idx >= len(cursor):
+        return False
+    cursor.pop(idx)
+    return True
+
+
+def _path_trailing_index(path: str) -> int:
+    m = re.search(r"\[(\d+)\]$", path)
+    return int(m.group(1)) if m else -1
+
+
+def _remove_stale_selector_entries(obj, stale_values: set[str], live_query_refs: set[str], removed: list[dict], path_parts: list[str] | None = None) -> None:
+    if path_parts is None:
+        path_parts = []
+    if isinstance(obj, dict):
+        for key, value in list(obj.items()):
+            if isinstance(value, list):
+                new_items = []
+                for idx, item in enumerate(value):
+                    selector_value = None
+                    if isinstance(item, dict):
+                        selector = item.get("selector", {})
+                        if isinstance(selector, dict):
+                            metadata = selector.get("metadata")
+                            if isinstance(metadata, str):
+                                selector_value = metadata
+                    if selector_value and selector_value in stale_values and selector_value not in live_query_refs:
+                        removed.append({
+                            "path": ".".join(path_parts + [key, f"[{idx}]"]),
+                            "selector_value": selector_value,
+                        })
+                        continue
+                    _remove_stale_selector_entries(item, stale_values, live_query_refs, removed, path_parts + [key, f"[{idx}]"])
+                    new_items.append(item)
+                obj[key] = new_items
+            else:
+                _remove_stale_selector_entries(value, stale_values, live_query_refs, removed, path_parts + [key])
+    elif isinstance(obj, list):
+        for idx, item in enumerate(obj):
+            _remove_stale_selector_entries(item, stale_values, live_query_refs, removed, path_parts + [f"[{idx}]"])
+
+
+def cleanup_stale_metadata_selectors(*, entries: list[dict]) -> dict:
+    if not entries:
+        return {"ok": False, "error": "No stale selector entries were provided"}
+
+    selector_grouped: dict[Path, set[str]] = {}
+    bookmark_entries: dict[Path, set[str]] = {}
+    for entry in entries:
+        report_path = Path(str(entry.get("report_path", "") or "")).resolve()
+        artifact_path = str(entry.get("artifact_path", "") or "").strip()
+        selector_value = str(entry.get("selector_value", "") or "").strip()
+        source_path = str(entry.get("source_path", "") or "").strip()
+        stale_kind = str(entry.get("stale_kind", "") or "").strip()
+        if not report_path.exists():
+            return {"ok": False, "error": f"Report path not found: {report_path}"}
+        if not artifact_path:
+            return {"ok": False, "error": "Each stale selector entry needs artifact_path"}
+        target_file = (report_path / artifact_path).resolve()
+        if stale_kind == "bookmark_projection_entry":
+            if ".singleVisual.projections." not in source_path:
+                return {"ok": False, "error": "Bookmark stale cleanup requires source_path for the projection entry"}
+            m = re.search(r"(.*\.singleVisual\.projections\.[^.]+\.\[\d+\])", source_path)
+            if not m:
+                return {"ok": False, "error": f"Could not resolve bookmark projection path: {source_path}"}
+            bookmark_entries.setdefault(target_file, set()).add(m.group(1))
+        else:
+            if not selector_value:
+                return {"ok": False, "error": "Visual stale cleanup requires selector_value"}
+            selector_grouped.setdefault(target_file, set()).add(selector_value)
+
+    updated_files = []
+    removed_entries = []
+    for target_file, stale_values in selector_grouped.items():
+        if not target_file.exists():
+            return {"ok": False, "error": f"PBIR file not found: {target_file}"}
+        payload = json.loads(target_file.read_text(encoding="utf-8"))
+        live_query_refs = _collect_query_refs(payload.get("visual", {}).get("query", {}).get("queryState", {}))
+        removed_for_file: list[dict] = []
+        _remove_stale_selector_entries(payload, stale_values, live_query_refs, removed_for_file)
+        if removed_for_file:
+            target_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            updated_files.append(str(target_file))
+            removed_entries.extend(
+                {
+                    "file": str(target_file),
+                    "path": item["path"],
+                    "selector_value": item["selector_value"],
+                }
+                for item in removed_for_file
+            )
+
+    for target_file, entry_paths in bookmark_entries.items():
+        if not target_file.exists():
+            return {"ok": False, "error": f"PBIR file not found: {target_file}"}
+        payload = json.loads(target_file.read_text(encoding="utf-8"))
+        removed_for_file = []
+        for prefix_path in sorted(entry_paths, key=_path_trailing_index, reverse=True):
+            if _remove_path_index_entry(payload, prefix_path):
+                removed_for_file.append({
+                    "path": prefix_path,
+                    "selector_value": "",
+                })
+        if removed_for_file:
+            target_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            if str(target_file) not in updated_files:
+                updated_files.append(str(target_file))
+            removed_entries.extend(
+                {
+                    "file": str(target_file),
+                    "path": item["path"],
+                    "selector_value": item["selector_value"],
+                }
+                for item in removed_for_file
+            )
+
+    return {
+        "ok": True,
+        "action": "cleanup_stale_metadata_selectors",
+        "updated_files": updated_files,
+        "removed_count": len(removed_entries),
+        "removed_entries": removed_entries,
     }

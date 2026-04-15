@@ -231,8 +231,16 @@ def print_startup_banner(host: str, port: int, *, debug: bool, mode: str = "web"
 
 def _serialize_results(results: dict) -> dict:
     """Serialize analyzer results for JSON API responses."""
-    def _issue_state(status: str, broken_refs: list[str] | None) -> str:
-        return "Broken" if (status or "").startswith("BROKEN") or broken_refs else ""
+    def _issue_state(status: str, broken_refs: list[str] | None, stale_usage_count: int = 0) -> str:
+        has_broken = (status or "").startswith("BROKEN") or bool(broken_refs)
+        has_stale = stale_usage_count > 0
+        if has_broken and has_stale:
+            return "Broken + Stale"
+        if has_broken:
+            return "Broken"
+        if has_stale:
+            return "Stale"
+        return ""
 
     def _usage_state(
         *,
@@ -241,6 +249,7 @@ def _serialize_results(results: dict) -> dict:
         measure_dependent_count: int,
         relationship_ref_count: int,
         other_model_use_count: int,
+        stale_usage_count: int,
     ) -> str:
         if usage_count > 0:
             return "Used"
@@ -251,6 +260,8 @@ def _serialize_results(results: dict) -> dict:
             or other_model_use_count > 0
         ):
             return "Indirect"
+        if stale_usage_count > 0:
+            return "Stale only"
         return "Unused"
 
     def _delete_safety(item_payload: dict) -> str:
@@ -395,10 +406,33 @@ def _serialize_results(results: dict) -> dict:
                     "page": u.page,
                     "visualType": u.visual_type,
                     "visualTitle": u.visual_title or "",
+                    "visualId": u.visual_id or "",
                     "context": u.context,
+                    "sourcePath": u.source_path or "",
+                    "artifactKind": u.artifact_kind or "",
+                    "artifactPath": u.artifact_path or "",
                     "refType": u.ref_type,
+                    "staleKind": u.stale_kind or "",
                 }
                 for u in r["usages"]
+            ],
+            "staleUsageCount": len(r.get("stale_usages", [])),
+            "staleUsageDetails": [
+                {
+                    "report": u.report,
+                    "page": u.page,
+                    "visualType": u.visual_type,
+                    "visualTitle": u.visual_title or "",
+                    "visualId": u.visual_id or "",
+                    "context": u.context,
+                    "sourcePath": u.source_path or "",
+                    "artifactKind": u.artifact_kind or "",
+                    "artifactPath": u.artifact_path or "",
+                    "selectorValue": u.selector_value or "",
+                    "refType": u.ref_type,
+                    "staleKind": u.stale_kind or "",
+                }
+                for u in r.get("stale_usages", [])
             ],
         }
         payload_item["usageState"] = _usage_state(
@@ -407,8 +441,9 @@ def _serialize_results(results: dict) -> dict:
             measure_dependent_count=payload_item["measureDependentCount"],
             relationship_ref_count=payload_item["relationshipRefCount"],
             other_model_use_count=payload_item["otherModelUseCount"],
+            stale_usage_count=payload_item["staleUsageCount"],
         )
-        payload_item["issueState"] = _issue_state(status, payload_item["brokenDaxRefs"])
+        payload_item["issueState"] = _issue_state(status, payload_item["brokenDaxRefs"], payload_item["staleUsageCount"])
         payload_item["deleteSafety"] = _delete_safety(payload_item)
         items.append(payload_item)
 
@@ -442,10 +477,17 @@ def _serialize_results(results: dict) -> dict:
                     "page": u.page,
                     "visualType": u.visual_type,
                     "visualTitle": u.visual_title or "",
+                    "visualId": u.visual_id or "",
                     "context": u.context,
+                    "sourcePath": u.source_path or "",
+                    "artifactKind": u.artifact_kind or "",
+                    "artifactPath": u.artifact_path or "",
+                    "selectorValue": u.selector_value or "",
+                    "isStale": False,
+                    "staleKind": u.stale_kind or "",
                     "status": status,
                     "usageState": display_state.get("usageState", "Unused"),
-                    "issueState": display_state.get("issueState", _issue_state(status, r.get("broken_dax_refs", []))),
+                    "issueState": display_state.get("issueState", _issue_state(status, r.get("broken_dax_refs", []), len(r.get("stale_usages", [])))),
                     "removalRisk": risk,
                     "deleteSafety": display_state.get("deleteSafety", _delete_safety({
                         "status": status,
@@ -470,10 +512,52 @@ def _serialize_results(results: dict) -> dict:
                 "page": "",
                 "visualType": "",
                 "visualTitle": "",
+                "visualId": "",
                 "context": "",
+                "sourcePath": "",
+                "artifactKind": "",
+                "artifactPath": "",
+                "selectorValue": "",
+                "isStale": False,
+                "staleKind": "",
                 "status": status,
                 "usageState": display_state.get("usageState", "Unused"),
-                "issueState": display_state.get("issueState", _issue_state(status, r.get("broken_dax_refs", []))),
+                "issueState": display_state.get("issueState", _issue_state(status, r.get("broken_dax_refs", []), len(r.get("stale_usages", [])))),
+                "removalRisk": risk,
+                "deleteSafety": display_state.get("deleteSafety", _delete_safety({
+                    "status": status,
+                    "isInferred": item.is_inferred,
+                    "removalRisk": risk,
+                })),
+                "reviewTriggers": r.get("review_triggers", []),
+                "brokenDaxRefs": r.get("broken_dax_refs", []),
+                "brokenDaxRefDetails": r.get("broken_dax_ref_details", []),
+            })
+        for u in r.get("stale_usages", []):
+            references.append({
+                "type": item.item_type,
+                "table": item.table,
+                "name": item.name,
+                "sourceKind": item.source_kind,
+                "sourceArtifact": item.source_artifact or None,
+                "isHidden": item.is_hidden,
+                "displayFolder": item.display_folder,
+                "formatString": item.format_string or None,
+                "report": u.report,
+                "page": u.page,
+                "visualType": u.visual_type,
+                "visualTitle": u.visual_title or "",
+                "visualId": u.visual_id or "",
+                "context": u.context,
+                "sourcePath": u.source_path or "",
+                "artifactKind": u.artifact_kind or "",
+                "artifactPath": u.artifact_path or "",
+                "selectorValue": u.selector_value or "",
+                "isStale": True,
+                "staleKind": u.stale_kind or "",
+                "status": status,
+                "usageState": display_state.get("usageState", "Unused"),
+                "issueState": display_state.get("issueState", _issue_state(status, r.get("broken_dax_refs", []), len(r.get("stale_usages", [])))),
                 "removalRisk": risk,
                 "deleteSafety": display_state.get("deleteSafety", _delete_safety({
                     "status": status,
@@ -890,6 +974,36 @@ def api_migrate_report_measure():
             "backup_path": _state["backup_path"],
             "backup_paths": backup_paths or None,
             "git_warning": git_warning,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/report/cleanup-stale", methods=["POST"])
+def api_cleanup_stale_report_metadata():
+    """Remove stale formatting selectors from selected PBIR report files."""
+    try:
+        data = request.get_json(silent=True) or {}
+        entries = data.get("entries", [])
+        if not entries:
+            return jsonify({"error": "No stale selector entries provided"}), 400
+
+        backup_paths = []
+        if data.get("create_backup", False):
+            for report_path_str in sorted({str(entry.get("report_path", "") or "").strip() for entry in entries if entry.get("report_path")}):
+                report_path = Path(report_path_str)
+                if not report_path.exists():
+                    return jsonify({"error": f"Report path not found: {report_path}"}), 400
+                backup_paths.append(str(report_writer.create_backup(report_path)))
+
+        result = report_writer.cleanup_stale_metadata_selectors(entries=entries)
+        if not result.get("ok"):
+            return jsonify(result), 400
+
+        return jsonify({
+            "result": result,
+            "removed_count": result.get("removed_count", 0),
+            "backup_paths": backup_paths or None,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

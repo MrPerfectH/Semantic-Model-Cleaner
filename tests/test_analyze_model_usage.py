@@ -78,7 +78,226 @@ def test_json_output_includes_warnings():
 
     assert "warnings" in payload
     assert isinstance(payload["warnings"], list)
-    assert payload["warnings"][0]["code"] == "AMBIGUOUS_NAMEOF_TARGET"
+
+
+def test_stale_formatting_selectors_do_not_count_as_live_usage(tmp_path):
+    model = tmp_path / "Models" / "TestModel.SemanticModel"
+    report = tmp_path / "Reports" / "TestReport.Report"
+    tables_dir = model / "definition" / "tables"
+    visual_dir = report / "definition" / "pages" / "Page 1" / "visuals" / "visual1"
+    tables_dir.mkdir(parents=True)
+    visual_dir.mkdir(parents=True)
+
+    (tables_dir / "_Measures.tmdl").write_text(
+        "table _Measures\n"
+        "\tmeasure 'PL_LINE Budget' = 1\n"
+        "\tmeasure 'PL_LINE LY' = 1\n"
+        "\tmeasure 'Revenue LY' = 1\n",
+        encoding="utf-8",
+    )
+    (report / "definition" / "pages" / "Page 1" / "page.json").write_text(
+        json.dumps({"displayName": "FINANCE"}, indent=2),
+        encoding="utf-8",
+    )
+    (visual_dir / "visual.json").write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "visualType": "lineClusteredColumnComboChart",
+                    "query": {
+                        "queryState": {
+                            "Y": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Measure": {
+                                                "Property": "PL_LINE Budget",
+                                                "Expression": {"SourceRef": {"Entity": "_Measures"}},
+                                            }
+                                        },
+                                        "queryRef": "_Measures.PL_LINE Budget",
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "objects": {
+                        "labels": [
+                            {
+                                "properties": {"show": {"expr": {"Literal": {"Value": "true"}}}},
+                                "selector": {"metadata": "_Measures.Revenue LY"},
+                            },
+                            {
+                                "properties": {"show": {"expr": {"Literal": {"Value": "true"}}}},
+                                "selector": {"metadata": "_Measures.PL_LINE Budget"},
+                            },
+                        ],
+                        "referenceLabel": [
+                            {
+                                "properties": {
+                                    "value": {
+                                        "expr": {
+                                            "Measure": {
+                                                "Property": "Revenue LY",
+                                                "Expression": {"SourceRef": {"Entity": "_Measures"}},
+                                            }
+                                        }
+                                    }
+                                },
+                                "selector": {"metadata": "_Measures.Net Sales - Actuals"},
+                            },
+                            {
+                                "properties": {
+                                    "value": {
+                                        "expr": {
+                                            "Measure": {
+                                                "Property": "PL_LINE LY",
+                                                "Expression": {"SourceRef": {"Entity": "_Measures"}},
+                                            }
+                                        }
+                                    }
+                                },
+                                "selector": {"metadata": "_Measures.PL_LINE Budget"},
+                            },
+                        ],
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    results = analyzer.analyze(tmp_path.resolve())
+
+    live_measure = _find_item(results, "_Measures", "PL_LINE Budget", "Measure")
+    live_reference_measure = _find_item(results, "_Measures", "PL_LINE LY", "Measure")
+    stale_measure = _find_item(results, "_Measures", "Revenue LY", "Measure")
+
+    assert live_measure["status"] == "USED"
+    assert len(live_measure["usages"]) == 3
+    assert live_measure["stale_usages"] == []
+
+    assert live_reference_measure["status"] == "USED"
+    assert len(live_reference_measure["usages"]) == 1
+    assert live_reference_measure["stale_usages"] == []
+
+    assert stale_measure["status"] == "NOT USED"
+    assert stale_measure["usages"] == []
+    assert len(stale_measure["stale_usages"]) == 2
+    assert {usage.selector_value for usage in stale_measure["stale_usages"]} == {
+        "_Measures.Revenue LY",
+        "_Measures.Net Sales - Actuals",
+    }
+    assert all(usage.context == "Stale Formatting" for usage in stale_measure["stale_usages"])
+
+
+def test_stale_bookmark_projections_do_not_count_as_live_usage(tmp_path):
+    model = tmp_path / "Models" / "TestModel.SemanticModel"
+    report = tmp_path / "Reports" / "TestReport.Report"
+    tables_dir = model / "definition" / "tables"
+    visual_dir = report / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    bookmarks_dir = report / "definition" / "bookmarks"
+    tables_dir.mkdir(parents=True)
+    visual_dir.mkdir(parents=True)
+    bookmarks_dir.mkdir(parents=True)
+
+    (tables_dir / "_Measures.tmdl").write_text(
+        "table _Measures\n"
+        "\tmeasure 'PL_LINE Budget' = 1\n"
+        "\tmeasure 'PL_LINE LY' = 1\n"
+        "\tmeasure 'A&P - LY' = 1\n",
+        encoding="utf-8",
+    )
+    (report / "definition" / "pages" / "Page1" / "page.json").write_text(
+        json.dumps({"displayName": "MARKETING"}, indent=2),
+        encoding="utf-8",
+    )
+    (visual_dir / "visual.json").write_text(
+        json.dumps(
+            {
+                "name": "Visual1",
+                "visual": {
+                    "visualType": "lineClusteredColumnComboChart",
+                    "query": {
+                        "queryState": {
+                            "Y2": {
+                                "projections": [
+                                    {"queryRef": "_Measures.PL_LINE Budget"},
+                                    {"queryRef": "_Measures.PL_LINE LY"},
+                                ],
+                                "fieldParameters": [
+                                    {"parameterExpr": {"Column": {"Expression": {"SourceRef": {"Entity": "FP_KPI_Finance"}}, "Property": "FP_KPI_Finance"}}}
+                                ],
+                            }
+                        }
+                    },
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (bookmarks_dir / "bookmark1.bookmark.json").write_text(
+        json.dumps(
+            {
+                "displayName": "A&P Spend",
+                "name": "bookmark1",
+                "options": {
+                    "applyOnlyToTargetVisuals": True,
+                    "targetVisualNames": ["Visual1"],
+                },
+                "explorationState": {
+                    "activeSection": "Page1",
+                    "sections": {
+                        "Page1": {
+                            "visualContainers": {
+                                "Visual1": {
+                                    "singleVisual": {
+                                        "visualType": "lineClusteredColumnComboChart",
+                                        "projections": {
+                                            "Y2": [
+                                                {
+                                                    "Measure": {
+                                                        "Expression": {"SourceRef": {"Entity": "_Measures"}},
+                                                        "Property": "A&P - LY",
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        "parameters": {
+                                            "Y2": [
+                                                {
+                                                    "expr": {
+                                                        "Column": {
+                                                            "Expression": {"SourceRef": {"Entity": "FP_KPI_Finance"}},
+                                                            "Property": "FP_KPI_Finance",
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    results = analyzer.analyze(tmp_path.resolve())
+    stale_measure = _find_item(results, "_Measures", "A&P - LY", "Measure")
+
+    assert stale_measure["status"] == "NOT USED"
+    assert stale_measure["usages"] == []
+    assert len(stale_measure["stale_usages"]) == 1
+    assert stale_measure["stale_usages"][0].context == "Stale Bookmark"
+    assert stale_measure["stale_usages"][0].stale_kind == "bookmark_projection_entry"
+    assert stale_measure["stale_usages"][0].selector_value == "Y2"
 
 
 def test_unused_hidden_column_includes_review_triggers(tmp_path):

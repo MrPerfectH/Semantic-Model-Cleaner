@@ -318,6 +318,135 @@ def test_serialize_results_includes_bare_table_dependencies():
     assert payload["tables"][0]["externalDaxDependents"] == ["Measures[Row Count]"]
 
 
+def test_serialize_results_includes_reference_locator_fields():
+    results = {
+        "items": [
+            {
+                "item": analyzer.ModelItem(
+                    item_type="Measure",
+                    table="Sales",
+                    name="Revenue",
+                ),
+                "status": "USED",
+                "usages": [
+                    analyzer.UsageRef(
+                        table="Sales",
+                        name="Revenue",
+                        ref_type="Measure",
+                        report="Executive",
+                        page="Finance",
+                        visual_type="lineClusteredColumnComboChart",
+                        visual_title="Revenue trend",
+                        visual_id="VisualContainer1",
+                        context="Formatting",
+                        source_path="objects.title.properties.text",
+                        artifact_kind="Visual",
+                        artifact_path="definition/pages/Page1/visuals/VisualContainer1/visual.json",
+                    )
+                ],
+                "removal_risk": "Caution",
+            }
+        ],
+        "summary": {
+            "total_measures": 1,
+            "total_columns": 0,
+            "total_calc_columns": 0,
+            "used_in_visuals": 1,
+            "used_relationship": 0,
+            "used_rls": 0,
+            "used_key_column": 0,
+            "used_hierarchy": 0,
+            "used_sort_column": 0,
+            "indirect": 0,
+            "not_used": 0,
+            "total_usage_refs": 1,
+            "models": ["Sales.SemanticModel"],
+            "reports": ["Executive"],
+            "tables": {},
+        },
+        "table_summaries": [],
+        "warnings": [],
+    }
+
+    payload = web_app._serialize_results(results)
+
+    usage_detail = payload["items"][0]["usageDetails"][0]
+    assert usage_detail["visualId"] == "VisualContainer1"
+    assert usage_detail["artifactKind"] == "Visual"
+    assert usage_detail["artifactPath"] == "definition/pages/Page1/visuals/VisualContainer1/visual.json"
+    assert usage_detail["sourcePath"] == "objects.title.properties.text"
+
+    reference = payload["references"][0]
+    assert reference["visualId"] == "VisualContainer1"
+    assert reference["artifactKind"] == "Visual"
+    assert reference["artifactPath"] == "definition/pages/Page1/visuals/VisualContainer1/visual.json"
+    assert reference["sourcePath"] == "objects.title.properties.text"
+
+
+def test_serialize_results_marks_stale_only_usage_and_stale_details():
+    results = {
+        "items": [
+            {
+                "item": analyzer.ModelItem(
+                    item_type="Measure",
+                    table="_Measures",
+                    name="Revenue LY",
+                ),
+                "status": "NOT USED",
+                "usages": [],
+                "stale_usages": [
+                    analyzer.UsageRef(
+                        table="_Measures",
+                        name="Revenue LY",
+                        ref_type="metadata",
+                        report="Linden Report",
+                        page="FINANCE",
+                        visual_type="lineClusteredColumnComboChart",
+                        visual_title="Trend",
+                        visual_id="5d2afbc25ca3d1f2ceb0",
+                        context="Stale Formatting",
+                        source_path="visual.objects.labels.[1].selector.metadata",
+                        artifact_kind="Visual",
+                        artifact_path="definition/pages/c5df0ff5fdb8f21f2629/visuals/5d2afbc25ca3d1f2ceb0/visual.json",
+                        selector_value="_Measures.Revenue LY",
+                        is_stale=True,
+                    )
+                ],
+                "removal_risk": "Safe",
+            }
+        ],
+        "summary": {
+            "total_measures": 1,
+            "total_columns": 0,
+            "total_calc_columns": 0,
+            "used_in_visuals": 0,
+            "used_relationship": 0,
+            "used_rls": 0,
+            "used_key_column": 0,
+            "used_hierarchy": 0,
+            "used_sort_column": 0,
+            "indirect": 0,
+            "not_used": 1,
+            "total_usage_refs": 0,
+            "models": ["Sales.SemanticModel"],
+            "reports": ["Linden Report"],
+            "tables": {},
+        },
+        "table_summaries": [],
+        "warnings": [],
+    }
+
+    payload = web_app._serialize_results(results)
+    item = payload["items"][0]
+    assert item["usageState"] == "Stale only"
+    assert item["issueState"] == "Stale"
+    assert item["deleteSafety"] == "Safe"
+    assert item["staleUsageCount"] == 1
+    assert item["staleUsageDetails"][0]["selectorValue"] == "_Measures.Revenue LY"
+    stale_reference = next(ref for ref in payload["references"] if ref["isStale"])
+    assert stale_reference["context"] == "Stale Formatting"
+
+
 def test_api_analyze_rejects_multiple_models(monkeypatch, tmp_path):
     model_a = tmp_path / "Sales.SemanticModel"
     model_b = tmp_path / "Finance.SemanticModel"
