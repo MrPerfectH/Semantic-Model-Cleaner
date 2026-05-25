@@ -155,6 +155,7 @@ def test_index_renders_packaged_template():
 
     assert response.status_code == 200
     assert b"Semantic Model Cleaner" in response.data
+    assert b"Find connected reports" in response.data
 
 
 def test_index_shows_beta_banner_when_runtime_enabled():
@@ -598,6 +599,80 @@ def test_api_action_accepts_move_to_table_group(monkeypatch, tmp_path):
     assert captured["actions"][0]["table_group"] == "PNL Actuals"
 
 
+def test_api_action_returns_batch_errors_without_partial_write(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = 1\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/action",
+        json={
+            "model_path": str(model_path),
+            "actions": [
+                {"action": "hide", "table": "Sales", "name": "Revenue", "item_type": "Measure"},
+                {"action": "hide", "table": "Sales", "name": "Missing", "item_type": "Measure"},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is False
+    assert len(payload["errors"]) == 2
+    assert payload["results"][0]["skipped"] is True
+    assert "\t\tisHidden" not in sales_file.read_text(encoding="utf-8")
+
+
+def test_api_action_creates_backup_for_each_requested_apply(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = 1\n",
+        encoding="utf-8",
+    )
+    web_app._state["backup_path"] = None
+
+    monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
+
+    client = web_app.app.test_client()
+    first = client.post(
+        "/api/action",
+        json={
+            "model_path": str(model_path),
+            "create_backup": True,
+            "actions": [
+                {"action": "hide", "table": "Sales", "name": "Revenue", "item_type": "Measure"},
+            ],
+        },
+    ).get_json()
+    second = client.post(
+        "/api/action",
+        json={
+            "model_path": str(model_path),
+            "create_backup": True,
+            "actions": [
+                {"action": "unhide", "table": "Sales", "name": "Revenue", "item_type": "Measure"},
+            ],
+        },
+    ).get_json()
+
+    assert first["backup_path"]
+    assert second["backup_path"]
+    assert first["backup_path"] != second["backup_path"]
+
+
 def test_api_migrate_report_measure_promotes_extension_to_model(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
@@ -654,6 +729,229 @@ def test_api_migrate_report_measure_promotes_extension_to_model(monkeypatch, tmp
     assert "\tmeasure 'Report Revenue' = [Existing] + 1" in (tables_dir / "Sales.tmdl").read_text(encoding="utf-8")
     updated_extensions = json.loads((report_def_dir / "reportExtensions.json").read_text(encoding="utf-8"))
     assert updated_extensions["entities"] == []
+
+
+def test_api_move_measure_updates_only_selected_reports(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    selected_report = tmp_path / "Selected.Report"
+    unselected_report = tmp_path / "Unselected.Report"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    (tables_dir / "_Measures.tmdl").write_text(
+        "table _Measures\n"
+        "\tmeasure 'Revenue LY' = 1\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n",
+        encoding="utf-8",
+    )
+
+    for report_path in (selected_report, unselected_report):
+        visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+        visual_dir.mkdir(parents=True)
+        (visual_dir / "visual.json").write_text(
+            json.dumps(
+                {
+                    "visual": {
+                        "query": {
+                            "queryState": {
+                                "Y": {
+                                    "projections": [
+                                        {
+                                            "field": {
+                                                "Measure": {
+                                                    "Expression": {"SourceRef": {"Entity": "_Measures"}},
+                                                    "Property": "Revenue LY",
+                                                }
+                                            },
+                                            "queryRef": "_Measures.Revenue LY",
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
+
+    client = web_app.app.test_client()
+    dry_run = client.post(
+        "/api/measure/move",
+        json={
+            "model_path": str(model_path),
+            "report_paths": [str(selected_report)],
+            "moves": [{"table": "_Measures", "name": "Revenue LY", "target_table": "Sales"}],
+            "dry_run": True,
+        },
+    )
+    assert dry_run.status_code == 200
+    assert dry_run.get_json()["report_result"]["updated_reference_count"] == 2
+    assert "\tmeasure 'Revenue LY'" in (tables_dir / "_Measures.tmdl").read_text(encoding="utf-8")
+
+    response = client.post(
+        "/api/measure/move",
+        json={
+            "model_path": str(model_path),
+            "report_paths": [str(selected_report)],
+            "moves": [{"table": "_Measures", "name": "Revenue LY", "target_table": "Sales"}],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["selected_report_count"] == 1
+    assert "\tmeasure 'Revenue LY'" not in (tables_dir / "_Measures.tmdl").read_text(encoding="utf-8")
+    assert "\tmeasure 'Revenue LY' = 1" in (tables_dir / "Sales.tmdl").read_text(encoding="utf-8")
+
+    selected_visual = json.loads(
+        (selected_report / "definition" / "pages" / "Page1" / "visuals" / "Visual1" / "visual.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    unselected_visual = json.loads(
+        (unselected_report / "definition" / "pages" / "Page1" / "visuals" / "Visual1" / "visual.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    selected_projection = selected_visual["visual"]["query"]["queryState"]["Y"]["projections"][0]
+    unselected_projection = unselected_visual["visual"]["query"]["queryState"]["Y"]["projections"][0]
+    assert selected_projection["field"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "Sales"
+    assert selected_projection["queryRef"] == "Sales.Revenue LY"
+    assert unselected_projection["field"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "_Measures"
+    assert unselected_projection["queryRef"] == "_Measures.Revenue LY"
+
+
+def test_api_rename_model_metadata_updates_selected_reports_only(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    selected_report = tmp_path / "Selected.Report"
+    unselected_report = tmp_path / "Unselected.Report"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n",
+        encoding="utf-8",
+    )
+    (model_path / "definition" / "model.tmdl").write_text(
+        "model Model\n"
+        "ref table Sales\n",
+        encoding="utf-8",
+    )
+
+    for report_path in (selected_report, unselected_report):
+        visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+        visual_dir.mkdir(parents=True)
+        (visual_dir / "visual.json").write_text(
+            json.dumps(
+                {
+                    "visual": {
+                        "query": {
+                            "queryState": {
+                                "Y": {
+                                    "projections": [
+                                        {
+                                            "field": {
+                                                "Measure": {
+                                                    "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                                    "Property": "Revenue",
+                                                }
+                                            },
+                                            "queryRef": "Sales.Revenue",
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/model/rename",
+        json={
+            "model_path": str(model_path),
+            "report_paths": [str(selected_report)],
+            "table_renames": [{"table": "Sales", "target_table": "Fact Sales"}],
+            "measure_renames": [{"table": "Sales", "name": "Revenue", "target_name": "Net Revenue"}],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["selected_report_count"] == 1
+    assert not (tables_dir / "Sales.tmdl").exists()
+    assert "measure 'Net Revenue'" in (tables_dir / "Fact Sales.tmdl").read_text(encoding="utf-8")
+
+    selected_visual = json.loads(
+        (selected_report / "definition" / "pages" / "Page1" / "visuals" / "Visual1" / "visual.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    unselected_visual = json.loads(
+        (unselected_report / "definition" / "pages" / "Page1" / "visuals" / "Visual1" / "visual.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    selected_projection = selected_visual["visual"]["query"]["queryState"]["Y"]["projections"][0]
+    unselected_projection = unselected_visual["visual"]["query"]["queryState"]["Y"]["projections"][0]
+    assert selected_projection["field"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "Fact Sales"
+    assert selected_projection["field"]["Measure"]["Property"] == "Net Revenue"
+    assert selected_projection["queryRef"] == "Fact Sales.Net Revenue"
+    assert unselected_projection["field"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "Sales"
+    assert unselected_projection["field"]["Measure"]["Property"] == "Revenue"
+    assert unselected_projection["queryRef"] == "Sales.Revenue"
+
+
+def test_api_find_connected_reports_scans_definition_variants_recursively(tmp_path):
+    model_path = tmp_path / "Models" / "Sales.SemanticModel"
+    model_path.mkdir(parents=True)
+    reports_root = tmp_path / "Reports"
+    connected = reports_root / "Nested" / "Executive.Report"
+    disconnected = reports_root / "Other.Report"
+    connected.mkdir(parents=True)
+    disconnected.mkdir(parents=True)
+    (connected / "definition-sandbox.pbir").write_text(
+        json.dumps({"datasetReference": {"byPath": {"path": "../Models/Sales.SemanticModel"}}}),
+        encoding="utf-8",
+    )
+    (disconnected / "definition-prod.pbir").write_text(
+        json.dumps({"datasetReference": {"byPath": {"path": "../Models/Finance.SemanticModel"}}}),
+        encoding="utf-8",
+    )
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/reports/find-connected",
+        json={
+            "model_path": str(model_path),
+            "search_root": str(reports_root),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["model_name"] == "Sales"
+    assert payload["scanned_definition_files"] == 2
+    assert [report["path"] for report in payload["reports"]] == [str(connected.resolve())]
+    assert "definition-sandbox.pbir" in payload["reports"][0]["definitionFiles"][0]
 
 
 def test_api_export_json_returns_latest_analysis():
@@ -774,7 +1072,8 @@ def test_index_renders_empty_selection_state():
     assert "function readExplorerDefaultPath(mode) {" in html
     assert "function writeExplorerDefaultPath(mode, path) {" in html
     assert "function updateExplorerDefaultUI() {" in html
-    assert "var savedDefault = readExplorerDefaultPath(mode);" in html
+    assert "var savedDefault = mode === 'folder' ? '' : readExplorerDefaultPath(mode);" in html
+    assert "Search folder is based on the selected model" in html
     assert "$('btnExplorerSetDefault').onclick = function() {" in html
     assert "$('btnExplorerUp').onclick = function() { if (explorerParentPath) browseDir(explorerParentPath); };" in html
 

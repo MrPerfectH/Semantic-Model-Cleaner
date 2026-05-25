@@ -12,10 +12,16 @@ from . import tmdl_writer
 
 def create_backup(report_path: Path) -> Path:
     """Create a timestamped copy of the .Report directory."""
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_dir = report_path.parent / f"{report_path.name}_backup_{ts}"
-    shutil.copytree(report_path, backup_dir)
-    return backup_dir
+    for attempt in range(100):
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        suffix = f"_{attempt}" if attempt else ""
+        backup_dir = report_path.parent / f"{report_path.name}_backup_{ts}{suffix}"
+        try:
+            shutil.copytree(report_path, backup_dir)
+            return backup_dir
+        except FileExistsError:
+            continue
+    raise FileExistsError(f"Could not create a unique backup for {report_path}")
 
 
 def _report_extensions_path(report_path: Path) -> Path:
@@ -139,6 +145,262 @@ def migrate_measure_to_model(
         "table": entity_name,
         "name": measure_name,
         "updated_reference_count": updated_reference_count,
+    }
+
+
+def _split_top_level_query_ref(value: str) -> tuple[str, str] | None:
+    depth_paren = 0
+    depth_bracket = 0
+    for idx, ch in enumerate(value):
+        if ch == "(":
+            depth_paren += 1
+        elif ch == ")":
+            depth_paren = max(0, depth_paren - 1)
+        elif ch == "[":
+            depth_bracket += 1
+        elif ch == "]":
+            depth_bracket = max(0, depth_bracket - 1)
+        elif ch == "." and depth_paren == 0 and depth_bracket == 0:
+            left = value[:idx].strip()
+            right = value[idx + 1:].strip()
+            if left and right:
+                return left, right
+            return None
+    return None
+
+
+def _move_lookup(moves: list[dict]) -> dict[tuple[str, str], str]:
+    lookup = {}
+    for move in moves:
+        table = str(move.get("table", "") or "").strip()
+        name = str(move.get("name", "") or "").strip()
+        target_table = str(move.get("target_table", "") or "").strip()
+        if table and name and target_table:
+            lookup[(table.casefold(), name.casefold())] = target_table
+    return lookup
+
+
+def _reference_lookup(
+    *,
+    moves: list[dict] | None = None,
+    table_renames: list[dict] | None = None,
+    measure_renames: list[dict] | None = None,
+) -> tuple[dict[str, str], dict[tuple[str, str], tuple[str, str]]]:
+    table_lookup: dict[str, str] = {}
+    measure_lookup: dict[tuple[str, str], tuple[str, str]] = {}
+
+    for rename in table_renames or []:
+        table = str(rename.get("table", "") or "").strip()
+        target_table = str(rename.get("target_table", "") or "").strip()
+        if table and target_table:
+            table_lookup[table.casefold()] = target_table
+
+    for move in moves or []:
+        table = str(move.get("table", "") or "").strip()
+        name = str(move.get("name", "") or "").strip()
+        target_table = str(move.get("target_table", "") or "").strip()
+        if table and name and target_table:
+            measure_lookup[(table.casefold(), name.casefold())] = (target_table, name)
+
+    for rename in measure_renames or []:
+        table = str(rename.get("table", "") or "").strip()
+        name = str(rename.get("name", "") or "").strip()
+        target_name = str(rename.get("target_name", "") or "").strip()
+        if table and name and target_name:
+            resolved_table = table_lookup.get(table.casefold(), table)
+            measure_lookup[(table.casefold(), name.casefold())] = (resolved_table, target_name)
+
+    return table_lookup, measure_lookup
+
+
+def _rewrite_query_ref(
+    value: str,
+    table_lookup: dict[str, str],
+    measure_lookup: dict[tuple[str, str], tuple[str, str]],
+) -> tuple[str, bool]:
+    parts = _split_top_level_query_ref(value)
+    if not parts:
+        return value, False
+    table, name = parts
+    target_table = table_lookup.get(table.casefold(), table)
+    target_name = name
+    measure_target = measure_lookup.get((table.casefold(), name.casefold()))
+    if measure_target:
+        target_table, target_name = measure_target
+    if target_table == table and target_name == name:
+        return value, False
+    return f"{target_table}.{target_name}", True
+
+
+def _rewrite_model_refs_in_json(
+    obj,
+    table_lookup: dict[str, str],
+    measure_lookup: dict[tuple[str, str], tuple[str, str]],
+    updates: list[dict],
+    path_parts: list[str] | None = None,
+) -> None:
+    if path_parts is None:
+        path_parts = []
+
+    if isinstance(obj, dict):
+        measure = obj.get("Measure")
+        if isinstance(measure, dict):
+            prop = measure.get("Property")
+            expr = measure.get("Expression", {})
+            source_ref = expr.get("SourceRef", {}) if isinstance(expr, dict) else {}
+            if isinstance(prop, str) and isinstance(source_ref, dict):
+                entity = source_ref.get("Entity")
+                if isinstance(entity, str):
+                    target_table = table_lookup.get(entity.casefold(), entity)
+                    target_name = prop
+                    measure_target = measure_lookup.get((entity.casefold(), prop.casefold()))
+                    if measure_target:
+                        target_table, target_name = measure_target
+                    if target_table != entity:
+                        source_ref["Entity"] = target_table
+                        updates.append({
+                            "path": ".".join(path_parts + ["Measure", "Expression", "SourceRef", "Entity"]),
+                            "from": entity,
+                            "to": target_table,
+                            "kind": "Measure.SourceRef.Entity",
+                        })
+                    if target_name != prop:
+                        measure["Property"] = target_name
+                        updates.append({
+                            "path": ".".join(path_parts + ["Measure", "Property"]),
+                            "from": prop,
+                            "to": target_name,
+                            "kind": "Measure.Property",
+                        })
+
+        for ref_type in ("Column", "HierarchyLevel"):
+            ref = obj.get(ref_type)
+            if not isinstance(ref, dict):
+                continue
+            expr = ref.get("Expression", {})
+            if ref_type == "HierarchyLevel" and isinstance(expr, dict):
+                expr = expr.get("Hierarchy", {}).get("Expression", {})
+            source_ref = expr.get("SourceRef", {}) if isinstance(expr, dict) else {}
+            if isinstance(source_ref, dict):
+                entity = source_ref.get("Entity")
+                target_table = table_lookup.get(str(entity).casefold(), entity) if isinstance(entity, str) else None
+                if isinstance(entity, str) and target_table and target_table != entity:
+                    source_ref["Entity"] = target_table
+                    updates.append({
+                        "path": ".".join(path_parts + [ref_type, "Expression", "SourceRef", "Entity"]),
+                        "from": entity,
+                        "to": target_table,
+                        "kind": f"{ref_type}.SourceRef.Entity",
+                    })
+
+        for key in ("queryRef", "metadata"):
+            value = obj.get(key)
+            if isinstance(value, str):
+                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup)
+                if changed:
+                    obj[key] = new_value
+                    updates.append({
+                        "path": ".".join(path_parts + [key]),
+                        "from": value,
+                        "to": new_value,
+                        "kind": key,
+                    })
+
+        query_refs = obj.get("queryRefs")
+        if isinstance(query_refs, list):
+            for idx, value in enumerate(query_refs):
+                if not isinstance(value, str):
+                    continue
+                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup)
+                if changed:
+                    query_refs[idx] = new_value
+                    updates.append({
+                        "path": ".".join(path_parts + ["queryRefs", f"[{idx}]"]),
+                        "from": value,
+                        "to": new_value,
+                        "kind": "queryRefs",
+                    })
+
+        for key, value in obj.items():
+            _rewrite_model_refs_in_json(value, table_lookup, measure_lookup, updates, path_parts + [key])
+    elif isinstance(obj, list):
+        for idx, item in enumerate(obj):
+            _rewrite_model_refs_in_json(item, table_lookup, measure_lookup, updates, path_parts + [f"[{idx}]"])
+
+
+def rewrite_measure_table_references(
+    *,
+    report_paths: list[Path],
+    moves: list[dict],
+    dry_run: bool = False,
+) -> dict:
+    """Rewrite selected PBIR report JSON references after model measures move tables."""
+    return rewrite_model_reference_changes(report_paths=report_paths, moves=moves, dry_run=dry_run)
+
+
+def rewrite_model_reference_changes(
+    *,
+    report_paths: list[Path],
+    moves: list[dict] | None = None,
+    table_renames: list[dict] | None = None,
+    measure_renames: list[dict] | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Rewrite selected PBIR report JSON references for model moves/renames."""
+    if not report_paths:
+        return {"ok": False, "error": "No selected report paths were provided"}
+    table_lookup, measure_lookup = _reference_lookup(
+        moves=moves,
+        table_renames=table_renames,
+        measure_renames=measure_renames,
+    )
+    if not table_lookup and not measure_lookup:
+        return {"ok": False, "error": "No valid model reference changes were provided"}
+
+    updated_files = []
+    warnings = []
+    total_updates = 0
+
+    for report_path in report_paths:
+        definition_dir = report_path / "definition"
+        if not report_path.exists():
+            warnings.append(f"Report path not found: {report_path}")
+            continue
+        if not definition_dir.exists():
+            warnings.append(f"Report definition folder not found: {definition_dir}")
+            continue
+
+        for json_file in sorted(definition_dir.rglob("*.json")):
+            try:
+                payload = json.loads(json_file.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                warnings.append(f"Skipped invalid JSON file: {json_file}")
+                continue
+
+            updates: list[dict] = []
+            _rewrite_model_refs_in_json(payload, table_lookup, measure_lookup, updates)
+            if not updates:
+                continue
+
+            total_updates += len(updates)
+            updated_files.append({
+                "file": str(json_file),
+                "report": report_path.name,
+                "reference_count": len(updates),
+                "updates": updates,
+            })
+            if not dry_run:
+                json_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    return {
+        "ok": True,
+        "action": "rewrite_model_reference_changes",
+        "dry_run": dry_run,
+        "report_count": len(report_paths),
+        "updated_file_count": len(updated_files),
+        "updated_reference_count": total_updates,
+        "updated_files": updated_files,
+        "warnings": warnings,
     }
 
 
