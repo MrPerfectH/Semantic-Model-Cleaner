@@ -3,6 +3,184 @@ import json
 from semantic_model_cleaner import report_writer
 
 
+def test_create_backup_can_run_twice_quickly(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    definition_dir = report_path / "definition"
+    definition_dir.mkdir(parents=True)
+    (definition_dir / "report.json").write_text("{}", encoding="utf-8")
+
+    first = report_writer.create_backup(report_path)
+    second = report_writer.create_backup(report_path)
+
+    assert first.exists()
+    assert second.exists()
+    assert first != second
+
+
+def test_rewrite_measure_table_references_updates_selected_pbir_files(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    bookmark_dir = report_path / "definition" / "bookmarks"
+    visual_dir.mkdir(parents=True)
+    bookmark_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    bookmark_file = bookmark_dir / "Bookmark1.bookmark.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "query": {
+                        "queryState": {
+                            "Y": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Measure": {
+                                                "Expression": {"SourceRef": {"Entity": "_Measures"}},
+                                                "Property": "Revenue LY",
+                                            }
+                                        },
+                                        "queryRef": "_Measures.Revenue LY",
+                                        "queryRefs": ["_Measures.Revenue LY", "_Measures.Other"],
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "objects": {
+                        "labels": [
+                            {"selector": {"metadata": "_Measures.Revenue LY"}},
+                            {"selector": {"metadata": "_Measures.Other"}},
+                        ]
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    bookmark_file.write_text(
+        json.dumps(
+            {
+                "explorationState": {
+                    "sections": {
+                        "Page1": {
+                            "visualContainers": {
+                                "Visual1": {
+                                    "singleVisual": {
+                                        "projections": {
+                                            "Y": [
+                                                {
+                                                    "Measure": {
+                                                        "Expression": {"SourceRef": {"Entity": "_Measures"}},
+                                                        "Property": "Revenue LY",
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    preview = report_writer.rewrite_measure_table_references(
+        report_paths=[report_path],
+        moves=[{"table": "_Measures", "name": "Revenue LY", "target_table": "Sales"}],
+        dry_run=True,
+    )
+    assert preview["ok"] is True
+    assert preview["updated_reference_count"] == 5
+    assert "_Measures.Revenue LY" in visual_file.read_text(encoding="utf-8")
+
+    result = report_writer.rewrite_measure_table_references(
+        report_paths=[report_path],
+        moves=[{"table": "_Measures", "name": "Revenue LY", "target_table": "Sales"}],
+    )
+
+    assert result["ok"] is True
+    assert result["updated_file_count"] == 2
+    assert result["updated_reference_count"] == 5
+    visual_payload = json.loads(visual_file.read_text(encoding="utf-8"))
+    projection = visual_payload["visual"]["query"]["queryState"]["Y"]["projections"][0]
+    assert projection["field"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "Sales"
+    assert projection["queryRef"] == "Sales.Revenue LY"
+    assert projection["queryRefs"] == ["Sales.Revenue LY", "_Measures.Other"]
+    assert visual_payload["visual"]["objects"]["labels"][0]["selector"]["metadata"] == "Sales.Revenue LY"
+    bookmark_payload = json.loads(bookmark_file.read_text(encoding="utf-8"))
+    bookmark_measure = bookmark_payload["explorationState"]["sections"]["Page1"]["visualContainers"]["Visual1"]["singleVisual"]["projections"]["Y"][0]["Measure"]
+    assert bookmark_measure["Expression"]["SourceRef"]["Entity"] == "Sales"
+
+
+def test_rewrite_model_reference_changes_updates_table_and_measure_names(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "query": {
+                        "queryState": {
+                            "Y": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Measure": {
+                                                "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                                "Property": "Revenue",
+                                            }
+                                        },
+                                        "queryRef": "Sales.Revenue",
+                                    }
+                                ]
+                            },
+                            "Category": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Column": {
+                                                "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                                "Property": "Region",
+                                            }
+                                        },
+                                        "queryRef": "Sales.Region",
+                                    }
+                                ]
+                            },
+                        }
+                    }
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.rewrite_model_reference_changes(
+        report_paths=[report_path],
+        table_renames=[{"table": "Sales", "target_table": "Fact Sales"}],
+        measure_renames=[{"table": "Sales", "name": "Revenue", "target_name": "Net Revenue"}],
+    )
+
+    assert result["ok"] is True
+    payload = json.loads(visual_file.read_text(encoding="utf-8"))
+    y_projection = payload["visual"]["query"]["queryState"]["Y"]["projections"][0]
+    category_projection = payload["visual"]["query"]["queryState"]["Category"]["projections"][0]
+    assert y_projection["field"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "Fact Sales"
+    assert y_projection["field"]["Measure"]["Property"] == "Net Revenue"
+    assert y_projection["queryRef"] == "Fact Sales.Net Revenue"
+    assert category_projection["field"]["Column"]["Expression"]["SourceRef"]["Entity"] == "Fact Sales"
+    assert category_projection["queryRef"] == "Fact Sales.Region"
+
+
 def test_migrate_report_measure_to_model_moves_definition_and_rewrites_refs(tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"

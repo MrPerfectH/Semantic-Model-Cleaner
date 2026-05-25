@@ -357,6 +357,11 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <h3>Reports <span class="count-badge" id="reportCountBadge">0</span></h3>
         <div class="pill-list empty" id="reportPills">No reports selected</div>
         <button class="btn btn-secondary btn-sm" id="btnBrowseReports" title="Add one or more report folders to scan for usage">Browse for reports...</button>
+        <div class="editor-actions">
+          <input type="hidden" id="connectedReportRootInput">
+          <button class="btn btn-secondary btn-sm" id="btnBrowseConnectedReportRoot" title="Choose a folder, then automatically search it and all subfolders for PBIR reports connected to the selected semantic model">Find connected reports...</button>
+        </div>
+        <div class="editor-status" id="connectedReportSearchStatus"></div>
       </div>
       <div class="setup-actions">
         <button class="btn btn-primary" id="btnAnalyze" disabled title="Run the analysis for the selected model and reports">Analyze</button>
@@ -599,6 +604,10 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       <div class="detail-actions">
         <input type="text" class="folder-input" id="detailFolderInput" placeholder="Display folder name..." value="Safe to delete" title="Folder name used by Move to folder">
         <button class="btn btn-warning btn-sm" id="detailBtnMoveToFolder" title="Queue a display folder change for this item">Move to folder</button>
+        <select class="folder-input" id="detailMoveMeasureTableSelect" title="Target table for moving this measure"></select>
+        <button class="btn btn-warning btn-sm" id="detailBtnMoveMeasureTable" title="Move this measure to another table and update selected PBIR reports">Move measure table</button>
+        <input type="text" class="folder-input" id="detailMeasureRenameInput" placeholder="New measure name..." title="New measure name to write to the semantic model and selected PBIR reports">
+        <button class="btn btn-warning btn-sm" id="detailBtnRenameMeasure" title="Rename this measure and update selected PBIR reports">Rename measure</button>
         <button class="btn btn-secondary btn-sm" id="detailBtnHide" title="Queue this item to be hidden">Hide</button>
         <button class="btn btn-secondary btn-sm" id="detailBtnUnhide" title="Queue this item to be visible">Unhide</button>
         <button class="btn btn-danger btn-sm" id="detailBtnDelete" title="Queue this item for deletion; confirmation happens on Apply">Delete</button>
@@ -679,6 +688,8 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       <div class="detail-actions">
         <input type="text" class="folder-input" id="tableDetailGroupInput" placeholder="Table group name..." value="PNL Actuals" title="Tabular Editor table-group annotation value">
         <button class="btn btn-warning btn-sm" id="tableBtnMoveToTableGroup" title="Queue a table-group annotation change for this table">Move to Table Group</button>
+        <input type="text" class="folder-input" id="tableRenameInput" placeholder="New table name..." title="New table name to write to the semantic model and selected PBIR reports">
+        <button class="btn btn-warning btn-sm" id="tableBtnRename" title="Rename this table and update selected PBIR reports">Rename table</button>
         <button class="btn btn-danger btn-sm" id="tableBtnDelete" title="Queue a dependency-aware delete for this table">Queue delete table</button>
         <button class="btn btn-primary btn-sm" id="tableBtnApply" title="Write every queued action to the model files">Apply queued</button>
         <button class="btn btn-secondary btn-sm" id="tableBtnReset" title="Clear every queued action">Reset queued</button>
@@ -797,6 +808,7 @@ var explorerMode = 'model';
 var explorerPicked = new Map();
 var explorerCurrentPath = '';
 var explorerParentPath = '';
+var connectedReportRootModelPath = '';
 var detailItemKey = null;
 var detailTableName = null;
 var filterDefinitions = {
@@ -958,6 +970,12 @@ function writeExplorerDefaultPath(mode, path) {
 }
 
 function updateExplorerDefaultUI() {
+  if (explorerMode === 'folder') {
+    $('btnExplorerSetDefault').disabled = true;
+    $('explorerDefaultSummary').textContent = 'Search folder is based on the selected model';
+    $('btnExplorerSetDefault').textContent = 'Set as default';
+    return;
+  }
   var defaultPath = readExplorerDefaultPath(explorerMode);
   $('btnExplorerSetDefault').disabled = !explorerCurrentPath;
   if (!defaultPath) {
@@ -1804,6 +1822,17 @@ function renderPills() {
   $('modelCountBadge').textContent = chosenModels.length;
   $('reportCountBadge').textContent = chosenReports.length;
   $('btnAnalyze').disabled = !(chosenModels.length === 1 && chosenReports.length);
+  if (chosenModels.length) {
+    var selectedModelPath = chosenModels[0].path;
+    if (connectedReportRootModelPath !== selectedModelPath) {
+      connectedReportRootModelPath = selectedModelPath;
+      $('connectedReportRootInput').value = connectedReportSearchStartPathFromModel(selectedModelPath);
+      $('connectedReportSearchStatus').textContent = 'Connected-report search starts one level above the selected model folder.';
+    }
+  } else {
+    connectedReportRootModelPath = '';
+    $('connectedReportRootInput').value = '';
+  }
 }
 
 function renderPillList(id, items, kind) {
@@ -1879,20 +1908,32 @@ function reportStartPathFromModel(modelPath) {
   return parentDir(parentDir(modelPath));
 }
 
+function connectedReportSearchStartPathFromModel(modelPath) {
+  return reportStartPathFromModel(modelPath);
+}
+
 function explorerStartPath(mode, existing) {
-  var savedDefault = readExplorerDefaultPath(mode);
+  var savedDefault = mode === 'folder' ? '' : readExplorerDefaultPath(mode);
   if (existing.length) return parentDir(existing[0].path);
   if (savedDefault) return savedDefault;
   if (mode === 'report' && chosenModels.length) return reportStartPathFromModel(chosenModels[0].path);
+  if (mode === 'folder') {
+    var currentRoot = $('connectedReportRootInput').value.trim();
+    if (currentRoot) return currentRoot;
+    if (chosenModels.length) return connectedReportSearchStartPathFromModel(chosenModels[0].path);
+  }
   return initialConfig.defaultRoot || '';
 }
 
 function openExplorer(mode) {
   explorerMode = mode;
-  $('explorerTitle').textContent = mode === 'model' ? 'Choose Semantic Model' : 'Browse for Reports';
+  $('explorerTitle').textContent = mode === 'model'
+    ? 'Choose Semantic Model'
+    : (mode === 'folder' ? 'Choose Search Folder' : 'Browse for Reports');
   explorerPicked.clear();
-  var existing = mode === 'model' ? chosenModels : chosenReports;
+  var existing = mode === 'model' ? chosenModels : (mode === 'report' ? chosenReports : []);
   existing.forEach(function(it) { explorerPicked.set(it.path, it); });
+  $('explorerSelectedSummary').textContent = mode === 'folder' ? 'Current folder will be used' : '0 selected';
   $('explorerModal').classList.remove('hidden');
   var startPath = explorerStartPath(mode, existing);
   browseDir(startPath);
@@ -2040,19 +2081,28 @@ function createExplorerRow(entry) {
 }
 
 function updateExplorerSummary() {
-  $('explorerSelectedSummary').textContent = explorerPicked.size + ' selected';
+  $('explorerSelectedSummary').textContent = explorerMode === 'folder'
+    ? 'Current folder will be used'
+    : explorerPicked.size + ' selected';
 }
 
 $('explorerPathInput').onkeydown = function(e) { if (e.key === 'Enter') browseDir($('explorerPathInput').value.trim()); };
 $('btnExplorerUp').onclick = function() { if (explorerParentPath) browseDir(explorerParentPath); };
 $('btnExplorerGo').onclick = function() { browseDir($('explorerPathInput').value.trim()); };
 $('btnExplorerSetDefault').onclick = function() {
+  if (explorerMode === 'folder') return;
   if (!explorerCurrentPath) return;
   writeExplorerDefaultPath(explorerMode, explorerCurrentPath);
   updateExplorerDefaultUI();
 };
 $('btnExplorerCancel').onclick = function() { $('explorerModal').classList.add('hidden'); };
 $('btnExplorerDone').onclick = function() {
+  if (explorerMode === 'folder') {
+    $('connectedReportRootInput').value = explorerCurrentPath || $('explorerPathInput').value.trim();
+    $('explorerModal').classList.add('hidden');
+    findConnectedReports();
+    return;
+  }
   var pickedModels = [];
   var pickedReports = [];
   explorerPicked.forEach(function(item) {
@@ -2069,6 +2119,44 @@ $('btnExplorerDone').onclick = function() {
 
 $('btnBrowseModels').onclick = function() { openExplorer('model'); };
 $('btnBrowseReports').onclick = function() { openExplorer('report'); };
+$('btnBrowseConnectedReportRoot').onclick = function() { openExplorer('folder'); };
+async function findConnectedReports() {
+  if (!chosenModels.length) {
+    alert('Select a semantic model first');
+    return;
+  }
+  var searchRoot = $('connectedReportRootInput').value.trim();
+  if (!searchRoot) {
+    alert('Enter a folder to search');
+    return;
+  }
+  $('connectedReportSearchStatus').textContent = 'Searching definition*.pbir files under ' + searchRoot + '...';
+  $('btnBrowseConnectedReportRoot').disabled = true;
+  try {
+    var data = await apiPost('/api/reports/find-connected', {
+      model_path: chosenModels[0].path,
+      search_root: searchRoot
+    });
+    if (data.error) throw new Error(data.error);
+    var existing = new Map(chosenReports.map(function(report) { return [report.path, report]; }));
+    (data.reports || []).forEach(function(report) {
+      existing.set(report.path, { path: report.path, name: report.name });
+    });
+    chosenReports = Array.from(existing.values()).sort(function(a, b) { return a.name.localeCompare(b.name); });
+    renderPills();
+    $('connectedReportSearchStatus').textContent =
+      'Found ' + (data.reports || []).length + ' connected report(s) from '
+      + (data.scanned_definition_files || 0) + ' definition file(s). Remove report pills to unselect.';
+    if (data.warnings && data.warnings.length) {
+      logEntry('Connected report search warnings: ' + data.warnings.join(' | '), 'warn');
+    }
+  } catch (err) {
+    $('connectedReportSearchStatus').textContent = 'Search failed: ' + (err && err.message ? err.message : err);
+    logEntry('Connected report search failed: ' + (err && err.message ? err.message : err), 'err');
+  } finally {
+    $('btnBrowseConnectedReportRoot').disabled = false;
+  }
+}
 $('btnExportJson').onclick = function() { window.location.href = '/api/export?format=json'; };
 $('btnExportExcel').onclick = function() { window.location.href = '/api/export?format=xlsx'; };
 $('btnAutoSizeColumns').onclick = function() { fitCurrentTableColumnsToScreen(); };
@@ -2904,9 +2992,31 @@ function renderStaleUsageDetails(item) {
   }).join('') + '</ul>';
 }
 
+function updateDetailMoveMeasureTableOptions(item) {
+  var select = $('detailMoveMeasureTableSelect');
+  if (!select) return;
+  var currentValue = select.value;
+  var targetTables = (allTables || [])
+    .map(function(table) { return table.name; })
+    .filter(function(name) { return item && name !== item.table; })
+    .sort(function(a, b) { return a.localeCompare(b); });
+  select.innerHTML = targetTables.length
+    ? targetTables.map(function(name) {
+        var selected = name === currentValue ? ' selected' : '';
+        return '<option value="' + esc(name) + '"' + selected + '>' + esc(name) + '</option>';
+      }).join('')
+    : '<option value="">No target tables</option>';
+}
+
 function setDetailActionAvailability(item) {
   var reportItem = isReportItem(item);
+  var canMoveMeasureTable = !!item && !reportItem && item.type === 'Measure';
+  updateDetailMoveMeasureTableOptions(item);
   $('detailBtnMoveToFolder').disabled = !!reportItem;
+  $('detailBtnMoveMeasureTable').disabled = !canMoveMeasureTable || !$('detailMoveMeasureTableSelect').value;
+  $('detailMoveMeasureTableSelect').disabled = !canMoveMeasureTable;
+  $('detailBtnRenameMeasure').disabled = !canMoveMeasureTable;
+  $('detailMeasureRenameInput').disabled = !canMoveMeasureTable;
   $('detailBtnHide').disabled = !!reportItem;
   $('detailBtnUnhide').disabled = !!reportItem;
   $('detailBtnDelete').disabled = !!reportItem;
@@ -2932,6 +3042,7 @@ function renderItemDetails() {
     $('detailDaxEditor').classList.add('hidden');
     $('detailDaxActions').classList.add('hidden');
     $('detailDaxEditor').value = '';
+    $('detailMeasureRenameInput').value = '';
     $('detailDaxStatus').textContent = '';
     $('detailMSource').innerHTML = '<span class="detail-empty">Nothing selected</span>';
     $('detailReportMeasureInfo').innerHTML = '<span class="detail-empty">Nothing selected</span>';
@@ -2954,6 +3065,7 @@ function renderItemDetails() {
 
   $('detailTitle').textContent = itemRefText(item);
   $('detailMeta').textContent = item.type + ' | Source: ' + sourceSummary(item) + (item.displayFolder ? ' | Folder: ' + item.displayFolder : '') + (item.sortByColumn ? ' | Sorts by: ' + item.sortByColumn : '');
+  $('detailMeasureRenameInput').value = item.type === 'Measure' && !isReportItem(item) ? item.name : '';
   $('detailStatus').innerHTML = usageBadge(item) + '<div class="detail-value" style="margin-top:8px">' + esc(usageHelpText(item)) + '</div>'
     + (item.statusDetail && item.statusDetail !== usageValue(item) ? '<div class="detail-value" style="margin-top:8px"><strong>Raw analyzer status:</strong> ' + esc(item.statusDetail) + '</div>' : '')
     + '<div class="detail-value" style="margin-top:8px"><strong>Issues:</strong> ' + esc(issueValue(item) || 'None') + '</div>';
@@ -3028,6 +3140,9 @@ function renderTableDetails() {
     $('tableDetailItems').innerHTML = '<div class="detail-empty">Select a table from the Tables view.</div>';
     $('tableActionStatus').textContent = 'Select a table to queue delete for all items in that table.';
     $('tableDetailRelationshipList').innerHTML = '<div class="detail-empty">Nothing selected</div>';
+    $('tableRenameInput').value = '';
+    $('tableRenameInput').disabled = true;
+    $('tableBtnRename').disabled = true;
     return;
   }
 
@@ -3039,6 +3154,9 @@ function renderTableDetails() {
   }
 
   $('tableDetailTitle').textContent = table.name;
+  $('tableRenameInput').value = table.name;
+  $('tableRenameInput').disabled = false;
+  $('tableBtnRename').disabled = false;
   $('tableDetailMeta').textContent = 'Table summary with relationship shape, usage patterns, and item-level signals.';
   $('tableDetailUsageStatus').innerHTML = tableStatusBadge(table) + '<div class="detail-value" style="margin-top:8px">' + esc(usageHelpText({ usageState: table.usageState || 'Unused', statusDetail: table.usageStatus || '' })) + '</div>'
     + '<div class="detail-value" style="margin-top:8px"><strong>Issues:</strong> ' + esc(table.issueState || 'None') + '</div>';
@@ -3485,6 +3603,166 @@ $('detailBtnMoveToFolder').onclick = function() {
   }
   queueDetailAction('move_to_folder', { folder: folder });
 };
+$('detailMoveMeasureTableSelect').onchange = function() {
+  var item = getItemByKey(detailItemKey);
+  setDetailActionAvailability(item);
+};
+async function moveCurrentMeasureToTable() {
+  var item = getItemByKey(detailItemKey);
+  if (!item) {
+    alert('Select an item first');
+    return;
+  }
+  if (isReportItem(item) || item.type !== 'Measure') {
+    alert('Select a model measure first');
+    return;
+  }
+  var modelPath = getModelPath();
+  var targetTable = $('detailMoveMeasureTableSelect').value;
+  if (!modelPath) {
+    alert('No model selected');
+    return;
+  }
+  if (!targetTable) {
+    alert('Select a target table');
+    return;
+  }
+  if (!chosenReports.length) {
+    alert('Select the reports you want updated before moving a measure');
+    return;
+  }
+
+  var move = { table: item.table, name: item.name, target_table: targetTable };
+  $('detailActionStatus').textContent = 'Checking selected PBIR reports...';
+  try {
+    var preview = await apiPost('/api/measure/move', {
+      model_path: modelPath,
+      report_paths: chosenReports.map(function(report) { return report.path; }),
+      moves: [move],
+      dry_run: true
+    });
+    if (preview.error || !preview.ok) throw new Error(preview.error || 'Move preview failed');
+    var reportResult = preview.report_result || {};
+    var message = 'Move ' + item.table + '[' + item.name + '] to ' + targetTable + '?\n\n'
+      + 'Selected reports: ' + chosenReports.length + '\n'
+      + 'PBIR files to update: ' + (reportResult.updated_file_count || 0) + '\n'
+      + 'Report references to update: ' + (reportResult.updated_reference_count || 0) + '\n\n'
+      + 'Only the currently selected reports will be updated.';
+    if (!window.confirm(message)) {
+      $('detailActionStatus').textContent = 'Measure move canceled.';
+      return;
+    }
+
+    $('detailActionStatus').textContent = 'Moving measure and updating selected PBIR reports...';
+    var data = await apiPost('/api/measure/move', {
+      model_path: modelPath,
+      report_paths: chosenReports.map(function(report) { return report.path; }),
+      moves: [move],
+      dry_run: false,
+      create_backup: $('applyBackupCheckbox').checked
+    });
+    if (data.error || !data.ok) throw new Error(data.error || 'Move failed');
+    if (data.backup_path) {
+      $('backupBanner').classList.remove('hidden');
+      $('backupPath').textContent = data.backup_path;
+    }
+    if (data.git_warning) {
+      $('gitWarning').classList.remove('hidden');
+      $('gitWarning').textContent = data.git_warning;
+    }
+    var movedRefs = data.report_result ? (data.report_result.updated_reference_count || 0) : 0;
+    logEntry('Moved measure ' + item.table + '[' + item.name + '] to ' + targetTable + ' and updated ' + movedRefs + ' selected-report reference(s)', 'ok');
+    $('detailActionStatus').textContent = 'Moved. Re-analyzing selected reports...';
+    await reAnalyze({});
+    detailItemKey = 'Measure:::' + targetTable + ':::' + item.name;
+    renderItemDetails();
+    $('detailActionStatus').textContent = 'Measure moved successfully.';
+  } catch (err) {
+    $('detailActionStatus').textContent = 'Move failed: ' + (err && err.message ? err.message : err);
+    logEntry('Measure move failed: ' + (err && err.message ? err.message : err), 'err');
+  }
+}
+$('detailBtnMoveMeasureTable').onclick = async function() { await moveCurrentMeasureToTable(); };
+async function renameCurrentMeasure() {
+  var item = getItemByKey(detailItemKey);
+  if (!item) {
+    alert('Select an item first');
+    return;
+  }
+  if (isReportItem(item) || item.type !== 'Measure') {
+    alert('Select a model measure first');
+    return;
+  }
+  var modelPath = getModelPath();
+  var targetName = $('detailMeasureRenameInput').value.trim();
+  if (!modelPath) {
+    alert('No model selected');
+    return;
+  }
+  if (!targetName) {
+    alert('Enter a new measure name');
+    return;
+  }
+  if (targetName === item.name) {
+    alert('Enter a different measure name');
+    return;
+  }
+  if (!chosenReports.length) {
+    alert('Select the reports you want updated before renaming a measure');
+    return;
+  }
+
+  var rename = { table: item.table, name: item.name, target_name: targetName };
+  $('detailActionStatus').textContent = 'Checking selected PBIR reports...';
+  try {
+    var preview = await apiPost('/api/model/rename', {
+      model_path: modelPath,
+      report_paths: chosenReports.map(function(report) { return report.path; }),
+      measure_renames: [rename],
+      dry_run: true
+    });
+    if (preview.error || !preview.ok) throw new Error(preview.error || 'Rename preview failed');
+    var reportResult = preview.report_result || {};
+    var message = 'Rename ' + item.table + '[' + item.name + '] to [' + targetName + ']?\n\n'
+      + 'Selected reports: ' + chosenReports.length + '\n'
+      + 'PBIR files to update: ' + (reportResult.updated_file_count || 0) + '\n'
+      + 'Report references to update: ' + (reportResult.updated_reference_count || 0) + '\n\n'
+      + 'Only the currently selected reports will be updated.';
+    if (!window.confirm(message)) {
+      $('detailActionStatus').textContent = 'Measure rename canceled.';
+      return;
+    }
+
+    $('detailActionStatus').textContent = 'Renaming measure and updating selected PBIR reports...';
+    var data = await apiPost('/api/model/rename', {
+      model_path: modelPath,
+      report_paths: chosenReports.map(function(report) { return report.path; }),
+      measure_renames: [rename],
+      dry_run: false,
+      create_backup: $('applyBackupCheckbox').checked
+    });
+    if (data.error || !data.ok) throw new Error(data.error || 'Rename failed');
+    if (data.backup_path) {
+      $('backupBanner').classList.remove('hidden');
+      $('backupPath').textContent = data.backup_path;
+    }
+    if (data.git_warning) {
+      $('gitWarning').classList.remove('hidden');
+      $('gitWarning').textContent = data.git_warning;
+    }
+    var movedRefs = data.report_result ? (data.report_result.updated_reference_count || 0) : 0;
+    logEntry('Renamed measure ' + item.table + '[' + item.name + '] to [' + targetName + '] and updated ' + movedRefs + ' selected-report reference(s)', 'ok');
+    $('detailActionStatus').textContent = 'Renamed. Re-analyzing selected reports...';
+    await reAnalyze({});
+    detailItemKey = 'Measure:::' + item.table + ':::' + targetName;
+    renderItemDetails();
+    $('detailActionStatus').textContent = 'Measure renamed successfully.';
+  } catch (err) {
+    $('detailActionStatus').textContent = 'Rename failed: ' + (err && err.message ? err.message : err);
+    logEntry('Measure rename failed: ' + (err && err.message ? err.message : err), 'err');
+  }
+}
+$('detailBtnRenameMeasure').onclick = async function() { await renameCurrentMeasure(); };
 $('detailBtnHide').onclick = function() { queueDetailAction('hide'); };
 $('detailBtnUnhide').onclick = function() { queueDetailAction('unhide'); };
 $('detailBtnDelete').onclick = function() { queueDetailAction('delete'); };
@@ -3665,6 +3943,81 @@ $('tableBtnMoveToTableGroup').onclick = function() {
   }
   queueActionsForTables([{ name: detailTableName }], 'move_to_table_group', { table_group: group });
 };
+async function renameCurrentTable() {
+  if (!detailTableName) {
+    alert('Select a table first');
+    return;
+  }
+  var modelPath = getModelPath();
+  var targetTable = $('tableRenameInput').value.trim();
+  if (!modelPath) {
+    alert('No model selected');
+    return;
+  }
+  if (!targetTable) {
+    alert('Enter a new table name');
+    return;
+  }
+  if (targetTable === detailTableName) {
+    alert('Enter a different table name');
+    return;
+  }
+  if (!chosenReports.length) {
+    alert('Select the reports you want updated before renaming a table');
+    return;
+  }
+
+  var rename = { table: detailTableName, target_table: targetTable };
+  $('tableActionStatus').textContent = 'Checking selected PBIR reports...';
+  try {
+    var preview = await apiPost('/api/model/rename', {
+      model_path: modelPath,
+      report_paths: chosenReports.map(function(report) { return report.path; }),
+      table_renames: [rename],
+      dry_run: true
+    });
+    if (preview.error || !preview.ok) throw new Error(preview.error || 'Rename preview failed');
+    var reportResult = preview.report_result || {};
+    var message = 'Rename table ' + detailTableName + ' to ' + targetTable + '?\n\n'
+      + 'Selected reports: ' + chosenReports.length + '\n'
+      + 'PBIR files to update: ' + (reportResult.updated_file_count || 0) + '\n'
+      + 'Report references to update: ' + (reportResult.updated_reference_count || 0) + '\n\n'
+      + 'Only the currently selected reports will be updated.';
+    if (!window.confirm(message)) {
+      $('tableActionStatus').textContent = 'Table rename canceled.';
+      return;
+    }
+
+    $('tableActionStatus').textContent = 'Renaming table and updating selected PBIR reports...';
+    var data = await apiPost('/api/model/rename', {
+      model_path: modelPath,
+      report_paths: chosenReports.map(function(report) { return report.path; }),
+      table_renames: [rename],
+      dry_run: false,
+      create_backup: $('applyBackupCheckbox').checked
+    });
+    if (data.error || !data.ok) throw new Error(data.error || 'Rename failed');
+    if (data.backup_path) {
+      $('backupBanner').classList.remove('hidden');
+      $('backupPath').textContent = data.backup_path;
+    }
+    if (data.git_warning) {
+      $('gitWarning').classList.remove('hidden');
+      $('gitWarning').textContent = data.git_warning;
+    }
+    var movedRefs = data.report_result ? (data.report_result.updated_reference_count || 0) : 0;
+    logEntry('Renamed table ' + detailTableName + ' to ' + targetTable + ' and updated ' + movedRefs + ' selected-report reference(s)', 'ok');
+    $('tableActionStatus').textContent = 'Renamed. Re-analyzing selected reports...';
+    await reAnalyze({});
+    detailTableName = targetTable;
+    renderTableDetails();
+    $('tableActionStatus').textContent = 'Table renamed successfully.';
+  } catch (err) {
+    $('tableActionStatus').textContent = 'Rename failed: ' + (err && err.message ? err.message : err);
+    logEntry('Table rename failed: ' + (err && err.message ? err.message : err), 'err');
+  }
+}
+$('tableBtnRename').onclick = async function() { await renameCurrentTable(); };
 $('tableBtnApply').onclick = async function() { await applyQueuedActions(); };
 $('tableBtnReset').onclick = function() { $('btnReset').click(); };
 

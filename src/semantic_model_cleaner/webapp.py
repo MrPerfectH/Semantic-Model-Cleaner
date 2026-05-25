@@ -763,6 +763,79 @@ def api_discover():
         return jsonify({"error": str(e)}), 500
 
 
+def _candidate_definition_pbir_files(search_root: Path) -> list[Path]:
+    return sorted(
+        path for path in search_root.rglob("*")
+        if path.is_file()
+        and path.suffix.casefold() == ".pbir"
+        and path.name.casefold().startswith("definition")
+    )
+
+
+def _report_root_for_definition_file(definition_file: Path) -> Path | None:
+    for parent in [definition_file.parent, *definition_file.parents]:
+        if parent.name.endswith(".Report"):
+            return parent
+    return None
+
+
+@app.route("/api/reports/find-connected", methods=["POST"])
+def api_find_connected_reports():
+    """Find PBIR reports whose definition*.pbir files mention the selected model name."""
+    try:
+        data = request.get_json(silent=True) or {}
+        model_path_str = data.get("model_path") or (_state["model_paths"][0] if _state["model_paths"] else None)
+        search_root_str = _normalize_browse_path(str(data.get("search_root", "") or ""))
+
+        if not model_path_str:
+            return jsonify({"error": "No model path specified"}), 400
+        model_path = Path(model_path_str)
+        if not model_path.exists():
+            return jsonify({"error": f"Model path not found: {model_path}"}), 400
+        if not search_root_str:
+            return jsonify({"error": "No search folder specified"}), 400
+        search_root = Path(search_root_str).resolve()
+        if not search_root.is_dir():
+            return jsonify({"error": f"Search folder not found: {search_root}"}), 400
+
+        model_name = model_path.name.replace(".SemanticModel", "")
+        needle = model_name.casefold()
+        reports_by_path: dict[Path, dict] = {}
+        scanned_files = 0
+        warnings = []
+
+        for definition_file in _candidate_definition_pbir_files(search_root):
+            scanned_files += 1
+            try:
+                text = definition_file.read_text(encoding="utf-8", errors="ignore")
+            except OSError as exc:
+                warnings.append(f"Skipped {definition_file}: {exc}")
+                continue
+            if needle not in text.casefold():
+                continue
+            report_root = _report_root_for_definition_file(definition_file)
+            if report_root is None:
+                warnings.append(f"Matched {definition_file}, but no parent .Report folder was found")
+                continue
+            reports_by_path.setdefault(report_root.resolve(), {
+                "path": str(report_root.resolve()),
+                "name": analyzer.report_display_name(report_root),
+                "definitionFiles": [],
+            })
+            reports_by_path[report_root.resolve()]["definitionFiles"].append(str(definition_file.resolve()))
+
+        reports = sorted(reports_by_path.values(), key=lambda item: item["name"].casefold())
+        return jsonify({
+            "model_name": model_name,
+            "search_root": str(search_root),
+            "scanned_definition_files": scanned_files,
+            "reports": reports,
+            "warnings": warnings,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/analyze", methods=["POST"])
 def api_analyze():
     """Run analysis and return JSON results."""
@@ -832,7 +905,7 @@ def api_export():
 def api_action():
     """Apply actions (move_to_folder, move_to_table_group, hide, unhide, delete)."""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({"error": "No JSON body"}), 400
 
@@ -852,8 +925,7 @@ def api_action():
         if not model_path.exists():
             return jsonify({"error": f"Model path not found: {model_path}"}), 400
 
-        # Create backup only if requested by user and not already done this session
-        if data.get("create_backup", False) and _state["backup_path"] is None:
+        if data.get("create_backup", False):
             _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
 
         # Git dirty check
@@ -868,9 +940,12 @@ def api_action():
                     return jsonify({"error": f"Missing field '{field}' in action"}), 400
 
         results = tmdl_writer.apply_actions(model_path, actions)
+        ok = all(result.get("ok") for result in results)
 
         return jsonify({
+            "ok": ok,
             "results": results,
+            "errors": [result.get("error") for result in results if result.get("error")],
             "backup_path": _state["backup_path"],
             "git_warning": git_warning,
         })
@@ -902,7 +977,7 @@ def api_dax():
         if not model_path.exists():
             return jsonify({"error": f"Model path not found: {model_path}"}), 400
 
-        if data.get("create_backup", False) and _state["backup_path"] is None:
+        if data.get("create_backup", False):
             _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
 
         git_warning = tmdl_writer.check_git_dirty(model_path)
@@ -952,8 +1027,7 @@ def api_migrate_report_measure():
 
         backup_paths = {}
         if data.get("create_backup", False):
-            if _state["backup_path"] is None:
-                _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
+            _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
             backup_paths["model"] = _state["backup_path"]
             backup_paths["report"] = str(report_writer.create_backup(report_path))
 
@@ -973,6 +1047,183 @@ def api_migrate_report_measure():
             "result": result,
             "backup_path": _state["backup_path"],
             "backup_paths": backup_paths or None,
+            "git_warning": git_warning,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/measure/move", methods=["POST"])
+def api_move_measure_to_table():
+    """Move model measures to another table and rewrite selected PBIR reports."""
+    try:
+        data = request.get_json(silent=True) or {}
+        model_path_str = data.get("model_path") or (_state["model_paths"][0] if _state["model_paths"] else None)
+        moves = data.get("moves") or []
+        report_path_values = data.get("report_paths") or _state["report_paths"]
+        dry_run = bool(data.get("dry_run", False))
+
+        if not model_path_str:
+            return jsonify({"error": "No model path specified"}), 400
+        if not moves:
+            return jsonify({"error": "No measure moves specified"}), 400
+        if not report_path_values:
+            return jsonify({"error": "No selected reports provided"}), 400
+
+        model_path = Path(model_path_str)
+        if not model_path.exists():
+            return jsonify({"error": f"Model path not found: {model_path}"}), 400
+
+        report_paths = [Path(str(value)) for value in report_path_values]
+        for report_path in report_paths:
+            if not report_path.exists():
+                return jsonify({"error": f"Report path not found: {report_path}"}), 400
+
+        model_preview = tmdl_writer.move_measures_to_tables(model_path, moves, dry_run=True)
+        if not model_preview.get("ok"):
+            return jsonify(model_preview), 400
+
+        report_preview = report_writer.rewrite_measure_table_references(
+            report_paths=report_paths,
+            moves=moves,
+            dry_run=True,
+        )
+        if not report_preview.get("ok"):
+            return jsonify(report_preview), 400
+
+        git_warning = tmdl_writer.check_git_dirty(model_path)
+        if dry_run:
+            return jsonify({
+                "ok": True,
+                "dry_run": True,
+                "model_result": model_preview,
+                "report_result": report_preview,
+                "selected_report_count": len(report_paths),
+                "git_warning": git_warning,
+            })
+
+        backup_paths = {"model": None, "reports": []}
+        if data.get("create_backup", False):
+            _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
+            backup_paths["model"] = _state["backup_path"]
+            for report_path in report_paths:
+                backup_paths["reports"].append(str(report_writer.create_backup(report_path)))
+
+        model_result = tmdl_writer.move_measures_to_tables(model_path, moves, dry_run=False)
+        if not model_result.get("ok"):
+            return jsonify(model_result), 400
+
+        report_result = report_writer.rewrite_measure_table_references(
+            report_paths=report_paths,
+            moves=moves,
+            dry_run=False,
+        )
+        if not report_result.get("ok"):
+            return jsonify(report_result), 400
+
+        return jsonify({
+            "ok": True,
+            "dry_run": False,
+            "model_result": model_result,
+            "report_result": report_result,
+            "backup_path": _state["backup_path"],
+            "backup_paths": backup_paths,
+            "selected_report_count": len(report_paths),
+            "git_warning": git_warning,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/model/rename", methods=["POST"])
+def api_rename_model_metadata():
+    """Rename semantic-model tables/measures and rewrite selected PBIR reports."""
+    try:
+        data = request.get_json(silent=True) or {}
+        model_path_str = data.get("model_path") or (_state["model_paths"][0] if _state["model_paths"] else None)
+        table_renames = data.get("table_renames") or []
+        measure_renames = data.get("measure_renames") or []
+        report_path_values = data.get("report_paths") or _state["report_paths"]
+        dry_run = bool(data.get("dry_run", False))
+
+        if not model_path_str:
+            return jsonify({"error": "No model path specified"}), 400
+        if not table_renames and not measure_renames:
+            return jsonify({"error": "No table or measure renames specified"}), 400
+        if not report_path_values:
+            return jsonify({"error": "No selected reports provided"}), 400
+
+        model_path = Path(model_path_str)
+        if not model_path.exists():
+            return jsonify({"error": f"Model path not found: {model_path}"}), 400
+
+        report_paths = [Path(str(value)) for value in report_path_values]
+        for report_path in report_paths:
+            if not report_path.exists():
+                return jsonify({"error": f"Report path not found: {report_path}"}), 400
+
+        model_preview = tmdl_writer.rename_model_metadata(
+            model_path,
+            table_renames=table_renames,
+            measure_renames=measure_renames,
+            dry_run=True,
+        )
+        if not model_preview.get("ok"):
+            return jsonify(model_preview), 400
+
+        report_preview = report_writer.rewrite_model_reference_changes(
+            report_paths=report_paths,
+            table_renames=table_renames,
+            measure_renames=measure_renames,
+            dry_run=True,
+        )
+        if not report_preview.get("ok"):
+            return jsonify(report_preview), 400
+
+        git_warning = tmdl_writer.check_git_dirty(model_path)
+        if dry_run:
+            return jsonify({
+                "ok": True,
+                "dry_run": True,
+                "model_result": model_preview,
+                "report_result": report_preview,
+                "selected_report_count": len(report_paths),
+                "git_warning": git_warning,
+            })
+
+        backup_paths = {"model": None, "reports": []}
+        if data.get("create_backup", False):
+            _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
+            backup_paths["model"] = _state["backup_path"]
+            for report_path in report_paths:
+                backup_paths["reports"].append(str(report_writer.create_backup(report_path)))
+
+        model_result = tmdl_writer.rename_model_metadata(
+            model_path,
+            table_renames=table_renames,
+            measure_renames=measure_renames,
+            dry_run=False,
+        )
+        if not model_result.get("ok"):
+            return jsonify(model_result), 400
+
+        report_result = report_writer.rewrite_model_reference_changes(
+            report_paths=report_paths,
+            table_renames=table_renames,
+            measure_renames=measure_renames,
+            dry_run=False,
+        )
+        if not report_result.get("ok"):
+            return jsonify(report_result), 400
+
+        return jsonify({
+            "ok": True,
+            "dry_run": False,
+            "model_result": model_result,
+            "report_result": report_result,
+            "backup_path": _state["backup_path"],
+            "backup_paths": backup_paths,
+            "selected_report_count": len(report_paths),
             "git_warning": git_warning,
         })
     except Exception as e:

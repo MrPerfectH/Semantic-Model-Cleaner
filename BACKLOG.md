@@ -1,6 +1,6 @@
 # Backlog
 
-Last updated: 2026-03-12
+Last updated: 2026-05-19
 
 ## Highest priority
 
@@ -15,6 +15,9 @@ Last updated: 2026-03-12
 
 ## Near-term
 
+- Add an `Issues` filter/slicer so users can isolate `Broken`, `Stale`, and `Broken + Stale` items without mixing those signals into Usage or Cleanup.
+- Let the main search match issue labels such as `Broken` and `Stale`, in addition to item names and table names.
+- Add an in-app help/legend experience for result interpretation, covering summary cards, filters, status badges, issue states, and cleanup recommendations; include clear definitions for `Usage` vs `Cleanup`, `Used`, `Indirect`, `Stale only`, `Unused`, `Broken`, `Stale`, `Safe`, `Review`, `Blocked`, and `Keep`.
 - Add a dry-run diff preview before applying cleanup actions in the web app.
 - Keep optional backup before cleanup actions, but switch default to off.
 - Export cleanup plans as JSON or Markdown for review before edits are applied.
