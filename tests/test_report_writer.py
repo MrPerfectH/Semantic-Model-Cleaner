@@ -156,8 +156,67 @@ def test_rewrite_model_reference_changes_updates_table_and_measure_names(tmp_pat
                                 ]
                             },
                         }
+                    },
+                    "filterConfig": {
+                        "filters": [
+                            {
+                                "field": {
+                                    "Column": {
+                                        "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                        "Property": "Amount",
+                                    }
+                                },
+                                "filter": {
+                                    "Version": 2,
+                                    "From": [{"Name": "s", "Entity": "Sales", "Type": 0}],
+                                },
+                            }
+                        ]
+                    },
+                    "objects": {
+                        "columns": [
+                            {
+                                "properties": {
+                                    "field": {
+                                        "expr": {
+                                            "Aggregation": {
+                                                "Expression": {
+                                                    "Column": {
+                                                        "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                                        "Property": "Amount",
+                                                    }
+                                                },
+                                                "Function": 0,
+                                            }
+                                        }
+                                    },
+                                    "queryRef": "Sum(Sales.Amount)",
+                                }
+                            }
+                        ]
                     }
                 }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    report_extensions = report_path / "definition" / "reportExtensions.json"
+    report_extensions.write_text(
+        json.dumps(
+            {
+                "entities": [
+                    {
+                        "name": "Sales",
+                        "measures": [
+                            {
+                                "name": "Report Margin",
+                                "expression": "CALCULATE([Revenue], Sales[Amount] > 0)",
+                                "references": {"columns": [{"entity": "Sales", "name": "Amount"}]},
+                            }
+                        ],
+                    }
+                ]
             },
             indent=2,
         ),
@@ -174,11 +233,22 @@ def test_rewrite_model_reference_changes_updates_table_and_measure_names(tmp_pat
     payload = json.loads(visual_file.read_text(encoding="utf-8"))
     y_projection = payload["visual"]["query"]["queryState"]["Y"]["projections"][0]
     category_projection = payload["visual"]["query"]["queryState"]["Category"]["projections"][0]
+    filter_from = payload["visual"]["filterConfig"]["filters"][0]["filter"]["From"][0]
+    column_object = payload["visual"]["objects"]["columns"][0]["properties"]
+    extension_payload = json.loads(report_extensions.read_text(encoding="utf-8"))
+    extension_entity = extension_payload["entities"][0]
+    extension_measure = extension_entity["measures"][0]
     assert y_projection["field"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "Fact Sales"
     assert y_projection["field"]["Measure"]["Property"] == "Net Revenue"
     assert y_projection["queryRef"] == "Fact Sales.Net Revenue"
     assert category_projection["field"]["Column"]["Expression"]["SourceRef"]["Entity"] == "Fact Sales"
     assert category_projection["queryRef"] == "Fact Sales.Region"
+    assert filter_from["Entity"] == "Fact Sales"
+    assert column_object["field"]["expr"]["Aggregation"]["Expression"]["Column"]["Expression"]["SourceRef"]["Entity"] == "Fact Sales"
+    assert column_object["queryRef"] == "Sum(Fact Sales.Amount)"
+    assert extension_entity["name"] == "Fact Sales"
+    assert extension_measure["expression"] == "CALCULATE([Revenue], 'Fact Sales'[Amount] > 0)"
+    assert extension_measure["references"]["columns"][0]["entity"] == "Fact Sales"
 
 
 def test_migrate_report_measure_to_model_moves_definition_and_rewrites_refs(tmp_path):

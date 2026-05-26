@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Item Details Layout Proposals</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <main class="page layout-stack">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Item Details Layout Proposals</h1>
+        <p>Three alternatives for replacing the current block grid.</p>
+      </div>
+      <nav class="proposal-nav">
+        <a href="proposal-01-decision-summary.html">1 Decision Summary</a>
+        <a href="proposal-02-evidence-inspector.html">2 Evidence Inspector</a>
+        <a href="proposal-03-action-workbench.html">3 Action Workbench</a>
+      </nav>
+    </header>
+
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <h2>Recommendation</h2>
+          <p>Use Proposal 1 as the live direction, then borrow pieces from Proposal 2 for deep reference views.</p>
+        </div>
+        <span class="badge is-safe">Recommended</span>
+      </div>
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Version</th>
+            <th>Best For</th>
+            <th>What Changes</th>
+            <th>Expression / M Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1. Decision Summary</td>
+            <td>Default Item Details view</td>
+            <td>Starts with a plain cleanup answer, then shows usage, dependencies, and report evidence in compact rows.</td>
+            <td>Hidden behind two technical-detail buttons.</td>
+          </tr>
+          <tr>
+            <td>2. Evidence Inspector</td>
+            <td>Understanding why an item is blocked or used</td>
+            <td>Uses a left summary rail and a right evidence timeline so the user can scan proofs without tiny cards.</td>
+            <td>One collapsed technical section after the evidence.</td>
+          </tr>
+          <tr>
+            <td>3. Action Workbench</td>
+            <td>Cleanup sessions where users queue actions repeatedly</td>
+            <td>Moves actions into a clear right rail and makes the main area a compact property/reference inspector.</td>
+            <td>Secondary buttons in the action rail.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

@@ -218,6 +218,13 @@ def _rewrite_query_ref(
     table_lookup: dict[str, str],
     measure_lookup: dict[tuple[str, str], tuple[str, str]],
 ) -> tuple[str, bool]:
+    wrapper = re.fullmatch(r"([A-Za-z][A-Za-z0-9_]*)\((.+)\)", value)
+    if wrapper:
+        new_inner, changed = _rewrite_query_ref(wrapper.group(2), table_lookup, measure_lookup)
+        if changed:
+            return f"{wrapper.group(1)}({new_inner})", True
+        return value, False
+
     parts = _split_top_level_query_ref(value)
     if not parts:
         return value, False
@@ -230,6 +237,13 @@ def _rewrite_query_ref(
     if target_table == table and target_name == name:
         return value, False
     return f"{target_table}.{target_name}", True
+
+
+def _rewrite_dax_table_refs(value: str, table_lookup: dict[str, str]) -> tuple[str, bool]:
+    new_value = value
+    for table, target_table in table_lookup.items():
+        new_value, _ = tmdl_writer._rewrite_table_name_in_text(new_value, table, target_table)
+    return new_value, new_value != value
 
 
 def _rewrite_model_refs_in_json(
@@ -304,6 +318,44 @@ def _rewrite_model_refs_in_json(
                         "from": value,
                         "to": new_value,
                         "kind": key,
+                    })
+
+        for entity_key in ("Entity", "entity"):
+            entity = obj.get(entity_key)
+            if isinstance(entity, str):
+                target_table = table_lookup.get(entity.casefold())
+                if target_table and target_table != entity:
+                    obj[entity_key] = target_table
+                    updates.append({
+                        "path": ".".join(path_parts + [entity_key]),
+                        "from": entity,
+                        "to": target_table,
+                        "kind": entity_key,
+                    })
+
+        entity_name = obj.get("name")
+        if isinstance(entity_name, str) and isinstance(obj.get("measures"), list):
+            target_table = table_lookup.get(entity_name.casefold())
+            if target_table and target_table != entity_name:
+                obj["name"] = target_table
+                updates.append({
+                    "path": ".".join(path_parts + ["name"]),
+                    "from": entity_name,
+                    "to": target_table,
+                    "kind": "ReportExtension.EntityName",
+                })
+
+        for dax_key in ("expression",):
+            value = obj.get(dax_key)
+            if isinstance(value, str):
+                new_value, changed = _rewrite_dax_table_refs(value, table_lookup)
+                if changed:
+                    obj[dax_key] = new_value
+                    updates.append({
+                        "path": ".".join(path_parts + [dax_key]),
+                        "from": value,
+                        "to": new_value,
+                        "kind": "DAX.TableRef",
                     })
 
         query_refs = obj.get("queryRefs")

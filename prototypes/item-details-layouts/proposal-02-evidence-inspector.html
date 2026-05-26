@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proposal 2 - Evidence Inspector</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <main class="page layout-stack">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Proposal 2: Evidence Inspector</h1>
+        <p>Best when users need confidence about why something is blocked or used.</p>
+      </div>
+      <nav class="proposal-nav">
+        <a href="proposal-01-decision-summary.html">1 Decision Summary</a>
+        <a class="is-active" href="proposal-02-evidence-inspector.html">2 Evidence Inspector</a>
+        <a href="proposal-03-action-workbench.html">3 Action Workbench</a>
+      </nav>
+    </header>
+
+    <section class="two-column">
+      <aside class="sticky-rail">
+        <div class="rail-box">
+          <div class="rail-title">Selected Item</div>
+          <h2 style="margin:10px 0 4px;font-size:21px">_Measures[Work Orders - Distinct Count]</h2>
+          <div class="item-meta">
+            <span>Measure</span>
+            <span>Folder: Maintenance Work Order</span>
+            <span>Source: Model</span>
+          </div>
+          <div class="status-line" style="margin-top:14px">
+            <span class="badge is-used">Used</span>
+            <span class="badge is-blocked">Blocked</span>
+          </div>
+        </div>
+
+        <div class="rail-box">
+          <div class="rail-title">At a Glance</div>
+          <ul class="rail-list">
+            <li><span>Reports</span><strong>1</strong></li>
+            <li><span>Pages</span><strong>1</strong></li>
+            <li><span>Direct refs</span><strong>3</strong></li>
+            <li><span>Depends on</span><strong>1</strong></li>
+            <li><span>Used by</span><strong>0</strong></li>
+          </ul>
+        </div>
+
+        <div class="rail-box">
+          <div class="rail-title">Actions</div>
+          <div class="inline-actions" style="margin-top:12px">
+            <button class="btn btn-quiet">Move folder</button>
+            <button class="btn btn-quiet">Hide</button>
+            <button class="btn btn-danger">Delete</button>
+          </div>
+          <p class="hint">Delete is blocked until report references are removed or excluded.</p>
+        </div>
+      </aside>
+
+      <section class="layout-stack">
+        <div class="panel">
+          <div class="section-title">
+            <div>
+              <h2>Why This Item Is Blocked</h2>
+              <p>The user sees evidence in priority order, not a wall of equal boxes.</p>
+            </div>
+            <button class="btn btn-primary">Open all references</button>
+          </div>
+          <div class="timeline">
+            <div class="timeline-row">
+              <span class="badge is-blocked">Cleanup</span>
+              <div>
+                <strong>Still used directly or indirectly by selected reports.</strong>
+                <p>This should be treated as blocked. The cleanup action can stay visible, but it needs a reason.</p>
+              </div>
+              <span class="pill">Highest priority</span>
+            </div>
+            <div class="timeline-row">
+              <span class="badge is-used">Report Usage</span>
+              <div>
+                <strong>PMRA_SAP_MasterData_Issues_POC / Maint Plan Master Data Issues / card</strong>
+                <p>Context: Values. Visual ID: 5531a4d50230b240b212. Match type: Measure.</p>
+              </div>
+              <button class="btn btn-outline">Inspect</button>
+            </div>
+            <div class="timeline-row">
+              <span class="badge is-used">Report Usage</span>
+              <div>
+                <strong>PMRA_SAP_MasterData_Issues_POC / Maint Plan Master Data Issues / card</strong>
+                <p>Context: Sort. Same visual, separate report metadata path.</p>
+              </div>
+              <button class="btn btn-outline">Inspect</button>
+            </div>
+            <div class="timeline-row">
+              <span class="badge is-tech">Dependency</span>
+              <div>
+                <strong>Depends on Maintenance Cost (kob1_ksb1)[work_order_id]</strong>
+                <p>This explains the measure calculation without forcing the DAX editor onto the page.</p>
+              </div>
+              <button class="btn btn-outline">Go to item</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="split-section">
+          <div class="list-panel">
+            <header>
+              <strong>Pages Used</strong>
+              <span class="count-pill">1</span>
+            </header>
+            <div class="body">Maint Plan Master Data Issues</div>
+          </div>
+          <div class="list-panel">
+            <header>
+              <strong>Used By</strong>
+              <span class="count-pill">0</span>
+            </header>
+            <div class="body"><span class="muted">No semantic model items depend on this measure.</span></div>
+          </div>
+        </div>
+
+        <div class="tech-disclosure">
+          <div>
+            <strong>Technical details</strong>
+            <p>Open only when the user needs to edit DAX or audit the generated source.</p>
+          </div>
+          <div class="inline-actions">
+            <button class="btn btn-outline">Edit DAX</button>
+            <button class="btn btn-outline">Show M source</button>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

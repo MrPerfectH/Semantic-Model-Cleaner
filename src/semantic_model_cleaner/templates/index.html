@@ -284,6 +284,73 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
 .detail-editor { width: 100%; min-height: 180px; resize: vertical; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 12px; line-height: 1.45; font-family: 'SF Mono', Monaco, Consolas, monospace; color: var(--text); background: #fff; }
 .editor-actions { margin-top: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .editor-status { margin-top: 6px; font-size: 12px; color: var(--text-light); }
+.detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.detail-header-main { min-width: 0; }
+.detail-layout-switcher { display: inline-flex; flex-wrap: wrap; gap: 6px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: #f8fafc; }
+.detail-layout-btn { border: 0; border-radius: 6px; padding: 7px 10px; background: transparent; color: var(--text-light); font-size: 12px; font-weight: 700; cursor: pointer; }
+.detail-layout-btn.active { background: var(--primary); color: #fff; box-shadow: 0 1px 3px rgba(15, 23, 42, .12); }
+.detail-layout { display: none; }
+.detail-layout.active { display: block; }
+.detail-stack { display: grid; gap: 14px; }
+.detail-decision-grid { display: grid; grid-template-columns: minmax(260px, .9fr) minmax(0, 1.5fr) minmax(280px, .85fr); gap: 14px; align-items: stretch; }
+.detail-workbench-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, .75fr); gap: 14px; align-items: start; }
+.detail-inspector-grid { display: grid; grid-template-columns: minmax(260px, .55fr) minmax(0, 1.45fr); gap: 14px; align-items: start; }
+.detail-rail { display: grid; gap: 12px; }
+.detail-sticky { position: sticky; top: 0; }
+.detail-decision-card { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.detail-decision-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.detail-decision-title { font-size: 16px; font-weight: 800; line-height: 1.25; }
+.detail-decision-copy { margin-top: 10px; color: var(--text); line-height: 1.5; }
+.detail-status-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.detail-count-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.detail-count-card { min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.detail-count-card strong { display: block; font-size: 22px; line-height: 1; color: var(--text); }
+.detail-count-card span { display: block; margin-top: 5px; color: var(--text-light); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+.detail-summary-table, .detail-reference-table { width: 100%; border-collapse: collapse; table-layout: auto; }
+.detail-summary-table th, .detail-summary-table td, .detail-reference-table th, .detail-reference-table td { padding: 10px 12px; border-bottom: 1px solid #e8edf5; text-align: left; vertical-align: top; font-size: 13px; line-height: 1.45; }
+.detail-summary-table tr:last-child th, .detail-summary-table tr:last-child td, .detail-reference-table tr:last-child td { border-bottom: 0; }
+.detail-summary-table th { width: 150px; color: var(--text-light); font-size: 11px; text-transform: uppercase; letter-spacing: .35px; }
+.detail-reference-table th { background: #f8fafc; color: var(--text-light); font-size: 11px; text-transform: uppercase; letter-spacing: .35px; }
+.detail-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.detail-section-head h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .3px; color: var(--text-light); }
+.detail-section-head p { margin: 3px 0 0; color: var(--text-light); font-size: 12px; line-height: 1.45; }
+.detail-evidence-list { display: grid; gap: 10px; }
+.detail-evidence-row { display: grid; grid-template-columns: 128px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.detail-evidence-row strong { display: block; }
+.detail-evidence-row p { margin: 4px 0 0; color: var(--text-light); font-size: 12px; line-height: 1.45; }
+.detail-actions-card .detail-actions { align-items: stretch; }
+.detail-action-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.detail-action-field { min-height: 34px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+.detail-actions-card .folder-input { width: 210px; }
+.detail-technical-card { border-style: dashed; background: #fbfdff; }
+.detail-technical-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.detail-technical-body { margin-top: 12px; }
+.detail-view-slot { min-height: 1px; }
+.detail-action-note { margin-top: 8px; color: var(--text-light); font-size: 12px; line-height: 1.45; }
+.detail-list-compact { list-style: none; margin: 0; padding: 0; }
+.detail-list-compact li { padding: 8px 0; border-bottom: 1px solid #eef2f7; font-size: 13px; line-height: 1.45; }
+.detail-list-compact li:last-child { border-bottom: 0; }
+.detail-ref-title { font-weight: 700; }
+.detail-ref-meta { margin-top: 4px; color: var(--text-light); font-size: 12px; }
+.detail-ref-tree { display: grid; gap: 8px; }
+.detail-ref-tree details { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+.detail-ref-tree details[open] { background: #fbfdff; }
+.detail-ref-tree summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; cursor: pointer; font-weight: 700; list-style: none; }
+.detail-ref-tree summary::-webkit-details-marker { display: none; }
+.detail-ref-tree summary::before { content: '\25B8'; color: var(--text-light); font-size: 11px; }
+.detail-ref-tree details[open] > summary::before { content: '\25BE'; }
+.detail-ref-tree .tree-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-ref-tree .tree-label-main { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-ref-tree .tree-label-meta { display: block; margin-top: 2px; color: var(--text-light); font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-ref-tree .tree-count { flex: 0 0 auto; border-radius: 999px; padding: 2px 8px; background: #e2e8f0; color: #475569; font-size: 11px; font-weight: 700; }
+.detail-ref-tree .tree-hint { flex: 0 0 auto; color: var(--primary); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+.detail-ref-tree .tree-body { padding: 0 12px 10px 28px; }
+.detail-ref-tree .tree-body details { margin-top: 8px; }
+.detail-ref-leaf { padding: 8px 0; border-top: 1px solid #eef2f7; font-size: 13px; line-height: 1.45; }
+.detail-ref-leaf:first-child { border-top: 0; }
+.detail-ref-contexts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.detail-ref-paths { margin-top: 6px; color: var(--text-light); font-size: 12px; }
+.detail-ref-paths code { word-break: break-all; }
 .modal-list { max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: #f8fafc; margin-bottom: 12px; }
 .modal-list-title { font-size: 12px; color: var(--text-light); text-transform: uppercase; letter-spacing: .3px; margin-bottom: 6px; }
 .modal-list ul { list-style: none; margin: 0; padding: 0; }
@@ -298,6 +365,10 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
   .view-toolbar { align-items: flex-start; flex-direction: column; }
   .view-tabs { width: 100%; overflow-x: auto; }
   .table-tools { justify-content: flex-start; flex-wrap: wrap; width: 100%; }
+  .detail-header { flex-direction: column; }
+  .detail-decision-grid, .detail-workbench-grid, .detail-inspector-grid { grid-template-columns: 1fr; }
+  .detail-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .detail-evidence-row { grid-template-columns: 1fr; }
   .action-bar { flex-direction: column; align-items: stretch; }
   .action-group-card { width: 100%; }
   .action-cleanup-grid .folder-input { width: 100%; }
@@ -530,44 +601,107 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     </table>
   </div>
   <div class="detail-panel hidden" id="itemDetailSection">
-    <h3 id="detailTitle">Item Details</h3>
-    <div class="detail-meta" id="detailMeta">Select a measure or column to inspect its usage and dependency details.</div>
-    <div class="detail-grid">
-      <div class="detail-card">
-        <h4>Usage</h4>
-        <div class="detail-value" id="detailStatus"></div>
+    <div class="detail-header">
+      <div class="detail-header-main">
+        <h3 id="detailTitle">Item Details</h3>
+        <div class="detail-meta" id="detailMeta">Select a measure or column to inspect its usage and dependency details.</div>
       </div>
-      <div class="detail-card">
-        <h4>Cleanup</h4>
-        <div class="detail-value" id="detailRisk"></div>
-      </div>
-      <div class="detail-card">
-        <h4>Depends On</h4>
-        <div class="detail-value" id="detailDependsOn"></div>
-      </div>
-      <div class="detail-card">
-        <h4>Used By</h4>
-        <div class="detail-value" id="detailUsedBy"></div>
+      <div class="detail-layout-switcher" aria-label="Item details layout">
+        <button type="button" class="detail-layout-btn active" data-detail-layout="decision">Decision</button>
+        <button type="button" class="detail-layout-btn" data-detail-layout="inspector">Evidence</button>
+        <button type="button" class="detail-layout-btn" data-detail-layout="workbench">Actions</button>
       </div>
     </div>
-    <div class="detail-grid">
-      <div class="detail-card">
-        <h4>Indirect Via</h4>
-        <div class="detail-value" id="detailIndirectVia"></div>
+
+    <div class="hidden" id="detailModuleParking"></div>
+
+    <div class="detail-layout active" id="detailLayoutDecision" data-detail-layout-panel="decision">
+      <div class="detail-stack">
+        <div class="detail-decision-grid">
+          <div class="detail-view-slot" id="detailDecisionSummarySlot"></div>
+          <div class="detail-view-slot" id="detailDecisionFactsSlot"></div>
+          <div class="detail-view-slot" id="detailDecisionActionsSlot"></div>
+        </div>
+        <div class="detail-view-slot" id="detailDecisionEvidenceSlot"></div>
+        <div class="detail-view-slot" id="detailDecisionTechSlot"></div>
       </div>
-      <div class="detail-card">
-        <h4>Pages Used</h4>
-        <div class="detail-value" id="detailPagesUsed"></div>
+    </div>
+
+    <div class="detail-layout" id="detailLayoutInspector" data-detail-layout-panel="inspector">
+      <div class="detail-inspector-grid">
+        <div class="detail-rail detail-sticky">
+          <div class="detail-view-slot" id="detailInspectorSummarySlot"></div>
+          <div class="detail-view-slot" id="detailInspectorCountsSlot"></div>
+          <div class="detail-view-slot" id="detailInspectorActionsSlot"></div>
+        </div>
+        <div class="detail-stack">
+          <div class="detail-view-slot" id="detailInspectorEvidenceSlot"></div>
+          <div class="detail-view-slot" id="detailInspectorListsSlot"></div>
+          <div class="detail-view-slot" id="detailInspectorTechSlot"></div>
+        </div>
       </div>
-      <div class="detail-card">
-        <h4>Commented References</h4>
-        <div class="detail-value" id="detailCommentedRefs"></div>
+    </div>
+
+    <div class="detail-layout" id="detailLayoutWorkbench" data-detail-layout-panel="workbench">
+      <div class="detail-workbench-grid">
+        <div class="detail-stack">
+          <div class="detail-view-slot" id="detailWorkbenchFactsSlot"></div>
+          <div class="detail-view-slot" id="detailWorkbenchReferencesSlot"></div>
+          <div class="detail-view-slot" id="detailWorkbenchStaleSlot"></div>
+        </div>
+        <div class="detail-rail detail-sticky">
+          <div class="detail-view-slot" id="detailWorkbenchActionsSlot"></div>
+          <div class="detail-view-slot" id="detailWorkbenchReportMeasureSlot"></div>
+          <div class="detail-view-slot" id="detailWorkbenchTechSlot"></div>
+        </div>
       </div>
-      <div class="detail-card">
-        <h4>Issue Details</h4>
-        <div class="detail-value" id="detailBrokenRefs"></div>
+    </div>
+
+    <div class="detail-card detail-actions-card" id="detailSharedActions">
+      <div class="detail-section-head">
+        <div>
+          <h4>Cleanup Actions</h4>
+          <p id="detailActionHelpText">Select an item to see available actions.</p>
+        </div>
       </div>
-      <div class="detail-card">
+      <div class="detail-actions">
+        <div class="detail-action-group" id="detailFolderActionGroup">
+          <input type="text" class="folder-input detail-action-field" id="detailFolderInput" placeholder="Display folder name..." value="Safe to delete" title="Folder name used by Move to folder">
+          <button class="btn btn-warning btn-sm" id="detailBtnMoveToFolder" title="Queue a display folder change for this item">Move to folder</button>
+        </div>
+        <div class="detail-action-group detail-measure-only-action" id="detailMoveMeasureActionGroup">
+          <select class="folder-input detail-action-field" id="detailMoveMeasureTableSelect" title="Target table for moving this measure"></select>
+          <button class="btn btn-warning btn-sm" id="detailBtnMoveMeasureTable" title="Move this measure to another table and update selected PBIR reports">Move measure table</button>
+        </div>
+        <div class="detail-action-group detail-measure-only-action" id="detailRenameMeasureActionGroup">
+          <input type="text" class="folder-input detail-action-field" id="detailMeasureRenameInput" placeholder="New measure name..." title="New measure name to write to the semantic model and selected PBIR reports">
+          <button class="btn btn-warning btn-sm" id="detailBtnRenameMeasure" title="Rename this measure and update selected PBIR reports">Rename measure</button>
+        </div>
+        <div class="detail-action-group" id="detailVisibilityActionGroup">
+          <button class="btn btn-secondary btn-sm" id="detailBtnHide" title="Queue this item to be hidden">Hide</button>
+          <button class="btn btn-secondary btn-sm" id="detailBtnUnhide" title="Queue this item to be visible">Unhide</button>
+          <button class="btn btn-danger btn-sm" id="detailBtnDelete" title="Queue this item for deletion; confirmation happens on Apply">Delete</button>
+        </div>
+        <div class="detail-action-group">
+          <button class="btn btn-primary btn-sm" id="detailBtnApply" title="Write every queued action to the model files">Apply queued</button>
+          <button class="btn btn-secondary btn-sm" id="detailBtnReset" title="Clear every queued action">Reset queued</button>
+        </div>
+      </div>
+      <div class="detail-action-status" id="detailActionStatus">Select an item to queue actions for it.</div>
+    </div>
+
+    <div class="detail-card detail-technical-card" id="detailTechnicalPanel">
+      <div class="detail-technical-summary">
+        <div>
+          <h4>Technical Details</h4>
+          <div class="detail-action-note" id="detailTechnicalSummary">Expression and Power Query / M source are hidden until needed.</div>
+        </div>
+        <div class="detail-actions">
+          <button class="btn btn-secondary btn-sm" id="detailBtnToggleExpression" type="button">Show Expression</button>
+          <button class="btn btn-secondary btn-sm" id="detailBtnToggleMSource" type="button">Show Power Query / M</button>
+        </div>
+      </div>
+      <div class="detail-technical-body hidden" id="detailExpressionPanel">
         <h4>Expression</h4>
         <div class="detail-value" id="detailExpression"></div>
         <textarea class="detail-editor hidden" id="detailDaxEditor" spellcheck="false"></textarea>
@@ -577,11 +711,12 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         </div>
         <div class="editor-status" id="detailDaxStatus"></div>
       </div>
-      <div class="detail-card">
+      <div class="detail-technical-body hidden" id="detailMSourcePanel">
         <h4>Power Query / M Source</h4>
         <div class="detail-value" id="detailMSource"></div>
       </div>
     </div>
+
     <div class="detail-card hidden" id="detailReportMeasureSection">
       <h4>Report Measure Migration</h4>
       <div class="detail-value" id="detailReportMeasureInfo"></div>
@@ -591,7 +726,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       </div>
       <div class="detail-action-status" id="detailReportMeasureStatus"></div>
     </div>
-    <div class="detail-card">
+    <div class="detail-card" id="detailStaleUsageSection">
       <h4>Stale Report References</h4>
       <div id="detailStaleUsageList"></div>
       <div class="detail-actions" style="margin-top:10px">
@@ -599,36 +734,8 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       </div>
       <div class="detail-action-status" id="detailStaleStatus"></div>
     </div>
-    <div class="detail-card">
-      <h4>Cleanup Actions</h4>
-      <div class="detail-actions">
-        <input type="text" class="folder-input" id="detailFolderInput" placeholder="Display folder name..." value="Safe to delete" title="Folder name used by Move to folder">
-        <button class="btn btn-warning btn-sm" id="detailBtnMoveToFolder" title="Queue a display folder change for this item">Move to folder</button>
-        <select class="folder-input" id="detailMoveMeasureTableSelect" title="Target table for moving this measure"></select>
-        <button class="btn btn-warning btn-sm" id="detailBtnMoveMeasureTable" title="Move this measure to another table and update selected PBIR reports">Move measure table</button>
-        <input type="text" class="folder-input" id="detailMeasureRenameInput" placeholder="New measure name..." title="New measure name to write to the semantic model and selected PBIR reports">
-        <button class="btn btn-warning btn-sm" id="detailBtnRenameMeasure" title="Rename this measure and update selected PBIR reports">Rename measure</button>
-        <button class="btn btn-secondary btn-sm" id="detailBtnHide" title="Queue this item to be hidden">Hide</button>
-        <button class="btn btn-secondary btn-sm" id="detailBtnUnhide" title="Queue this item to be visible">Unhide</button>
-        <button class="btn btn-danger btn-sm" id="detailBtnDelete" title="Queue this item for deletion; confirmation happens on Apply">Delete</button>
-        <button class="btn btn-primary btn-sm" id="detailBtnApply" title="Write every queued action to the model files">Apply queued</button>
-        <button class="btn btn-secondary btn-sm" id="detailBtnReset" title="Clear every queued action">Reset queued</button>
-      </div>
-      <div class="detail-action-status" id="detailActionStatus">Select an item to queue actions for it.</div>
-      <div class="help-panel">
-        <div class="help-title">Item action help</div>
-        <div class="help-grid">
-          <div class="help-item"><strong>Save DAX</strong> Saves only the edited DAX expression for the current item.</div>
-          <div class="help-item"><strong>Move to folder</strong> Queues a display folder change for the selected item.</div>
-          <div class="help-item"><strong>Hide / Unhide</strong> Queues a visibility change for the selected item.</div>
-          <div class="help-item"><strong>Delete</strong> Queues this item for deletion. The actual delete confirmation appears when you apply changes.</div>
-          <div class="help-item"><strong>Apply queued</strong> Writes all currently queued actions to the model files.</div>
-          <div class="help-item"><strong>Reset queued</strong> Clears all queued actions.</div>
-        </div>
-      </div>
-    </div>
-    <div class="detail-card">
-      <h4>Direct Report References</h4>
+    <div class="detail-card" id="detailUsageSection">
+      <h4>Report Reference Tree</h4>
       <div id="detailUsageList"></div>
     </div>
   </div>
@@ -811,6 +918,9 @@ var explorerParentPath = '';
 var connectedReportRootModelPath = '';
 var detailItemKey = null;
 var detailTableName = null;
+var detailLayoutMode = 'decision';
+var detailExpressionOpen = false;
+var detailMSourceOpen = false;
 var filterDefinitions = {
   filterStatus: {
     allLabel: 'All usage',
@@ -2444,6 +2554,17 @@ function switchView(view) {
 document.querySelectorAll('.view-tab').forEach(function(t) {
   t.onclick = function() { switchView(t.dataset.view); };
 });
+document.querySelectorAll('.detail-layout-btn').forEach(function(btn) {
+  btn.onclick = function() { setDetailLayoutMode(btn.dataset.detailLayout); };
+});
+$('detailBtnToggleExpression').onclick = function() {
+  detailExpressionOpen = !detailExpressionOpen;
+  setDetailTechnicalVisibility();
+};
+$('detailBtnToggleMSource').onclick = function() {
+  detailMSourceOpen = !detailMSourceOpen;
+  setDetailTechnicalVisibility();
+};
 
 function applyRefFilters() {
   computeFilteredRefs();
@@ -2883,6 +3004,18 @@ function usageLocatorKey(usage) {
   ].join('||');
 }
 
+function usageLocationKey(usage) {
+  return [
+    usage.report || '',
+    usage.page || '',
+    usage.artifactKind || '',
+    usage.artifactPath || '',
+    usage.visualId || '',
+    usage.visualType || '',
+    usage.visualTitle || '',
+  ].join('||');
+}
+
 function summarizeUsageLocation(usage) {
   var location = [];
   if (usage.report) location.push(usage.report);
@@ -2902,50 +3035,122 @@ function summarizeUsageLocation(usage) {
 }
 
 function renderUsageDetails(item) {
-  if (!item.usageDetails || !item.usageDetails.length) return '<div class="detail-empty">No direct report references recorded.</div>';
-  var grouped = [];
+  if (!item || !item.usageDetails || !item.usageDetails.length) return '<div class="detail-empty">No direct report references recorded.</div>';
+  var reports = [];
   item.usageDetails.forEach(function(usage) {
-    var key = usageLocatorKey(usage);
-    var bucket = grouped.find(function(entry) { return entry.key === key; });
-    if (!bucket) {
-      bucket = {
-        key: key,
+    var reportName = usage.report || 'Report metadata';
+    var report = reports.find(function(entry) { return entry.name === reportName; });
+    if (!report) {
+      report = { name: reportName, count: 0, pages: [] };
+      reports.push(report);
+    }
+    report.count += 1;
+
+    var pageName = usage.page || 'Report-level metadata';
+    var page = report.pages.find(function(entry) { return entry.name === pageName; });
+    if (!page) {
+      page = {
+        name: pageName,
+        count: 0,
+        visuals: [],
+        contextSet: new Set(),
+        contexts: [],
+        visualNameSet: new Set(),
+        visualNames: [],
+      };
+      report.pages.push(page);
+    }
+    page.count += 1;
+
+    var visualName = usage.artifactKind === 'Bookmark'
+      ? 'Bookmark: ' + (usage.visualTitle || usage.visualId || 'Unnamed')
+      : (usage.visualTitle || usage.visualType || usage.artifactKind || 'Metadata');
+    if (usage.context && !page.contextSet.has(usage.context)) {
+      page.contextSet.add(usage.context);
+      page.contexts.push(usage.context);
+    }
+    if (visualName && !page.visualNameSet.has(visualName)) {
+      page.visualNameSet.add(visualName);
+      page.visualNames.push(visualName);
+    }
+    var visualKey = usageLocationKey(usage);
+    var visual = page.visuals.find(function(entry) { return entry.key === visualKey; });
+    if (!visual) {
+      visual = {
+        key: visualKey,
+        name: visualName,
         usage: usage,
+        count: 0,
+        contexts: [],
+        contextSet: new Set(),
         sourcePaths: [],
         sourcePathSet: new Set(),
         refTypes: [],
         refTypeSet: new Set(),
-        count: 0,
       };
-      grouped.push(bucket);
+      page.visuals.push(visual);
     }
-    bucket.count += 1;
-    if (usage.sourcePath && !bucket.sourcePathSet.has(usage.sourcePath)) {
-      bucket.sourcePathSet.add(usage.sourcePath);
-      bucket.sourcePaths.push(usage.sourcePath);
+    visual.count += 1;
+    if (usage.context && !visual.contextSet.has(usage.context)) {
+      visual.contextSet.add(usage.context);
+      visual.contexts.push(usage.context);
     }
-    if (usage.refType && !bucket.refTypeSet.has(usage.refType)) {
-      bucket.refTypeSet.add(usage.refType);
-      bucket.refTypes.push(usage.refType);
+    if (usage.sourcePath && !visual.sourcePathSet.has(usage.sourcePath)) {
+      visual.sourcePathSet.add(usage.sourcePath);
+      visual.sourcePaths.push(usage.sourcePath);
+    }
+    if (usage.refType && !visual.refTypeSet.has(usage.refType)) {
+      visual.refTypeSet.add(usage.refType);
+      visual.refTypes.push(usage.refType);
     }
   });
-  return '<ul class="detail-list">' + grouped.map(function(entry) {
-    var usage = entry.usage;
-    var summary = summarizeUsageLocation(usage);
-    var details = [];
-    if (usage.context) details.push('<div class="detail-subtle"><strong>Context:</strong> ' + esc(usage.context) + '</div>');
-    if (usage.visualType && usage.artifactKind !== 'Bookmark') details.push('<div class="detail-subtle"><strong>Visual:</strong> ' + esc(usage.visualType) + '</div>');
-    if (usage.visualId) details.push('<div class="detail-subtle"><strong>Visual ID:</strong> <code>' + esc(usage.visualId) + '</code></div>');
-    if (usage.artifactPath) details.push('<div class="detail-subtle"><strong>PBIR file:</strong> <code>' + esc(usage.artifactPath) + '</code></div>');
-    if (entry.sourcePaths.length) {
-      details.push('<div class="detail-subtle"><strong>JSON path' + (entry.sourcePaths.length > 1 ? 's' : '') + ':</strong> '
-        + entry.sourcePaths.map(function(path) { return '<code>' + esc(path) + '</code>'; }).join(', ')
-        + '</div>');
-    }
-    if (entry.refTypes.length) details.push('<div class="detail-subtle"><strong>Match type:</strong> ' + esc(entry.refTypes.join(', ')) + '</div>');
-    if (entry.count > 1) details.push('<div class="detail-subtle"><strong>Matches:</strong> ' + esc(String(entry.count)) + '</div>');
-    return '<li><strong>' + esc(summary || 'Report metadata') + '</strong>' + details.join('') + '</li>';
-  }).join('') + '</ul>';
+
+  function countBadge(count, label) {
+    return '<span class="tree-count">' + esc(String(count)) + ' ' + esc(label) + '</span>';
+  }
+
+  function treeLabel(title, meta) {
+    return '<span class="tree-label"><span class="tree-label-main">' + esc(title) + '</span>'
+      + (meta ? '<span class="tree-label-meta">' + esc(meta) + '</span>' : '')
+      + '</span>';
+  }
+
+  function visualHtml(visual) {
+    var usage = visual.usage;
+    var meta = [];
+    if (usage.visualType && usage.artifactKind !== 'Bookmark') meta.push('Visual: ' + usage.visualType);
+    if (usage.visualId) meta.push('Visual ID: ' + usage.visualId);
+    if (visual.refTypes.length) meta.push('Match: ' + visual.refTypes.join(', '));
+    var contexts = visual.contexts.length
+      ? '<div class="detail-ref-contexts">' + visual.contexts.map(function(context) {
+          return '<span class="badge badge-muted">' + esc(context) + '</span>';
+        }).join('') + '</div>'
+      : '';
+    var paths = visual.sourcePaths.length
+      ? '<div class="detail-ref-paths"><strong>JSON path' + (visual.sourcePaths.length > 1 ? 's' : '') + ':</strong> '
+        + visual.sourcePaths.map(function(path) { return '<code>' + esc(path) + '</code>'; }).join(', ')
+        + '</div>'
+      : '';
+    return '<div class="detail-ref-leaf">'
+      + '<div class="detail-ref-title">' + esc(visual.name) + '</div>'
+      + (meta.length ? '<div class="detail-ref-meta">' + esc(meta.join(' | ')) + '</div>' : '')
+      + contexts
+      + paths
+      + (visual.count > 1 ? '<div class="detail-ref-meta">References: ' + esc(String(visual.count)) + '</div>' : '')
+      + '</div>';
+  }
+
+  return '<div class="detail-ref-tree">' + reports.map(function(report) {
+    var reportMeta = report.pages.length + ' page' + (report.pages.length === 1 ? '' : 's');
+    return '<details open><summary>' + treeLabel(report.name, reportMeta) + countBadge(report.count, report.count === 1 ? 'ref' : 'refs') + '</summary>'
+      + '<div class="tree-body">' + report.pages.map(function(page) {
+        var pageMeta = [];
+        if (page.visualNames.length) pageMeta.push(page.visualNames.slice(0, 3).join(', ') + (page.visualNames.length > 3 ? ', ...' : ''));
+        if (page.contexts.length) pageMeta.push('Context: ' + page.contexts.slice(0, 4).join(', ') + (page.contexts.length > 4 ? ', ...' : ''));
+        return '<details><summary>' + treeLabel(page.name, pageMeta.join(' | ')) + countBadge(page.count, page.count === 1 ? 'ref' : 'refs') + '<span class="tree-hint">Details</span></summary>'
+          + '<div class="tree-body">' + page.visuals.map(visualHtml).join('') + '</div></details>';
+      }).join('') + '</div></details>';
+  }).join('') + '</div>';
 }
 
 function renderStaleUsageDetails(item) {
@@ -2992,6 +3197,326 @@ function renderStaleUsageDetails(item) {
   }).join('') + '</ul>';
 }
 
+function uniqueCount(values) {
+  return Array.from(new Set((values || []).filter(Boolean))).length;
+}
+
+function detailCounts(item) {
+  var usageDetails = item && item.usageDetails ? item.usageDetails : [];
+  var reports = uniqueCount(usageDetails.map(function(usage) { return usage.report; }));
+  var pages = item && item.pagesUsed ? item.pagesUsed.length : uniqueCount(usageDetails.map(function(usage) { return usage.page; }));
+  var dependencies = (item && item.dependsOnMeasures ? item.dependsOnMeasures.length : 0)
+    + (item && item.dependsOnColumns ? item.dependsOnColumns.length : 0)
+    + (item && item.dependsOnTables ? item.dependsOnTables.length : 0);
+  return {
+    reports: reports || (item && item.reportCount ? item.reportCount : 0),
+    pages: pages || (item && item.pageCount ? item.pageCount : 0),
+    directRefs: usageDetails.length || (item && item.usageCount ? item.usageCount : 0),
+    dependencies: dependencies,
+    dependents: item && item.usedByItems ? item.usedByItems.length : 0,
+    staleRefs: item && item.staleUsageDetails ? item.staleUsageDetails.length : 0,
+    issues: issueValue(item) ? 1 : 0,
+  };
+}
+
+function detailStatusBadges(item) {
+  return '<div class="detail-status-row">'
+    + usageBadge(item)
+    + deleteSafetyBadge(item)
+    + (issueValue(item) ? issueBadge(item) : '<span class="badge badge-muted">No issues</span>')
+    + (item && item.isHidden ? '<span class="badge badge-muted">Hidden</span>' : '')
+    + '</div>';
+}
+
+function detailDecisionTitle(item) {
+  if (!item) return 'Select an item';
+  if (isReportItem(item)) return item.type === 'Measure' ? 'Report measure can be promoted' : 'Report-level item';
+  var cleanup = deleteSafetyValue(item);
+  if (cleanup === 'Safe') return 'Safe cleanup candidate';
+  if (cleanup === 'Blocked' || cleanup === 'Keep') return 'Do not delete now';
+  if (cleanup === 'Review') return 'Review before cleanup';
+  return 'Cleanup decision';
+}
+
+function detailDecisionCopy(item) {
+  if (!item) return 'Choose a row from Details or All References to inspect usage, dependencies, and cleanup actions.';
+  if (isReportItem(item)) {
+    return item.type === 'Measure'
+      ? 'This measure is defined in report metadata. Standard model cleanup actions are disabled, but it can be promoted into the semantic model.'
+      : 'This item is report-level metadata, so standard model cleanup actions are disabled.';
+  }
+  var cleanup = deleteSafetyValue(item);
+  if (cleanup === 'Safe') return 'No report usage or blocking model dependency was found. This is a low-risk cleanup candidate.';
+  if (cleanup === 'Blocked') return 'This item is still used directly or indirectly. Keep it until the report or model dependencies are resolved.';
+  if (cleanup === 'Keep') return 'This item is required by model metadata. Treat it as retained, even when report usage is not visible.';
+  var triggers = reviewTriggers(item).join('; ');
+  return triggers || cleanupHelpText(cleanup);
+}
+
+function detailCountsHtml(item) {
+  var counts = detailCounts(item);
+  return '<div class="detail-count-grid">'
+    + '<div class="detail-count-card"><strong>' + counts.reports + '</strong><span>Reports</span></div>'
+    + '<div class="detail-count-card"><strong>' + counts.pages + '</strong><span>Pages</span></div>'
+    + '<div class="detail-count-card"><strong>' + counts.directRefs + '</strong><span>Direct refs</span></div>'
+    + '<div class="detail-count-card"><strong>' + (counts.dependencies + counts.dependents) + '</strong><span>Model links</span></div>'
+    + '</div>';
+}
+
+function detailSummaryCardHtml(item) {
+  return '<div class="detail-decision-card">'
+    + '<div class="detail-decision-top"><div class="detail-decision-title">' + esc(detailDecisionTitle(item)) + '</div>' + (item ? deleteSafetyBadge(item) : '') + '</div>'
+    + '<div class="detail-decision-copy">' + esc(detailDecisionCopy(item)) + '</div>'
+    + (item ? detailStatusBadges(item) : '')
+    + '</div>';
+}
+
+function detailFactsTableHtml(item) {
+  if (!item) return '<div class="detail-card"><div class="detail-empty">Select an item from the table.</div></div>';
+  var dependsOn = (item.dependsOnMeasures || []).concat(item.dependsOnColumns || []).concat(item.dependsOnTables || []);
+  var usageText = usageHelpText(item);
+  return '<div class="detail-card">'
+    + '<table class="detail-summary-table"><tbody>'
+    + '<tr><th>Usage</th><td>' + esc(usageText) + '</td></tr>'
+    + '<tr><th>Cleanup</th><td>' + cleanupDetailContent(item) + '</td></tr>'
+    + '<tr><th>Depends On</th><td>' + formatDetailList(dependsOn, { linkItems: true }) + '</td></tr>'
+    + '<tr><th>Used By</th><td>' + formatDetailList(item.usedByItems || [], { linkItems: true }) + '</td></tr>'
+    + '<tr><th>Indirect Via</th><td>' + formatDetailList(item.indirectVia || [], { linkItems: true }) + '</td></tr>'
+    + '<tr><th>Issues</th><td>' + formatBrokenRefDetails(item.brokenDaxRefDetails || [], item.brokenDaxRefs || []) + '</td></tr>'
+    + '</tbody></table></div>';
+}
+
+function detailEvidenceRowHtml(kind, badgeHtml, title, description, actionHtml) {
+  return '<div class="detail-evidence-row">'
+    + '<div>' + badgeHtml + '</div>'
+    + '<div><strong>' + esc(title) + '</strong><p>' + esc(description) + '</p></div>'
+    + '<div>' + (actionHtml || '') + '</div>'
+    + '</div>';
+}
+
+function detailEvidenceHtml(item, mountId) {
+  if (!item) return '<div class="detail-card"><div class="detail-empty">Select an item from the table.</div></div>';
+  var counts = detailCounts(item);
+  var rows = [
+    detailEvidenceRowHtml(
+      'cleanup',
+      deleteSafetyBadge(item),
+      detailDecisionTitle(item),
+      detailDecisionCopy(item),
+      ''
+    ),
+    detailEvidenceRowHtml(
+      'usage',
+      usageBadge(item),
+      counts.directRefs ? counts.directRefs + ' direct report reference(s)' : 'No direct report references',
+      counts.directRefs ? 'Open the reference list below to see report, page, visual, context, and JSON paths.' : 'Selected reports do not reference this item directly.',
+      ''
+    ),
+    detailEvidenceRowHtml(
+      'dependency',
+      '<span class="badge badge-muted">Model</span>',
+      (counts.dependencies + counts.dependents) ? 'Model dependencies found' : 'No model dependency blockers',
+      'Depends on: ' + counts.dependencies + '. Used by: ' + counts.dependents + '.',
+      ''
+    ),
+    detailEvidenceRowHtml(
+      'issues',
+      issueValue(item) ? issueBadge(item) : '<span class="badge badge-muted">No issues</span>',
+      issueValue(item) || 'No issue details',
+      issueHelpText(item),
+      ''
+    )
+  ];
+  return '<div class="detail-card">'
+    + '<div class="detail-section-head"><div><h4>Evidence</h4><p>Signals are ordered by what matters for a cleanup decision.</p></div></div>'
+    + '<div class="detail-evidence-list">' + rows.join('') + '</div>'
+    + '<div class="detail-stack" id="' + esc(mountId || 'detailEvidenceModuleMount') + '" style="margin-top:12px"></div>'
+    + '</div>';
+}
+
+function detailReferenceTableHtml(item) {
+  if (!item || !item.usageDetails || !item.usageDetails.length) return '<div class="detail-empty">No direct report references recorded.</div>';
+  return '<table class="detail-reference-table"><thead><tr>'
+    + '<th>Report / Page</th><th>Visual</th><th>Context</th><th>Path</th>'
+    + '</tr></thead><tbody>'
+    + item.usageDetails.slice(0, 50).map(function(usage) {
+      return '<tr><td><div class="detail-ref-title">' + esc(usage.report || 'Report metadata') + '</div>'
+        + '<div class="detail-ref-meta">' + esc(usage.page || usage.artifactKind || '') + '</div></td>'
+        + '<td>' + esc(usage.visualTitle || usage.visualType || usage.artifactKind || 'Metadata')
+        + (usage.visualId ? '<div class="detail-ref-meta">' + esc(usage.visualId) + '</div>' : '') + '</td>'
+        + '<td>' + esc(usage.context || '') + '</td>'
+        + '<td>' + (usage.sourcePath ? '<code>' + esc(usage.sourcePath) + '</code>' : '<span class="detail-empty">None</span>') + '</td></tr>';
+    }).join('')
+    + '</tbody></table>'
+    + (item.usageDetails.length > 50 ? '<div class="detail-action-note">Showing first 50 direct references.</div>' : '');
+}
+
+function detailInspectorListsHtml(item) {
+  if (!item) return '<div class="detail-card"><div class="detail-empty">Select an item from the table.</div></div>';
+  return '<div class="detail-grid">'
+    + '<div class="detail-card"><h4>Commented References</h4>' + formatDetailList(item.commentedRefs || []) + '</div>'
+    + '<div class="detail-card"><h4>Issue Details</h4>' + formatBrokenRefDetails(item.brokenDaxRefDetails || [], item.brokenDaxRefs || []) + '</div>'
+    + '</div><div class="detail-stack" id="detailInspectorModuleMount" style="margin-top:14px"></div>';
+}
+
+function detailWorkbenchReferencesHtml(item) {
+  return '<div class="detail-card">'
+    + '<div class="detail-section-head"><div><h4>Report Reference Tree</h4><p>Collapsed view keeps reports and pages scannable; expand a page to inspect visuals, contexts, and JSON paths.</p></div></div>'
+    + renderUsageDetails(item)
+    + '</div>';
+}
+
+function detailWorkbenchStaleHtml() {
+  return '<div id="detailWorkbenchStaleMount"></div>';
+}
+
+function parkDetailModules() {
+  var parking = $('detailModuleParking');
+  if (!parking) return;
+  [
+    'detailSharedActions',
+    'detailTechnicalPanel',
+    'detailReportMeasureSection',
+    'detailUsageSection',
+    'detailStaleUsageSection'
+  ].forEach(function(nodeId) {
+    var node = $(nodeId);
+    if (node) parking.appendChild(node);
+  });
+}
+
+function detailActionHelpText(item) {
+  if (!item) return 'Select an item to see available actions.';
+  if (isReportItem(item)) return 'Report-level items cannot use standard model cleanup actions here. Report measures can be promoted to the semantic model.';
+  if (item.type === 'Measure') return 'Measure actions: move folder, move measure table, rename, hide/unhide, delete, and edit DAX from Technical Details.';
+  if (item.type === 'Calculated Column') return 'Calculated column actions: move folder, hide/unhide, delete, and edit DAX from Technical Details. Columns are not moved between tables here.';
+  return 'Column actions: move folder, hide/unhide, delete, and inspect Power Query / M source when available. Columns are not moved between tables here.';
+}
+
+function setDetailTechnicalVisibility() {
+  $('detailExpressionPanel').classList.toggle('hidden', !detailExpressionOpen);
+  $('detailMSourcePanel').classList.toggle('hidden', !detailMSourceOpen);
+  $('detailBtnToggleExpression').textContent = detailExpressionOpen ? 'Hide Expression' : 'Show Expression';
+  $('detailBtnToggleMSource').textContent = detailMSourceOpen ? 'Hide Power Query / M' : 'Show Power Query / M';
+}
+
+function renderDetailTechnical(item) {
+  if (!item) {
+    $('detailExpression').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailDaxEditor').classList.add('hidden');
+    $('detailDaxActions').classList.add('hidden');
+    $('detailDaxEditor').value = '';
+    $('detailDaxStatus').textContent = '';
+    $('detailMSource').innerHTML = '<span class="detail-empty">Nothing selected</span>';
+    $('detailTechnicalSummary').textContent = 'Select an item to inspect technical details.';
+    $('detailBtnToggleExpression').disabled = true;
+    $('detailBtnToggleMSource').disabled = true;
+    setDetailTechnicalVisibility();
+    return;
+  }
+
+  var canEditDax = !isReportItem(item) && (item.type === 'Measure' || item.type === 'Calculated Column');
+  var hasReportDax = isReportItem(item) && item.type === 'Measure';
+  var hasAnyExpression = canEditDax || hasReportDax || !!item.daxExpression;
+  $('detailBtnToggleExpression').disabled = !hasAnyExpression;
+  $('detailBtnToggleMSource').disabled = false;
+  $('detailTechnicalSummary').textContent = canEditDax
+    ? 'DAX editing is available here, but hidden until you choose to open it.'
+    : 'Expression and Power Query / M source are available on demand when the analyzer has them.';
+
+  if (canEditDax) {
+    $('detailExpression').innerHTML = '<div class="detail-value">Editable DAX expression</div>';
+    $('detailDaxEditor').classList.remove('hidden');
+    $('detailDaxActions').classList.remove('hidden');
+    $('detailDaxEditor').value = item.daxExpression || '';
+    $('detailDaxStatus').textContent = '';
+  } else if (hasReportDax) {
+    $('detailExpression').innerHTML = '<div class="detail-value">Report-level DAX expression</div>' + formatCodeBlock(item.daxExpression, 'No DAX expression recorded.');
+    $('detailDaxEditor').classList.add('hidden');
+    $('detailDaxActions').classList.add('hidden');
+    $('detailDaxEditor').value = '';
+    $('detailDaxStatus').textContent = 'Report-level DAX editing is not supported here yet.';
+  } else {
+    $('detailExpression').innerHTML = '<div class="detail-empty">This item does not include a DAX expression block.</div>';
+    $('detailDaxEditor').classList.add('hidden');
+    $('detailDaxActions').classList.add('hidden');
+    $('detailDaxEditor').value = '';
+    $('detailDaxStatus').textContent = '';
+  }
+
+  if (item.type === 'Measure') {
+    $('detailMSource').innerHTML = '<div class="detail-empty">Measures are defined in DAX, not in Power Query / M source.</div>';
+  } else if (isReportItem(item)) {
+    $('detailMSource').innerHTML = '<div class="detail-empty">This item is defined in report metadata, not in Power Query or TMDL.</div>';
+  } else {
+    $('detailMSource').innerHTML = formatCodeBlock(item.mSourceDetails, 'No table-level Power Query / M source details were detected.');
+  }
+  setDetailTechnicalVisibility();
+}
+
+function renderDetailLayoutContent(item) {
+  parkDetailModules();
+  $('detailDecisionSummarySlot').innerHTML = detailSummaryCardHtml(item);
+  $('detailDecisionFactsSlot').innerHTML = detailFactsTableHtml(item);
+  $('detailDecisionActionsSlot').innerHTML = '';
+  $('detailDecisionEvidenceSlot').innerHTML = detailEvidenceHtml(item, 'detailDecisionModuleMount');
+  $('detailDecisionTechSlot').innerHTML = '';
+
+  $('detailInspectorSummarySlot').innerHTML = detailSummaryCardHtml(item);
+  $('detailInspectorCountsSlot').innerHTML = item ? '<div class="detail-card"><h4>At a Glance</h4>' + detailCountsHtml(item) + '</div>' : '';
+  $('detailInspectorActionsSlot').innerHTML = '';
+  $('detailInspectorEvidenceSlot').innerHTML = detailEvidenceHtml(item, 'detailInspectorEvidenceModuleMount');
+  $('detailInspectorListsSlot').innerHTML = detailInspectorListsHtml(item);
+  $('detailInspectorTechSlot').innerHTML = '';
+
+  $('detailWorkbenchFactsSlot').innerHTML = detailFactsTableHtml(item);
+  $('detailWorkbenchReferencesSlot').innerHTML = detailWorkbenchReferencesHtml(item);
+  $('detailWorkbenchStaleSlot').innerHTML = detailWorkbenchStaleHtml();
+  $('detailWorkbenchActionsSlot').innerHTML = '';
+  $('detailWorkbenchReportMeasureSlot').innerHTML = '';
+  $('detailWorkbenchTechSlot').innerHTML = '';
+}
+
+function moveDetailNode(nodeId, targetId) {
+  var node = $(nodeId);
+  var target = $(targetId);
+  if (node && target) target.appendChild(node);
+}
+
+function placeDetailModules() {
+  if (detailLayoutMode === 'inspector') {
+    moveDetailNode('detailSharedActions', 'detailInspectorActionsSlot');
+    moveDetailNode('detailTechnicalPanel', 'detailInspectorTechSlot');
+    moveDetailNode('detailReportMeasureSection', 'detailInspectorModuleMount');
+    moveDetailNode('detailUsageSection', 'detailInspectorModuleMount');
+    moveDetailNode('detailStaleUsageSection', 'detailInspectorModuleMount');
+  } else if (detailLayoutMode === 'workbench') {
+    moveDetailNode('detailSharedActions', 'detailWorkbenchActionsSlot');
+    moveDetailNode('detailReportMeasureSection', 'detailWorkbenchReportMeasureSlot');
+    moveDetailNode('detailTechnicalPanel', 'detailWorkbenchTechSlot');
+    moveDetailNode('detailStaleUsageSection', 'detailWorkbenchStaleMount');
+  } else {
+    moveDetailNode('detailSharedActions', 'detailDecisionActionsSlot');
+    moveDetailNode('detailReportMeasureSection', 'detailDecisionModuleMount');
+    moveDetailNode('detailUsageSection', 'detailDecisionModuleMount');
+    moveDetailNode('detailStaleUsageSection', 'detailDecisionModuleMount');
+    moveDetailNode('detailTechnicalPanel', 'detailDecisionTechSlot');
+  }
+}
+
+function setDetailLayoutMode(mode) {
+  detailLayoutMode = mode || 'decision';
+  document.querySelectorAll('.detail-layout-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.dataset.detailLayout === detailLayoutMode);
+  });
+  document.querySelectorAll('[data-detail-layout-panel]').forEach(function(panel) {
+    panel.classList.toggle('active', panel.dataset.detailLayoutPanel === detailLayoutMode);
+  });
+  renderDetailLayoutContent(getItemByKey(detailItemKey));
+  placeDetailModules();
+  bindDetailLinks($('itemDetailSection'));
+}
+
 function updateDetailMoveMeasureTableOptions(item) {
   var select = $('detailMoveMeasureTableSelect');
   if (!select) return;
@@ -3011,17 +3536,23 @@ function updateDetailMoveMeasureTableOptions(item) {
 function setDetailActionAvailability(item) {
   var reportItem = isReportItem(item);
   var canMoveMeasureTable = !!item && !reportItem && item.type === 'Measure';
+  var hasModelItem = !!item && !reportItem;
   updateDetailMoveMeasureTableOptions(item);
-  $('detailBtnMoveToFolder').disabled = !!reportItem;
+  $('detailBtnMoveToFolder').disabled = !hasModelItem;
   $('detailBtnMoveMeasureTable').disabled = !canMoveMeasureTable || !$('detailMoveMeasureTableSelect').value;
   $('detailMoveMeasureTableSelect').disabled = !canMoveMeasureTable;
   $('detailBtnRenameMeasure').disabled = !canMoveMeasureTable;
   $('detailMeasureRenameInput').disabled = !canMoveMeasureTable;
-  $('detailBtnHide').disabled = !!reportItem;
-  $('detailBtnUnhide').disabled = !!reportItem;
-  $('detailBtnDelete').disabled = !!reportItem;
-  $('detailBtnApply').disabled = !!reportItem;
-  $('detailFolderInput').disabled = !!reportItem;
+  $('detailBtnHide').disabled = !hasModelItem;
+  $('detailBtnUnhide').disabled = !hasModelItem;
+  $('detailBtnDelete').disabled = !hasModelItem;
+  $('detailBtnApply').disabled = !hasModelItem;
+  $('detailFolderInput').disabled = !hasModelItem;
+  $('detailMoveMeasureActionGroup').classList.toggle('hidden', !canMoveMeasureTable);
+  $('detailRenameMeasureActionGroup').classList.toggle('hidden', !canMoveMeasureTable);
+  $('detailFolderActionGroup').classList.toggle('hidden', !item || reportItem);
+  $('detailVisibilityActionGroup').classList.toggle('hidden', !item || reportItem);
+  $('detailActionHelpText').textContent = detailActionHelpText(item);
   $('detailReportMeasureSection').classList.toggle('hidden', !(reportItem && item.type === 'Measure'));
 }
 
@@ -3030,21 +3561,7 @@ function renderItemDetails() {
   if (!detailItemKey) {
     $('detailTitle').textContent = 'Item Details';
     $('detailMeta').textContent = 'Select a measure or column to inspect its usage and dependency details.';
-    $('detailStatus').innerHTML = '<span class="detail-empty">Nothing selected</span>';
-    $('detailRisk').innerHTML = '<span class="detail-empty">Nothing selected</span>';
-    $('detailDependsOn').innerHTML = '<span class="detail-empty">Nothing selected</span>';
-    $('detailUsedBy').innerHTML = '<span class="detail-empty">Nothing selected</span>';
-    $('detailIndirectVia').innerHTML = '<span class="detail-empty">Nothing selected</span>';
-    $('detailPagesUsed').innerHTML = '<span class="detail-empty">Nothing selected</span>';
-    $('detailCommentedRefs').innerHTML = '<span class="detail-empty">Nothing selected</span>';
-    $('detailBrokenRefs').innerHTML = '<span class="detail-empty">Nothing selected</span>';
-    $('detailExpression').innerHTML = '<span class="detail-empty">Nothing selected</span>';
-    $('detailDaxEditor').classList.add('hidden');
-    $('detailDaxActions').classList.add('hidden');
-    $('detailDaxEditor').value = '';
     $('detailMeasureRenameInput').value = '';
-    $('detailDaxStatus').textContent = '';
-    $('detailMSource').innerHTML = '<span class="detail-empty">Nothing selected</span>';
     $('detailReportMeasureInfo').innerHTML = '<span class="detail-empty">Nothing selected</span>';
     $('detailReportMeasureStatus').textContent = '';
     setDetailActionAvailability(null);
@@ -3053,6 +3570,11 @@ function renderItemDetails() {
     $('detailStaleUsageList').innerHTML = '<div class="detail-empty">Select an item from the table.</div>';
     $('detailStaleStatus').textContent = '';
     $('detailBtnCleanStale').disabled = true;
+    detailExpressionOpen = false;
+    detailMSourceOpen = false;
+    renderDetailTechnical(null);
+    renderDetailLayoutContent(null);
+    placeDetailModules();
     return;
   }
 
@@ -3066,41 +3588,7 @@ function renderItemDetails() {
   $('detailTitle').textContent = itemRefText(item);
   $('detailMeta').textContent = item.type + ' | Source: ' + sourceSummary(item) + (item.displayFolder ? ' | Folder: ' + item.displayFolder : '') + (item.sortByColumn ? ' | Sorts by: ' + item.sortByColumn : '');
   $('detailMeasureRenameInput').value = item.type === 'Measure' && !isReportItem(item) ? item.name : '';
-  $('detailStatus').innerHTML = usageBadge(item) + '<div class="detail-value" style="margin-top:8px">' + esc(usageHelpText(item)) + '</div>'
-    + (item.statusDetail && item.statusDetail !== usageValue(item) ? '<div class="detail-value" style="margin-top:8px"><strong>Raw analyzer status:</strong> ' + esc(item.statusDetail) + '</div>' : '')
-    + '<div class="detail-value" style="margin-top:8px"><strong>Issues:</strong> ' + esc(issueValue(item) || 'None') + '</div>';
-  $('detailRisk').innerHTML = cleanupDetailContent(item);
-  $('detailDependsOn').innerHTML = formatDetailList(
-    (item.dependsOnMeasures || []).concat(item.dependsOnColumns || []).concat(item.dependsOnTables || []),
-    { linkItems: true }
-  );
-  $('detailUsedBy').innerHTML = formatDetailList(item.usedByItems || [], { linkItems: true });
-  $('detailIndirectVia').innerHTML = formatDetailList(item.indirectVia || [], { linkItems: true });
-  $('detailPagesUsed').innerHTML = formatDetailList(item.pagesUsed || []);
-  $('detailCommentedRefs').innerHTML = formatDetailList(item.commentedRefs || []);
-  $('detailBrokenRefs').innerHTML = formatBrokenRefDetails(item.brokenDaxRefDetails || [], item.brokenDaxRefs || []);
-  if (!isReportItem(item) && (item.type === 'Measure' || item.type === 'Calculated Column')) {
-    $('detailExpression').innerHTML = '<div class="detail-value">Editable DAX expression</div>';
-    $('detailDaxEditor').classList.remove('hidden');
-    $('detailDaxActions').classList.remove('hidden');
-    $('detailDaxEditor').value = item.daxExpression || '';
-    $('detailDaxStatus').textContent = '';
-    $('detailMSource').innerHTML = '<div class="detail-empty">Power Query / M source details are shown for regular columns when available.</div>';
-  } else if (isReportItem(item) && item.type === 'Measure') {
-    $('detailExpression').innerHTML = '<div class="detail-value">Report-level DAX expression</div>' + formatCodeBlock(item.daxExpression, 'No DAX expression recorded.');
-    $('detailDaxEditor').classList.add('hidden');
-    $('detailDaxActions').classList.add('hidden');
-    $('detailDaxEditor').value = '';
-    $('detailDaxStatus').textContent = 'Report-level DAX editing is not supported here yet.';
-    $('detailMSource').innerHTML = '<div class="detail-empty">This measure is defined in report metadata, not in Power Query or TMDL.</div>';
-  } else {
-    $('detailExpression').innerHTML = '<div class="detail-empty">Regular columns do not include a DAX expression block.</div>';
-    $('detailDaxEditor').classList.add('hidden');
-    $('detailDaxActions').classList.add('hidden');
-    $('detailDaxEditor').value = '';
-    $('detailDaxStatus').textContent = '';
-    $('detailMSource').innerHTML = formatCodeBlock(item.mSourceDetails, 'No table-level Power Query / M source details were detected.');
-  }
+  renderDetailTechnical(item);
   $('detailReportMeasureInfo').innerHTML = isReportItem(item)
     ? '<div class="detail-value">Creates a same-name semantic-model measure in <strong>' + esc(item.table) + '</strong>, then removes the report-level definition so existing references resolve to the model.</div>'
       + '<div class="detail-subtle">This is explicit only. Nothing is migrated unless you click Promote to model.</div>'
@@ -3114,6 +3602,8 @@ function renderItemDetails() {
   $('detailStaleUsageList').innerHTML = renderStaleUsageDetails(item);
   $('detailStaleStatus').textContent = '';
   $('detailBtnCleanStale').disabled = !(item.staleUsageDetails && item.staleUsageDetails.length);
+  renderDetailLayoutContent(item);
+  placeDetailModules();
   bindDetailLinks($('itemDetailSection'));
 }
 
@@ -3327,6 +3817,34 @@ function getReportPathByName(name) {
   var match = chosenReports.find(function(report) { return report.name === name; });
   if (match) return match.path;
   return chosenReports.length === 1 ? chosenReports[0].path : null;
+}
+
+function summarizeReportPreview(reportResult) {
+  reportResult = reportResult || {};
+  var reportNames = new Set();
+  var visualKeys = new Set();
+  (reportResult.updated_files || []).forEach(function(file) {
+    if (file.report) reportNames.add(file.report);
+    var filePath = file.file || '';
+    var visualMatch = filePath.match(/(?:^|\/)pages\/([^/]+)\/visuals\/([^/]+)\/visual\.json$/);
+    if (visualMatch) {
+      visualKeys.add((file.report || '') + '::' + visualMatch[1] + '::' + visualMatch[2]);
+    }
+  });
+  return {
+    affectedReports: reportNames.size,
+    affectedVisuals: visualKeys.size,
+    updatedFiles: reportResult.updated_file_count || (reportResult.updated_files ? reportResult.updated_files.length : 0),
+  };
+}
+
+function reportPreviewMessageLines(reportResult) {
+  var summary = summarizeReportPreview(reportResult);
+  return [
+    'Affected reports: ' + summary.affectedReports,
+    'Affected visuals: ' + summary.affectedVisuals,
+    'PBIR files to update: ' + summary.updatedFiles,
+  ];
 }
 
 function logEntry(msg, cls) {
@@ -3645,8 +4163,7 @@ async function moveCurrentMeasureToTable() {
     var reportResult = preview.report_result || {};
     var message = 'Move ' + item.table + '[' + item.name + '] to ' + targetTable + '?\n\n'
       + 'Selected reports: ' + chosenReports.length + '\n'
-      + 'PBIR files to update: ' + (reportResult.updated_file_count || 0) + '\n'
-      + 'Report references to update: ' + (reportResult.updated_reference_count || 0) + '\n\n'
+      + reportPreviewMessageLines(reportResult).join('\n') + '\n\n'
       + 'Only the currently selected reports will be updated.';
     if (!window.confirm(message)) {
       $('detailActionStatus').textContent = 'Measure move canceled.';
@@ -3725,8 +4242,7 @@ async function renameCurrentMeasure() {
     var reportResult = preview.report_result || {};
     var message = 'Rename ' + item.table + '[' + item.name + '] to [' + targetName + ']?\n\n'
       + 'Selected reports: ' + chosenReports.length + '\n'
-      + 'PBIR files to update: ' + (reportResult.updated_file_count || 0) + '\n'
-      + 'Report references to update: ' + (reportResult.updated_reference_count || 0) + '\n\n'
+      + reportPreviewMessageLines(reportResult).join('\n') + '\n\n'
       + 'Only the currently selected reports will be updated.';
     if (!window.confirm(message)) {
       $('detailActionStatus').textContent = 'Measure rename canceled.';
@@ -3980,8 +4496,7 @@ async function renameCurrentTable() {
     var reportResult = preview.report_result || {};
     var message = 'Rename table ' + detailTableName + ' to ' + targetTable + '?\n\n'
       + 'Selected reports: ' + chosenReports.length + '\n'
-      + 'PBIR files to update: ' + (reportResult.updated_file_count || 0) + '\n'
-      + 'Report references to update: ' + (reportResult.updated_reference_count || 0) + '\n\n'
+      + reportPreviewMessageLines(reportResult).join('\n') + '\n\n'
       + 'Only the currently selected reports will be updated.';
     if (!window.confirm(message)) {
       $('tableActionStatus').textContent = 'Table rename canceled.';
