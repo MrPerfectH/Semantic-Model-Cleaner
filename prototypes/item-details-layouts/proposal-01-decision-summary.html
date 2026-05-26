@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proposal 1 - Decision Summary</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <main class="page layout-stack">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Proposal 1: Decision Summary</h1>
+        <p>Best default. Answer first, evidence second, technical source on demand.</p>
+      </div>
+      <nav class="proposal-nav">
+        <a class="is-active" href="proposal-01-decision-summary.html">1 Decision Summary</a>
+        <a href="proposal-02-evidence-inspector.html">2 Evidence Inspector</a>
+        <a href="proposal-03-action-workbench.html">3 Action Workbench</a>
+      </nav>
+    </header>
+
+    <section class="panel">
+      <div class="item-header">
+        <div class="item-title">
+          <h2>Maintenance Cost (kob1_ksb1)[legacy_functional_loc_key]</h2>
+          <div class="item-meta">
+            <span>Column</span>
+            <span>Source: Model</span>
+            <span>Table: Maintenance Cost (kob1_ksb1)</span>
+            <span>Hidden: No</span>
+          </div>
+        </div>
+        <div class="primary-actions">
+          <button class="btn btn-outline">Show DAX</button>
+          <button class="btn btn-outline">Show M source</button>
+          <button class="btn btn-primary">Apply queued</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="decision-band">
+      <div class="decision-panel">
+        <div class="decision-answer">
+          <strong>Safe cleanup candidate</strong>
+          <span class="badge is-safe">Safe</span>
+        </div>
+        <p class="decision-copy">
+          No report usage and no blocking model dependency were found. This is the first thing the user needs to know.
+        </p>
+        <div class="status-line" style="margin-top:12px">
+          <span class="badge is-unused">Unused</span>
+          <span class="pill">No issues</span>
+          <span class="pill">0 dependents</span>
+        </div>
+      </div>
+
+      <div class="surface">
+        <table class="summary-table">
+          <tbody>
+            <tr>
+              <th>Usage</th>
+              <td>No direct report usage or indirect model dependency was found. Raw analyzer status: NOT USED.</td>
+            </tr>
+            <tr>
+              <th>Depends On</th>
+              <td><span class="muted">None recorded</span></td>
+            </tr>
+            <tr>
+              <th>Used By</th>
+              <td><span class="muted">None recorded</span></td>
+            </tr>
+            <tr>
+              <th>Pages</th>
+              <td><span class="muted">No report pages reference this item.</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="decision-panel">
+        <div class="mini-title">Cleanup Actions</div>
+        <div class="field-row">
+          <label>Folder</label>
+          <input value="Safe to delete">
+        </div>
+        <div class="inline-actions" style="margin-top:12px">
+          <button class="btn btn-warning">Move to folder</button>
+          <button class="btn btn-quiet">Hide</button>
+          <button class="btn btn-danger">Delete</button>
+        </div>
+        <p class="hint">No queued action for this item.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <h2>Evidence</h2>
+          <p>Replace the small blocks with rows that explain the result.</p>
+        </div>
+        <div class="count-strip" style="width:440px">
+          <div class="count-cell"><strong>0</strong><span>Reports</span></div>
+          <div class="count-cell"><strong>0</strong><span>Pages</span></div>
+          <div class="count-cell"><strong>0</strong><span>Dependencies</span></div>
+          <div class="count-cell"><strong>0</strong><span>Issues</span></div>
+        </div>
+      </div>
+      <table class="evidence-table">
+        <thead>
+          <tr>
+            <th>Evidence Type</th>
+            <th>Result</th>
+            <th>User Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Direct report references</td>
+            <td><span class="muted">None recorded</span></td>
+            <td>Selected PBIR reports do not currently use this field.</td>
+          </tr>
+          <tr>
+            <td>Indirect via</td>
+            <td><span class="muted">None recorded</span></td>
+            <td>No report-visible measure chain reaches this field.</td>
+          </tr>
+          <tr>
+            <td>Commented references</td>
+            <td><span class="muted">None recorded</span></td>
+            <td>No old/commented DAX mentions require review.</td>
+          </tr>
+          <tr>
+            <td>Stale report references</td>
+            <td><span class="muted">None recorded</span></td>
+            <td>No stale formatting selectors need cleaning.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="tech-disclosure">
+      <div>
+        <strong>Technical source is hidden by default</strong>
+        <p>DAX and Power Query are available when needed, but they should not dominate the cleanup decision.</p>
+      </div>
+      <div class="inline-actions">
+        <button class="btn btn-outline">Show Expression</button>
+        <button class="btn btn-outline">Show Power Query / M</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -246,6 +246,7 @@ def test_rename_table_updates_file_declaration_model_relationships_and_dax(tmp_p
     sales_file = tables_dir / "Sales.tmdl"
     sales_file.write_text(
         "table Sales\n"
+        "\tdefaultDetailRowsDefinition = Sales\n"
         "\tcolumn Amount\n"
         "\t\tdataType: decimal\n"
         "\tmeasure Revenue = SUM(Sales[Amount])\n",
@@ -271,6 +272,7 @@ def test_rename_table_updates_file_declaration_model_relationships_and_dax(tmp_p
     assert renamed_file.exists()
     content = renamed_file.read_text(encoding="utf-8")
     assert "table 'Fact Sales'" in content
+    assert "\tdefaultDetailRowsDefinition = 'Fact Sales'" in content
     assert "SUM('Fact Sales'[Amount])" in content
     assert "ref table 'Fact Sales'" in (model_path / "definition" / "model.tmdl").read_text(encoding="utf-8")
     assert "\tfromColumn: 'Fact Sales'.Amount" in (model_path / "definition" / "relationships.tmdl").read_text(

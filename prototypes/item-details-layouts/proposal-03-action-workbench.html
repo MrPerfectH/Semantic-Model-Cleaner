@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proposal 3 - Action Workbench</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <main class="page layout-stack">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Proposal 3: Action Workbench</h1>
+        <p>Best for repeated cleanup work: details on the left, actions in a stable rail.</p>
+      </div>
+      <nav class="proposal-nav">
+        <a href="proposal-01-decision-summary.html">1 Decision Summary</a>
+        <a href="proposal-02-evidence-inspector.html">2 Evidence Inspector</a>
+        <a class="is-active" href="proposal-03-action-workbench.html">3 Action Workbench</a>
+      </nav>
+    </header>
+
+    <section class="panel">
+      <div class="item-header">
+        <div class="item-title">
+          <h2>Sum of freq_greater_than_15_yr_flag</h2>
+          <div class="item-meta">
+            <span>Measure</span>
+            <span>Source: Model</span>
+            <span>Folder: _Measures_BRL</span>
+            <span>Selected reports: 1</span>
+          </div>
+        </div>
+        <div class="status-line">
+          <span class="badge is-used">Used</span>
+          <span class="badge is-blocked">Blocked</span>
+          <span class="pill">3 direct refs</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="workbench">
+      <div class="layout-stack">
+        <section class="surface">
+          <table class="property-table">
+            <tbody>
+              <tr>
+                <th>Decision</th>
+                <td><strong>Do not delete now.</strong> This item is still used by selected reports.</td>
+              </tr>
+              <tr>
+                <th>Usage</th>
+                <td>Directly referenced by at least one selected report. Raw analyzer status: USED.</td>
+              </tr>
+              <tr>
+                <th>Cleanup</th>
+                <td><span class="badge is-blocked">Blocked</span> Report references or model dependencies exist.</td>
+              </tr>
+              <tr>
+                <th>Depends On</th>
+                <td><span class="muted">None recorded</span></td>
+              </tr>
+              <tr>
+                <th>Used By</th>
+                <td><span class="muted">None recorded</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="panel">
+          <div class="section-title">
+            <div>
+              <h2>Report References</h2>
+              <p>Make the useful list big enough to read. This replaces the cramped detail blocks.</p>
+            </div>
+            <button class="btn btn-outline">Export references</button>
+          </div>
+          <table class="evidence-table">
+            <thead>
+              <tr>
+                <th>Report / Page</th>
+                <th>Visual</th>
+                <th>Context</th>
+                <th>Path</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="reference-title">PMRA_SAP_MasterData_Issues_POC</div>
+                  <div class="reference-meta">Maint Plan Master Data Issues</div>
+                </td>
+                <td>card<br><span class="muted">5531a4d50230b240b212</span></td>
+                <td>Values</td>
+                <td><code>visual.query.queryState.Values.projections[0].field.Measure</code></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="reference-title">PMRA_SAP_MasterData_Issues_POC</div>
+                  <div class="reference-meta">Maint Plan Master Data Issues</div>
+                </td>
+                <td>card<br><span class="muted">5531a4d50230b240b212</span></td>
+                <td>Sort</td>
+                <td><code>visual.query.sortDefinition.sort[0].field.Measure</code></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="reference-title">PMRA_SAP_MasterData_Issues_POC</div>
+                  <div class="reference-meta">Maint Plan Master Data Issues</div>
+                </td>
+                <td>card<br><span class="muted">5531a4d50230b240b212</span></td>
+                <td>Other</td>
+                <td><code>visual.visualContainerObjects.background[0].properties.color.solid.color.expr</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+
+      <aside class="action-rail">
+        <div class="rail-box">
+          <div class="rail-title">Queue Action</div>
+          <div class="field-row">
+            <label>Folder</label>
+            <input value="Safe to delete">
+          </div>
+          <button class="btn btn-warning" style="width:100%;margin-top:10px">Move to folder</button>
+          <div class="field-row">
+            <label>Table</label>
+            <select><option>_Measures_BRL</option></select>
+          </div>
+          <button class="btn btn-warning" style="width:100%;margin-top:10px">Move measure table</button>
+          <div class="field-row">
+            <label>Name</label>
+            <input value="Sum of freq_greater_than_15_yr_flag">
+          </div>
+          <button class="btn btn-warning" style="width:100%;margin-top:10px">Rename measure</button>
+        </div>
+
+        <div class="rail-box">
+          <div class="rail-title">Visibility & Delete</div>
+          <div class="inline-actions" style="margin-top:12px">
+            <button class="btn btn-quiet">Hide</button>
+            <button class="btn btn-quiet">Unhide</button>
+            <button class="btn btn-danger">Delete</button>
+          </div>
+          <p class="hint">Deletion remains available, but the blocked state is impossible to miss.</p>
+        </div>
+
+        <div class="rail-box">
+          <div class="rail-title">Technical</div>
+          <p class="hint">Keep source inspection secondary. Open it only when editing or debugging.</p>
+          <div class="inline-actions">
+            <button class="btn btn-outline">Edit DAX</button>
+            <button class="btn btn-outline">Show M</button>
+          </div>
+          <pre class="code-preview hidden-preview">DISTINCTCOUNT(
+  'Maintenance Cost (kob1_ksb1)'[work_order_id]
+)</pre>
+        </div>
+
+        <div class="rail-box">
+          <button class="btn btn-primary" style="width:100%">Apply queued</button>
+          <button class="btn btn-quiet" style="width:100%;margin-top:8px">Reset queued</button>
+          <p class="hint">No queued action for this item.</p>
+        </div>
+      </aside>
+    </section>
+  </main>
+</body>
+</html>

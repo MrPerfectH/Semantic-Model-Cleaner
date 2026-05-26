@@ -116,6 +116,18 @@ def _rewrite_table_name_in_text(text: str, old_table: str, new_table: str) -> tu
         flags=re.IGNORECASE | re.MULTILINE,
     )
 
+    def replace_default_detail_rows_ref(match: re.Match) -> str:
+        nonlocal count
+        count += 1
+        return f"{match.group(1)}{new_dax}"
+
+    text = re.sub(
+        rf"^(\tdefaultDetailRowsDefinition\s*=\s*){table_pattern}\s*$",
+        replace_default_detail_rows_ref,
+        text,
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+
     def replace_dax_table_ref(match: re.Match) -> str:
         nonlocal count
         count += 1
