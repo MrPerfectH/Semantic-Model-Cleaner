@@ -1130,6 +1130,11 @@ def test_index_renders_empty_selection_state():
     assert 'id="pageSizeSelect"' in html
     assert 'id="btnPrevPage"' in html
     assert 'id="btnNextPage"' in html
+    assert 'id="reportHealthBanner"' in html
+    assert 'id="reportHealthCount"' in html
+    assert 'id="reportHealthList"' in html
+    assert "var allReportIssues = [];" in html
+    assert "function renderReportHealth() {" in html
     assert 'id="filterCounts"' not in html
     assert "Dropdown filters support multi-select" not in html
     assert 'data-col="usageState"' in html
