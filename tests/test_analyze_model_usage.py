@@ -428,6 +428,70 @@ def test_report_extension_measures_are_analyzed_and_promote_model_dependencies(t
     assert payload_item["formatString"] == "0.0"
 
 
+def test_invalid_report_json_is_report_health_issue(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    page_dir = report / "definition" / "pages" / "Page1"
+    visual_dir = page_dir / "visuals" / "Visual1"
+    tables_dir.mkdir(parents=True)
+    visual_dir.mkdir(parents=True)
+
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n",
+        encoding="utf-8",
+    )
+    (page_dir / "page.json").write_text(
+        json.dumps({"displayName": "Overview"}),
+        encoding="utf-8",
+    )
+    (visual_dir / "visual.json").write_text("{ bad json", encoding="utf-8")
+
+    results = analyzer.analyze(workspace.resolve())
+
+    assert results["report_issues"] == [
+        {
+            "severity": "error",
+            "issueType": "invalid_report_json",
+            "report": "Executive",
+            "page": "Overview",
+            "visualId": "Visual1",
+            "artifactKind": "Visual",
+            "artifactPath": "definition/pages/Page1/visuals/Visual1/visual.json",
+            "message": "Could not parse PBIR JSON file: Expecting property name enclosed in double quotes: line 1 column 3 (char 2)",
+        }
+    ]
+
+    payload = json.loads(analyzer.format_json_output(results))
+    assert payload["reportIssues"][0]["issueType"] == "invalid_report_json"
+
+
+def test_invalid_definition_pbir_is_report_health_issue(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    report.mkdir(parents=True)
+
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n",
+        encoding="utf-8",
+    )
+    (report / "definition.pbir").write_text("{ bad json", encoding="utf-8")
+
+    results = analyzer.analyze(workspace.resolve())
+
+    assert results["report_issues"][0]["issueType"] == "invalid_report_json"
+    assert results["report_issues"][0]["artifactKind"] == "Report Definition"
+    assert results["report_issues"][0]["artifactPath"] == "definition.pbir"
+
+
 def test_dax_dependency_graph_excludes_self_references():
     item = analyzer.ModelItem(
         item_type="Measure",

@@ -105,6 +105,18 @@ class AnalyzerWarning:
     source_file: str | None = None
 
 
+@dataclass
+class ReportIssue:
+    severity: str
+    issue_type: str
+    report: str
+    message: str
+    page: str = ""
+    visual_id: str = ""
+    artifact_kind: str = ""
+    artifact_path: str = ""
+
+
 # ── Discovery ─────────────────────────────────────────────────────────────────
 
 
@@ -245,6 +257,19 @@ def _serialize_warning(warning: AnalyzerWarning) -> dict:
         "model": warning.model,
         "table": warning.table,
         "source_file": warning.source_file,
+    }
+
+
+def _serialize_report_issue(issue: ReportIssue) -> dict:
+    return {
+        "severity": issue.severity,
+        "issueType": issue.issue_type,
+        "report": issue.report,
+        "page": issue.page,
+        "visualId": issue.visual_id,
+        "artifactKind": issue.artifact_kind,
+        "artifactPath": issue.artifact_path,
+        "message": issue.message,
     }
 
 
@@ -1173,6 +1198,74 @@ def _artifact_rel_path(report_path: Path, file_path: Path) -> str:
         return file_path.relative_to(report_path).as_posix()
     except ValueError:
         return file_path.name
+
+
+def _invalid_json_artifact_kind(rel_path: str) -> str:
+    if rel_path == "definition.pbir":
+        return "Report Definition"
+    if rel_path.endswith("/visual.json"):
+        return "Visual"
+    if rel_path.endswith("/page.json"):
+        return "Page"
+    if rel_path.endswith(".bookmark.json"):
+        return "Bookmark"
+    if rel_path == "definition/report.json":
+        return "Report"
+    if rel_path == "report.json":
+        return "PBIR-Legacy Report"
+    return "Definition JSON"
+
+
+def scan_invalid_report_json(report_path: Path) -> list[ReportIssue]:
+    rpt_name = report_display_name(report_path)
+    definition_dir = report_path / "definition"
+    issues: list[ReportIssue] = []
+    json_files = []
+    if definition_dir.exists():
+        json_files.extend(sorted(definition_dir.rglob("*.json")))
+    for report_file in (report_path / "definition.pbir", report_path / "report.json"):
+        if report_file.exists():
+            json_files.append(report_file)
+
+    for json_file in json_files:
+        try:
+            json.loads(json_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            rel_path = _artifact_rel_path(report_path, json_file)
+            parts = rel_path.split("/")
+            page = ""
+            visual_id = ""
+            if "pages" in parts:
+                page_idx = parts.index("pages")
+                if page_idx + 1 < len(parts):
+                    page_dir = report_path / "definition" / "pages" / parts[page_idx + 1]
+                    page = _get_page_name(page_dir)
+                if "visuals" in parts:
+                    visual_idx = parts.index("visuals")
+                    if visual_idx + 1 < len(parts):
+                        visual_id = parts[visual_idx + 1]
+            issues.append(ReportIssue(
+                severity="error",
+                issue_type="invalid_report_json",
+                report=rpt_name,
+                page=page,
+                visual_id=visual_id,
+                artifact_kind=_invalid_json_artifact_kind(rel_path),
+                artifact_path=rel_path,
+                message=f"Could not parse PBIR JSON file: {exc}",
+            ))
+        except OSError as exc:
+            rel_path = _artifact_rel_path(report_path, json_file)
+            issues.append(ReportIssue(
+                severity="warning",
+                issue_type="invalid_report_json",
+                report=rpt_name,
+                artifact_kind=_invalid_json_artifact_kind(rel_path),
+                artifact_path=rel_path,
+                message=f"Could not read PBIR JSON file: {exc}",
+            ))
+
+    return issues
 
 
 def _page_name_for_section(report_path: Path, section_id: str) -> str:
@@ -2241,8 +2334,10 @@ def analyze(
     all_bookmark_usages = []
     all_stale_bookmark_usages = []
     all_definition_meta_usages = []
+    all_report_issues = []
 
     for report_path in reports:
+        all_report_issues.extend(scan_invalid_report_json(report_path))
         visual_usages, stale_visual_usages, visual_meta = scan_report_visuals(report_path)
         all_visual_usages.extend(visual_usages)
         all_stale_visual_usages.extend(stale_visual_usages)
@@ -2527,6 +2622,7 @@ def analyze(
         "summary": summary,
         "table_summaries": table_summaries,
         "warnings": [_serialize_warning(w) for w in warnings],
+        "report_issues": [_serialize_report_issue(issue) for issue in all_report_issues],
     }
 
 
@@ -2700,6 +2796,7 @@ def format_json_output(results: dict) -> str:
         "summary": results["summary"],
         "tables": results.get("table_summaries", []),
         "warnings": results.get("warnings", []),
+        "reportIssues": results.get("report_issues", []),
         "items": [],
     }
     for r in results["items"]:
