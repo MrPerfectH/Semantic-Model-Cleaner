@@ -20,7 +20,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
 
-from . import __version__, analyzer, experiments, report_writer, tmdl_writer
+from . import __version__, analyzer, experiments, file_transaction, report_writer, tmdl_writer
 
 app = Flask(__name__)
 
@@ -38,6 +38,18 @@ _state = {
 }
 
 _WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:(?![\\/])")
+
+
+def _cleanup_transaction_roots(model_path: Path | None = None, report_paths: list[Path] | None = None) -> list[Path]:
+    roots: list[Path] = []
+    if model_path is not None:
+        roots.append(model_path / "definition")
+    roots.extend(report_path / "definition" for report_path in report_paths or [])
+    return roots
+
+
+def _restore_cleanup_transaction(roots: list[Path], snapshot: dict[Path, str]) -> dict:
+    return file_transaction.restore_artifact_files(roots, snapshot)
 
 
 def _normalize_browse_path(raw: str) -> str:
@@ -1077,15 +1089,32 @@ def api_migrate_report_measure():
             backup_paths["report"] = str(report_writer.create_backup(report_path))
 
         git_warning = tmdl_writer.check_git_dirty(model_path)
-        result = report_writer.migrate_measure_to_model(
-            model_path=model_path,
-            report_path=report_path,
-            entity_name=table,
-            measure_name=name,
-            target_table=target_table,
-            target_name=target_name,
-        )
+        transaction_roots = _cleanup_transaction_roots(model_path, [report_path])
+        snapshot = file_transaction.snapshot_artifact_files(transaction_roots)
+        try:
+            result = report_writer.migrate_measure_to_model(
+                model_path=model_path,
+                report_path=report_path,
+                entity_name=table,
+                measure_name=name,
+                target_table=target_table,
+                target_name=target_name,
+            )
+        except Exception as exc:
+            rollback = _restore_cleanup_transaction(transaction_roots, snapshot)
+            return jsonify({
+                "ok": False,
+                "error": str(exc),
+                "rolled_back": rollback["ok"],
+                "rollback": rollback,
+            }), 400
         if not result.get("ok"):
+            rollback = _restore_cleanup_transaction(transaction_roots, snapshot)
+            result = {
+                **result,
+                "rolled_back": rollback["ok"],
+                "rollback": rollback,
+            }
             return jsonify(result), 400
 
         return jsonify({
@@ -1154,8 +1183,16 @@ def api_move_measure_to_table():
             for report_path in report_paths:
                 backup_paths["reports"].append(str(report_writer.create_backup(report_path)))
 
+        transaction_roots = _cleanup_transaction_roots(model_path, report_paths)
+        snapshot = file_transaction.snapshot_artifact_files(transaction_roots)
         model_result = tmdl_writer.move_measures_to_tables(model_path, moves, dry_run=False)
         if not model_result.get("ok"):
+            rollback = _restore_cleanup_transaction(transaction_roots, snapshot)
+            model_result = {
+                **model_result,
+                "rolled_back": rollback["ok"],
+                "rollback": rollback,
+            }
             return jsonify(model_result), 400
 
         report_result = report_writer.rewrite_measure_table_references(
@@ -1164,7 +1201,15 @@ def api_move_measure_to_table():
             dry_run=False,
         )
         if not report_result.get("ok"):
-            return jsonify(report_result), 400
+            rollback = _restore_cleanup_transaction(transaction_roots, snapshot)
+            return jsonify({
+                "ok": False,
+                "error": report_result.get("error") or "Report rewrite failed",
+                "model_result": model_result,
+                "report_result": report_result,
+                "rolled_back": rollback["ok"],
+                "rollback": rollback,
+            }), 400
 
         return jsonify({
             "ok": True,
@@ -1243,6 +1288,8 @@ def api_rename_model_metadata():
             for report_path in report_paths:
                 backup_paths["reports"].append(str(report_writer.create_backup(report_path)))
 
+        transaction_roots = _cleanup_transaction_roots(model_path, report_paths)
+        snapshot = file_transaction.snapshot_artifact_files(transaction_roots)
         model_result = tmdl_writer.rename_model_metadata(
             model_path,
             table_renames=table_renames,
@@ -1250,6 +1297,12 @@ def api_rename_model_metadata():
             dry_run=False,
         )
         if not model_result.get("ok"):
+            rollback = _restore_cleanup_transaction(transaction_roots, snapshot)
+            model_result = {
+                **model_result,
+                "rolled_back": rollback["ok"],
+                "rollback": rollback,
+            }
             return jsonify(model_result), 400
 
         report_result = report_writer.rewrite_model_reference_changes(
@@ -1259,7 +1312,15 @@ def api_rename_model_metadata():
             dry_run=False,
         )
         if not report_result.get("ok"):
-            return jsonify(report_result), 400
+            rollback = _restore_cleanup_transaction(transaction_roots, snapshot)
+            return jsonify({
+                "ok": False,
+                "error": report_result.get("error") or "Report rewrite failed",
+                "model_result": model_result,
+                "report_result": report_result,
+                "rolled_back": rollback["ok"],
+                "rollback": rollback,
+            }), 400
 
         return jsonify({
             "ok": True,
