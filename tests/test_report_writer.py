@@ -251,6 +251,88 @@ def test_rewrite_model_reference_changes_updates_table_and_measure_names(tmp_pat
     assert extension_measure["references"]["columns"][0]["entity"] == "Fact Sales"
 
 
+def test_rewrite_model_reference_changes_rejects_invalid_schema_declared_visual(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+                "name": "Visual1",
+                "visual": {
+                    "query": {
+                        "queryState": {
+                            "Y": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Measure": {
+                                                "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                                "Property": "Revenue",
+                                            }
+                                        },
+                                        "queryRef": "Sales.Revenue",
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.rewrite_model_reference_changes(
+        report_paths=[report_path],
+        table_renames=[{"table": "Sales", "target_table": "Fact Sales"}],
+    )
+
+    assert result["ok"] is False
+    assert result["validation_errors"][0]["file"] == str(visual_file)
+    assert "position" in result["validation_errors"][0]["message"]
+    assert "Fact Sales" not in visual_file.read_text(encoding="utf-8")
+
+
+def test_rewrite_model_reference_changes_rejects_invalid_schema_declared_report(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    definition_dir = report_path / "definition"
+    definition_dir.mkdir(parents=True)
+    report_file = definition_dir / "report.json"
+    report_file.write_text(
+        json.dumps(
+            {
+                "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/report/3.3.0/schema.json",
+                "filters": [
+                    {
+                        "field": {
+                            "Column": {
+                                "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                "Property": "Amount",
+                            }
+                        }
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.rewrite_model_reference_changes(
+        report_paths=[report_path],
+        table_renames=[{"table": "Sales", "target_table": "Fact Sales"}],
+    )
+
+    assert result["ok"] is False
+    assert result["validation_errors"][0]["file"] == str(report_file)
+    assert "themeCollection" in result["validation_errors"][0]["message"]
+    assert "Fact Sales" not in report_file.read_text(encoding="utf-8")
+
+
 def test_migrate_report_measure_to_model_moves_definition_and_rewrites_refs(tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"

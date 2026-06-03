@@ -638,6 +638,7 @@ def _serialize_results(results: dict) -> dict:
         "summary": results["summary"],
         "tables": tables,
         "warnings": results.get("warnings", []),
+        "reportIssues": results.get("report_issues", []),
         "items": items,
         "references": references,
     }

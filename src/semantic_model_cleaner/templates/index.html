@@ -472,6 +472,10 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="warning-note">Warnings mean the analyzer found ambiguous or unsupported metadata patterns. Results are still usable, but some usage links may be incomplete or conservative.</div>
     <div id="warningList"></div>
   </div>
+  <div class="warning-banner hidden" id="reportHealthBanner">
+    <h3>Report Health <span id="reportHealthCount"></span></h3>
+    <div id="reportHealthList"></div>
+  </div>
   <div class="filters-bar hidden" id="filtersSection">
     <div class="filters-grid">
       <div class="filter-group"><label>Search</label><input type="text" id="filterSearch" placeholder="Name or table..."></div>
@@ -908,6 +912,7 @@ var pendingActions = new Map();
 var actionStatus = new Map();
 var selectedTableNames = new Set();
 var allWarnings = [];
+var allReportIssues = [];
 var usageOrder = { 'Used': 0, 'Indirect': 1, 'Stale only': 2, 'Unused': 3 };
 var issueOrder = { 'Broken': 0, 'Broken + Stale': 1, 'Stale': 2, '': 3 };
 var deleteSafetyOrder = { 'Safe': 0, 'Review': 1, 'Blocked': 2, 'Keep': 3 };
@@ -2336,6 +2341,7 @@ function setResultsData(data, preserveActionState) {
   allTables = data.tables || [];
   allRefs = data.references || [];
   allWarnings = data.warnings || [];
+  allReportIssues = data.reportIssues || [];
   if (preserveActionState) {
     var valid = new Set(allItems.map(function(item) { return itemKey(item); }));
     var validTables = new Set(allTables.map(function(table) { return table.name; }));
@@ -2356,6 +2362,7 @@ function setResultsData(data, preserveActionState) {
   if (detailItemKey && !getItemByKey(detailItemKey)) detailItemKey = null;
   if (detailTableName && !getTableByName(detailTableName)) detailTableName = null;
   renderWarnings();
+  renderReportHealth();
   renderItemDetails();
   renderTableDetails();
   updateSummary(data.summary);
@@ -2370,6 +2377,26 @@ function renderWarnings() {
   var list = $('warningList');
   list.innerHTML = '';
   banner.classList.add('hidden');
+}
+
+function renderReportHealth() {
+  var banner = $('reportHealthBanner');
+  var count = $('reportHealthCount');
+  var list = $('reportHealthList');
+  list.innerHTML = '';
+  count.textContent = '';
+  banner.classList.add('hidden');
+  if (!allReportIssues.length) return;
+  count.textContent = '(' + allReportIssues.length + ')';
+  banner.classList.remove('hidden');
+  allReportIssues.forEach(function(issue) {
+    var div = document.createElement('div');
+    div.className = 'warning-item';
+    var artifact = [issue.report, issue.page, issue.visualId, issue.artifactPath].filter(Boolean).join(' | ');
+    div.innerHTML = '<strong>' + esc(issue.issueType || 'report_issue') + '</strong>: ' + esc(issue.message || '')
+      + (artifact ? '<div class="warning-help">' + esc(artifact) + '</div>' : '');
+    list.appendChild(div);
+  });
 }
 
 function updateSummary(s) {

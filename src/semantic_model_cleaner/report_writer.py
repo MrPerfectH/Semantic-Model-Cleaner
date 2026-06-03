@@ -10,6 +10,27 @@ from pathlib import Path
 from . import tmdl_writer
 
 
+_DECLARED_SCHEMA_REQUIRED_FIELDS = (
+    ("/definition/visualContainer/", ("$schema", "name", "position")),
+    ("/definition/page/", ("$schema", "name", "displayName", "displayOption")),
+    ("/definition/reportExtension/", ("$schema", "name")),
+    ("/definition/bookmark/", ("$schema", "displayName", "explorationState", "name")),
+    ("/definition/bookmarksMetadata/", ("$schema", "items")),
+    ("/definition/pagesMetadata/", ("$schema",)),
+    ("/definition/versionMetadata/", ("$schema", "version")),
+    ("/definition/visualContainerMobileState/", ("$schema", "position")),
+)
+
+
+def _declared_report_required_fields(schema: str) -> tuple[str, ...] | None:
+    match = re.search(r"/definition/report/(\d+)\.", schema)
+    if not match:
+        return None
+    if match.group(1) == "1":
+        return "$schema", "layoutOptimization", "themeCollection"
+    return "$schema", "themeCollection"
+
+
 def create_backup(report_path: Path) -> Path:
     """Create a timestamped copy of the .Report directory."""
     for attempt in range(100):
@@ -28,6 +49,50 @@ def _report_extensions_path(report_path: Path) -> Path:
     return report_path / "definition" / "reportExtensions.json"
 
 
+def _declared_schema_errors(payload, json_file: Path) -> list[str]:
+    if not isinstance(payload, dict):
+        return ["PBIR JSON payload must be an object"]
+
+    schema = str(payload.get("$schema", "") or "")
+    if not schema:
+        return []
+
+    errors: list[str] = []
+    report_required_fields = _declared_report_required_fields(schema)
+    if report_required_fields:
+        for field in report_required_fields:
+            if field not in payload:
+                errors.append(f"{json_file} declares {schema} but is missing required field '{field}'")
+        return errors
+
+    for schema_fragment, required_fields in _DECLARED_SCHEMA_REQUIRED_FIELDS:
+        if schema_fragment not in schema:
+            continue
+        for field in required_fields:
+            if field not in payload:
+                errors.append(f"{json_file} declares {schema} but is missing required field '{field}'")
+        break
+    return errors
+
+
+def validate_pbir_json_file(json_file: Path, payload=None) -> dict:
+    """Offline PBIR validation baseline for changed JSON files."""
+    try:
+        if payload is None:
+            payload = json.loads(json_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {
+            "ok": False,
+            "errors": [{"file": str(json_file), "message": f"Invalid JSON: {exc}"}],
+        }
+
+    errors = _declared_schema_errors(payload, json_file)
+    return {
+        "ok": not errors,
+        "errors": [{"file": str(json_file), "message": message} for message in errors],
+    }
+
+
 def _load_report_extensions(report_path: Path) -> tuple[Path, dict]:
     report_extensions = _report_extensions_path(report_path)
     if not report_extensions.exists():
@@ -43,6 +108,10 @@ def _save_report_extensions(report_extensions: Path, payload: dict) -> None:
     payload.setdefault("$schema", "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/reportExtension/1.0.0/schema.json")
     payload.setdefault("name", "extension")
     payload["entities"] = payload.get("entities", [])
+    validation = validate_pbir_json_file(report_extensions, payload)
+    if not validation["ok"]:
+        error = "; ".join(err["message"] for err in validation["errors"])
+        raise ValueError(f"PBIR validation failed: {error}")
     report_extensions.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
@@ -412,6 +481,7 @@ def rewrite_model_reference_changes(
     updated_files = []
     warnings = []
     total_updates = 0
+    pending_writes: list[tuple[Path, dict]] = []
 
     for report_path in report_paths:
         definition_dir = report_path / "definition"
@@ -434,6 +504,15 @@ def rewrite_model_reference_changes(
             if not updates:
                 continue
 
+            validation = validate_pbir_json_file(json_file, payload)
+            if not validation["ok"]:
+                return {
+                    "ok": False,
+                    "error": "PBIR validation failed",
+                    "validation_errors": validation["errors"],
+                    "warnings": warnings,
+                }
+
             total_updates += len(updates)
             updated_files.append({
                 "file": str(json_file),
@@ -441,8 +520,11 @@ def rewrite_model_reference_changes(
                 "reference_count": len(updates),
                 "updates": updates,
             })
-            if not dry_run:
-                json_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            pending_writes.append((json_file, payload))
+
+    if not dry_run:
+        for json_file, payload in pending_writes:
+            json_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     return {
         "ok": True,
@@ -581,6 +663,13 @@ def cleanup_stale_metadata_selectors(*, entries: list[dict]) -> dict:
         removed_for_file: list[dict] = []
         _remove_stale_selector_entries(payload, stale_values, live_query_refs, removed_for_file)
         if removed_for_file:
+            validation = validate_pbir_json_file(target_file, payload)
+            if not validation["ok"]:
+                return {
+                    "ok": False,
+                    "error": "PBIR validation failed",
+                    "validation_errors": validation["errors"],
+                }
             target_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             updated_files.append(str(target_file))
             removed_entries.extend(
@@ -604,6 +693,13 @@ def cleanup_stale_metadata_selectors(*, entries: list[dict]) -> dict:
                     "selector_value": "",
                 })
         if removed_for_file:
+            validation = validate_pbir_json_file(target_file, payload)
+            if not validation["ok"]:
+                return {
+                    "ok": False,
+                    "error": "PBIR validation failed",
+                    "validation_errors": validation["errors"],
+                }
             target_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             if str(target_file) not in updated_files:
                 updated_files.append(str(target_file))

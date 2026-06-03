@@ -494,6 +494,41 @@ def test_api_analyze_includes_review_triggers(monkeypatch, tmp_path):
     assert payload["references"][0]["reviewTriggers"] == ["Item is hidden"]
 
 
+def test_api_analyze_returns_report_health_issues(tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    report_path = tmp_path / "Executive.Report"
+    tables_dir = model_path / "definition" / "tables"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    tables_dir.mkdir(parents=True)
+    visual_dir.mkdir(parents=True)
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n",
+        encoding="utf-8",
+    )
+    (report_path / "definition" / "pages" / "Page1" / "page.json").write_text(
+        json.dumps({"displayName": "Overview"}),
+        encoding="utf-8",
+    )
+    (visual_dir / "visual.json").write_text("{ bad json", encoding="utf-8")
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/analyze",
+        json={
+            "model_paths": [str(model_path)],
+            "report_paths": [str(report_path)],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["reportIssues"][0]["issueType"] == "invalid_report_json"
+    assert payload["reportIssues"][0]["artifactKind"] == "Visual"
+    assert payload["reportIssues"][0]["artifactPath"] == "definition/pages/Page1/visuals/Visual1/visual.json"
+
+
 def test_api_analyze_includes_m_source_details_for_regular_columns(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
@@ -918,6 +953,75 @@ def test_api_rename_model_metadata_updates_selected_reports_only(monkeypatch, tm
     assert unselected_projection["field"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "Sales"
     assert unselected_projection["field"]["Measure"]["Property"] == "Revenue"
     assert unselected_projection["queryRef"] == "Sales.Revenue"
+
+
+def test_api_rename_model_metadata_returns_report_validation_errors(tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    report_path = tmp_path / "Executive.Report"
+    tables_dir = model_path / "definition" / "tables"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    tables_dir.mkdir(parents=True)
+    visual_dir.mkdir(parents=True)
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n",
+        encoding="utf-8",
+    )
+    (model_path / "definition" / "model.tmdl").write_text(
+        "model Model\n"
+        "ref table Sales\n",
+        encoding="utf-8",
+    )
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+                "name": "Visual1",
+                "visual": {
+                    "query": {
+                        "queryState": {
+                            "Y": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Measure": {
+                                                "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                                "Property": "Revenue",
+                                            }
+                                        },
+                                        "queryRef": "Sales.Revenue",
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/model/rename",
+        json={
+            "model_path": str(model_path),
+            "report_paths": [str(report_path)],
+            "table_renames": [{"table": "Sales", "target_table": "Fact Sales"}],
+            "dry_run": True,
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["error"] == "PBIR validation failed"
+    assert payload["validation_errors"][0]["file"] == str(visual_file)
+    assert "position" in payload["validation_errors"][0]["message"]
+    assert "Fact Sales" not in visual_file.read_text(encoding="utf-8")
 
 
 def test_api_find_connected_reports_scans_definition_variants_recursively(tmp_path):
