@@ -1315,6 +1315,8 @@ def test_index_renders_empty_selection_state():
     assert "function updateExplorerDefaultUI() {" in html
     assert "var savedDefault = mode === 'folder' ? '' : readExplorerDefaultPath(mode);" in html
     assert "Search folder is based on the selected model" in html
+    assert "Searching definition.pbir files under " in html
+    assert "definition*.pbir" not in html
     assert "$('btnExplorerSetDefault').onclick = function() {" in html
     assert "$('btnExplorerUp').onclick = function() { if (explorerParentPath) browseDir(explorerParentPath); };" in html
 

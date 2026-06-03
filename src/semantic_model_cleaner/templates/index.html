@@ -2245,7 +2245,7 @@ async function findConnectedReports() {
     alert('Enter a folder to search');
     return;
   }
-  $('connectedReportSearchStatus').textContent = 'Searching definition*.pbir files under ' + searchRoot + '...';
+  $('connectedReportSearchStatus').textContent = 'Searching definition.pbir files under ' + searchRoot + '...';
   $('btnBrowseConnectedReportRoot').disabled = true;
   try {
     var data = await apiPost('/api/reports/find-connected', {
