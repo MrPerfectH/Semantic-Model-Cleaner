@@ -118,6 +118,75 @@ def test_rewrite_measure_table_references_updates_selected_pbir_files(tmp_path):
     assert bookmark_measure["Expression"]["SourceRef"]["Entity"] == "Sales"
 
 
+def test_rewrite_measure_table_references_updates_source_ref_alias_from_entry(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "query": {
+                        "SemanticQueryDataShapeCommand": {
+                            "Query": {
+                                "From": [{"Name": "m", "Entity": "_Measures", "Type": 0}],
+                                "Select": [
+                                    {
+                                        "Measure": {
+                                            "Expression": {"SourceRef": {"Source": "m"}},
+                                            "Property": "Revenue LY",
+                                        }
+                                    }
+                                ],
+                            }
+                        },
+                        "queryState": {
+                            "Y": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Measure": {
+                                                "Expression": {"SourceRef": {"Source": "m"}},
+                                                "Property": "Revenue LY",
+                                            }
+                                        },
+                                        "queryRef": "m.Revenue LY",
+                                    }
+                                ]
+                            }
+                        },
+                    },
+                    "objects": {
+                        "labels": [
+                            {"selector": {"metadata": "m.Revenue LY"}},
+                        ]
+                    },
+                    "customMetadata": {"Entity": "_Measures"},
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.rewrite_measure_table_references(
+        report_paths=[report_path],
+        moves=[{"table": "_Measures", "name": "Revenue LY", "target_table": "Sales"}],
+    )
+
+    assert result["ok"] is True
+    payload = json.loads(visual_file.read_text(encoding="utf-8"))
+    query = payload["visual"]["query"]
+    from_entry = query["SemanticQueryDataShapeCommand"]["Query"]["From"][0]
+    projection = query["queryState"]["Y"]["projections"][0]
+    assert from_entry["Entity"] == "Sales"
+    assert projection["field"]["Measure"]["Expression"]["SourceRef"]["Source"] == "m"
+    assert projection["queryRef"] == "m.Revenue LY"
+    assert payload["visual"]["objects"]["labels"][0]["selector"]["metadata"] == "m.Revenue LY"
+    assert payload["visual"]["customMetadata"]["Entity"] == "_Measures"
+
+
 def test_rewrite_model_reference_changes_updates_table_and_measure_names(tmp_path):
     report_path = tmp_path / "Executive.Report"
     visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
@@ -249,6 +318,71 @@ def test_rewrite_model_reference_changes_updates_table_and_measure_names(tmp_pat
     assert extension_entity["name"] == "Fact Sales"
     assert extension_measure["expression"] == "CALCULATE([Revenue], 'Fact Sales'[Amount] > 0)"
     assert extension_measure["references"]["columns"][0]["entity"] == "Fact Sales"
+
+
+def test_rewrite_model_reference_changes_updates_alias_backed_measure_rename(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "query": {
+                        "SemanticQueryDataShapeCommand": {
+                            "Query": {
+                                "From": [{"Name": "s", "Entity": "Sales", "Type": 0}],
+                                "Select": [
+                                    {
+                                        "Measure": {
+                                            "Expression": {"SourceRef": {"Source": "s"}},
+                                            "Property": "Revenue",
+                                        }
+                                    }
+                                ],
+                            }
+                        },
+                        "queryState": {
+                            "Y": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Measure": {
+                                                "Expression": {"SourceRef": {"Source": "s"}},
+                                                "Property": "Revenue",
+                                            }
+                                        },
+                                        "queryRef": "s.Revenue",
+                                    }
+                                ]
+                            }
+                        },
+                    },
+                    "customMetadata": {"Entity": "Sales"},
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.rewrite_model_reference_changes(
+        report_paths=[report_path],
+        table_renames=[{"table": "Sales", "target_table": "Fact Sales"}],
+        measure_renames=[{"table": "Sales", "name": "Revenue", "target_name": "Net Revenue"}],
+    )
+
+    assert result["ok"] is True
+    payload = json.loads(visual_file.read_text(encoding="utf-8"))
+    query = payload["visual"]["query"]
+    from_entry = query["SemanticQueryDataShapeCommand"]["Query"]["From"][0]
+    projection = query["queryState"]["Y"]["projections"][0]
+    assert from_entry["Entity"] == "Fact Sales"
+    assert projection["field"]["Measure"]["Expression"]["SourceRef"]["Source"] == "s"
+    assert projection["field"]["Measure"]["Property"] == "Net Revenue"
+    assert projection["queryRef"] == "s.Net Revenue"
+    assert payload["visual"]["customMetadata"]["Entity"] == "Sales"
 
 
 def test_rewrite_model_reference_changes_rejects_invalid_schema_declared_visual(tmp_path):

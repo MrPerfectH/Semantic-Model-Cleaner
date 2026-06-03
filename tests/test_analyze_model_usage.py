@@ -301,6 +301,74 @@ def test_stale_formatting_selectors_do_not_count_as_live_usage(tmp_path):
     assert all(usage.context == "Stale Formatting" for usage in stale_measure["stale_usages"])
 
 
+def test_source_ref_alias_counts_as_live_report_usage(tmp_path):
+    model = tmp_path / "Models" / "TestModel.SemanticModel"
+    report = tmp_path / "Reports" / "TestReport.Report"
+    tables_dir = model / "definition" / "tables"
+    visual_dir = report / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    tables_dir.mkdir(parents=True)
+    visual_dir.mkdir(parents=True)
+
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n",
+        encoding="utf-8",
+    )
+    (report / "definition" / "pages" / "Page1" / "page.json").write_text(
+        json.dumps({"displayName": "Overview"}, indent=2),
+        encoding="utf-8",
+    )
+    (visual_dir / "visual.json").write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "query": {
+                        "SemanticQueryDataShapeCommand": {
+                            "Query": {
+                                "Version": 2,
+                                "From": [{"Name": "s", "Entity": "Sales", "Type": 0}],
+                                "Select": [
+                                    {
+                                        "Measure": {
+                                            "Expression": {"SourceRef": {"Source": "s"}},
+                                            "Property": "Revenue",
+                                        }
+                                    }
+                                ],
+                            }
+                        },
+                        "queryState": {
+                            "Y": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Measure": {
+                                                "Expression": {"SourceRef": {"Source": "s"}},
+                                                "Property": "Revenue",
+                                            }
+                                        },
+                                        "queryRef": "s.Revenue",
+                                    }
+                                ]
+                            }
+                        },
+                    }
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    results = analyzer.analyze(tmp_path.resolve())
+    revenue = _find_item(results, "Sales", "Revenue", "Measure")
+
+    assert revenue["status"] == "USED"
+    assert revenue["usages"][0].source_path.endswith("Measure")
+
+
 def test_stale_bookmark_projections_do_not_count_as_live_usage(tmp_path):
     model = tmp_path / "Models" / "TestModel.SemanticModel"
     report = tmp_path / "Reports" / "TestReport.Report"
