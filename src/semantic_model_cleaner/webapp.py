@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import io
+import json
 import os
 import re
 import subprocess
@@ -764,25 +765,9 @@ def api_discover():
         return jsonify({"error": str(e)}), 500
 
 
-def _candidate_definition_pbir_files(search_root: Path) -> list[Path]:
-    return sorted(
-        path for path in search_root.rglob("*")
-        if path.is_file()
-        and path.suffix.casefold() == ".pbir"
-        and path.name.casefold().startswith("definition")
-    )
-
-
-def _report_root_for_definition_file(definition_file: Path) -> Path | None:
-    for parent in [definition_file.parent, *definition_file.parents]:
-        if parent.name.endswith(".Report"):
-            return parent
-    return None
-
-
 @app.route("/api/reports/find-connected", methods=["POST"])
 def api_find_connected_reports():
-    """Find PBIR reports whose definition*.pbir files mention the selected model name."""
+    """Find PBIR reports whose definition.pbir references the selected local Semantic Model."""
     try:
         data = request.get_json(silent=True) or {}
         model_path_str = data.get("model_path") or (_state["model_paths"][0] if _state["model_paths"] else None)
@@ -799,31 +784,84 @@ def api_find_connected_reports():
         if not search_root.is_dir():
             return jsonify({"error": f"Search folder not found: {search_root}"}), 400
 
+        model_path = model_path.resolve()
         model_name = model_path.name.replace(".SemanticModel", "")
-        needle = model_name.casefold()
         reports_by_path: dict[Path, dict] = {}
+        report_statuses = []
         scanned_files = 0
         warnings = []
 
-        for definition_file in _candidate_definition_pbir_files(search_root):
+        for report_root in analyzer.discover_reports([search_root]):
+            report_root = report_root.resolve()
+            definition_file = report_root / "definition.pbir"
+            status = {
+                "path": str(report_root),
+                "name": analyzer.report_display_name(report_root),
+                "definitionFile": str(definition_file.resolve()),
+                "status": "not_connected",
+                "message": "definition.pbir references a different local Semantic Model.",
+            }
+            if not definition_file.is_file():
+                status["status"] = "missing_definition"
+                status["message"] = "Missing definition.pbir."
+                report_statuses.append(status)
+                warnings.append(f"{report_root.name}: {status['message']}")
+                continue
+
             scanned_files += 1
             try:
-                text = definition_file.read_text(encoding="utf-8", errors="ignore")
+                definition = json.loads(definition_file.read_text(encoding="utf-8"))
             except OSError as exc:
                 warnings.append(f"Skipped {definition_file}: {exc}")
                 continue
-            if needle not in text.casefold():
+            except json.JSONDecodeError as exc:
+                status["status"] = "invalid_definition"
+                status["message"] = f"Invalid definition.pbir JSON: {exc.msg}"
+                report_statuses.append(status)
+                warnings.append(f"{report_root.name}: {status['message']}")
                 continue
-            report_root = _report_root_for_definition_file(definition_file)
-            if report_root is None:
-                warnings.append(f"Matched {definition_file}, but no parent .Report folder was found")
+            if not isinstance(definition, dict):
+                status["status"] = "invalid_definition"
+                status["message"] = "Invalid definition.pbir JSON: expected a JSON object."
+                report_statuses.append(status)
+                warnings.append(f"{report_root.name}: {status['message']}")
                 continue
-            reports_by_path.setdefault(report_root.resolve(), {
-                "path": str(report_root.resolve()),
+
+            dataset_reference = definition.get("datasetReference", {})
+            if isinstance(dataset_reference, dict) and "byConnection" in dataset_reference:
+                status["status"] = "remote"
+                status["message"] = (
+                    "definition.pbir uses datasetReference.byConnection; "
+                    "the remote Semantic Model cannot be verified against a local Semantic Model path."
+                )
+                report_statuses.append(status)
+                warnings.append(f"{report_root.name} uses a remote Semantic Model connection and was not selected.")
+                continue
+
+            by_path = dataset_reference.get("byPath", {}) if isinstance(dataset_reference, dict) else {}
+            referenced_path = by_path.get("path") if isinstance(by_path, dict) else None
+            if not isinstance(referenced_path, str) or not referenced_path.strip():
+                status["status"] = "missing_dataset_reference"
+                status["message"] = "definition.pbir does not include datasetReference.byPath.path."
+                report_statuses.append(status)
+                warnings.append(f"{report_root.name}: {status['message']}")
+                continue
+            resolved_reference = (definition_file.parent / referenced_path).resolve()
+            status["resolvedModelPath"] = str(resolved_reference)
+            if resolved_reference != model_path:
+                report_statuses.append(status)
+                continue
+
+            status["status"] = "connected"
+            status["message"] = "definition.pbir references the selected local Semantic Model."
+            report_statuses.append(status)
+            reports_by_path.setdefault(report_root, {
+                "path": str(report_root),
                 "name": analyzer.report_display_name(report_root),
+                "status": "connected",
                 "definitionFiles": [],
             })
-            reports_by_path[report_root.resolve()]["definitionFiles"].append(str(definition_file.resolve()))
+            reports_by_path[report_root]["definitionFiles"].append(str(definition_file.resolve()))
 
         reports = sorted(reports_by_path.values(), key=lambda item: item["name"].casefold())
         return jsonify({
@@ -831,6 +869,7 @@ def api_find_connected_reports():
             "search_root": str(search_root),
             "scanned_definition_files": scanned_files,
             "reports": reports,
+            "reportStatuses": sorted(report_statuses, key=lambda item: item["name"].casefold()),
             "warnings": warnings,
         })
     except Exception as e:

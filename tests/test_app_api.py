@@ -1024,20 +1024,23 @@ def test_api_rename_model_metadata_returns_report_validation_errors(tmp_path):
     assert "Fact Sales" not in visual_file.read_text(encoding="utf-8")
 
 
-def test_api_find_connected_reports_scans_definition_variants_recursively(tmp_path):
+def test_api_find_connected_reports_resolves_definition_pbir_by_path(tmp_path):
     model_path = tmp_path / "Models" / "Sales.SemanticModel"
     model_path.mkdir(parents=True)
     reports_root = tmp_path / "Reports"
-    connected = reports_root / "Nested" / "Executive.Report"
-    disconnected = reports_root / "Other.Report"
+    connected = reports_root / "Executive.Report"
+    false_positive = reports_root / "Nested" / "False Positive.Report"
     connected.mkdir(parents=True)
-    disconnected.mkdir(parents=True)
-    (connected / "definition-sandbox.pbir").write_text(
-        json.dumps({"datasetReference": {"byPath": {"path": "../Models/Sales.SemanticModel"}}}),
+    false_positive.mkdir(parents=True)
+    (connected / "definition.pbir").write_text(
+        json.dumps({"datasetReference": {"byPath": {"path": "../../Models/Sales.SemanticModel"}}}),
         encoding="utf-8",
     )
-    (disconnected / "definition-prod.pbir").write_text(
-        json.dumps({"datasetReference": {"byPath": {"path": "../Models/Finance.SemanticModel"}}}),
+    (false_positive / "definition.pbir").write_text(
+        json.dumps({
+            "datasetReference": {"byPath": {"path": "../Models/Sales.SemanticModel"}},
+            "note": "The selected Sales.SemanticModel appears here but this relative path points elsewhere.",
+        }),
         encoding="utf-8",
     )
 
@@ -1055,7 +1058,136 @@ def test_api_find_connected_reports_scans_definition_variants_recursively(tmp_pa
     assert payload["model_name"] == "Sales"
     assert payload["scanned_definition_files"] == 2
     assert [report["path"] for report in payload["reports"]] == [str(connected.resolve())]
-    assert "definition-sandbox.pbir" in payload["reports"][0]["definitionFiles"][0]
+    assert payload["reports"][0]["status"] == "connected"
+    assert "definition.pbir" in payload["reports"][0]["definitionFiles"][0]
+    assert any(
+        status["path"] == str(false_positive.resolve()) and status["status"] == "not_connected"
+        for status in payload["reportStatuses"]
+    )
+
+
+def test_api_find_connected_reports_marks_by_connection_reports_as_remote(tmp_path):
+    model_path = tmp_path / "Models" / "Sales.SemanticModel"
+    model_path.mkdir(parents=True)
+    reports_root = tmp_path / "Reports"
+    remote = reports_root / "Remote.Report"
+    remote.mkdir(parents=True)
+    (remote / "definition.pbir").write_text(
+        json.dumps({
+            "datasetReference": {
+                "byConnection": {
+                    "connectionString": "Data Source=powerbi://api.powerbi.com/v1.0/myorg/Sales",
+                    "pbiServiceModelId": "00000000-0000-0000-0000-000000000000",
+                }
+            }
+        }),
+        encoding="utf-8",
+    )
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/reports/find-connected",
+        json={
+            "model_path": str(model_path),
+            "search_root": str(reports_root),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["reports"] == []
+    remote_status = next(status for status in payload["reportStatuses"] if status["path"] == str(remote.resolve()))
+    assert remote_status["status"] == "remote"
+    assert "cannot be verified against a local Semantic Model path" in remote_status["message"]
+    assert any("Remote.Report" in warning and "remote" in warning for warning in payload["warnings"])
+
+
+def test_api_find_connected_reports_reports_invalid_definition_pbir(tmp_path):
+    model_path = tmp_path / "Models" / "Sales.SemanticModel"
+    model_path.mkdir(parents=True)
+    reports_root = tmp_path / "Reports"
+    invalid = reports_root / "Invalid.Report"
+    invalid.mkdir(parents=True)
+    (invalid / "definition.pbir").write_text('{"datasetReference": ', encoding="utf-8")
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/reports/find-connected",
+        json={
+            "model_path": str(model_path),
+            "search_root": str(reports_root),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["reports"] == []
+    invalid_status = next(status for status in payload["reportStatuses"] if status["path"] == str(invalid.resolve()))
+    assert invalid_status["status"] == "invalid_definition"
+    assert "Invalid definition.pbir JSON" in invalid_status["message"]
+    assert any("Invalid.Report" in warning and "Invalid definition.pbir JSON" in warning for warning in payload["warnings"])
+
+
+def test_api_find_connected_reports_reports_missing_dataset_reference(tmp_path):
+    model_path = tmp_path / "Models" / "Sales.SemanticModel"
+    model_path.mkdir(parents=True)
+    reports_root = tmp_path / "Reports"
+    missing_reference = reports_root / "Missing Reference.Report"
+    missing_reference.mkdir(parents=True)
+    (missing_reference / "definition.pbir").write_text(json.dumps({"version": "4.0"}), encoding="utf-8")
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/reports/find-connected",
+        json={
+            "model_path": str(model_path),
+            "search_root": str(reports_root),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["reports"] == []
+    missing_status = next(
+        status for status in payload["reportStatuses"] if status["path"] == str(missing_reference.resolve())
+    )
+    assert missing_status["status"] == "missing_dataset_reference"
+    assert "datasetReference.byPath.path" in missing_status["message"]
+    assert any(
+        "Missing Reference.Report" in warning and "datasetReference.byPath.path" in warning
+        for warning in payload["warnings"]
+    )
+
+
+def test_api_find_connected_reports_reports_missing_definition_pbir(tmp_path):
+    model_path = tmp_path / "Models" / "Sales.SemanticModel"
+    model_path.mkdir(parents=True)
+    reports_root = tmp_path / "Reports"
+    missing_definition = reports_root / "Missing Definition.Report"
+    missing_definition.mkdir(parents=True)
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/reports/find-connected",
+        json={
+            "model_path": str(model_path),
+            "search_root": str(reports_root),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["reports"] == []
+    assert payload["scanned_definition_files"] == 0
+    missing_status = next(
+        status for status in payload["reportStatuses"] if status["path"] == str(missing_definition.resolve())
+    )
+    assert missing_status["status"] == "missing_definition"
+    assert "Missing definition.pbir" in missing_status["message"]
+    assert any(
+        "Missing Definition.Report" in warning and "Missing definition.pbir" in warning
+        for warning in payload["warnings"]
+    )
 
 
 def test_api_export_json_returns_latest_analysis():
@@ -1183,6 +1315,8 @@ def test_index_renders_empty_selection_state():
     assert "function updateExplorerDefaultUI() {" in html
     assert "var savedDefault = mode === 'folder' ? '' : readExplorerDefaultPath(mode);" in html
     assert "Search folder is based on the selected model" in html
+    assert "Searching definition.pbir files under " in html
+    assert "definition*.pbir" not in html
     assert "$('btnExplorerSetDefault').onclick = function() {" in html
     assert "$('btnExplorerUp').onclick = function() { if (explorerParentPath) browseDir(explorerParentPath); };" in html
 
