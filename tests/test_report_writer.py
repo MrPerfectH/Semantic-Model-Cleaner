@@ -409,6 +409,65 @@ def test_migrate_report_measure_to_model_moves_definition_and_rewrites_refs(tmp_
     assert measures[0]["references"]["measures"] == [{"entity": "Sales", "name": "Report Revenue"}]
 
 
+def test_migrate_report_measure_to_model_rolls_back_when_report_save_fails(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    report_path = tmp_path / "Executive.Report"
+    tables_dir = model_path / "definition" / "tables"
+    report_def_dir = report_path / "definition"
+    tables_dir.mkdir(parents=True)
+    report_def_dir.mkdir(parents=True)
+
+    sales_file = tables_dir / "Sales.tmdl"
+    extensions_file = report_def_dir / "reportExtensions.json"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tmeasure Existing = 1\n",
+        encoding="utf-8",
+    )
+    extensions_file.write_text(
+        json.dumps(
+            {
+                "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/reportExtension/1.0.0/schema.json",
+                "name": "extension",
+                "entities": [
+                    {
+                        "name": "Sales",
+                        "measures": [
+                            {
+                                "name": "Report Revenue",
+                                "dataType": "Double",
+                                "expression": "[Existing] + 1",
+                            }
+                        ],
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    original_sales = sales_file.read_text(encoding="utf-8")
+    original_extensions = extensions_file.read_text(encoding="utf-8")
+
+    def fail_save(*_args, **_kwargs):
+        raise ValueError("Report extension save failed")
+
+    monkeypatch.setattr(report_writer, "_save_report_extensions", fail_save)
+
+    result = report_writer.migrate_measure_to_model(
+        model_path=model_path,
+        report_path=report_path,
+        entity_name="Sales",
+        measure_name="Report Revenue",
+    )
+
+    assert result["ok"] is False
+    assert result["rolled_back"] is True
+    assert "Report extension save failed" in result["error"]
+    assert sales_file.read_text(encoding="utf-8") == original_sales
+    assert extensions_file.read_text(encoding="utf-8") == original_extensions
+
+
 def test_cleanup_stale_metadata_selectors_removes_only_unmatched_entries(tmp_path):
     report_path = tmp_path / "Executive.Report"
     visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
@@ -477,6 +536,56 @@ def test_cleanup_stale_metadata_selectors_removes_only_unmatched_entries(tmp_pat
     assert len(labels) == 1
     assert labels[0]["selector"]["metadata"] == "_Measures.PL_LINE Budget"
     assert data_points == []
+
+
+def test_cleanup_stale_metadata_selectors_rejects_invalid_file_before_writing(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    first_visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    second_visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual2"
+    first_visual_dir.mkdir(parents=True)
+    second_visual_dir.mkdir(parents=True)
+    first_visual = first_visual_dir / "visual.json"
+    second_visual = second_visual_dir / "visual.json"
+    first_visual.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "query": {"queryState": {"Y": {"projections": []}}},
+                    "objects": {
+                        "labels": [
+                            {
+                                "properties": {"show": {"expr": {"Literal": {"Value": "true"}}}},
+                                "selector": {"metadata": "_Measures.Stale"},
+                            }
+                        ]
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    second_visual.write_text("{ bad json", encoding="utf-8")
+    original_first = first_visual.read_text(encoding="utf-8")
+
+    result = report_writer.cleanup_stale_metadata_selectors(
+        entries=[
+            {
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                "selector_value": "_Measures.Stale",
+            },
+            {
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/visuals/Visual2/visual.json",
+                "selector_value": "_Measures.Stale",
+            },
+        ]
+    )
+
+    assert result["ok"] is False
+    assert "Invalid JSON" in result["error"]
+    assert first_visual.read_text(encoding="utf-8") == original_first
 
 
 def test_cleanup_stale_bookmark_projection_entries_removes_exact_projection_row(tmp_path):

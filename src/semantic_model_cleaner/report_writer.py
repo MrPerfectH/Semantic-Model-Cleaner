@@ -7,7 +7,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from . import tmdl_writer
+from . import file_transaction, tmdl_writer
 
 
 _DECLARED_SCHEMA_REQUIRED_FIELDS = (
@@ -160,52 +160,63 @@ def migrate_measure_to_model(
     if entity is None or measure is None:
         return {"ok": False, "error": f"Report measure '{entity_name}[{measure_name}]' was not found"}
 
-    create_result = tmdl_writer.create_measure(
-        model_path=model_path,
-        table=target_table,
-        name=target_name,
-        dax_expression=str(measure.get("expression", "") or ""),
-        display_folder=str(measure.get("displayFolder", "") or ""),
-        format_string=str(measure.get("formatString", "") or ""),
-        hidden=bool(measure.get("hidden", False)),
-    )
-    if not create_result.get("ok"):
-        return create_result
+    transaction_roots = [model_path / "definition", report_path / "definition"]
+    snapshot = file_transaction.snapshot_artifact_files(transaction_roots)
+    try:
+        create_result = tmdl_writer.create_measure(
+            model_path=model_path,
+            table=target_table,
+            name=target_name,
+            dax_expression=str(measure.get("expression", "") or ""),
+            display_folder=str(measure.get("displayFolder", "") or ""),
+            format_string=str(measure.get("formatString", "") or ""),
+            hidden=bool(measure.get("hidden", False)),
+        )
+        if not create_result.get("ok"):
+            return create_result
 
-    updated_reference_count = 0
-    for current_entity in payload.get("entities", []):
-        measures = current_entity.get("measures", [])
-        if not isinstance(measures, list):
-            continue
-        for current_measure in measures:
-            references = current_measure.get("references", {})
-            if not isinstance(references, dict):
+        updated_reference_count = 0
+        for current_entity in payload.get("entities", []):
+            measures = current_entity.get("measures", [])
+            if not isinstance(measures, list):
                 continue
-            reference_measures = references.get("measures", [])
-            if not isinstance(reference_measures, list):
-                continue
-            for ref in reference_measures:
-                if not isinstance(ref, dict):
+            for current_measure in measures:
+                references = current_measure.get("references", {})
+                if not isinstance(references, dict):
                     continue
-                if (
-                    str(ref.get("entity", "")).casefold() == entity_name.casefold()
-                    and str(ref.get("name", "")).casefold() == measure_name.casefold()
-                ):
-                    if ref.get("schema"):
-                        updated_reference_count += 1
-                    ref.pop("schema", None)
+                reference_measures = references.get("measures", [])
+                if not isinstance(reference_measures, list):
+                    continue
+                for ref in reference_measures:
+                    if not isinstance(ref, dict):
+                        continue
+                    if (
+                        str(ref.get("entity", "")).casefold() == entity_name.casefold()
+                        and str(ref.get("name", "")).casefold() == measure_name.casefold()
+                    ):
+                        if ref.get("schema"):
+                            updated_reference_count += 1
+                        ref.pop("schema", None)
 
-    entity_measures = entity.get("measures", [])
-    entity["measures"] = [
-        item for item in entity_measures
-        if str(item.get("name", "")).casefold() != measure_name.casefold()
-    ]
-    payload["entities"] = [
-        item for item in payload.get("entities", [])
-        if item.get("measures") or str(item.get("name", "")).casefold() != entity_name.casefold()
-    ]
+        entity_measures = entity.get("measures", [])
+        entity["measures"] = [
+            item for item in entity_measures
+            if str(item.get("name", "")).casefold() != measure_name.casefold()
+        ]
+        payload["entities"] = [
+            item for item in payload.get("entities", [])
+            if item.get("measures") or str(item.get("name", "")).casefold() != entity_name.casefold()
+        ]
 
-    _save_report_extensions(report_extensions, payload)
+        _save_report_extensions(report_extensions, payload)
+    except Exception as exc:
+        rollback = file_transaction.restore_artifact_files(transaction_roots, snapshot)
+        return {
+            "ok": False,
+            "error": str(exc),
+            "rolled_back": rollback["ok"],
+            "rollback": rollback,
+        }
     return {
         "ok": True,
         "action": "migrate_report_measure",
@@ -522,9 +533,22 @@ def rewrite_model_reference_changes(
             })
             pending_writes.append((json_file, payload))
 
-    if not dry_run:
-        for json_file, payload in pending_writes:
-            json_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    if not dry_run and pending_writes:
+        roots = [report_path / "definition" for report_path in report_paths]
+        snapshot = file_transaction.snapshot_artifact_files(roots, suffixes=(".json",))
+        try:
+            for json_file, payload in pending_writes:
+                json_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        except OSError as exc:
+            rollback = file_transaction.restore_artifact_files(roots, snapshot, suffixes=(".json",))
+            return {
+                "ok": False,
+                "error": f"PBIR write failed: {exc}",
+                "rolled_back": rollback["ok"],
+                "rollback": rollback,
+                "updated_files": updated_files,
+                "warnings": warnings,
+            }
 
     return {
         "ok": True,
@@ -655,10 +679,25 @@ def cleanup_stale_metadata_selectors(*, entries: list[dict]) -> dict:
 
     updated_files = []
     removed_entries = []
-    for target_file, stale_values in selector_grouped.items():
+    pending_payloads: dict[Path, dict] = {}
+    changed_files: set[Path] = set()
+
+    def load_pending_payload(target_file: Path) -> tuple[dict | None, dict | None]:
+        if target_file in pending_payloads:
+            return pending_payloads[target_file], None
         if not target_file.exists():
-            return {"ok": False, "error": f"PBIR file not found: {target_file}"}
-        payload = json.loads(target_file.read_text(encoding="utf-8"))
+            return None, {"ok": False, "error": f"PBIR file not found: {target_file}"}
+        try:
+            payload = json.loads(target_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            return None, {"ok": False, "error": f"Invalid JSON in {target_file}: {exc}"}
+        pending_payloads[target_file] = payload
+        return payload, None
+
+    for target_file, stale_values in selector_grouped.items():
+        payload, error = load_pending_payload(target_file)
+        if error:
+            return error
         live_query_refs = _collect_query_refs(payload.get("visual", {}).get("query", {}).get("queryState", {}))
         removed_for_file: list[dict] = []
         _remove_stale_selector_entries(payload, stale_values, live_query_refs, removed_for_file)
@@ -670,7 +709,7 @@ def cleanup_stale_metadata_selectors(*, entries: list[dict]) -> dict:
                     "error": "PBIR validation failed",
                     "validation_errors": validation["errors"],
                 }
-            target_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            changed_files.add(target_file)
             updated_files.append(str(target_file))
             removed_entries.extend(
                 {
@@ -682,9 +721,9 @@ def cleanup_stale_metadata_selectors(*, entries: list[dict]) -> dict:
             )
 
     for target_file, entry_paths in bookmark_entries.items():
-        if not target_file.exists():
-            return {"ok": False, "error": f"PBIR file not found: {target_file}"}
-        payload = json.loads(target_file.read_text(encoding="utf-8"))
+        payload, error = load_pending_payload(target_file)
+        if error:
+            return error
         removed_for_file = []
         for prefix_path in sorted(entry_paths, key=_path_trailing_index, reverse=True):
             if _remove_path_index_entry(payload, prefix_path):
@@ -700,7 +739,7 @@ def cleanup_stale_metadata_selectors(*, entries: list[dict]) -> dict:
                     "error": "PBIR validation failed",
                     "validation_errors": validation["errors"],
                 }
-            target_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            changed_files.add(target_file)
             if str(target_file) not in updated_files:
                 updated_files.append(str(target_file))
             removed_entries.extend(
@@ -711,6 +750,27 @@ def cleanup_stale_metadata_selectors(*, entries: list[dict]) -> dict:
                 }
                 for item in removed_for_file
             )
+
+    if changed_files:
+        target_files = list(changed_files)
+        snapshot = file_transaction.snapshot_artifact_files(target_files, suffixes=(".json",))
+        try:
+            for target_file in target_files:
+                target_file.write_text(
+                    json.dumps(pending_payloads[target_file], indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
+        except OSError as exc:
+            rollback = file_transaction.restore_artifact_files(target_files, snapshot, suffixes=(".json",))
+            return {
+                "ok": False,
+                "error": f"PBIR write failed: {exc}",
+                "rolled_back": rollback["ok"],
+                "rollback": rollback,
+                "updated_files": updated_files,
+                "removed_count": len(removed_entries),
+                "removed_entries": removed_entries,
+            }
 
     return {
         "ok": True,

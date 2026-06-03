@@ -1054,6 +1054,106 @@ def test_api_rename_model_metadata_updates_selected_reports_only(monkeypatch, tm
     assert unselected_projection["queryRef"] == "Sales.Revenue"
 
 
+def test_api_move_measure_rolls_back_model_when_report_apply_fails(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    report_path = tmp_path / "Executive.Report"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    (report_path / "definition").mkdir(parents=True)
+    measures_file = tables_dir / "_Measures.tmdl"
+    sales_file = tables_dir / "Sales.tmdl"
+    measures_file.write_text(
+        "table _Measures\n"
+        "\tmeasure Revenue = 1\n",
+        encoding="utf-8",
+    )
+    sales_file.write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n",
+        encoding="utf-8",
+    )
+    original_measures = measures_file.read_text(encoding="utf-8")
+    original_sales = sales_file.read_text(encoding="utf-8")
+
+    def fake_report_rewrite(*, dry_run=False, **_kwargs):
+        if dry_run:
+            return {"ok": True, "updated_reference_count": 1, "updated_files": [{"file": "visual.json"}]}
+        return {"ok": False, "error": "Report write failed"}
+
+    monkeypatch.setattr(web_app.report_writer, "rewrite_measure_table_references", fake_report_rewrite)
+    monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/measure/move",
+        json={
+            "model_path": str(model_path),
+            "report_paths": [str(report_path)],
+            "moves": [{"table": "_Measures", "name": "Revenue", "target_table": "Sales"}],
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["rolled_back"] is True
+    assert payload["report_result"]["error"] == "Report write failed"
+    assert measures_file.read_text(encoding="utf-8") == original_measures
+    assert sales_file.read_text(encoding="utf-8") == original_sales
+
+
+def test_api_rename_model_metadata_rolls_back_model_when_report_apply_fails(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    report_path = tmp_path / "Executive.Report"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    (report_path / "definition").mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    model_file = model_path / "definition" / "model.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n",
+        encoding="utf-8",
+    )
+    model_file.write_text(
+        "model Model\n"
+        "ref table Sales\n",
+        encoding="utf-8",
+    )
+    original_sales = sales_file.read_text(encoding="utf-8")
+    original_model = model_file.read_text(encoding="utf-8")
+
+    def fake_report_rewrite(*, dry_run=False, **_kwargs):
+        if dry_run:
+            return {"ok": True, "updated_reference_count": 1, "updated_files": [{"file": "visual.json"}]}
+        return {"ok": False, "error": "Report write failed"}
+
+    monkeypatch.setattr(web_app.report_writer, "rewrite_model_reference_changes", fake_report_rewrite)
+    monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/model/rename",
+        json={
+            "model_path": str(model_path),
+            "report_paths": [str(report_path)],
+            "table_renames": [{"table": "Sales", "target_table": "Fact Sales"}],
+            "measure_renames": [{"table": "Sales", "name": "Revenue", "target_name": "Net Revenue"}],
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["rolled_back"] is True
+    assert payload["report_result"]["error"] == "Report write failed"
+    assert sales_file.exists()
+    assert sales_file.read_text(encoding="utf-8") == original_sales
+    assert model_file.read_text(encoding="utf-8") == original_model
+    assert not (tables_dir / "Fact Sales.tmdl").exists()
+
+
 def test_api_rename_model_metadata_returns_report_validation_errors(tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
