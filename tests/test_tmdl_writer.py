@@ -94,6 +94,93 @@ def test_set_dax_expression_updates_calculated_column(tmp_path):
     assert "\t\thidden" in content
 
 
+def test_item_actions_target_split_tmdl_source_file(tmp_path):
+    model_path = tmp_path / "Demo.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    table_file = tables_dir / "Sales.tmdl"
+    split_file = tables_dir / "Sales.Measures.tmdl"
+    table_file.write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n",
+        encoding="utf-8",
+    )
+    split_file.write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n"
+        "\tmeasure Cost = SUM(Sales[Cost])\n",
+        encoding="utf-8",
+    )
+
+    hidden = tmdl_writer.set_hidden(model_path, "Sales", "Revenue", "Measure")
+    moved = tmdl_writer.set_display_folder(model_path, "Sales", "Revenue", "Measure", "Executive")
+    dax = tmdl_writer.set_dax_expression(model_path, "Sales", "Revenue", "Measure", "SUM(Sales[Net Amount])")
+
+    table_content = table_file.read_text(encoding="utf-8")
+    split_content = split_file.read_text(encoding="utf-8")
+    assert hidden["ok"] is True
+    assert moved["ok"] is True
+    assert dax["ok"] is True
+    assert hidden["file"] == str(split_file)
+    assert moved["file"] == str(split_file)
+    assert dax["file"] == str(split_file)
+    assert "\tmeasure Revenue = SUM(Sales[Net Amount])" in split_content
+    assert "\t\tdisplayFolder: Executive" in split_content
+    assert "\t\tisHidden" in split_content
+    assert "\tmeasure Cost = SUM(Sales[Cost])" in split_content
+    assert "Revenue" not in table_content
+
+
+def test_move_rename_and_delete_use_split_tmdl_source_file(tmp_path):
+    model_path = tmp_path / "Demo.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    split_file = tables_dir / "Sales.Measures.tmdl"
+    target_file = tables_dir / "Executive.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n",
+        encoding="utf-8",
+    )
+    split_file.write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n"
+        "\tmeasure Cost = SUM(Sales[Cost])\n"
+        "\tmeasure Margin = DIVIDE([Revenue], [Cost])\n",
+        encoding="utf-8",
+    )
+    target_file.write_text(
+        "table Executive\n"
+        "\tmeasure Existing = 1\n",
+        encoding="utf-8",
+    )
+
+    renamed = tmdl_writer.rename_measure(model_path, "Sales", "Revenue", "Net Revenue")
+    preview = tmdl_writer.move_measure_to_table(model_path, "Sales", "Cost", "Executive", dry_run=True)
+    moved = tmdl_writer.move_measure_to_table(model_path, "Sales", "Cost", "Executive")
+    deleted = tmdl_writer.delete_item(model_path, "Sales", "Margin", "Measure")
+
+    split_content = split_file.read_text(encoding="utf-8")
+    target_content = target_file.read_text(encoding="utf-8")
+    assert renamed["ok"] is True
+    assert preview["ok"] is True
+    assert moved["ok"] is True
+    assert deleted["ok"] is True
+    assert renamed["changed_files"] == [str(split_file)]
+    assert preview["source_file"] == str(split_file)
+    assert moved["source_file"] == str(split_file)
+    assert deleted["file"] == str(split_file)
+    assert "\tmeasure 'Net Revenue' = SUM(Sales[Amount])" in split_content
+    assert "\tmeasure Cost = SUM(Sales[Cost])" not in split_content
+    assert "\tmeasure Margin" not in split_content
+    assert "DIVIDE([Net Revenue], [Cost])" not in split_content
+    assert "\tmeasure Cost = SUM('Executive'[Cost])" in target_content
+    assert "Revenue" not in sales_file.read_text(encoding="utf-8")
+
+
 def test_set_table_group_inserts_and_updates_annotation(tmp_path):
     model_path = tmp_path / "Demo.SemanticModel"
     tables_dir = model_path / "definition" / "tables"
@@ -365,6 +452,54 @@ def test_apply_actions_validates_whole_batch_before_writing(tmp_path):
     assert results[0]["skipped"] is True
     assert "Missing" in results[1]["error"]
     assert "\t\tisHidden" not in sales_file.read_text(encoding="utf-8")
+
+
+def test_apply_actions_targets_split_tmdl_source_file(tmp_path):
+    model_path = tmp_path / "Demo.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    split_file = tables_dir / "Sales.Measures.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n",
+        encoding="utf-8",
+    )
+    split_file.write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n"
+        "\tmeasure Cost = SUM(Sales[Cost])\n",
+        encoding="utf-8",
+    )
+
+    results = tmdl_writer.apply_actions(
+        model_path,
+        [
+            {
+                "action": "move_to_folder",
+                "table": "Sales",
+                "name": "Revenue",
+                "item_type": "Measure",
+                "folder": "Executive",
+                "sourceFile": str(split_file),
+            },
+            {
+                "action": "hide",
+                "table": "Sales",
+                "name": "Cost",
+                "item_type": "Measure",
+                "sourceFile": str(split_file),
+            },
+        ],
+    )
+
+    split_content = split_file.read_text(encoding="utf-8")
+    assert all(result["ok"] is True for result in results)
+    assert all(result["file"] == str(split_file) for result in results)
+    assert "\t\tdisplayFolder: Executive" in split_content
+    assert "\t\tisHidden" in split_content
+    assert "Revenue" not in sales_file.read_text(encoding="utf-8")
 
 
 def test_actions_handle_quoted_tmdl_names_and_relationships(tmp_path):

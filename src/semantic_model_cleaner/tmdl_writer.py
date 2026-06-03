@@ -45,6 +45,62 @@ def _iter_tmdl_files(model_path: Path) -> list[Path]:
     return sorted(path for path in definition_dir.rglob("*.tmdl") if path.is_file())
 
 
+def _resolve_source_file(model_path: Path, source_file: str | Path | None) -> Path | None:
+    if not source_file:
+        return None
+    candidate = Path(source_file)
+    if not candidate.is_absolute():
+        candidate = model_path / candidate
+    try:
+        return candidate.resolve()
+    except OSError:
+        return candidate
+
+
+def _candidate_item_files(model_path: Path, source_file: str | Path | None = None) -> list[Path]:
+    files = []
+    resolved_source = _resolve_source_file(model_path, source_file)
+    if resolved_source and resolved_source.is_file():
+        files.append(resolved_source)
+    for filepath in _iter_tmdl_files(model_path):
+        if filepath not in files:
+            files.append(filepath)
+    return files
+
+
+def _find_table_block(lines: list[str], table: str) -> tuple[int, int] | None:
+    start = None
+    for i, line in enumerate(lines):
+        if line.startswith("\t") or not line.startswith("table "):
+            continue
+        if _unquote_tmdl_name(line[6:]).casefold() == table.casefold():
+            start = i
+            break
+    if start is None:
+        return None
+
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        line = lines[i]
+        if line and not line.startswith("\t"):
+            end = i
+            break
+    return start, end
+
+
+def _find_table_declaration_file(model_path: Path, table: str) -> Path | None:
+    tmdl_file = _find_tmdl_file(model_path, table)
+    if tmdl_file:
+        lines = tmdl_file.read_text(encoding="utf-8").splitlines()
+        if _find_table_block(lines, table):
+            return tmdl_file
+    for filepath in _iter_tmdl_files(model_path):
+        lines = filepath.read_text(encoding="utf-8").splitlines()
+        if _find_table_block(lines, table):
+            return filepath
+    return None
+
+
 def _model_has_column_named(model_path: Path, name: str) -> bool:
     column_pattern = re.compile(r"^\tcolumn\s+(.+?)(?:\s*=.*)?$", re.IGNORECASE)
     for filepath in _iter_tmdl_files(model_path):
@@ -195,7 +251,14 @@ def _rewrite_measure_table_ref_in_text(
     return table_ref_re.sub(replace_table_qualified, text), count
 
 
-def _find_item_block(lines: list[str], name: str, item_type: str) -> tuple[int, int] | None:
+def _find_item_block(
+    lines: list[str],
+    name: str,
+    item_type: str,
+    *,
+    start_at: int = 0,
+    end_at: int | None = None,
+) -> tuple[int, int] | None:
     """Find start/end line indices for a measure or column block.
 
     Returns (start, end) where start is the declaration line and end is the last
@@ -207,21 +270,22 @@ def _find_item_block(lines: list[str], name: str, item_type: str) -> tuple[int, 
     else:
         pattern = re.compile(r"^\tcolumn\s+(.+?)(?:\s*=.*)?$", re.IGNORECASE)
 
-    i = 0
-    while i < len(lines):
+    limit = len(lines) if end_at is None else min(end_at, len(lines))
+    i = start_at
+    while i < limit:
         match = pattern.match(lines[i])
         if match and _unquote_tmdl_name(match.group(1)).casefold() == name.casefold():
             start = i
             i += 1
             # Consume all 2-tab and 3-tab property/DAX lines, plus blank lines within block
-            while i < len(lines):
+            while i < limit:
                 line = lines[i]
                 if line == "" or line.strip() == "":
                     # Blank lines inside a block — peek ahead to see if block continues
                     j = i + 1
-                    while j < len(lines) and (lines[j] == "" or lines[j].strip() == ""):
+                    while j < limit and (lines[j] == "" or lines[j].strip() == ""):
                         j += 1
-                    if j < len(lines) and lines[j].startswith("\t\t"):
+                    if j < limit and lines[j].startswith("\t\t"):
                         i = j
                         continue
                     else:
@@ -231,11 +295,44 @@ def _find_item_block(lines: list[str], name: str, item_type: str) -> tuple[int, 
                     continue
                 break
             # Include trailing blank lines that are part of item separation
-            while i < len(lines) and (lines[i] == "" or lines[i].strip() == ""):
+            while i < limit and (lines[i] == "" or lines[i].strip() == ""):
                 i += 1
             return (start, i)
         i += 1
     return None
+
+
+def _find_item_source(
+    model_path: Path,
+    table: str,
+    name: str,
+    item_type: str,
+    *,
+    source_file: str | Path | None = None,
+) -> tuple[Path, list[str], tuple[int, int]] | None:
+    for filepath in _candidate_item_files(model_path, source_file):
+        try:
+            lines = filepath.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        table_block = _find_table_block(lines, table)
+        if not table_block:
+            continue
+        table_start, table_end = table_block
+        item_block = _find_item_block(
+            lines,
+            name,
+            item_type,
+            start_at=table_start + 1,
+            end_at=table_end,
+        )
+        if item_block:
+            return filepath, lines, item_block
+    return None
+
+
+def _action_source_file(action: dict) -> str | Path | None:
+    return action.get("source_file") or action.get("sourceFile")
 
 
 def _find_property_line(
@@ -302,17 +399,21 @@ def check_git_dirty(model_path: Path) -> str | None:
 # ── Write Operations ─────────────────────────────────────────────────────────
 
 
-def set_display_folder(model_path: Path, table: str, name: str,
-                       item_type: str, folder: str) -> dict:
+def set_display_folder(
+    model_path: Path,
+    table: str,
+    name: str,
+    item_type: str,
+    folder: str,
+    *,
+    source_file: str | Path | None = None,
+) -> dict:
     """Set or change the displayFolder property of a measure or column."""
-    tmdl_file = _find_tmdl_file(model_path, table)
-    if not tmdl_file:
-        return {"ok": False, "error": f"TMDL file not found for table '{table}'"}
+    source = _find_item_source(model_path, table, name, item_type, source_file=source_file)
+    if not source:
+        return {"ok": False, "error": f"Item '{name}' not found in table '{table}' TMDL source files"}
 
-    lines = tmdl_file.read_text(encoding="utf-8").splitlines()
-    block = _find_item_block(lines, name, item_type)
-    if not block:
-        return {"ok": False, "error": f"Item '{name}' not found in {tmdl_file.name}"}
+    tmdl_file, lines, block = source
 
     start, end = block
     prop_line = _find_property_line(lines, start, end, "displayFolder")
@@ -331,17 +432,21 @@ def set_display_folder(model_path: Path, table: str, name: str,
     return {"ok": True, "file": str(tmdl_file), "action": "set_display_folder", "folder": folder}
 
 
-def set_hidden(model_path: Path, table: str, name: str,
-               item_type: str, hidden: bool = True) -> dict:
+def set_hidden(
+    model_path: Path,
+    table: str,
+    name: str,
+    item_type: str,
+    hidden: bool = True,
+    *,
+    source_file: str | Path | None = None,
+) -> dict:
     """Set hidden property on a measure or column using modern TMDL syntax."""
-    tmdl_file = _find_tmdl_file(model_path, table)
-    if not tmdl_file:
-        return {"ok": False, "error": f"TMDL file not found for table '{table}'"}
+    source = _find_item_source(model_path, table, name, item_type, source_file=source_file)
+    if not source:
+        return {"ok": False, "error": f"Item '{name}' not found in table '{table}' TMDL source files"}
 
-    lines = tmdl_file.read_text(encoding="utf-8").splitlines()
-    block = _find_item_block(lines, name, item_type)
-    if not block:
-        return {"ok": False, "error": f"Item '{name}' not found in {tmdl_file.name}"}
+    tmdl_file, lines, block = source
 
     start, end = block
     prop_line = _find_property_line(lines, start, end, ("hidden", "isHidden"))
@@ -363,7 +468,7 @@ def set_hidden(model_path: Path, table: str, name: str,
 
 def set_table_group(model_path: Path, table: str, group_name: str) -> dict:
     """Set or change the Tabular Editor table-group annotation on a table."""
-    tmdl_file = _find_tmdl_file(model_path, table)
+    tmdl_file = _find_table_declaration_file(model_path, table)
     if not tmdl_file:
         return {"ok": False, "error": f"TMDL file not found for table '{table}'"}
 
@@ -371,13 +476,10 @@ def set_table_group(model_path: Path, table: str, group_name: str) -> dict:
     if not lines:
         return {"ok": False, "error": f"TMDL file is empty for table '{table}'"}
 
-    table_line = None
-    for i, line in enumerate(lines):
-        if re.match(r"^table\s+", line):
-            table_line = i
-            break
-    if table_line is None:
+    table_block = _find_table_block(lines, table)
+    if not table_block:
         return {"ok": False, "error": f"Table declaration not found in {tmdl_file.name}"}
+    table_line, _ = table_block
 
     annotation_name = "TabularEditor_TableGroup"
     annotation_pattern = re.compile(
@@ -464,6 +566,8 @@ def set_dax_expression(
     name: str,
     item_type: str,
     dax_expression: str,
+    *,
+    source_file: str | Path | None = None,
 ) -> dict:
     """Replace DAX expression for a measure or calculated column."""
     if item_type not in ("Measure", "Calculated Column"):
@@ -473,14 +577,10 @@ def set_dax_expression(
     if not expression_lines:
         return {"ok": False, "error": "DAX expression cannot be empty"}
 
-    tmdl_file = _find_tmdl_file(model_path, table)
-    if not tmdl_file:
-        return {"ok": False, "error": f"TMDL file not found for table '{table}'"}
-
-    lines = tmdl_file.read_text(encoding="utf-8").splitlines()
-    block = _find_item_block(lines, name, item_type)
-    if not block:
-        return {"ok": False, "error": f"Item '{name}' not found in {tmdl_file.name}"}
+    source = _find_item_source(model_path, table, name, item_type, source_file=source_file)
+    if not source:
+        return {"ok": False, "error": f"Item '{name}' not found in table '{table}' TMDL source files"}
+    tmdl_file, lines, block = source
     start, end = block
 
     if item_type == "Measure":
@@ -531,6 +631,7 @@ def move_measure_to_table(
     target_table: str,
     *,
     dry_run: bool = False,
+    source_file: str | Path | None = None,
 ) -> dict:
     """Move a measure block from one table TMDL file to another."""
     table = table.strip()
@@ -541,20 +642,17 @@ def move_measure_to_table(
     if table.casefold() == target_table.casefold():
         return {"ok": False, "error": "Target table must be different from the current table"}
 
-    source_file = _find_tmdl_file(model_path, table)
-    if not source_file:
-        return {"ok": False, "error": f"TMDL file not found for table '{table}'"}
-    target_file = _find_tmdl_file(model_path, target_table)
+    source = _find_item_source(model_path, table, name, "Measure", source_file=source_file)
+    if not source:
+        return {"ok": False, "error": f"Measure '{name}' not found in table '{table}' TMDL source files"}
+    source_file_path, source_lines, source_block = source
+
+    target_file = _find_table_declaration_file(model_path, target_table)
     if not target_file:
         return {"ok": False, "error": f"TMDL file not found for target table '{target_table}'"}
 
-    source_lines = source_file.read_text(encoding="utf-8").splitlines()
-    source_block = _find_item_block(source_lines, name, "Measure")
-    if not source_block:
-        return {"ok": False, "error": f"Measure '{name}' not found in {source_file.name}"}
-
     target_lines = target_file.read_text(encoding="utf-8").splitlines()
-    if _find_item_block(target_lines, name, "Measure"):
+    if _find_item_source(model_path, target_table, name, "Measure"):
         return {"ok": False, "error": f"Target table '{target_table}' already has a measure named '{name}'"}
 
     start, end = source_block
@@ -566,7 +664,7 @@ def move_measure_to_table(
             "table": table,
             "name": name,
             "target_table": target_table,
-            "source_file": str(source_file),
+            "source_file": str(source_file_path),
             "target_file": str(target_file),
             "dry_run": True,
             "written": False,
@@ -582,7 +680,7 @@ def move_measure_to_table(
         target_lines.append("")
     target_lines.extend(measure_block)
 
-    source_file.write_text("\n".join(source_lines) + "\n", encoding="utf-8")
+    source_file_path.write_text("\n".join(source_lines) + "\n", encoding="utf-8")
     target_file.write_text("\n".join(target_lines) + "\n", encoding="utf-8")
 
     changed_ref_files = []
@@ -601,7 +699,7 @@ def move_measure_to_table(
         "table": table,
         "name": name,
         "target_table": target_table,
-        "source_file": str(source_file),
+        "source_file": str(source_file_path),
         "target_file": str(target_file),
         "dry_run": False,
         "written": True,
@@ -627,6 +725,7 @@ def move_measures_to_tables(
             str(move.get("name", "") or ""),
             str(move.get("target_table", "") or ""),
             dry_run=True,
+            source_file=move.get("source_file") or move.get("sourceFile"),
         )
         for move in moves
     ]
@@ -656,6 +755,7 @@ def move_measures_to_tables(
                 str(move.get("name", "") or ""),
                 str(move.get("target_table", "") or ""),
                 dry_run=False,
+                source_file=move.get("source_file") or move.get("sourceFile"),
             )
             results.append(result)
             if not result.get("ok"):
@@ -685,6 +785,7 @@ def rename_measure(
     target_name: str,
     *,
     dry_run: bool = False,
+    source_file: str | Path | None = None,
 ) -> dict:
     """Rename a measure and update semantic-model TMDL references."""
     table = table.strip()
@@ -695,15 +796,11 @@ def rename_measure(
     if name.casefold() == target_name.casefold():
         return {"ok": False, "error": "Target measure name must be different"}
 
-    tmdl_file = _find_tmdl_file(model_path, table)
-    if not tmdl_file:
-        return {"ok": False, "error": f"TMDL file not found for table '{table}'"}
-
-    lines = tmdl_file.read_text(encoding="utf-8").splitlines()
-    block = _find_item_block(lines, name, "Measure")
-    if not block:
-        return {"ok": False, "error": f"Measure '{name}' not found in {tmdl_file.name}"}
-    if _find_item_block(lines, target_name, "Measure"):
+    source = _find_item_source(model_path, table, name, "Measure", source_file=source_file)
+    if not source:
+        return {"ok": False, "error": f"Measure '{name}' not found in table '{table}' TMDL source files"}
+    tmdl_file, lines, block = source
+    if _find_item_source(model_path, table, target_name, "Measure"):
         return {"ok": False, "error": f"Table '{table}' already has a measure named '{target_name}'"}
 
     update_unqualified = not _model_has_column_named(model_path, name)
@@ -839,6 +936,7 @@ def rename_model_metadata(
             str(rename.get("name", "") or ""),
             str(rename.get("target_name", "") or ""),
             dry_run=True,
+            source_file=rename.get("source_file") or rename.get("sourceFile"),
         ))
     if any(not result.get("ok") for result in validation_results):
         return {
@@ -882,6 +980,7 @@ def rename_model_metadata(
                 str(rename.get("name", "") or ""),
                 str(rename.get("target_name", "") or ""),
                 dry_run=False,
+                source_file=rename.get("source_file") or rename.get("sourceFile"),
             )
             results.append(result)
             if not result.get("ok"):
@@ -1060,19 +1159,23 @@ def _delete_all_relationships_for_table(model_path: Path, table: str) -> list[st
     return removed
 
 
-def delete_item(model_path: Path, table: str, name: str, item_type: str) -> dict:
+def delete_item(
+    model_path: Path,
+    table: str,
+    name: str,
+    item_type: str,
+    *,
+    source_file: str | Path | None = None,
+) -> dict:
     """Delete an entire measure or column block from the TMDL file.
     If the item is a column, also removes any relationships referencing it.
     If the table has no remaining columns or measures, deletes the table file
     and all its relationships."""
-    tmdl_file = _find_tmdl_file(model_path, table)
-    if not tmdl_file:
-        return {"ok": False, "error": f"TMDL file not found for table '{table}'"}
+    source = _find_item_source(model_path, table, name, item_type, source_file=source_file)
+    if not source:
+        return {"ok": False, "error": f"Item '{name}' not found in table '{table}' TMDL source files"}
 
-    lines = tmdl_file.read_text(encoding="utf-8").splitlines()
-    block = _find_item_block(lines, name, item_type)
-    if not block:
-        return {"ok": False, "error": f"Item '{name}' not found in {tmdl_file.name}"}
+    tmdl_file, lines, block = source
 
     start, end = block
     del lines[start:end]
@@ -1142,15 +1245,42 @@ def apply_actions(model_path: Path, actions: list[dict]) -> list[dict]:
 
         try:
             if action == "move_to_folder":
-                r = set_display_folder(model_path, table, name, item_type, act.get("folder", ""))
+                r = set_display_folder(
+                    model_path,
+                    table,
+                    name,
+                    item_type,
+                    act.get("folder", ""),
+                    source_file=_action_source_file(act),
+                )
             elif action == "move_to_table_group":
                 r = set_table_group(model_path, table, act.get("table_group", ""))
             elif action == "hide":
-                r = set_hidden(model_path, table, name, item_type, hidden=True)
+                r = set_hidden(
+                    model_path,
+                    table,
+                    name,
+                    item_type,
+                    hidden=True,
+                    source_file=_action_source_file(act),
+                )
             elif action == "unhide":
-                r = set_hidden(model_path, table, name, item_type, hidden=False)
+                r = set_hidden(
+                    model_path,
+                    table,
+                    name,
+                    item_type,
+                    hidden=False,
+                    source_file=_action_source_file(act),
+                )
             elif action == "delete":
-                r = delete_item(model_path, table, name, item_type)
+                r = delete_item(
+                    model_path,
+                    table,
+                    name,
+                    item_type,
+                    source_file=_action_source_file(act),
+                )
             else:
                 r = {"ok": False, "error": f"Unknown action '{action}'"}
         except Exception as exc:
@@ -1185,6 +1315,7 @@ def _validate_action(model_path: Path, act: dict) -> dict:
     table = act.get("table")
     name = act.get("name")
     item_type = act.get("item_type")
+    source_file = _action_source_file(act)
     result = {
         "ok": True,
         "action": action,
@@ -1192,6 +1323,8 @@ def _validate_action(model_path: Path, act: dict) -> dict:
         "name": name,
         "item_type": item_type,
     }
+    if source_file:
+        result["source_file"] = str(source_file)
 
     if action not in ("move_to_folder", "move_to_table_group", "hide", "unhide", "delete"):
         return {**result, "ok": False, "error": f"Unknown action '{action}'"}
@@ -1199,22 +1332,31 @@ def _validate_action(model_path: Path, act: dict) -> dict:
         if not value:
             return {**result, "ok": False, "error": f"Missing field '{field_name}' in action"}
 
-    tmdl_file = _find_tmdl_file(model_path, table)
-    if not tmdl_file:
-        return {**result, "ok": False, "error": f"TMDL file not found for table '{table}'"}
-
-    try:
-        lines = tmdl_file.read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
-        return {**result, "ok": False, "error": str(exc)}
-
     if action == "move_to_table_group":
-        if not any(re.match(r"^table\s+", line) for line in lines):
-            return {**result, "ok": False, "error": f"Table declaration not found in {tmdl_file.name}"}
+        tmdl_file = _find_table_declaration_file(model_path, table)
+        if not tmdl_file:
+            return {**result, "ok": False, "error": f"TMDL table declaration not found for table '{table}'"}
+        try:
+            lines = tmdl_file.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            return {**result, "ok": False, "error": str(exc)}
+        if not _find_table_block(lines, table):
+            return {**result, "ok": False, "error": f"Table block for '{table}' not found in {tmdl_file.name}"}
         return result
 
-    if not _find_item_block(lines, name, item_type):
-        return {**result, "ok": False, "error": f"Item '{name}' not found in {tmdl_file.name}"}
+    source = _find_item_source(model_path, table, name, item_type, source_file=source_file)
+    if not source:
+        if source_file:
+            return {
+                **result,
+                "ok": False,
+                "error": f"Item '{name}' not found in table '{table}' source block from {source_file}",
+            }
+        if not _find_table_declaration_file(model_path, table):
+            return {**result, "ok": False, "error": f"TMDL table declaration not found for table '{table}'"}
+        return {**result, "ok": False, "error": f"Item '{name}' not found in table '{table}' TMDL source files"}
+    resolved_file, _, _ = source
+    result["source_file"] = str(resolved_file)
     return result
 
 

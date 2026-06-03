@@ -364,6 +364,7 @@ def _serialize_results(results: dict) -> dict:
             "name": item.name,
             "sourceKind": item.source_kind,
             "sourceArtifact": item.source_artifact or None,
+            "sourceFile": item.source_file or None,
             "displayFolder": item.display_folder,
             "formatString": item.format_string or None,
             "isHidden": item.is_hidden,
@@ -471,6 +472,7 @@ def _serialize_results(results: dict) -> dict:
                     "name": item.name,
                     "sourceKind": item.source_kind,
                     "sourceArtifact": item.source_artifact or None,
+                    "sourceFile": item.source_file or None,
                     "isHidden": item.is_hidden,
                     "displayFolder": item.display_folder,
                     "formatString": item.format_string or None,
@@ -506,6 +508,7 @@ def _serialize_results(results: dict) -> dict:
                 "name": item.name,
                 "sourceKind": item.source_kind,
                 "sourceArtifact": item.source_artifact or None,
+                "sourceFile": item.source_file or None,
                 "isHidden": item.is_hidden,
                 "displayFolder": item.display_folder,
                 "formatString": item.format_string or None,
@@ -541,6 +544,7 @@ def _serialize_results(results: dict) -> dict:
                 "name": item.name,
                 "sourceKind": item.source_kind,
                 "sourceArtifact": item.source_artifact or None,
+                "sourceFile": item.source_file or None,
                 "isHidden": item.is_hidden,
                 "displayFolder": item.display_folder,
                 "formatString": item.format_string or None,
@@ -1027,6 +1031,7 @@ def api_dax():
             name=name,
             item_type=item_type,
             dax_expression=str(dax_expression),
+            source_file=data.get("source_file") or data.get("sourceFile"),
         )
 
         if not result.get("ok"):

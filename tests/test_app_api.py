@@ -568,6 +568,42 @@ def test_api_analyze_exposes_table_permission_rls_usage(tmp_path):
     assert store_code["otherModelUses"] == ["RLS"]
 
 
+def test_api_analyze_returns_model_item_source_file(tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    report_path = tmp_path / "Executive.Report"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    report_path.mkdir(parents=True)
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n",
+        encoding="utf-8",
+    )
+    split_file = tables_dir / "Sales.Measures.tmdl"
+    split_file.write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n",
+        encoding="utf-8",
+    )
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/analyze",
+        json={
+            "model_paths": [str(model_path)],
+            "report_paths": [str(report_path)],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    revenue = next(item for item in payload["items"] if item["table"] == "Sales" and item["name"] == "Revenue")
+    reference = next(ref for ref in payload["references"] if ref["table"] == "Sales" and ref["name"] == "Revenue")
+    assert revenue["sourceFile"] == str(split_file)
+    assert reference["sourceFile"] == str(split_file)
+
+
 def test_api_analyze_includes_m_source_details_for_regular_columns(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
@@ -624,6 +660,7 @@ def test_api_dax_updates_expression(monkeypatch, tmp_path):
             "name": "Revenue",
             "item_type": "Measure",
             "dax_expression": "SUM(Sales[Amount])",
+            "sourceFile": "/tmp/Sales.Measures.tmdl",
         },
     )
 
@@ -634,6 +671,7 @@ def test_api_dax_updates_expression(monkeypatch, tmp_path):
     assert captured["name"] == "Revenue"
     assert captured["item_type"] == "Measure"
     assert captured["dax_expression"] == "SUM(Sales[Amount])"
+    assert captured["source_file"] == "/tmp/Sales.Measures.tmdl"
 
 
 def test_api_action_accepts_move_to_table_group(monkeypatch, tmp_path):
