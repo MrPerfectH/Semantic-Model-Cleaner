@@ -529,6 +529,45 @@ def test_api_analyze_returns_report_health_issues(tmp_path):
     assert payload["reportIssues"][0]["artifactPath"] == "definition/pages/Page1/visuals/Visual1/visual.json"
 
 
+def test_api_analyze_exposes_table_permission_rls_usage(tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    report_path = tmp_path / "Executive.Report"
+    tables_dir = model_path / "definition" / "tables"
+    roles_dir = model_path / "definition" / "roles"
+    tables_dir.mkdir(parents=True)
+    roles_dir.mkdir(parents=True)
+    (report_path / "definition").mkdir(parents=True)
+    (tables_dir / "Store.tmdl").write_text(
+        "table Store\n"
+        "\tcolumn 'Store Code'\n"
+        "\t\tdataType: int64\n",
+        encoding="utf-8",
+    )
+    (roles_dir / "Store Role.tmdl").write_text(
+        "role 'Store Role'\n"
+        "\tmodelPermission: read\n"
+        "\ttablePermission Store = 'Store'[Store Code] IN {1, 10}\n",
+        encoding="utf-8",
+    )
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/analyze",
+        json={
+            "model_paths": [str(model_path)],
+            "report_paths": [str(report_path)],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    store_code = payload["items"][0]
+    assert store_code["statusDetail"] == "USED (RLS: Store Role)"
+    assert store_code["usageState"] == "Indirect"
+    assert store_code["deleteSafety"] == "Blocked"
+    assert store_code["otherModelUses"] == ["RLS"]
+
+
 def test_api_analyze_includes_m_source_details_for_regular_columns(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
