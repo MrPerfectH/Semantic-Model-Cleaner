@@ -1,5 +1,8 @@
 import json
+from io import BytesIO
 from pathlib import Path
+
+from openpyxl import load_workbook
 
 from semantic_model_cleaner import analyzer
 
@@ -433,6 +436,206 @@ def test_unused_hidden_column_includes_review_triggers(tmp_path):
     payload = json.loads(analyzer.format_json_output(results))
     payload_item = next(item for item in payload["items"] if item["table"] == "Date" and item["name"] == "DateKey")
     assert payload_item["reviewTriggers"] == ["Item is hidden"]
+
+
+def test_unused_item_is_review_when_perspective_may_hide_dependency(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    perspectives_dir = model / "definition" / "perspectives"
+    pages_dir = report / "definition" / "pages" / "Page 1"
+    tables_dir.mkdir(parents=True)
+    perspectives_dir.mkdir(parents=True)
+    pages_dir.mkdir(parents=True)
+
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n"
+        "\tcolumn Amount\n",
+        encoding="utf-8",
+    )
+    (perspectives_dir / "Executive.tmdl").write_text(
+        "perspective Executive\n"
+        "\tperspectiveTable Sales\n"
+        "\t\tperspectiveMeasure Revenue\n",
+        encoding="utf-8",
+    )
+    (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
+
+    results = analyzer.analyze(workspace.resolve())
+    revenue = _find_item(results, "Sales", "Revenue", "Measure")
+
+    assert revenue["status"] == "NOT USED"
+    assert revenue["removal_risk"] == "Review"
+    assert revenue["review_triggers"] == [
+        (
+            "Unsupported Metadata: Perspectives in definition/perspectives/Executive.tmdl "
+            "can reference Sales[Revenue]. Hidden dependency: perspective membership may "
+            "keep this field available outside scanned report visuals. User harm: deleting "
+            "it could break curated perspective views, Excel connections, or downstream "
+            "tools that rely on the perspective."
+        )
+    ]
+
+    payload = json.loads(analyzer.format_json_output(results))
+    payload_item = next(item for item in payload["items"] if item["table"] == "Sales" and item["name"] == "Revenue")
+    assert payload_item["removalRisk"] == "Review"
+    assert payload_item["reviewTriggers"] == revenue["review_triggers"]
+
+    workbook = load_workbook(BytesIO(analyzer.create_xlsx_bytes(results)))
+    detail_sheet = workbook["Details"]
+    headers = [cell.value for cell in detail_sheet[1]]
+    trigger_col = headers.index("Review Triggers") + 1
+    revenue_row = next(row for row in detail_sheet.iter_rows(min_row=2) if row[2].value == "Revenue")
+    assert revenue_row[trigger_col - 1].value == revenue["review_triggers"][0]
+
+
+def test_unsupported_metadata_areas_downgrade_safe_items_to_review(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    cultures_dir = model / "definition" / "cultures"
+    pages_dir = report / "definition" / "pages" / "Page 1"
+    tables_dir.mkdir(parents=True)
+    cultures_dir.mkdir(parents=True)
+    pages_dir.mkdir(parents=True)
+
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tmeasure CalcGroupTarget = 1\n"
+        "\tmeasure KpiTarget = 1\n"
+        "\tmeasure DetailRowsTarget = 1\n"
+        "\tmeasure FormatTarget = 1\n"
+        "\tmeasure CoverageTarget = 1\n"
+        "\tmeasure SecondaryTarget = 1\n"
+        "\tmeasure TranslationTarget = 1\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "Time Intelligence.tmdl").write_text(
+        "table 'Time Intelligence'\n"
+        "\tcalculationGroup\n"
+        "\t\tcalculationItem Current = SELECTEDMEASURE()\n"
+        "\t\tcalculationItem Prior = CALCULATE(SELECTEDMEASURE(), 'Sales'[CalcGroupTarget])\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "KpiMetadata.tmdl").write_text(
+        "table KpiMetadata\n"
+        "\tmeasure KpiCarrier = 1\n"
+        "\t\tkpi\n"
+        "\t\t\ttargetExpression = 'Sales'[KpiTarget]\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "DetailRowsMetadata.tmdl").write_text(
+        "table DetailRowsMetadata\n"
+        "\tmeasure DetailRowsCarrier = 1\n"
+        "\t\tdetailRowsDefinition = SELECTCOLUMNS(Sales, \"x\", 'Sales'[DetailRowsTarget])\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "FormatMetadata.tmdl").write_text(
+        "table FormatMetadata\n"
+        "\tmeasure FormatCarrier = 1\n"
+        "\t\tformatStringDefinition = 'Sales'[FormatTarget]\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "CoverageMetadata.tmdl").write_text(
+        "table CoverageMetadata\n"
+        "\tmeasure CoverageCarrier = 1\n"
+        "\t\tdataCoverageDefinition = 'Sales'[CoverageTarget] > 0\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "SecondaryMetadata.tmdl").write_text(
+        "table SecondaryMetadata\n"
+        "\tmeasure SecondaryCarrier = 1\n"
+        "\t\tsecondaryExpression = 'Sales'[SecondaryTarget]\n",
+        encoding="utf-8",
+    )
+    (cultures_dir / "en-US.tmdl").write_text(
+        "culture en-US\n"
+        "\tlinguisticMetadata = 'Sales'[TranslationTarget]\n",
+        encoding="utf-8",
+    )
+    (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
+
+    results = analyzer.analyze(workspace.resolve())
+
+    expectations = {
+        "CalcGroupTarget": "Calculation Groups",
+        "KpiTarget": "KPI expressions",
+        "DetailRowsTarget": "Detail rows",
+        "FormatTarget": "Format string definitions",
+        "CoverageTarget": "Data coverage definitions",
+        "SecondaryTarget": "Secondary expressions",
+        "TranslationTarget": "Cultures/translations",
+    }
+    for measure_name, area in expectations.items():
+        item = _find_item(results, "Sales", measure_name, "Measure")
+        assert item["status"] == "NOT USED"
+        assert item["removal_risk"] == "Review"
+        assert any(area in trigger for trigger in item["review_triggers"])
+        assert any("Hidden dependency:" in trigger for trigger in item["review_triggers"])
+        assert any("User harm:" in trigger for trigger in item["review_triggers"])
+
+
+def test_ordinary_unused_item_remains_safe_without_unsupported_metadata(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    pages_dir = report / "definition" / "pages" / "Page 1"
+    tables_dir.mkdir(parents=True)
+    pages_dir.mkdir(parents=True)
+
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = 1\n",
+        encoding="utf-8",
+    )
+    (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
+
+    results = analyzer.analyze(workspace.resolve())
+    revenue = _find_item(results, "Sales", "Revenue", "Measure")
+
+    assert revenue["status"] == "NOT USED"
+    assert revenue["removal_risk"] == "Safe"
+    assert revenue["review_triggers"] == []
+
+
+def test_unsupported_tmdl_metadata_does_not_review_unrelated_file_refs(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    pages_dir = report / "definition" / "pages" / "Page 1"
+    tables_dir.mkdir(parents=True)
+    pages_dir.mkdir(parents=True)
+
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tmeasure OrdinaryTarget = 1\n"
+        "\tmeasure FormatTarget = 1\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "MetadataCarrier.tmdl").write_text(
+        "table MetadataCarrier\n"
+        "\tmeasure OrdinaryCarrier = 'Sales'[OrdinaryTarget]\n"
+        "\tmeasure FormatCarrier = 1\n"
+        "\t\tformatStringDefinition = 'Sales'[FormatTarget]\n",
+        encoding="utf-8",
+    )
+    (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
+
+    results = analyzer.analyze(workspace.resolve())
+    ordinary_target = _find_item(results, "Sales", "OrdinaryTarget", "Measure")
+    format_target = _find_item(results, "Sales", "FormatTarget", "Measure")
+
+    assert ordinary_target["status"] == "NOT USED"
+    assert ordinary_target["removal_risk"] == "Caution"
+    assert ordinary_target["review_triggers"] == []
+    assert format_target["status"] == "NOT USED"
+    assert format_target["removal_risk"] == "Review"
+    assert any("Format string definitions" in trigger for trigger in format_target["review_triggers"])
 
 
 def test_report_extension_measures_are_analyzed_and_promote_model_dependencies(tmp_path):

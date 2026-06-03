@@ -494,6 +494,28 @@ def test_api_analyze_includes_review_triggers(monkeypatch, tmp_path):
     assert payload["references"][0]["reviewTriggers"] == ["Item is hidden"]
 
 
+def test_api_serialization_preserves_unsupported_metadata_review_reason():
+    results = _fake_results()
+    reason = (
+        "Unsupported Metadata: Perspectives in definition/perspectives/Executive.tmdl "
+        "can reference Sales[Revenue]. Hidden dependency: perspective membership may "
+        "keep this field available outside scanned report visuals. User harm: deleting "
+        "it could break curated perspective views."
+    )
+    results["items"][0]["removal_risk"] = "Review"
+    results["items"][0]["review_triggers"] = [reason]
+    results["table_summaries"][0]["items"][0]["removal_risk"] = "Review"
+    results["table_summaries"][0]["items"][0]["review_triggers"] = [reason]
+
+    payload = web_app._serialize_results(results)
+
+    assert payload["items"][0]["removalRisk"] == "Review"
+    assert payload["items"][0]["deleteSafety"] == "Review"
+    assert payload["items"][0]["reviewTriggers"] == [reason]
+    assert payload["references"][0]["reviewTriggers"] == [reason]
+    assert payload["tables"][0]["items"][0]["reviewTriggers"] == [reason]
+
+
 def test_api_analyze_returns_report_health_issues(tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
