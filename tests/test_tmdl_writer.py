@@ -280,6 +280,54 @@ def test_rename_table_updates_file_declaration_model_relationships_and_dax(tmp_p
     )
 
 
+def test_rename_table_preserves_apostrophe_escaping_in_tmdl_and_dax_refs(tmp_path):
+    model_path = tmp_path / "Demo.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    source_file = tables_dir / "O'Brien.tmdl"
+    metrics_file = tables_dir / "Metrics.tmdl"
+    source_file.write_text(
+        "table 'O''Brien'\n"
+        "\tcolumn Amount\n"
+        "\tmeasure 'Bob''s Revenue' = SUM('O''Brien'[Amount])\n",
+        encoding="utf-8",
+    )
+    metrics_file.write_text(
+        "table Metrics\n"
+        "\tmeasure 'Executive Bob''s Revenue' = 'O''Brien'[Bob's Revenue] + COUNTROWS('O''Brien')\n",
+        encoding="utf-8",
+    )
+    (model_path / "definition" / "model.tmdl").write_text(
+        "model Model\n"
+        "ref table 'O''Brien'\n",
+        encoding="utf-8",
+    )
+    (model_path / "definition" / "relationships.tmdl").write_text(
+        "relationship SalesToDate\n"
+        "\tfromColumn: 'O''Brien'.Amount\n"
+        "\ttoColumn: Date.Amount\n",
+        encoding="utf-8",
+    )
+
+    result = tmdl_writer.rename_table(model_path, "O'Brien", "O'Brien North")
+
+    assert result["ok"] is True
+    renamed_file = tables_dir / "O'Brien North.tmdl"
+    assert not source_file.exists()
+    assert renamed_file.exists()
+    assert "table 'O''Brien North'" in renamed_file.read_text(encoding="utf-8")
+    assert "SUM('O''Brien North'[Amount])" in renamed_file.read_text(encoding="utf-8")
+    metrics = metrics_file.read_text(encoding="utf-8")
+    assert "'O''Brien North'[Bob's Revenue]" in metrics
+    assert "COUNTROWS('O''Brien North')" in metrics
+    assert "ref table 'O''Brien North'" in (model_path / "definition" / "model.tmdl").read_text(
+        encoding="utf-8"
+    )
+    assert "\tfromColumn: 'O''Brien North'.Amount" in (model_path / "definition" / "relationships.tmdl").read_text(
+        encoding="utf-8"
+    )
+
+
 def test_create_backup_can_run_twice_quickly(tmp_path):
     model_path = tmp_path / "Demo.SemanticModel"
     tables_dir = model_path / "definition" / "tables"

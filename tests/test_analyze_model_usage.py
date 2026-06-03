@@ -834,6 +834,123 @@ def test_inline_calculated_columns_are_parsed_and_do_not_false_flag_measures(tmp
     assert measure["broken_dax_refs"] == []
 
 
+def test_quoted_tmdl_identifiers_with_apostrophes_analyze_consistently(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Quoted.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    page_dir = report / "definition" / "pages" / "Page 1"
+    visual_dir = page_dir / "visuals" / "visual1"
+    tables_dir.mkdir(parents=True)
+    visual_dir.mkdir(parents=True)
+
+    (tables_dir / "O'Brien.tmdl").write_text(
+        "table 'O''Brien'\n"
+        "\tcolumn 'Customer''s Id'\n"
+        "\tcolumn Amount\n"
+        "\tcolumn 'Segment''s Sort'\n"
+        "\tcolumn 'Segment''s Name'\n"
+        "\t\tsortByColumn: 'Segment''s Sort'\n"
+        "\tcolumn 'Geography''s Name'\n"
+        "\tmeasure 'Bob''s Revenue' = SUM('O''Brien'[Amount])\n"
+        "\thierarchy 'Customer''s Hierarchy'\n"
+        "\t\tlevel 'Geography''s Name'\n"
+        "\t\t\tcolumn: 'Geography''s Name'\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "Customer.tmdl").write_text(
+        "table Customer\n"
+        "\tcolumn CustomerId\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "Metrics.tmdl").write_text(
+        "table Metrics\n"
+        "\tmeasure 'Executive Bob''s Revenue' = 'O''Brien'[Bob's Revenue] + COUNTROWS('O''Brien')\n",
+        encoding="utf-8",
+    )
+    (model / "definition" / "relationships.tmdl").write_text(
+        "relationship 'O''Brien Customer'\n"
+        "\tfromColumn: 'O''Brien'.'Customer''s Id'\n"
+        "\ttoColumn: Customer.CustomerId\n"
+        "\tfromCardinality: many\n"
+        "\ttoCardinality: one\n",
+        encoding="utf-8",
+    )
+    (page_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
+    (visual_dir / "visual.json").write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "visualType": "tableEx",
+                    "query": {
+                        "queryState": {
+                            "Values": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Measure": {
+                                                "Property": "Executive Bob's Revenue",
+                                                "Expression": {"SourceRef": {"Entity": "Metrics"}},
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "field": {
+                                            "Column": {
+                                                "Property": "Segment's Name",
+                                                "Expression": {"SourceRef": {"Entity": "O'Brien"}},
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "field": {
+                                            "HierarchyLevel": {
+                                                "Level": "Geography's Name",
+                                                "Expression": {
+                                                    "Hierarchy": {
+                                                        "Hierarchy": "Customer's Hierarchy",
+                                                        "Expression": {"SourceRef": {"Entity": "O'Brien"}},
+                                                    }
+                                                },
+                                            }
+                                        }
+                                    },
+                                ]
+                            }
+                        }
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    results = analyzer.analyze(workspace.resolve())
+
+    executive = _find_item(results, "Metrics", "Executive Bob's Revenue", "Measure")
+    bob = _find_item(results, "O'Brien", "Bob's Revenue", "Measure")
+    amount = _find_item(results, "O'Brien", "Amount", "Column")
+    customer_id = _find_item(results, "O'Brien", "Customer's Id", "Column")
+    segment_name = _find_item(results, "O'Brien", "Segment's Name", "Column")
+    segment_sort = _find_item(results, "O'Brien", "Segment's Sort", "Column")
+    geography = _find_item(results, "O'Brien", "Geography's Name", "Column")
+    table_summaries = {row["name"]: row for row in results["table_summaries"]}
+
+    assert executive["status"] == "USED"
+    assert executive["broken_dax_refs"] == []
+    assert bob["status"].startswith("INDIRECT")
+    assert amount["status"].startswith("INDIRECT")
+    assert customer_id["status"] == "USED (Relationship)"
+    assert segment_name["status"] == "USED"
+    assert segment_sort["status"] == "USED (Sort Column for: Segment's Name)"
+    assert geography["status"] == "USED (Hierarchy: Customer's Hierarchy)"
+    assert table_summaries["O'Brien"]["external_dax_dependents"] == [
+        "Metrics[Executive Bob's Revenue]"
+    ]
+    assert results["summary"]["broken"] == 0
+
+
 def test_field_parameter_tables_warn_on_unresolved_nameof_targets(tmp_path):
     workspace = tmp_path / "Workspace"
     model = workspace / "Models" / "Forecast.SemanticModel"

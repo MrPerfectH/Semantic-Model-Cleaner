@@ -25,6 +25,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from semantic_model_cleaner.tmdl_identifiers import (
+    parse_tmdl_dotted_ref,
+    read_single_quoted_name,
+    split_tmdl_name_and_expression,
+    unquote_tmdl_name,
+)
+
 
 # ── Data Classes ──────────────────────────────────────────────────────────────
 
@@ -294,6 +301,17 @@ def _add_warning(
 # ── TMDL Parsing ─────────────────────────────────────────────────────────────
 
 
+def _parse_tmdl_keyword_declaration(line: str, keyword: str) -> tuple[str, str, bool] | None:
+    stripped = line.strip()
+    prefix = f"{keyword} "
+    if not stripped.startswith(prefix):
+        return None
+    name, expression, has_expression = split_tmdl_name_and_expression(stripped[len(prefix):])
+    if not name:
+        return None
+    return name, expression, has_expression
+
+
 def parse_model_items(model_path: Path) -> list[ModelItem]:
     tables_dir = model_path / "definition" / "tables"
     if not tables_dir.exists():
@@ -318,11 +336,11 @@ def parse_hierarchies(model_path: Path) -> list[HierarchyInfo]:
 def _extract_nameof_targets(text: str) -> list[tuple[str, str]]:
     targets = []
     active_text, _ = _split_dax_comments(text)
-    pattern = r"NAMEOF\s*\(\s*(?:'([^']+)'|([^\[\r\n]+?))\s*\[([^\]]+)\]\s*\)"
-    for match in re.finditer(pattern, active_text, flags=re.IGNORECASE):
-        table = (match.group(1) or match.group(2) or "").strip().strip("'\"")
-        name = match.group(3).strip()
-        if table and name:
+    for match in re.finditer(r"NAMEOF\s*\(", active_text, flags=re.IGNORECASE):
+        close = active_text.find(")", match.end())
+        if close == -1:
+            continue
+        for table, name, _, _ in _scan_dax_qualified_refs(active_text[match.end():close]):
             targets.append((table, name))
     return targets
 
@@ -335,7 +353,7 @@ def _iter_tmdl_table_sections(lines: list[str]):
         line = lines[i]
 
         if not line.startswith("\t") and line.startswith("table "):
-            current_table = line[6:].strip().strip("'\"")
+            current_table = unquote_tmdl_name(line[6:])
             i += 1
             continue
 
@@ -536,7 +554,7 @@ def _parse_tmdl_hierarchies(filepath: Path) -> list[HierarchyInfo]:
         line = lines[i]
 
         if not line.startswith("\t") and line.startswith("table "):
-            current_table = line[6:].strip().strip("'\"")
+            current_table = unquote_tmdl_name(line[6:])
             i += 1
             continue
 
@@ -545,10 +563,9 @@ def _parse_tmdl_hierarchies(filepath: Path) -> list[HierarchyInfo]:
             continue
 
         # Hierarchy declaration at 1-tab
-        h = re.match(r"^\thierarchy\s+'([^']+)'\s*$", line) or \
-            re.match(r"^\thierarchy\s+(\S.+?)\s*$", line)
+        h = _parse_tmdl_keyword_declaration(line, "hierarchy")
         if h:
-            hier_name = h.group(1).strip().strip("'")
+            hier_name = h[0]
             columns = []
             i += 1
 
@@ -568,7 +585,7 @@ def _parse_tmdl_hierarchies(filepath: Path) -> list[HierarchyInfo]:
                             if level_inner.startswith("\t\t\t"):
                                 level_prop = level_inner.strip()
                                 if level_prop.startswith("column:"):
-                                    col_name = level_prop.split(":", 1)[1].strip().strip("'\"")
+                                    col_name = unquote_tmdl_name(level_prop.split(":", 1)[1])
                                     columns.append(col_name)
                                 i += 1
                                 continue
@@ -605,7 +622,7 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
 
         # Table declaration at 0-indent
         if not line.startswith("\t") and line.startswith("table "):
-            current_table = line[6:].strip().strip("'\"")
+            current_table = unquote_tmdl_name(line[6:])
             i += 1
             continue
 
@@ -614,11 +631,9 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
             continue
 
         # Measure declaration at 1-tab
-        m = re.match(r"^\tmeasure\s+'([^']+)'\s*=(.*)", line) or \
-            re.match(r"^\tmeasure\s+(.+?)\s*=(.*)", line)
+        m = _parse_tmdl_keyword_declaration(line, "measure")
         if m:
-            name = m.group(1).strip().strip("'")
-            first_dax = m.group(2).strip()
+            name, first_dax, _ = m
             if first_dax.startswith("```"):
                 first_dax = first_dax[3:].strip()
 
@@ -670,13 +685,9 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
             continue
 
         # Column declaration at 1-tab
-        c = re.match(r"^\tcolumn\s+'([^']+)'\s*=\s*(.*)$", line) or \
-            re.match(r"^\tcolumn\s+(.+?)\s*=\s*(.*)$", line) or \
-            re.match(r"^\tcolumn\s+'([^']+)'\s*$", line) or \
-            re.match(r"^\tcolumn\s+(.+?)\s*$", line)
+        c = _parse_tmdl_keyword_declaration(line, "column")
         if c:
-            name = c.group(1).strip().strip("'")
-            first_dax = c.group(2).strip() if c.lastindex and c.lastindex >= 2 and c.group(2) is not None else ""
+            name, first_dax, _ = c
             is_calculated = bool(first_dax)
             display_folder = ""
             is_hidden = False
@@ -718,7 +729,7 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
                     elif prop in ("isNameInferred", "isDataTypeInferred"):
                         is_inferred = True
                     if prop.startswith("sortByColumn:"):
-                        sort_by_column = prop.split(":", 1)[1].strip().strip("'\"")
+                        sort_by_column = unquote_tmdl_name(prop.split(":", 1)[1])
                     i += 1
                     continue
                 if inner.startswith("\t") and not inner.startswith("\t\t"):
@@ -838,17 +849,7 @@ def _dedupe_items_with_warnings(
 
 
 def _parse_relationship_ref(value: str) -> tuple[str, str] | None:
-    match = re.match(
-        r"(?:'([^']+)'|([^\s.]+))\.(?:'([^']+)'|(\S+))",
-        value.strip(),
-    )
-    if not match:
-        return None
-    table = (match.group(1) or match.group(2) or "").strip()
-    column = (match.group(3) or match.group(4) or "").strip()
-    if not table or not column:
-        return None
-    return table, column
+    return parse_tmdl_dotted_ref(value)
 
 
 def _iter_relationship_blocks(lines: list[str]):
@@ -856,7 +857,7 @@ def _iter_relationship_blocks(lines: list[str]):
     while i < len(lines):
         line = lines[i]
         if line.startswith("relationship ") or line.startswith("relationship\t"):
-            name = line.split(None, 1)[1].strip().strip("'\"") if len(line.split(None, 1)) > 1 else ""
+            name = unquote_tmdl_name(line.split(None, 1)[1]) if len(line.split(None, 1)) > 1 else ""
             block_lines = []
             i += 1
             while i < len(lines):
@@ -896,7 +897,7 @@ def parse_relationship_details(model_path: Path) -> list[RelationshipInfo]:
             stripped = line.strip()
             if ":" in stripped:
                 key, value = stripped.split(":", 1)
-                props[key.strip()] = value.strip().strip("'\"")
+                props[key.strip()] = value.strip()
             elif stripped:
                 props[stripped] = "true"
 
@@ -905,15 +906,15 @@ def parse_relationship_details(model_path: Path) -> list[RelationshipInfo]:
         if not from_ref or not to_ref:
             continue
 
-        is_active_raw = props.get("isActive", "true").strip().lower()
+        is_active_raw = unquote_tmdl_name(props.get("isActive", "true")).strip().lower()
         relationships.append(RelationshipInfo(
             name=name,
             from_table=from_ref[0],
             from_column=from_ref[1],
             to_table=to_ref[0],
             to_column=to_ref[1],
-            from_cardinality=props.get("fromCardinality", "").strip().lower(),
-            to_cardinality=props.get("toCardinality", "").strip().lower(),
+            from_cardinality=unquote_tmdl_name(props.get("fromCardinality", "")).strip().lower(),
+            to_cardinality=unquote_tmdl_name(props.get("toCardinality", "")).strip().lower(),
             is_active=is_active_raw not in ("false", "0", "no"),
         ))
 
@@ -1710,36 +1711,127 @@ def _split_dax_comments(dax_body: str) -> tuple[str, str]:
 
 
 def _extract_dax_qualified_refs_from_text(text: str) -> set[tuple[str, str]]:
-    refs = set()
-    for m in re.finditer(r"'([^']+)'\[([^\]]+)\]", text):
-        refs.add((m.group(1), m.group(2)))
-    for m in re.finditer(r"(?<!')\b([A-Za-z_]\w*)\[([^\]]+)\]", text):
-        refs.add((m.group(1), m.group(2)))
-    return refs
+    return {(table, name) for table, name, _, _ in _scan_dax_qualified_refs(text)}
 
 
 def _extract_dax_unqualified_refs_from_text(text: str) -> set[str]:
-    cleaned = re.sub(r"'[^']+'\[[^\]]+\]", " ", text)
-    cleaned = re.sub(r"(?<!')\b[A-Za-z_]\w*\[[^\]]+\]", " ", cleaned)
+    cleaned_chars = list(text)
+    for _, _, start, end in _scan_dax_qualified_refs(text):
+        for idx in range(start, end):
+            cleaned_chars[idx] = " "
+    cleaned = "".join(cleaned_chars)
 
     refs = set()
-    for m in re.finditer(r"\[([^\]]+)\]", cleaned):
-        name = m.group(1)
+    i = 0
+    while i < len(cleaned):
+        bracketed = _read_dax_bracketed_name(cleaned, i)
+        if not bracketed:
+            i += 1
+            continue
+
+        name, end = bracketed
         if not name.startswith("@"):
             refs.add(name)
+        i = end
     return refs
 
 
 def _extract_dax_table_refs_from_text(text: str) -> set[str]:
     refs = set()
-    for m in re.finditer(r"'([^']+)'", text):
-        end = m.end()
+    i = 0
+    while i < len(text):
+        bracketed = _read_dax_bracketed_name(text, i)
+        if bracketed:
+            _, i = bracketed
+            continue
+
+        parsed = read_single_quoted_name(text, i)
+        if not parsed:
+            i += 1
+            continue
+
+        table_name, end = parsed
         while end < len(text) and text[end].isspace():
             end += 1
         if end < len(text) and text[end] == "[":
+            i = end
             continue
-        refs.add(m.group(1))
+        refs.add(table_name)
+        i = end
     return refs
+
+
+def _scan_dax_qualified_refs(text: str) -> list[tuple[str, str, int, int]]:
+    refs: list[tuple[str, str, int, int]] = []
+    i = 0
+    while i < len(text):
+        if text[i] == "'":
+            parsed = read_single_quoted_name(text, i)
+            if not parsed:
+                i += 1
+                continue
+
+            table_name, table_end = parsed
+            bracket_start = _skip_dax_whitespace(text, table_end)
+            bracketed = _read_dax_bracketed_name(text, bracket_start)
+            if bracketed:
+                object_name, object_end = bracketed
+                refs.append((table_name, object_name, i, object_end))
+                i = object_end
+                continue
+            i = table_end
+            continue
+
+        identifier = _read_dax_unquoted_table_name(text, i)
+        if identifier:
+            table_name, table_end = identifier
+            bracket_start = _skip_dax_whitespace(text, table_end)
+            bracketed = _read_dax_bracketed_name(text, bracket_start)
+            if bracketed:
+                object_name, object_end = bracketed
+                refs.append((table_name, object_name, i, object_end))
+                i = object_end
+                continue
+            i = table_end
+            continue
+
+        i += 1
+    return refs
+
+
+def _read_dax_unquoted_table_name(text: str, start: int) -> tuple[str, int] | None:
+    if start > 0 and (text[start - 1].isalnum() or text[start - 1] in ("_", "'")):
+        return None
+    match = re.match(r"[A-Za-z_]\w*", text[start:])
+    if not match:
+        return None
+    return match.group(0), start + len(match.group(0))
+
+
+def _read_dax_bracketed_name(text: str, start: int) -> tuple[str, int] | None:
+    if start >= len(text) or text[start] != "[":
+        return None
+
+    chars: list[str] = []
+    i = start + 1
+    while i < len(text):
+        ch = text[i]
+        if ch == "]":
+            if i + 1 < len(text) and text[i + 1] == "]":
+                chars.append("]")
+                i += 2
+                continue
+            return "".join(chars), i + 1
+        chars.append(ch)
+        i += 1
+    return None
+
+
+def _skip_dax_whitespace(text: str, start: int) -> int:
+    i = start
+    while i < len(text) and text[i].isspace():
+        i += 1
+    return i
 
 
 def _extract_dax_qualified_refs(dax_body: str) -> set[tuple[str, str]]:
