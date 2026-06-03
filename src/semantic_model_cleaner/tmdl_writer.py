@@ -13,6 +13,14 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from semantic_model_cleaner.tmdl_identifiers import (
+    quote_dax_object_name as _quote_dax_object_name,
+    quote_dax_table_name as _quote_dax_table_name,
+    quote_tmdl_name as _quote_tmdl_name,
+    tmdl_name_pattern as _tmdl_name_pattern,
+    unquote_tmdl_name as _unquote_tmdl_name,
+)
+
 
 # ── Locate item in TMDL file ─────────────────────────────────────────────────
 
@@ -28,33 +36,6 @@ def _find_tmdl_file(model_path: Path, table: str) -> Path | None:
         if stem == table or stem.casefold() == table.casefold():
             return f
     return None
-
-
-def _quote_tmdl_name(name: str) -> str:
-    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
-        return name
-    return "'" + name.replace("'", "''") + "'"
-
-
-def _unquote_tmdl_name(name: str) -> str:
-    name = name.strip()
-    if len(name) >= 2 and name[0] == "'" and name[-1] == "'":
-        return name[1:-1].replace("''", "'")
-    return name
-
-
-def _tmdl_name_pattern(name: str) -> str:
-    quoted = "'" + re.escape(name.replace("'", "''")) + "'"
-    unquoted = re.escape(name)
-    return rf"(?:{quoted}|{unquoted})"
-
-
-def _quote_dax_table_name(name: str) -> str:
-    return "'" + name.replace("'", "''") + "'"
-
-
-def _quote_dax_object_name(name: str) -> str:
-    return name.replace("]", "]]")
 
 
 def _iter_tmdl_files(model_path: Path) -> list[Path]:
@@ -136,6 +117,18 @@ def _rewrite_table_name_in_text(text: str, old_table: str, new_table: str) -> tu
     text = re.sub(
         rf"(?<![A-Za-z0-9_']){table_pattern}\[",
         replace_dax_table_ref,
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    def replace_bare_dax_table_ref(match: re.Match) -> str:
+        nonlocal count
+        count += 1
+        return new_dax
+
+    text = re.sub(
+        rf"(?<![A-Za-z0-9_']){re.escape(_quote_dax_table_name(old_table))}(?!\s*(?:\[|\.))",
+        replace_bare_dax_table_ref,
         text,
         flags=re.IGNORECASE,
     )
