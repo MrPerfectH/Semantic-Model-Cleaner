@@ -80,6 +80,82 @@ def test_json_output_includes_warnings():
     assert isinstance(payload["warnings"], list)
 
 
+def test_rls_table_permission_marks_referenced_column_used(tmp_path):
+    model = tmp_path / "Models" / "TestModel.SemanticModel"
+    report = tmp_path / "Reports" / "TestReport.Report"
+    tables_dir = model / "definition" / "tables"
+    roles_dir = model / "definition" / "roles"
+    tables_dir.mkdir(parents=True)
+    roles_dir.mkdir(parents=True)
+    (report / "definition").mkdir(parents=True)
+
+    (tables_dir / "Store.tmdl").write_text(
+        "table Store\n"
+        "\tcolumn 'Store Code'\n"
+        "\t\tdataType: int64\n"
+        "\tcolumn Name\n"
+        "\t\tdataType: string\n",
+        encoding="utf-8",
+    )
+    (roles_dir / "Store Role.tmdl").write_text(
+        "role 'Store Role'\n"
+        "\tmodelPermission: read\n"
+        "\ttablePermission Store = 'Store'[Store Code] IN {1, 10}\n",
+        encoding="utf-8",
+    )
+
+    results = analyzer.analyze(tmp_path.resolve())
+
+    store_code = _find_item(results, "Store", "Store Code", "Column")
+    store_name = _find_item(results, "Store", "Name", "Column")
+
+    assert store_code["status"] == "USED (RLS: Store Role)"
+    assert store_name["status"] == "NOT USED"
+    assert results["summary"]["used_rls"] == 1
+
+
+def test_multiline_rls_table_permission_uses_declared_table_for_unqualified_columns(tmp_path):
+    model = tmp_path / "Models" / "TestModel.SemanticModel"
+    report = tmp_path / "Reports" / "TestReport.Report"
+    tables_dir = model / "definition" / "tables"
+    roles_dir = model / "definition" / "roles"
+    tables_dir.mkdir(parents=True)
+    roles_dir.mkdir(parents=True)
+    (report / "definition").mkdir(parents=True)
+
+    (tables_dir / "Store.tmdl").write_text(
+        "table Store\n"
+        "\tcolumn 'Store Code'\n"
+        "\t\tdataType: int64\n"
+        "\tcolumn Region\n"
+        "\t\tdataType: string\n"
+        "\tcolumn Name\n"
+        "\t\tdataType: string\n",
+        encoding="utf-8",
+    )
+    (roles_dir / "Store Role.tmdl").write_text(
+        "role 'Store Role'\n"
+        "\tmodelPermission: read\n"
+        "\ttablePermission Store =\n"
+        "\t\t```\n"
+        "\t\t'Store'[Store Code] IN {1, 10}\n"
+        "\t\t    && [Region] = \"North\"\n"
+        "\t\t```\n",
+        encoding="utf-8",
+    )
+
+    results = analyzer.analyze(tmp_path.resolve())
+
+    store_code = _find_item(results, "Store", "Store Code", "Column")
+    region = _find_item(results, "Store", "Region", "Column")
+    store_name = _find_item(results, "Store", "Name", "Column")
+
+    assert store_code["status"] == "USED (RLS: Store Role)"
+    assert region["status"] == "USED (RLS: Store Role)"
+    assert store_name["status"] == "NOT USED"
+    assert results["summary"]["used_rls"] == 2
+
+
 def test_stale_formatting_selectors_do_not_count_as_live_usage(tmp_path):
     model = tmp_path / "Models" / "TestModel.SemanticModel"
     report = tmp_path / "Reports" / "TestReport.Report"

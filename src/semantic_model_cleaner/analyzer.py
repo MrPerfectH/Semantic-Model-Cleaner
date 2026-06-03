@@ -932,6 +932,26 @@ def parse_relationships(model_path: Path) -> set[tuple[str, str]]:
 def parse_rls_roles(model_path: Path) -> list[tuple[str, str, str]]:
     """Returns list of (role_name, table, column) for RLS filter references."""
     results = []
+    seen = set()
+
+    def add_expr_refs(role_name: str, expr: str, default_table: str | None = None) -> None:
+        for cm in re.finditer(r"'([^']+)'\[([^\]]+)\]", expr):
+            ref = (role_name, cm.group(1), cm.group(2))
+            if ref not in seen:
+                seen.add(ref)
+                results.append(ref)
+        for cm in re.finditer(r"(?<!')\b(\w+)\[([^\]]+)\]", expr):
+            ref = (role_name, cm.group(1), cm.group(2))
+            if ref not in seen:
+                seen.add(ref)
+                results.append(ref)
+        if default_table:
+            for cm in re.finditer(r"(?<![\w'])\[([^\]]+)\]", expr):
+                ref = (role_name, default_table, cm.group(1))
+                if ref not in seen:
+                    seen.add(ref)
+                    results.append(ref)
+
     definition_dir = model_path / "definition"
 
     files_to_check = []
@@ -971,11 +991,34 @@ def parse_rls_roles(model_path: Path) -> list[tuple[str, str, str]]:
                         continue
                     break
 
-                expr = " ".join(expr_lines)
-                for cm in re.finditer(r"'([^']+)'\[([^\]]+)\]", expr):
-                    results.append((current_role, cm.group(1), cm.group(2)))
-                for cm in re.finditer(r"(?<!')\b(\w+)\[([^\]]+)\]", expr):
-                    results.append((current_role, cm.group(1), cm.group(2)))
+                add_expr_refs(current_role, " ".join(expr_lines))
+                continue
+
+            stripped = line.strip()
+            if current_role and stripped.startswith("tablePermission "):
+                permission = stripped[len("tablePermission "):].strip()
+                permission_table = ""
+                expr_lines = []
+                if "=" in permission:
+                    permission_table, expr = permission.split("=", 1)
+                    expr_lines.append(expr.strip())
+                else:
+                    permission_table = permission
+
+                permission_table = permission_table.strip().strip("'\"")
+
+                i += 1
+                while i < len(lines):
+                    inner = lines[i]
+                    if inner.startswith("\t\t"):
+                        cleaned = inner.strip().strip("`")
+                        if cleaned:
+                            expr_lines.append(cleaned)
+                        i += 1
+                        continue
+                    break
+
+                add_expr_refs(current_role, " ".join(expr_lines), permission_table or None)
                 continue
 
             i += 1
