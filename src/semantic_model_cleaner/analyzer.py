@@ -1290,13 +1290,55 @@ def _split_top_level_query_ref(value: str) -> tuple[str, str] | None:
     return None
 
 
-def _find_json_refs(obj, path_parts: Optional[list] = None) -> list[dict]:
+def _source_aliases_from_obj(obj) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    if not isinstance(obj, dict):
+        return aliases
+    sources = obj.get("From")
+    if not isinstance(sources, list):
+        return aliases
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        name = source.get("Name")
+        entity = source.get("Entity")
+        if isinstance(name, str) and isinstance(entity, str) and name and entity:
+            aliases[name] = entity
+    return aliases
+
+
+def _source_aliases_from_tree(obj) -> dict[str, str]:
+    aliases = _source_aliases_from_obj(obj)
+    if isinstance(obj, dict):
+        for value in obj.values():
+            aliases.update(_source_aliases_from_tree(value))
+    elif isinstance(obj, list):
+        for item in obj:
+            aliases.update(_source_aliases_from_tree(item))
+    return aliases
+
+
+def _source_ref_entity(source_ref: dict, aliases: dict[str, str]) -> str | None:
+    entity = source_ref.get("Entity")
+    if isinstance(entity, str) and entity:
+        return entity
+    source = source_ref.get("Source")
+    if isinstance(source, str):
+        return aliases.get(source)
+    return None
+
+
+def _find_json_refs(obj, path_parts: Optional[list] = None, aliases: Optional[dict[str, str]] = None) -> list[dict]:
     """Recursively find all Entity/Property measure/column references in JSON."""
     if path_parts is None:
         path_parts = []
+    if aliases is None:
+        aliases = _source_aliases_from_tree(obj)
     refs = []
 
     if isinstance(obj, dict):
+        local_aliases = {**aliases, **_source_aliases_from_obj(obj)}
+
         # Measure or Column reference object
         for ref_type in ("Measure", "Column"):
             if ref_type in obj and isinstance(obj[ref_type], dict):
@@ -1304,9 +1346,10 @@ def _find_json_refs(obj, path_parts: Optional[list] = None) -> list[dict]:
                 if "Property" in inner and "Expression" in inner:
                     expr = inner.get("Expression", {})
                     src = expr.get("SourceRef", {}) if isinstance(expr, dict) else {}
-                    if isinstance(src, dict) and "Entity" in src:
+                    entity = _source_ref_entity(src, local_aliases) if isinstance(src, dict) else None
+                    if entity:
                         refs.append({
-                            "table": src["Entity"],
+                            "table": entity,
                             "name": inner["Property"],
                             "ref_type": ref_type,
                             "path": ".".join(path_parts + [ref_type]),
@@ -1321,9 +1364,10 @@ def _find_json_refs(obj, path_parts: Optional[list] = None) -> list[dict]:
                         inner = agg_expr[ref_type]
                         if isinstance(inner, dict) and "Property" in inner:
                             src = inner.get("Expression", {}).get("SourceRef", {})
-                            if isinstance(src, dict) and "Entity" in src:
+                            entity = _source_ref_entity(src, local_aliases) if isinstance(src, dict) else None
+                            if entity:
                                 refs.append({
-                                    "table": src["Entity"],
+                                    "table": entity,
                                     "name": inner["Property"],
                                     "ref_type": ref_type,
                                     "path": ".".join(path_parts + ["Aggregation"]),
@@ -1352,9 +1396,10 @@ def _find_json_refs(obj, path_parts: Optional[list] = None) -> list[dict]:
                 if isinstance(hier, dict):
                     hier_name = hier.get("Hierarchy", "")
                     hier_src = hier.get("Expression", {}).get("SourceRef", {})
-                    if isinstance(hier_src, dict) and "Entity" in hier_src:
+                    entity = _source_ref_entity(hier_src, local_aliases) if isinstance(hier_src, dict) else None
+                    if entity:
                         refs.append({
-                            "table": hier_src["Entity"],
+                            "table": entity,
                             "name": hier_name,
                             "ref_type": "HierarchyLevel",
                             "level": level_name,
@@ -1365,11 +1410,11 @@ def _find_json_refs(obj, path_parts: Optional[list] = None) -> list[dict]:
         for key, value in obj.items():
             if key in ("$schema",):
                 continue
-            refs.extend(_find_json_refs(value, path_parts + [key]))
+            refs.extend(_find_json_refs(value, path_parts + [key], local_aliases))
 
     elif isinstance(obj, list):
         for i, item in enumerate(obj):
-            refs.extend(_find_json_refs(item, path_parts + [f"[{i}]"]))
+            refs.extend(_find_json_refs(item, path_parts + [f"[{i}]"], aliases))
 
     return refs
 

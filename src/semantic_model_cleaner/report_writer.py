@@ -297,10 +297,11 @@ def _rewrite_query_ref(
     value: str,
     table_lookup: dict[str, str],
     measure_lookup: dict[tuple[str, str], tuple[str, str]],
+    aliases: dict[str, dict],
 ) -> tuple[str, bool]:
     wrapper = re.fullmatch(r"([A-Za-z][A-Za-z0-9_]*)\((.+)\)", value)
     if wrapper:
-        new_inner, changed = _rewrite_query_ref(wrapper.group(2), table_lookup, measure_lookup)
+        new_inner, changed = _rewrite_query_ref(wrapper.group(2), table_lookup, measure_lookup, aliases)
         if changed:
             return f"{wrapper.group(1)}({new_inner})", True
         return value, False
@@ -308,15 +309,18 @@ def _rewrite_query_ref(
     parts = _split_top_level_query_ref(value)
     if not parts:
         return value, False
-    table, name = parts
+    table_or_alias, name = parts
+    alias = aliases.get(table_or_alias.casefold())
+    table = str(alias.get("original_entity", alias["entity"])) if alias else table_or_alias
     target_table = table_lookup.get(table.casefold(), table)
     target_name = name
     measure_target = measure_lookup.get((table.casefold(), name.casefold()))
     if measure_target:
         target_table, target_name = measure_target
-    if target_table == table and target_name == name:
+    output_table = table_or_alias if alias else target_table
+    if output_table == table_or_alias and target_name == name:
         return value, False
-    return f"{target_table}.{target_name}", True
+    return f"{output_table}.{target_name}", True
 
 
 def _rewrite_dax_table_refs(value: str, table_lookup: dict[str, str]) -> tuple[str, bool]:
@@ -326,17 +330,77 @@ def _rewrite_dax_table_refs(value: str, table_lookup: dict[str, str]) -> tuple[s
     return new_value, new_value != value
 
 
+def _collect_source_aliases(obj, path_parts: list[str] | None = None) -> dict[str, dict]:
+    if path_parts is None:
+        path_parts = []
+    aliases: dict[str, dict] = {}
+    if isinstance(obj, dict):
+        from_entries = obj.get("From")
+        if isinstance(from_entries, list):
+            for idx, source in enumerate(from_entries):
+                if not isinstance(source, dict):
+                    continue
+                alias_name = source.get("Name")
+                entity = source.get("Entity")
+                if isinstance(alias_name, str) and isinstance(entity, str):
+                    aliases[alias_name.casefold()] = {
+                        "name": alias_name,
+                        "entity": entity,
+                        "original_entity": entity,
+                        "source": source,
+                        "entity_path": path_parts + ["From", f"[{idx}]", "Entity"],
+                    }
+        for key, value in obj.items():
+            aliases.update(_collect_source_aliases(value, path_parts + [key]))
+    elif isinstance(obj, list):
+        for idx, item in enumerate(obj):
+            aliases.update(_collect_source_aliases(item, path_parts + [f"[{idx}]"]))
+    return aliases
+
+
 def _rewrite_model_refs_in_json(
     obj,
     table_lookup: dict[str, str],
     measure_lookup: dict[tuple[str, str], tuple[str, str]],
     updates: list[dict],
     path_parts: list[str] | None = None,
+    aliases: dict[str, dict] | None = None,
 ) -> None:
     if path_parts is None:
         path_parts = []
+    if aliases is None:
+        aliases = {}
 
     if isinstance(obj, dict):
+        local_aliases = dict(aliases)
+        from_entries = obj.get("From")
+        if isinstance(from_entries, list):
+            for idx, source in enumerate(from_entries):
+                if not isinstance(source, dict):
+                    continue
+                alias_name = source.get("Name")
+                entity = source.get("Entity")
+                if not (isinstance(alias_name, str) and isinstance(entity, str)):
+                    continue
+                target_table = table_lookup.get(entity.casefold(), entity)
+                if target_table != entity:
+                    source["Entity"] = target_table
+                    updates.append({
+                        "path": ".".join(path_parts + ["From", f"[{idx}]", "Entity"]),
+                        "from": entity,
+                        "to": target_table,
+                        "kind": "From.Entity",
+                    })
+                alias_info = local_aliases.get(alias_name.casefold(), {})
+                alias_info.update({
+                    "name": alias_name,
+                    "entity": source["Entity"],
+                    "original_entity": alias_info.get("original_entity", entity),
+                    "source": source,
+                    "entity_path": path_parts + ["From", f"[{idx}]", "Entity"],
+                })
+                local_aliases[alias_name.casefold()] = alias_info
+
         measure = obj.get("Measure")
         if isinstance(measure, dict):
             prop = measure.get("Property")
@@ -344,19 +408,34 @@ def _rewrite_model_refs_in_json(
             source_ref = expr.get("SourceRef", {}) if isinstance(expr, dict) else {}
             if isinstance(prop, str) and isinstance(source_ref, dict):
                 entity = source_ref.get("Entity")
-                if isinstance(entity, str):
-                    target_table = table_lookup.get(entity.casefold(), entity)
+                source_alias = source_ref.get("Source")
+                alias = local_aliases.get(source_alias.casefold()) if isinstance(source_alias, str) else None
+                resolved_entity = entity if isinstance(entity, str) else (
+                    str(alias.get("original_entity", alias["entity"])) if alias else None
+                )
+                if isinstance(resolved_entity, str):
+                    target_table = table_lookup.get(resolved_entity.casefold(), resolved_entity)
                     target_name = prop
-                    measure_target = measure_lookup.get((entity.casefold(), prop.casefold()))
+                    measure_target = measure_lookup.get((resolved_entity.casefold(), prop.casefold()))
                     if measure_target:
                         target_table, target_name = measure_target
-                    if target_table != entity:
+                    if isinstance(entity, str) and target_table != entity:
                         source_ref["Entity"] = target_table
                         updates.append({
                             "path": ".".join(path_parts + ["Measure", "Expression", "SourceRef", "Entity"]),
                             "from": entity,
                             "to": target_table,
                             "kind": "Measure.SourceRef.Entity",
+                        })
+                    elif alias and target_table != alias["source"].get("Entity"):
+                        old_entity = alias["source"].get("Entity")
+                        alias["source"]["Entity"] = target_table
+                        alias["entity"] = target_table
+                        updates.append({
+                            "path": ".".join(alias["entity_path"]),
+                            "from": old_entity,
+                            "to": target_table,
+                            "kind": "From.Entity",
                         })
                     if target_name != prop:
                         measure["Property"] = target_name
@@ -377,7 +456,12 @@ def _rewrite_model_refs_in_json(
             source_ref = expr.get("SourceRef", {}) if isinstance(expr, dict) else {}
             if isinstance(source_ref, dict):
                 entity = source_ref.get("Entity")
-                target_table = table_lookup.get(str(entity).casefold(), entity) if isinstance(entity, str) else None
+                source_alias = source_ref.get("Source")
+                alias = local_aliases.get(source_alias.casefold()) if isinstance(source_alias, str) else None
+                resolved_entity = entity if isinstance(entity, str) else (
+                    str(alias.get("original_entity", alias["entity"])) if alias else None
+                )
+                target_table = table_lookup.get(str(resolved_entity).casefold(), resolved_entity) if isinstance(resolved_entity, str) else None
                 if isinstance(entity, str) and target_table and target_table != entity:
                     source_ref["Entity"] = target_table
                     updates.append({
@@ -386,11 +470,21 @@ def _rewrite_model_refs_in_json(
                         "to": target_table,
                         "kind": f"{ref_type}.SourceRef.Entity",
                     })
+                elif alias and target_table and target_table != alias["source"].get("Entity"):
+                    old_entity = alias["source"].get("Entity")
+                    alias["source"]["Entity"] = target_table
+                    alias["entity"] = target_table
+                    updates.append({
+                        "path": ".".join(alias["entity_path"]),
+                        "from": old_entity,
+                        "to": target_table,
+                        "kind": "From.Entity",
+                    })
 
         for key in ("queryRef", "metadata"):
             value = obj.get(key)
             if isinstance(value, str):
-                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup)
+                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup, local_aliases)
                 if changed:
                     obj[key] = new_value
                     updates.append({
@@ -400,18 +494,17 @@ def _rewrite_model_refs_in_json(
                         "kind": key,
                     })
 
-        for entity_key in ("Entity", "entity"):
-            entity = obj.get(entity_key)
-            if isinstance(entity, str):
-                target_table = table_lookup.get(entity.casefold())
-                if target_table and target_table != entity:
-                    obj[entity_key] = target_table
-                    updates.append({
-                        "path": ".".join(path_parts + [entity_key]),
-                        "from": entity,
-                        "to": target_table,
-                        "kind": entity_key,
-                    })
+        entity = obj.get("entity")
+        if isinstance(entity, str) and isinstance(obj.get("name"), str):
+            target_table = table_lookup.get(entity.casefold())
+            if target_table and target_table != entity:
+                obj["entity"] = target_table
+                updates.append({
+                    "path": ".".join(path_parts + ["entity"]),
+                    "from": entity,
+                    "to": target_table,
+                    "kind": "entity",
+                })
 
         entity_name = obj.get("name")
         if isinstance(entity_name, str) and isinstance(obj.get("measures"), list):
@@ -443,7 +536,7 @@ def _rewrite_model_refs_in_json(
             for idx, value in enumerate(query_refs):
                 if not isinstance(value, str):
                     continue
-                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup)
+                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup, local_aliases)
                 if changed:
                     query_refs[idx] = new_value
                     updates.append({
@@ -454,10 +547,10 @@ def _rewrite_model_refs_in_json(
                     })
 
         for key, value in obj.items():
-            _rewrite_model_refs_in_json(value, table_lookup, measure_lookup, updates, path_parts + [key])
+            _rewrite_model_refs_in_json(value, table_lookup, measure_lookup, updates, path_parts + [key], local_aliases)
     elif isinstance(obj, list):
         for idx, item in enumerate(obj):
-            _rewrite_model_refs_in_json(item, table_lookup, measure_lookup, updates, path_parts + [f"[{idx}]"])
+            _rewrite_model_refs_in_json(item, table_lookup, measure_lookup, updates, path_parts + [f"[{idx}]"], aliases)
 
 
 def rewrite_measure_table_references(
@@ -511,7 +604,13 @@ def rewrite_model_reference_changes(
                 continue
 
             updates: list[dict] = []
-            _rewrite_model_refs_in_json(payload, table_lookup, measure_lookup, updates)
+            _rewrite_model_refs_in_json(
+                payload,
+                table_lookup,
+                measure_lookup,
+                updates,
+                aliases=_collect_source_aliases(payload),
+            )
             if not updates:
                 continue
 
