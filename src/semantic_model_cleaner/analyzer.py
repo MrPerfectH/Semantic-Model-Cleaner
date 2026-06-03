@@ -49,6 +49,7 @@ class ModelItem:
     sort_by_column: str = ""
     source_kind: str = "model"
     source_artifact: str = ""
+    source_file: str = ""
     format_string: str = ""
     explicit_measure_refs: tuple[tuple[str, str], ...] = ()
 
@@ -681,6 +682,7 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
                 display_folder=display_folder,
                 dax_body="\n".join(dax_lines),
                 is_hidden=is_hidden,
+                source_file=str(filepath),
             ))
             continue
 
@@ -748,6 +750,7 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
                 is_key=is_key,
                 is_inferred=is_inferred,
                 sort_by_column=sort_by_column,
+                source_file=str(filepath),
             ))
             continue
 
@@ -810,6 +813,7 @@ def parse_report_extension_measures(
                 is_hidden=bool(measure.get("hidden", False)),
                 source_kind="report",
                 source_artifact=report_display_name(report_path),
+                source_file=str(report_extensions),
                 format_string=str(measure.get("formatString", "") or ""),
                 explicit_measure_refs=tuple(explicit_refs),
             ))
@@ -2941,6 +2945,7 @@ def format_json_output(results: dict) -> str:
             "name": r["item"].name,
             "sourceKind": r["item"].source_kind,
             "sourceArtifact": r["item"].source_artifact or None,
+            "sourceFile": r["item"].source_file or None,
             "displayFolder": r["item"].display_folder,
             "formatString": r["item"].format_string or None,
             "isHidden": r["item"].is_hidden,

@@ -49,6 +49,36 @@ def test_public_demo_workspace_analyzes_cleanly():
     assert results["warnings"] == []
 
 
+def test_split_tmdl_item_records_source_file(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    report.mkdir(parents=True)
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n",
+        encoding="utf-8",
+    )
+    split_file = tables_dir / "Sales.Measures.tmdl"
+    split_file.write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n"
+        "\tmeasure Cost = 1\n",
+        encoding="utf-8",
+    )
+
+    results = analyzer.analyze(workspace.resolve())
+
+    revenue = _find_item(results, "Sales", "Revenue", "Measure")
+    payload = json.loads(analyzer.format_json_output(results))
+    payload_revenue = next(item for item in payload["items"] if item["table"] == "Sales" and item["name"] == "Revenue")
+    assert revenue["item"].source_file == str(split_file)
+    assert payload_revenue["sourceFile"] == str(split_file)
+
+
 def test_unused_field_parameter_table_does_not_promote_targets():
     results = _analyze_fixture("field_parameter_unused")
 
