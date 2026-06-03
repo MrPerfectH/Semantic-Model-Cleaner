@@ -515,9 +515,13 @@ def create_measure(
     name: str,
     dax_expression: str,
     *,
+    data_type: str = "",
+    data_category: str = "",
+    description: str = "",
     display_folder: str = "",
     format_string: str = "",
     hidden: bool = False,
+    annotations: list[dict[str, str]] | None = None,
 ) -> dict:
     """Append a new measure block to an existing table file."""
     expression_lines = _normalize_expression_lines(dax_expression)
@@ -538,14 +542,25 @@ def create_measure(
     if new_lines:
         new_lines.append("")
 
+    for description_line in str(description or "").splitlines():
+        new_lines.append(f"\t/// {description_line}".rstrip())
+
     new_lines.append(f"\tmeasure {_quote_tmdl_name(name)} = {expression_lines[0]}")
     new_lines.extend(f"\t\t\t{line}" for line in expression_lines[1:])
+    if data_type:
+        new_lines.append(f"\t\tdataType: {data_type}")
+    if data_category:
+        new_lines.append(f"\t\tdataCategory: {data_category}")
     if format_string:
         new_lines.append(f"\t\tformatString: {format_string}")
     if display_folder:
         new_lines.append(f"\t\tdisplayFolder: {display_folder}")
     if hidden:
         new_lines.append("\t\tisHidden")
+    for annotation in annotations or []:
+        annotation_name = str(annotation.get("name", "")).strip()
+        if annotation_name:
+            new_lines.append(f"\t\tannotation {_quote_tmdl_name(annotation_name)} = {annotation.get('value', '')}")
 
     tmdl_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
     return {"ok": True, "file": str(tmdl_file), "action": "create_measure"}

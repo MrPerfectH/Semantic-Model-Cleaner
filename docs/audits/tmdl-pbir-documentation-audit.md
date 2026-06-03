@@ -79,7 +79,7 @@ Pending local likely-to-ship improvements:
 
 Severity: High
 
-Status: Open in baseline and pending local.
+Status: Implemented in issue #29.
 
 Microsoft evidence:
 
@@ -353,20 +353,20 @@ Microsoft schema evidence:
 - `ReportExtensionEntity.name` must match a semantic model entity.
 - `references` can include `unrecognizedReferences` and measure references with optional `schema`.
 
-Code evidence:
+Implementation:
 
-- Parser does not require or surface `dataType`: `src/semantic_model_cleaner/analyzer.py:723`.
-- Parser does not warn on `references.unrecognizedReferences`.
-- Migration preserves expression, display folder, format string, and hidden, but drops description, data category, annotations, measure template, and data type: `src/semantic_model_cleaner/report_writer.py:94`.
-- Migration only supports same-name/same-entity promotion: `src/semantic_model_cleaner/report_writer.py:83`.
+- Report Health now validates report extension required fields, malformed entities/measures/annotations, invalid `dataType` values, and `references.unrecognizedReferences`.
+- Promotion now preserves expression, data type, data category, description, display folder, format string, hidden state, and valid annotations.
+- Promotion returns `unpreserved_metadata` for schema fields that are not safely represented in TMDL, such as `measureTemplate`.
+- Migration still only supports same-name/same-entity promotion; renaming remains intentionally blocked.
 
 Why this matters:
 
 Report-level measures are product-relevant. Missing schema fields can hide quality issues, and promotion can lose metadata users expect to keep.
 
-Recommendation:
+Follow-up:
 
-Validate report extension schema, surface missing/invalid fields as report issues, warn on `unrecognizedReferences`, and preserve all schema-backed measure metadata where TMDL supports equivalent properties.
+Consider adding semantic-model entity existence checks once the app has a reliable report-to-model binding for multi-model Power BI Projects.
 
 ### F-10. Connected report discovery should parse `definition.pbir`
 

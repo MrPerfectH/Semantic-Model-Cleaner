@@ -543,6 +543,93 @@ def test_migrate_report_measure_to_model_moves_definition_and_rewrites_refs(tmp_
     assert measures[0]["references"]["measures"] == [{"entity": "Sales", "name": "Report Revenue"}]
 
 
+def test_migrate_report_measure_to_model_preserves_supported_metadata(tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    report_path = tmp_path / "Executive.Report"
+    tables_dir = model_path / "definition" / "tables"
+    report_def_dir = report_path / "definition"
+    tables_dir.mkdir(parents=True)
+    report_def_dir.mkdir(parents=True)
+
+    sales_file = tables_dir / "Sales.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tmeasure Existing = 1\n",
+        encoding="utf-8",
+    )
+    (report_def_dir / "reportExtensions.json").write_text(
+        json.dumps(
+            {
+                "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/reportExtension/1.0.0/schema.json",
+                "name": "extension",
+                "entities": [
+                    {
+                        "name": "Sales",
+                        "measures": [
+                            {
+                                "name": "Report Revenue",
+                                "dataType": "Double",
+                                "dataCategory": "Currency",
+                                "description": "Revenue defined in the report.",
+                                "expression": "[Existing] + 1",
+                                "displayFolder": "Executive",
+                                "formatString": "$#,0.00",
+                                "hidden": True,
+                                "annotations": [
+                                    {"name": "CreatedBy", "value": "Report extension"},
+                                    {"name": "SemanticModelCleaner", "value": "Promoted"},
+                                ],
+                                "measureTemplate": {
+                                    "daxTemplateName": "QuickMeasure",
+                                    "version": 1,
+                                },
+                            }
+                        ],
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.migrate_measure_to_model(
+        model_path=model_path,
+        report_path=report_path,
+        entity_name="Sales",
+        measure_name="Report Revenue",
+    )
+
+    assert result["ok"] is True
+    assert result["preserved_metadata"] == [
+        "expression",
+        "dataType",
+        "dataCategory",
+        "description",
+        "displayFolder",
+        "formatString",
+        "hidden",
+        "annotations",
+    ]
+    assert result["unpreserved_metadata"] == [
+        {
+            "field": "measureTemplate",
+            "reason": "Report extension measure templates are creation metadata and do not have a TMDL measure equivalent.",
+        }
+    ]
+
+    sales_content = sales_file.read_text(encoding="utf-8")
+    assert "\t/// Revenue defined in the report." in sales_content
+    assert "\tmeasure 'Report Revenue' = [Existing] + 1" in sales_content
+    assert "\t\tdataType: double" in sales_content
+    assert "\t\tdataCategory: Currency" in sales_content
+    assert "\t\tformatString: $#,0.00" in sales_content
+    assert "\t\tdisplayFolder: Executive" in sales_content
+    assert "\t\tisHidden" in sales_content
+    assert "\t\tannotation CreatedBy = Report extension" in sales_content
+    assert "\t\tannotation SemanticModelCleaner = Promoted" in sales_content
+
+
 def test_migrate_report_measure_to_model_rolls_back_when_report_save_fails(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
