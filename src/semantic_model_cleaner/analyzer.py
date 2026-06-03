@@ -125,6 +125,15 @@ class ReportIssue:
     artifact_path: str = ""
 
 
+@dataclass
+class UnsupportedMetadataRef:
+    area: str
+    item_keys: set[tuple[str, str]]
+    source_file: str = ""
+    possible_hidden_dependency: str = ""
+    user_harm: str = ""
+
+
 # ── Discovery ─────────────────────────────────────────────────────────────────
 
 
@@ -323,6 +332,199 @@ def parse_model_items(model_path: Path) -> list[ModelItem]:
     return items
 
 
+def parse_unsupported_metadata_refs(model_path: Path) -> list[UnsupportedMetadataRef]:
+    definition_dir = model_path / "definition"
+    perspectives_dir = definition_dir / "perspectives"
+    refs: list[UnsupportedMetadataRef] = []
+
+    refs.extend(_parse_unsupported_tmdl_metadata_refs(model_path))
+    refs.extend(_parse_culture_translation_refs(model_path))
+
+    if perspectives_dir.exists():
+        for filepath in sorted(perspectives_dir.glob("*.tmdl")):
+            item_keys = _parse_perspective_item_refs(filepath)
+            if item_keys:
+                refs.append(UnsupportedMetadataRef(
+                    area="Perspectives",
+                    item_keys=item_keys,
+                    source_file=str(filepath.relative_to(model_path)),
+                    possible_hidden_dependency=(
+                        "perspective membership may keep this field available outside scanned report visuals"
+                    ),
+                    user_harm=(
+                        "deleting it could break curated perspective views, Excel connections, "
+                        "or downstream tools that rely on the perspective"
+                    ),
+                ))
+
+    return refs
+
+
+def _unsupported_metadata_info(area: str) -> tuple[str, str]:
+    default_dependency = "metadata outside scanned report visuals may reference this field"
+    default_harm = "deleting it could break semantic model behavior that the analyzer cannot fully inspect"
+    info = {
+        "Calculation Groups": (
+            "calculation group or calculation item expressions may reference this field",
+            "deleting it could break dynamic measure logic or calculation item results",
+        ),
+        "KPI expressions": (
+            "KPI status, target, or trend expressions may reference this field",
+            "deleting it could break KPI indicators or scorecard semantics",
+        ),
+        "Detail rows": (
+            "detail row expressions may reference this field",
+            "deleting it could break drillthrough/detail-row result sets",
+        ),
+        "Format string definitions": (
+            "dynamic format string expressions may reference this field",
+            "deleting it could change or break value formatting in reports and clients",
+        ),
+        "Data coverage definitions": (
+            "data coverage expressions may reference this field",
+            "deleting it could break data freshness or coverage metadata used by clients",
+        ),
+        "Secondary expressions": (
+            "secondary expressions may reference this field",
+            "deleting it could break alternate semantic expressions used by clients",
+        ),
+        "Cultures/translations": (
+            "culture or translation metadata may reference this field",
+            "deleting it could break localized names, descriptions, or translated metadata",
+        ),
+    }
+    return info.get(area, (default_dependency, default_harm))
+
+
+def _unsupported_ref(
+    area: str,
+    item_keys: set[tuple[str, str]],
+    source_file: Path,
+    model_path: Path,
+) -> UnsupportedMetadataRef | None:
+    if not item_keys:
+        return None
+    hidden_dependency, user_harm = _unsupported_metadata_info(area)
+    return UnsupportedMetadataRef(
+        area=area,
+        item_keys=item_keys,
+        source_file=str(source_file.relative_to(model_path)),
+        possible_hidden_dependency=hidden_dependency,
+        user_harm=user_harm,
+    )
+
+
+def _extract_item_keys_from_metadata_text(text: str) -> set[tuple[str, str]]:
+    item_keys = set(_extract_dax_qualified_refs_from_text(text))
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return item_keys
+
+    for ref in _find_json_refs(data):
+        table = str(ref.get("table", "")).strip()
+        name = str(ref.get("name", "")).strip()
+        if table and name:
+            item_keys.add((table, name))
+    return item_keys
+
+
+def _tmdl_indent_depth(line: str) -> int:
+    return len(line) - len(line.lstrip("\t"))
+
+
+def _extract_tmdl_metadata_blocks(text: str, markers: tuple[str, ...]) -> list[str]:
+    lines = text.splitlines()
+    marker_terms = tuple(marker.casefold() for marker in markers)
+    blocks: list[str] = []
+
+    for index, line in enumerate(lines):
+        if not any(marker in line.casefold() for marker in marker_terms):
+            continue
+
+        base_indent = _tmdl_indent_depth(line)
+        block = [line]
+        next_index = index + 1
+        while next_index < len(lines):
+            next_line = lines[next_index]
+            if not next_line.strip():
+                lookahead = next_index + 1
+                while lookahead < len(lines) and not lines[lookahead].strip():
+                    lookahead += 1
+                if lookahead < len(lines) and _tmdl_indent_depth(lines[lookahead]) > base_indent:
+                    block.append(next_line)
+                    next_index += 1
+                    continue
+                break
+            if _tmdl_indent_depth(next_line) <= base_indent:
+                break
+            block.append(next_line)
+            next_index += 1
+
+        blocks.append("\n".join(block))
+
+    return blocks
+
+
+def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedMetadataRef]:
+    tables_dir = model_path / "definition" / "tables"
+    if not tables_dir.exists():
+        return []
+
+    marker_areas = [
+        ("Calculation Groups", ("calculationGroup", "calculationItem")),
+        ("KPI expressions", ("kpi", "targetExpression", "statusExpression", "trendExpression")),
+        ("Detail rows", ("detailRowsDefinition", "defaultDetailRowsExpression")),
+        ("Format string definitions", ("formatStringDefinition",)),
+        ("Data coverage definitions", ("dataCoverageDefinition",)),
+        ("Secondary expressions", ("secondaryExpression", "secondaryExpressions")),
+    ]
+    refs: list[UnsupportedMetadataRef] = []
+
+    for filepath in sorted(tables_dir.glob("*.tmdl")):
+        text = filepath.read_text(encoding="utf-8")
+        for area, markers in marker_areas:
+            metadata_blocks = _extract_tmdl_metadata_blocks(text, markers)
+            if not metadata_blocks:
+                continue
+            ref = _unsupported_ref(
+                area,
+                _extract_item_keys_from_metadata_text("\n".join(metadata_blocks)),
+                filepath,
+                model_path,
+            )
+            if ref:
+                refs.append(ref)
+
+    return refs
+
+
+def _parse_culture_translation_refs(model_path: Path) -> list[UnsupportedMetadataRef]:
+    definition_dir = model_path / "definition"
+    candidate_dirs = [
+        definition_dir / "cultures",
+        definition_dir / "translations",
+    ]
+    refs: list[UnsupportedMetadataRef] = []
+
+    for candidate_dir in candidate_dirs:
+        if not candidate_dir.exists():
+            continue
+        for filepath in sorted(candidate_dir.rglob("*")):
+            if not filepath.is_file() or filepath.suffix.casefold() not in (".tmdl", ".json"):
+                continue
+            ref = _unsupported_ref(
+                "Cultures/translations",
+                _extract_item_keys_from_metadata_text(filepath.read_text(encoding="utf-8")),
+                filepath,
+                model_path,
+            )
+            if ref:
+                refs.append(ref)
+
+    return refs
+
+
 def parse_hierarchies(model_path: Path) -> list[HierarchyInfo]:
     """Extract hierarchy definitions and their backing columns from TMDL."""
     tables_dir = model_path / "definition" / "tables"
@@ -332,6 +534,40 @@ def parse_hierarchies(model_path: Path) -> list[HierarchyInfo]:
     for f in sorted(tables_dir.glob("*.tmdl")):
         hierarchies.extend(_parse_tmdl_hierarchies(f))
     return hierarchies
+
+
+def _parse_perspective_item_refs(filepath: Path) -> set[tuple[str, str]]:
+    lines = filepath.read_text(encoding="utf-8").splitlines()
+    item_keys: set[tuple[str, str]] = set()
+    current_table = ""
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("perspectiveTable "):
+            current_table = unquote_tmdl_name(stripped[len("perspectiveTable "):])
+            continue
+        if not current_table:
+            continue
+        for keyword in ("perspectiveMeasure", "perspectiveColumn"):
+            prefix = f"{keyword} "
+            if stripped.startswith(prefix):
+                name = unquote_tmdl_name(stripped[len(prefix):])
+                if name:
+                    item_keys.add((current_table, name))
+
+    return item_keys
+
+
+def _unsupported_metadata_review_trigger(
+    item: ModelItem,
+    ref: UnsupportedMetadataRef,
+) -> str:
+    source = f" in {ref.source_file}" if ref.source_file else ""
+    return (
+        f"Unsupported Metadata: {ref.area}{source} can reference {format_item_ref(item.key)}. "
+        f"Hidden dependency: {ref.possible_hidden_dependency}. "
+        f"User harm: {ref.user_harm}."
+    )
 
 
 def _extract_nameof_targets(text: str) -> list[tuple[str, str]]:
@@ -2438,6 +2674,7 @@ def analyze(
     all_rls_refs = []
     all_hierarchies = []
     all_field_parameters = []
+    all_unsupported_metadata_refs = []
     warnings: list[AnalyzerWarning] = []
 
     for model_path in models:
@@ -2452,6 +2689,7 @@ def analyze(
         }
         all_rls_refs.extend(parse_rls_roles(model_path))
         all_hierarchies.extend(parse_hierarchies(model_path))
+        all_unsupported_metadata_refs.extend(parse_unsupported_metadata_refs(model_path))
         all_field_parameters.extend(
             resolve_field_parameter_targets(
                 parse_field_parameters(model_path, warnings),
@@ -2585,6 +2823,12 @@ def analyze(
     # ── isKey index ──
     key_col_keys = {normalize_key(*item.key) for item in all_items if item.is_key}
 
+    # ── Unsupported metadata index ──
+    unsupported_metadata_by_key: dict[tuple[str, str], list[UnsupportedMetadataRef]] = defaultdict(list)
+    for ref in all_unsupported_metadata_refs:
+        for key in ref.item_keys:
+            unsupported_metadata_by_key[normalize_key(*key)].append(ref)
+
     # ── Classify each item ──
     results = []
     for item in all_items:
@@ -2663,17 +2907,20 @@ def analyze(
                     if item.key in refs:
                         has_dax_dependents = True
                         break
-            if has_dax_dependents:
+            if item.is_hidden:
+                review_triggers.append("Item is hidden")
+            if item.is_key:
+                review_triggers.append("Item is marked as a key")
+            review_triggers.extend(
+                _unsupported_metadata_review_trigger(item, ref)
+                for ref in unsupported_metadata_by_key.get(nkey, [])
+            )
+            if review_triggers:
+                removal_risk = "Review"
+            elif has_dax_dependents:
                 removal_risk = "Caution"
             else:
-                if item.is_hidden:
-                    review_triggers.append("Item is hidden")
-                if item.is_key:
-                    review_triggers.append("Item is marked as a key")
-                if review_triggers:
-                    removal_risk = "Review"
-                else:
-                    removal_risk = "Safe"
+                removal_risk = "Safe"
 
         results.append({
             "item": item,
@@ -3152,7 +3399,8 @@ def format_xlsx(results: dict, output_path: str, announce: bool = True) -> None:
     # ── Sheet 2: Details (one row per item, deduplicated) ──
     ws_detail = wb.create_sheet("Details")
     detail_headers = ["Type", "Table", "Name", "Hidden", "Display Folder",
-                      "Status", "Removal Risk", "Pages Used", "Visual Types", "Contexts"]
+                      "Status", "Removal Risk", "Review Triggers", "Pages Used",
+                      "Visual Types", "Contexts"]
     _write_header(ws_detail, detail_headers)
 
     risk_order = {"Safe": 0, "Review": 1, "Caution": 2, "Do not remove": 3}
@@ -3181,6 +3429,7 @@ def format_xlsx(results: dict, output_path: str, announce: bool = True) -> None:
             item.display_folder or "",
             r["status"],
             r.get("removal_risk", ""),
+            "; ".join(r.get("review_triggers", [])),
             ", ".join(pages),
             ", ".join(visual_types),
             ", ".join(contexts),
@@ -3200,7 +3449,7 @@ def format_xlsx(results: dict, output_path: str, announce: bool = True) -> None:
     ws_refs = wb.create_sheet("All References")
     ref_headers = ["Type", "Table", "Name", "Hidden", "Display Folder",
                    "Report", "Page", "Visual Type", "Visual Title", "Context",
-                   "Status", "Removal Risk"]
+                   "Status", "Removal Risk", "Review Triggers"]
     _write_header(ws_refs, ref_headers)
 
     row_idx = 2
@@ -3209,13 +3458,14 @@ def format_xlsx(results: dict, output_path: str, announce: bool = True) -> None:
         hidden = "Yes" if item.is_hidden else "No"
         status = r["status"]
         risk = r.get("removal_risk", "")
+        review_triggers = "; ".join(r.get("review_triggers", []))
         if r["usages"]:
             for u in r["usages"]:
                 row_data = [
                     item.item_type, item.table, item.name, hidden,
                     item.display_folder or "",
                     u.report, u.page, u.visual_type, u.visual_title or "",
-                    u.context, status, risk,
+                    u.context, status, risk, review_triggers,
                 ]
                 for col, val in enumerate(row_data, 1):
                     ws_refs.cell(row=row_idx, column=col, value=val).border = thin_border
@@ -3224,7 +3474,7 @@ def format_xlsx(results: dict, output_path: str, announce: bool = True) -> None:
             row_data = [
                 item.item_type, item.table, item.name, hidden,
                 item.display_folder or "",
-                "", "", "", "", "", status, risk,
+                "", "", "", "", "", status, risk, review_triggers,
             ]
             for col, val in enumerate(row_data, 1):
                 ws_refs.cell(row=row_idx, column=col, value=val).border = thin_border
