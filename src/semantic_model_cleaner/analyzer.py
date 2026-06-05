@@ -366,7 +366,7 @@ def parse_unsupported_metadata_refs(model_path: Path) -> list[UnsupportedMetadat
                 refs.append(UnsupportedMetadataRef(
                     area="Perspectives",
                     item_keys=item_keys,
-                    source_file=str(filepath.relative_to(model_path)),
+                    source_file=filepath.relative_to(model_path).as_posix(),
                     possible_hidden_dependency=(
                         "perspective membership may keep this field available outside scanned report visuals"
                     ),
@@ -427,7 +427,7 @@ def _unsupported_ref(
     return UnsupportedMetadataRef(
         area=area,
         item_keys=item_keys,
-        source_file=str(source_file.relative_to(model_path)),
+        source_file=source_file.relative_to(model_path).as_posix(),
         possible_hidden_dependency=hidden_dependency,
         user_harm=user_harm,
     )
