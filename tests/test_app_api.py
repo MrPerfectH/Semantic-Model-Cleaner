@@ -677,6 +677,60 @@ def test_api_cleanup_stale_report_metadata_can_preview_without_writing(tmp_path)
     assert visual_file.read_text(encoding="utf-8") == before
 
 
+def test_api_cleanup_stale_report_metadata_preview_matches_apply(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+                "name": "Visual1",
+                "position": {"x": 0, "y": 0, "z": 0, "height": 100, "width": 100},
+                "visual": {
+                    "query": {"queryState": {"Values": {"projections": []}}},
+                    "objects": {
+                        "labels": [
+                            {"selector": {"metadata": "Sales.Revenue"}},
+                            {"selector": {"metadata": "Sales.Obsolete Revenue"}},
+                        ]
+                    },
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    entries = [
+        {
+            "report_path": str(report_path),
+            "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+            "selector_value": "Sales.Obsolete Revenue",
+            "source_path": "visual.objects.labels.[1].selector.metadata",
+            "stale_kind": "",
+        }
+    ]
+
+    client = web_app.app.test_client()
+    preview = client.post(
+        "/api/report/cleanup-stale",
+        json={"dry_run": True, "entries": entries},
+    ).get_json()
+    apply = client.post(
+        "/api/report/cleanup-stale",
+        json={"entries": entries},
+    ).get_json()
+
+    assert preview["result"]["dry_run"] is True
+    assert apply["result"]["dry_run"] is False
+    assert apply["removed_count"] == preview["removed_count"] == 1
+    assert apply["result"]["removed_entries"] == preview["result"]["removed_entries"]
+    updated_payload = json.loads(visual_file.read_text(encoding="utf-8"))
+    labels = updated_payload["visual"]["objects"]["labels"]
+    assert labels == [{"selector": {"metadata": "Sales.Revenue"}}]
+
+
 def test_api_analyze_exposes_table_permission_rls_usage(tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
@@ -1593,9 +1647,14 @@ def test_index_renders_empty_selection_state():
     assert 'id="reportHealthActionStatus"' in html
     assert "var allReportIssues = [];" in html
     assert "var allReportHealth = { totalIssueCount: 0, groups: [] };" in html
+    assert "var reportHealthStaleCleanupEntries = [];" in html
     assert "function renderReportHealth() {" in html
     assert "function previewReportHealthStaleCleanup() {" in html
+    assert "function applyReportHealthStaleCleanup() {" in html
+    assert "function renderReportHealthStalePreview(result) {" in html
+    assert 'id="reportHealthPreviewList"' in html
     assert "data-report-health-action=\"cleanup_stale\"" in html
+    assert "data-report-health-action=\"apply_stale\"" in html
     assert 'id="filterCounts"' not in html
     assert "Dropdown filters support multi-select" not in html
     assert 'data-col="usageState"' in html
