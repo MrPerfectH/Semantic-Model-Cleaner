@@ -805,6 +805,97 @@ def test_report_extension_measures_are_analyzed_and_promote_model_dependencies(t
     assert payload_item["formatString"] == "0.0"
 
 
+def test_report_extension_measure_schema_gaps_are_report_health_issues(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    tables_dir = model / "definition" / "tables"
+    report_def_dir = report / "definition"
+    tables_dir.mkdir(parents=True)
+    report_def_dir.mkdir(parents=True)
+
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tmeasure Existing = 1\n",
+        encoding="utf-8",
+    )
+    (report_def_dir / "reportExtensions.json").write_text(
+        json.dumps(
+            {
+                "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/reportExtension/1.0.0/schema.json",
+                "name": "extension",
+                "entities": [
+                    {
+                        "name": "Sales",
+                        "measures": [
+                            {
+                                "name": "Report Revenue",
+                                "expression": "[Existing] + 1",
+                                "references": {
+                                    "unrecognizedReferences": True
+                                },
+                            },
+                            {
+                                "dataType": "Double",
+                                "expression": "[Existing]",
+                            },
+                            "not an object",
+                        ],
+                    },
+                    {"measures": [{"name": "No Entity", "dataType": "Double", "expression": "1"}]},
+                    "not an entity",
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    results = analyzer.analyze(workspace.resolve())
+
+    issue_keys = [
+        (issue["severity"], issue["issueType"], issue["message"])
+        for issue in results["report_issues"]
+    ]
+    assert issue_keys == [
+        (
+            "warning",
+            "invalid_report_extension_measure",
+            "Report extension measure 'Sales[Report Revenue]' is missing required field 'dataType'.",
+        ),
+        (
+            "warning",
+            "report_extension_unrecognized_reference",
+            "Report extension measure 'Sales[Report Revenue]' contains unrecognized references.",
+        ),
+        (
+            "warning",
+            "invalid_report_extension_measure",
+            "Report extension measure in entity 'Sales' is missing required field 'name'.",
+        ),
+        (
+            "warning",
+            "invalid_report_extension_measure",
+            "Report extension measure at entities[0].measures[2] must be an object.",
+        ),
+        (
+            "warning",
+            "invalid_report_extension_entity",
+            "Report extension entity at entities[1] is missing required field 'name'.",
+        ),
+        (
+            "warning",
+            "invalid_report_extension_entity",
+            "Report extension entity at entities[2] must be an object.",
+        ),
+    ]
+    assert all(issue["artifactKind"] == "Report Extension" for issue in results["report_issues"])
+    assert all(issue["artifactPath"] == "definition/reportExtensions.json" for issue in results["report_issues"])
+
+    payload = json.loads(analyzer.format_json_output(results))
+    assert payload["reportIssues"][0]["issueType"] == "invalid_report_extension_measure"
+
+
 def test_invalid_report_json_is_report_health_issue(tmp_path):
     workspace = tmp_path / "Workspace"
     model = workspace / "Models" / "Sales.SemanticModel"

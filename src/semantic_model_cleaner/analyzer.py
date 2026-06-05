@@ -134,6 +134,25 @@ class UnsupportedMetadataRef:
     user_harm: str = ""
 
 
+REPORT_EXTENSION_PRIMITIVE_TYPES = {
+    "Binary",
+    "Boolean",
+    "Date",
+    "DateTime",
+    "DateTimeZone",
+    "Decimal",
+    "Double",
+    "Duration",
+    "Integer",
+    "Json",
+    "None",
+    "Null",
+    "Text",
+    "Time",
+    "Variant",
+}
+
+
 # ── Discovery ─────────────────────────────────────────────────────────────────
 
 
@@ -1057,6 +1076,213 @@ def parse_report_extension_measures(
     return items
 
 
+def _report_extension_item_ref(entity_name: str, measure: dict) -> str:
+    measure_name = str(measure.get("name", "")).strip()
+    if entity_name and measure_name:
+        return f"'{entity_name}[{measure_name}]'"
+    if entity_name:
+        return f"in entity '{entity_name}'"
+    if measure_name:
+        return f"'{measure_name}'"
+    return ""
+
+
+def _report_extension_measure_subject(entity_name: str, measure: dict) -> str:
+    item_ref = _report_extension_item_ref(entity_name, measure)
+    if item_ref:
+        return f"Report extension measure {item_ref}"
+    return "Report extension measure"
+
+
+def _report_extension_issue(
+    *,
+    report_path: Path,
+    issue_type: str,
+    message: str,
+) -> ReportIssue:
+    report_extensions = report_path / "definition" / "reportExtensions.json"
+    return ReportIssue(
+        severity="warning",
+        issue_type=issue_type,
+        report=report_display_name(report_path),
+        artifact_kind="Report Extension",
+        artifact_path=_artifact_rel_path(report_path, report_extensions),
+        message=message,
+    )
+
+
+def scan_report_extension_issues(report_path: Path) -> list[ReportIssue]:
+    report_extensions = report_path / "definition" / "reportExtensions.json"
+    if not report_extensions.exists():
+        return []
+
+    try:
+        data = json.loads(report_extensions.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+
+    issues: list[ReportIssue] = []
+    if not isinstance(data, dict):
+        return [
+            _report_extension_issue(
+                report_path=report_path,
+                issue_type="invalid_report_extension",
+                message="Report extension payload must be an object.",
+            )
+        ]
+
+    for field in ("$schema", "name"):
+        value = data.get(field)
+        if not isinstance(value, str) or not value.strip():
+            issues.append(_report_extension_issue(
+                report_path=report_path,
+                issue_type="invalid_report_extension",
+                message=f"Report extension is missing required field '{field}'.",
+            ))
+
+    entities = data.get("entities", [])
+    if entities is None:
+        entities = []
+    if not isinstance(entities, list):
+        issues.append(_report_extension_issue(
+            report_path=report_path,
+            issue_type="invalid_report_extension_entity",
+            message="Report extension field 'entities' must be an array.",
+        ))
+        return issues
+
+    for entity_idx, entity in enumerate(entities):
+        if not isinstance(entity, dict):
+            issues.append(_report_extension_issue(
+                report_path=report_path,
+                issue_type="invalid_report_extension_entity",
+                message=f"Report extension entity at entities[{entity_idx}] must be an object.",
+            ))
+            continue
+
+        entity_name = str(entity.get("name", "")).strip()
+        if not entity_name:
+            issues.append(_report_extension_issue(
+                report_path=report_path,
+                issue_type="invalid_report_extension_entity",
+                message=f"Report extension entity at entities[{entity_idx}] is missing required field 'name'.",
+            ))
+
+        measures = entity.get("measures", [])
+        if measures is None:
+            measures = []
+        if not isinstance(measures, list):
+            issues.append(_report_extension_issue(
+                report_path=report_path,
+                issue_type="invalid_report_extension_measure",
+                message=f"Report extension measures for entity '{entity_name or entity_idx}' must be an array.",
+            ))
+            continue
+
+        for measure_idx, measure in enumerate(measures):
+            if not isinstance(measure, dict):
+                issues.append(_report_extension_issue(
+                    report_path=report_path,
+                    issue_type="invalid_report_extension_measure",
+                    message=(
+                        "Report extension measure at "
+                        f"entities[{entity_idx}].measures[{measure_idx}] must be an object."
+                    ),
+                ))
+                continue
+
+            subject = _report_extension_measure_subject(entity_name, measure)
+            for field in ("dataType", "expression", "name"):
+                value = measure.get(field)
+                if not isinstance(value, str) or not value.strip():
+                    issues.append(_report_extension_issue(
+                        report_path=report_path,
+                        issue_type="invalid_report_extension_measure",
+                        message=f"{subject} is missing required field '{field}'.",
+                    ))
+
+            data_type = measure.get("dataType")
+            if (
+                isinstance(data_type, str)
+                and data_type.strip()
+                and data_type not in REPORT_EXTENSION_PRIMITIVE_TYPES
+            ):
+                issues.append(_report_extension_issue(
+                    report_path=report_path,
+                    issue_type="invalid_report_extension_measure",
+                    message=f"{subject} has unsupported dataType '{data_type}'.",
+                ))
+
+            hidden = measure.get("hidden")
+            if hidden is not None and not isinstance(hidden, bool):
+                issues.append(_report_extension_issue(
+                    report_path=report_path,
+                    issue_type="invalid_report_extension_measure",
+                    message=f"{subject} field 'hidden' must be a boolean.",
+                ))
+
+            annotations = measure.get("annotations")
+            if annotations is not None and not isinstance(annotations, list):
+                issues.append(_report_extension_issue(
+                    report_path=report_path,
+                    issue_type="invalid_report_extension_measure",
+                    message=f"{subject} field 'annotations' must be an array.",
+                ))
+            elif isinstance(annotations, list):
+                for annotation_idx, annotation in enumerate(annotations):
+                    if not isinstance(annotation, dict):
+                        issues.append(_report_extension_issue(
+                            report_path=report_path,
+                            issue_type="invalid_report_extension_measure",
+                            message=(
+                                f"{subject} annotation at annotations[{annotation_idx}] "
+                                "must be an object."
+                            ),
+                        ))
+                        continue
+                    for field in ("name", "value"):
+                        value = annotation.get(field)
+                        if not isinstance(value, str) or not value.strip():
+                            issues.append(_report_extension_issue(
+                                report_path=report_path,
+                                issue_type="invalid_report_extension_measure",
+                                message=(
+                                    f"{subject} annotation at annotations[{annotation_idx}] "
+                                    f"is missing required field '{field}'."
+                                ),
+                            ))
+
+            references = measure.get("references")
+            if references is None:
+                continue
+            if not isinstance(references, dict):
+                issues.append(_report_extension_issue(
+                    report_path=report_path,
+                    issue_type="invalid_report_extension_measure",
+                    message=f"{subject} field 'references' must be an object.",
+                ))
+                continue
+
+            unrecognized = references.get("unrecognizedReferences")
+            if unrecognized is True:
+                issues.append(_report_extension_issue(
+                    report_path=report_path,
+                    issue_type="report_extension_unrecognized_reference",
+                    message=f"{subject} contains unrecognized references.",
+                ))
+            elif unrecognized not in (None, False):
+                issues.append(_report_extension_issue(
+                    report_path=report_path,
+                    issue_type="invalid_report_extension_measure",
+                    message=(
+                        f"{subject} field 'references.unrecognizedReferences' "
+                        "must be a boolean."
+                    ),
+                ))
+
+    return issues
+
+
 def _dedupe_items_with_warnings(
     items: list[ModelItem],
     warnings: list[AnalyzerWarning],
@@ -1532,6 +1758,8 @@ def _artifact_rel_path(report_path: Path, file_path: Path) -> str:
 def _invalid_json_artifact_kind(rel_path: str) -> str:
     if rel_path == "definition.pbir":
         return "Report Definition"
+    if rel_path == "definition/reportExtensions.json":
+        return "Report Extension"
     if rel_path.endswith("/visual.json"):
         return "Visual"
     if rel_path.endswith("/page.json"):
@@ -2760,6 +2988,7 @@ def analyze(
 
     for report_path in reports:
         all_report_issues.extend(scan_invalid_report_json(report_path))
+        all_report_issues.extend(scan_report_extension_issues(report_path))
         visual_usages, stale_visual_usages, visual_meta = scan_report_visuals(report_path)
         all_visual_usages.extend(visual_usages)
         all_stale_visual_usages.extend(stale_visual_usages)

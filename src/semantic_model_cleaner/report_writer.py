@@ -22,6 +22,19 @@ _DECLARED_SCHEMA_REQUIRED_FIELDS = (
 )
 
 
+_REPORT_EXTENSION_TMDL_DATA_TYPES = {
+    "Binary": "binary",
+    "Boolean": "boolean",
+    "Date": "dateTime",
+    "DateTime": "dateTime",
+    "Decimal": "decimal",
+    "Double": "double",
+    "Integer": "int64",
+    "Text": "string",
+    "Variant": "variant",
+}
+
+
 def _declared_report_required_fields(schema: str) -> tuple[str, ...] | None:
     match = re.search(r"/definition/report/(\d+)\.", schema)
     if not match:
@@ -125,6 +138,102 @@ def _find_measure(payload: dict, entity_name: str, measure_name: str) -> tuple[d
     return None, None
 
 
+def _report_extension_string(measure: dict, field: str) -> str:
+    value = measure.get(field)
+    if isinstance(value, str) and value.strip():
+        return value
+    return ""
+
+
+def _report_extension_data_type(value: str) -> str:
+    for report_value, tmdl_value in _REPORT_EXTENSION_TMDL_DATA_TYPES.items():
+        if report_value.casefold() == value.casefold():
+            return tmdl_value
+    return ""
+
+
+def _report_measure_promotion_metadata(measure: dict) -> tuple[dict, list[str], list[dict[str, str]]]:
+    create_kwargs: dict = {}
+    preserved_metadata: list[str] = []
+    unpreserved_metadata: list[dict[str, str]] = []
+
+    if _report_extension_string(measure, "expression"):
+        preserved_metadata.append("expression")
+
+    report_data_type = _report_extension_string(measure, "dataType")
+    if report_data_type:
+        tmdl_data_type = _report_extension_data_type(report_data_type)
+        if tmdl_data_type:
+            create_kwargs["data_type"] = tmdl_data_type
+            preserved_metadata.append("dataType")
+        else:
+            unpreserved_metadata.append({
+                "field": "dataType",
+                "reason": (
+                    f"Report extension dataType '{report_data_type}' does not have a supported "
+                    "TMDL measure dataType mapping."
+                ),
+            })
+
+    for report_field, create_field in (
+        ("dataCategory", "data_category"),
+        ("description", "description"),
+        ("displayFolder", "display_folder"),
+        ("formatString", "format_string"),
+    ):
+        value = _report_extension_string(measure, report_field)
+        if value:
+            create_kwargs[create_field] = value
+            preserved_metadata.append(report_field)
+
+    if isinstance(measure.get("hidden"), bool):
+        create_kwargs["hidden"] = measure["hidden"]
+        preserved_metadata.append("hidden")
+
+    annotations = measure.get("annotations")
+    promoted_annotations = []
+    if isinstance(annotations, list):
+        for idx, annotation in enumerate(annotations):
+            if not isinstance(annotation, dict):
+                unpreserved_metadata.append({
+                    "field": f"annotations[{idx}]",
+                    "reason": "Report extension annotation is not an object.",
+                })
+                continue
+            name = _report_extension_string(annotation, "name")
+            value = _report_extension_string(annotation, "value")
+            if not name or not value:
+                unpreserved_metadata.append({
+                    "field": f"annotations[{idx}]",
+                    "reason": "Report extension annotation must include non-empty name and value strings.",
+                })
+                continue
+            if "\n" in name or "\n" in value:
+                unpreserved_metadata.append({
+                    "field": f"annotations[{idx}]",
+                    "reason": "Multiline report extension annotations are not promoted to TMDL.",
+                })
+                continue
+            promoted_annotations.append({"name": name, "value": value})
+    elif annotations is not None:
+        unpreserved_metadata.append({
+            "field": "annotations",
+            "reason": "Report extension annotations must be an array.",
+        })
+
+    if promoted_annotations:
+        create_kwargs["annotations"] = promoted_annotations
+        preserved_metadata.append("annotations")
+
+    if "measureTemplate" in measure:
+        unpreserved_metadata.append({
+            "field": "measureTemplate",
+            "reason": "Report extension measure templates are creation metadata and do not have a TMDL measure equivalent.",
+        })
+
+    return create_kwargs, preserved_metadata, unpreserved_metadata
+
+
 def migrate_measure_to_model(
     *,
     model_path: Path,
@@ -160,6 +269,7 @@ def migrate_measure_to_model(
     if entity is None or measure is None:
         return {"ok": False, "error": f"Report measure '{entity_name}[{measure_name}]' was not found"}
 
+    metadata_kwargs, preserved_metadata, unpreserved_metadata = _report_measure_promotion_metadata(measure)
     transaction_roots = [model_path / "definition", report_path / "definition"]
     snapshot = file_transaction.snapshot_artifact_files(transaction_roots)
     try:
@@ -168,9 +278,7 @@ def migrate_measure_to_model(
             table=target_table,
             name=target_name,
             dax_expression=str(measure.get("expression", "") or ""),
-            display_folder=str(measure.get("displayFolder", "") or ""),
-            format_string=str(measure.get("formatString", "") or ""),
-            hidden=bool(measure.get("hidden", False)),
+            **metadata_kwargs,
         )
         if not create_result.get("ok"):
             return create_result
@@ -225,6 +333,8 @@ def migrate_measure_to_model(
         "table": entity_name,
         "name": measure_name,
         "updated_reference_count": updated_reference_count,
+        "preserved_metadata": preserved_metadata,
+        "unpreserved_metadata": unpreserved_metadata,
     }
 
 
