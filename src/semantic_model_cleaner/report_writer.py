@@ -857,7 +857,7 @@ def _remove_stale_selector_entries(obj, stale_values: set[str], live_query_refs:
             _remove_stale_selector_entries(item, stale_values, live_query_refs, removed, path_parts + [f"[{idx}]"])
 
 
-def cleanup_stale_metadata_selectors(*, entries: list[dict]) -> dict:
+def cleanup_stale_metadata_selectors(*, entries: list[dict], dry_run: bool = False) -> dict:
     if not entries:
         return {"ok": False, "error": "No stale selector entries were provided"}
 
@@ -960,7 +960,7 @@ def cleanup_stale_metadata_selectors(*, entries: list[dict]) -> dict:
                 for item in removed_for_file
             )
 
-    if changed_files:
+    if changed_files and not dry_run:
         target_files = list(changed_files)
         snapshot = file_transaction.snapshot_artifact_files(target_files, suffixes=(".json",))
         try:
@@ -984,6 +984,7 @@ def cleanup_stale_metadata_selectors(*, entries: list[dict]) -> dict:
     return {
         "ok": True,
         "action": "cleanup_stale_metadata_selectors",
+        "dry_run": dry_run,
         "updated_files": updated_files,
         "removed_count": len(removed_entries),
         "removed_entries": removed_entries,

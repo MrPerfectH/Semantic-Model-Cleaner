@@ -242,6 +242,155 @@ def print_startup_banner(host: str, port: int, *, debug: bool, mode: str = "web"
     print()
 
 
+_REPORT_HEALTH_ISSUE_GROUPS = {
+    "invalid_pbir_json": {
+        "label": "Invalid PBIR JSON",
+        "description": "PBIR files could not be parsed, so report analysis may be incomplete until they are repaired.",
+    },
+    "report_extension_metadata": {
+        "label": "Report Extension Measures",
+        "description": "Report-level measure metadata needs review before promotion or cleanup decisions.",
+    },
+    "report_metadata": {
+        "label": "Report Metadata Issues",
+        "description": "Report metadata needs review before relying on cleanup recommendations.",
+    },
+}
+
+
+def _report_health_issue_group_key(issue: dict) -> str:
+    issue_type = str(issue.get("issueType", "") or "")
+    artifact_kind = str(issue.get("artifactKind", "") or "")
+    if issue_type == "invalid_report_json":
+        return "invalid_pbir_json"
+    if issue_type.startswith("invalid_report_extension") or issue_type == "report_extension_unrecognized_reference":
+        return "report_extension_metadata"
+    if artifact_kind == "Report Extension":
+        return "report_extension_metadata"
+    return "report_metadata"
+
+
+def _highest_severity(items: list[dict]) -> str:
+    rank = {"error": 0, "warning": 1, "info": 2}
+    severity = "info"
+    for item in items:
+        candidate = str(item.get("severity", "warning") or "warning")
+        if rank.get(candidate, 2) < rank.get(severity, 2):
+            severity = candidate
+    return severity
+
+
+def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
+    groups: list[dict] = []
+
+    for key in ("invalid_pbir_json", "report_extension_metadata", "report_metadata"):
+        issues = [issue for issue in report_issues if _report_health_issue_group_key(issue) == key]
+        if not issues:
+            continue
+        meta = _REPORT_HEALTH_ISSUE_GROUPS[key]
+        groups.append({
+            "key": key,
+            "label": meta["label"],
+            "severity": _highest_severity(issues),
+            "count": len(issues),
+            "description": meta["description"],
+            "issues": issues,
+            "items": [],
+            "action": None,
+        })
+
+    stale_items = [
+        {
+            "type": item.get("type", ""),
+            "table": item.get("table", ""),
+            "name": item.get("name", ""),
+            "staleUsageCount": item.get("staleUsageCount", 0),
+            "staleUsageDetails": item.get("staleUsageDetails", []),
+        }
+        for item in items
+        if item.get("staleUsageCount", 0) > 0
+    ]
+    stale_count = sum(item["staleUsageCount"] for item in stale_items)
+    if stale_count:
+        groups.append({
+            "key": "stale_report_references",
+            "label": "Stale Report References",
+            "severity": "warning",
+            "count": stale_count,
+            "description": (
+                "Stale PBIR selectors no longer match live visual or bookmark query fields. "
+                "Preview cleanup before applying repairs."
+            ),
+            "issues": [],
+            "items": stale_items,
+            "action": {
+                "type": "cleanup_stale",
+                "label": "Preview stale cleanup",
+                "entryCount": stale_count,
+            },
+        })
+
+    broken_items = [
+        {
+            "type": item.get("type", ""),
+            "table": item.get("table", ""),
+            "name": item.get("name", ""),
+            "brokenDaxRefs": item.get("brokenDaxRefs", []),
+            "brokenDaxRefDetails": item.get("brokenDaxRefDetails", []),
+        }
+        for item in items
+        if item.get("brokenDaxRefs")
+    ]
+    broken_count = sum(len(item["brokenDaxRefs"]) for item in broken_items)
+    if broken_count:
+        groups.append({
+            "key": "broken_model_references",
+            "label": "Broken Model References",
+            "severity": "error",
+            "count": broken_count,
+            "description": "Unresolved DAX references block confident cleanup until the broken model dependency is resolved.",
+            "issues": [],
+            "items": broken_items,
+            "action": None,
+        })
+
+    unsupported_items = []
+    unsupported_count = 0
+    for item in items:
+        triggers = [
+            trigger for trigger in item.get("reviewTriggers", [])
+            if str(trigger).startswith("Unsupported Metadata:")
+        ]
+        if not triggers:
+            continue
+        unsupported_count += len(triggers)
+        unsupported_items.append({
+            "type": item.get("type", ""),
+            "table": item.get("table", ""),
+            "name": item.get("name", ""),
+            "reviewTriggers": triggers,
+        })
+    if unsupported_count:
+        groups.append({
+            "key": "unsupported_metadata",
+            "label": "Unsupported Metadata",
+            "severity": "warning",
+            "count": unsupported_count,
+            "description": (
+                "Cleanup recommendations were downgraded to Review because documented metadata "
+                "can hide dependencies the app does not fully analyze yet."
+            ),
+            "issues": [],
+            "items": unsupported_items,
+            "action": None,
+        })
+
+    return {
+        "totalIssueCount": sum(group["count"] for group in groups),
+        "groups": groups,
+    }
+
+
 def _serialize_results(results: dict) -> dict:
     """Serialize analyzer results for JSON API responses."""
     def _issue_state(status: str, broken_refs: list[str] | None, stale_usage_count: int = 0) -> str:
@@ -651,11 +800,13 @@ def _serialize_results(results: dict) -> dict:
             ],
         })
 
+    report_issues = results.get("report_issues", [])
     return {
         "summary": results["summary"],
         "tables": tables,
         "warnings": results.get("warnings", []),
-        "reportIssues": results.get("report_issues", []),
+        "reportIssues": report_issues,
+        "reportHealth": _build_report_health(report_issues, items),
         "items": items,
         "references": references,
     }
@@ -1342,18 +1493,19 @@ def api_cleanup_stale_report_metadata():
     try:
         data = request.get_json(silent=True) or {}
         entries = data.get("entries", [])
+        dry_run = bool(data.get("dry_run") or data.get("dryRun"))
         if not entries:
             return jsonify({"error": "No stale selector entries provided"}), 400
 
         backup_paths = []
-        if data.get("create_backup", False):
+        if data.get("create_backup", False) and not dry_run:
             for report_path_str in sorted({str(entry.get("report_path", "") or "").strip() for entry in entries if entry.get("report_path")}):
                 report_path = Path(report_path_str)
                 if not report_path.exists():
                     return jsonify({"error": f"Report path not found: {report_path}"}), 400
                 backup_paths.append(str(report_writer.create_backup(report_path)))
 
-        result = report_writer.cleanup_stale_metadata_selectors(entries=entries)
+        result = report_writer.cleanup_stale_metadata_selectors(entries=entries, dry_run=dry_run)
         if not result.get("ok"):
             return jsonify(result), 400
 
