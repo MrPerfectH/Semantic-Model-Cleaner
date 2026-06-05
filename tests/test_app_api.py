@@ -448,6 +448,78 @@ def test_serialize_results_marks_stale_only_usage_and_stale_details():
     assert stale_reference["context"] == "Stale Formatting"
 
 
+def test_api_serialization_groups_report_health_workflow():
+    results = _fake_results()
+    unsupported_reason = (
+        "Unsupported Metadata: Perspectives in definition/perspectives/Executive.tmdl "
+        "can reference Sales[Revenue]. Hidden dependency: perspective membership may "
+        "keep this field available outside scanned report visuals. User harm: deleting "
+        "it could break curated perspective views."
+    )
+    results["report_issues"] = [
+        {
+            "severity": "error",
+            "issueType": "invalid_report_json",
+            "report": "Executive",
+            "page": "Overview",
+            "visualId": "Visual1",
+            "artifactKind": "Visual",
+            "artifactPath": "definition/pages/Page1/visuals/Visual1/visual.json",
+            "message": "Could not parse PBIR JSON file.",
+        },
+        {
+            "severity": "warning",
+            "issueType": "invalid_report_extension_measure",
+            "report": "Executive",
+            "page": "",
+            "visualId": "",
+            "artifactKind": "Report Extension",
+            "artifactPath": "definition/reportExtensions.json",
+            "message": "Report extension measure is missing required field 'dataType'.",
+        },
+    ]
+    results["items"][0]["removal_risk"] = "Review"
+    results["items"][0]["review_triggers"] = [unsupported_reason]
+    results["items"][0]["stale_usages"] = [
+        analyzer.UsageRef(
+            table="Sales",
+            name="Revenue",
+            ref_type="metadata",
+            report="Executive",
+            page="Overview",
+            visual_type="card",
+            visual_title="Revenue",
+            visual_id="Visual1",
+            context="Stale Formatting",
+            source_path="visual.objects.labels.[1].selector.metadata",
+            artifact_kind="Visual",
+            artifact_path="definition/pages/Page1/visuals/Visual1/visual.json",
+            selector_value="Sales.Revenue",
+            is_stale=True,
+        )
+    ]
+
+    payload = web_app._serialize_results(results)
+
+    health = payload["reportHealth"]
+    assert health["totalIssueCount"] == 4
+    assert [group["key"] for group in health["groups"]] == [
+        "invalid_pbir_json",
+        "report_extension_metadata",
+        "stale_report_references",
+        "unsupported_metadata",
+    ]
+    stale_group = next(group for group in health["groups"] if group["key"] == "stale_report_references")
+    assert stale_group["count"] == 1
+    assert stale_group["action"] == {
+        "type": "cleanup_stale",
+        "label": "Preview stale cleanup",
+        "entryCount": 1,
+    }
+    unsupported_group = next(group for group in health["groups"] if group["key"] == "unsupported_metadata")
+    assert unsupported_group["items"][0]["reviewTriggers"] == [unsupported_reason]
+
+
 def test_api_analyze_rejects_multiple_models(monkeypatch, tmp_path):
     model_a = tmp_path / "Sales.SemanticModel"
     model_b = tmp_path / "Finance.SemanticModel"
@@ -549,6 +621,60 @@ def test_api_analyze_returns_report_health_issues(tmp_path):
     assert payload["reportIssues"][0]["issueType"] == "invalid_report_json"
     assert payload["reportIssues"][0]["artifactKind"] == "Visual"
     assert payload["reportIssues"][0]["artifactPath"] == "definition/pages/Page1/visuals/Visual1/visual.json"
+    assert payload["reportHealth"]["groups"][0]["key"] == "invalid_pbir_json"
+    assert payload["reportHealth"]["groups"][0]["count"] == 1
+
+
+def test_api_cleanup_stale_report_metadata_can_preview_without_writing(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+                "name": "Visual1",
+                "position": {"x": 0, "y": 0, "z": 0, "height": 100, "width": 100},
+                "visual": {
+                    "query": {"queryState": {"Values": {"projections": []}}},
+                    "objects": {
+                        "labels": [
+                            {"selector": {"metadata": "Sales.Revenue"}},
+                            {"selector": {"metadata": "Sales.Obsolete Revenue"}},
+                        ]
+                    },
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    before = visual_file.read_text(encoding="utf-8")
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/report/cleanup-stale",
+        json={
+            "dry_run": True,
+            "entries": [
+                {
+                    "report_path": str(report_path),
+                    "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                    "selector_value": "Sales.Obsolete Revenue",
+                    "source_path": "visual.objects.labels.[1].selector.metadata",
+                    "stale_kind": "",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["result"]["dry_run"] is True
+    assert payload["removed_count"] == 1
+    assert payload["result"]["updated_files"] == [str(visual_file.resolve())]
+    assert visual_file.read_text(encoding="utf-8") == before
 
 
 def test_api_analyze_exposes_table_permission_rls_usage(tmp_path):
@@ -1464,8 +1590,12 @@ def test_index_renders_empty_selection_state():
     assert 'id="reportHealthBanner"' in html
     assert 'id="reportHealthCount"' in html
     assert 'id="reportHealthList"' in html
+    assert 'id="reportHealthActionStatus"' in html
     assert "var allReportIssues = [];" in html
+    assert "var allReportHealth = { totalIssueCount: 0, groups: [] };" in html
     assert "function renderReportHealth() {" in html
+    assert "function previewReportHealthStaleCleanup() {" in html
+    assert "data-report-health-action=\"cleanup_stale\"" in html
     assert 'id="filterCounts"' not in html
     assert "Dropdown filters support multi-select" not in html
     assert 'data-col="usageState"' in html

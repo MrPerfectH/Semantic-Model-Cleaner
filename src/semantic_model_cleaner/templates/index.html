@@ -207,6 +207,15 @@ body.wrap-table-text .table-signals li { overflow: visible; text-overflow: clip;
 .warning-banner .warning-entry { font-size: 12px; line-height: 1.5; }
 .warning-banner .warning-entry + .warning-entry { margin-top: 4px; }
 .warning-banner .warning-meta { font-size: 11px; color: #a16207; margin-top: 2px; }
+.report-health-groups { display: grid; gap: 8px; }
+.report-health-group { padding: 10px 12px; border: 1px solid #fde68a; border-radius: 8px; background: #fff; }
+.report-health-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.report-health-title { font-weight: 700; color: var(--text); }
+.report-health-meta { margin-top: 2px; color: #92400e; font-size: 12px; line-height: 1.45; }
+.report-health-body { margin-top: 8px; display: grid; gap: 4px; }
+.report-health-row { color: var(--text-light); font-size: 12px; line-height: 1.45; }
+.report-health-actions { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.report-health-status { font-size: 12px; color: #92400e; }
 .explorer-modal { background: #fff; border-radius: 12px; max-width: 700px; width: 95%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
 .explorer-header { padding: 16px 20px 0; }
 .explorer-header h2 { font-size: 16px; color: var(--text); margin-bottom: 10px; }
@@ -474,7 +483,9 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
   </div>
   <div class="warning-banner hidden" id="reportHealthBanner">
     <h3>Report Health <span id="reportHealthCount"></span></h3>
+    <div class="warning-note">Review report-side issues, stale metadata, and conservative cleanup downgrades before applying changes.</div>
     <div id="reportHealthList"></div>
+    <div class="report-health-status" id="reportHealthActionStatus"></div>
   </div>
   <div class="filters-bar hidden" id="filtersSection">
     <div class="filters-grid">
@@ -913,6 +924,7 @@ var actionStatus = new Map();
 var selectedTableNames = new Set();
 var allWarnings = [];
 var allReportIssues = [];
+var allReportHealth = { totalIssueCount: 0, groups: [] };
 var usageOrder = { 'Used': 0, 'Indirect': 1, 'Stale only': 2, 'Unused': 3 };
 var issueOrder = { 'Broken': 0, 'Broken + Stale': 1, 'Stale': 2, '': 3 };
 var deleteSafetyOrder = { 'Safe': 0, 'Review': 1, 'Blocked': 2, 'Keep': 3 };
@@ -2342,6 +2354,7 @@ function setResultsData(data, preserveActionState) {
   allRefs = data.references || [];
   allWarnings = data.warnings || [];
   allReportIssues = data.reportIssues || [];
+  allReportHealth = data.reportHealth || { totalIssueCount: allReportIssues.length, groups: [] };
   if (preserveActionState) {
     var valid = new Set(allItems.map(function(item) { return itemKey(item); }));
     var validTables = new Set(allTables.map(function(table) { return table.name; }));
@@ -2383,19 +2396,62 @@ function renderReportHealth() {
   var banner = $('reportHealthBanner');
   var count = $('reportHealthCount');
   var list = $('reportHealthList');
+  var status = $('reportHealthActionStatus');
   list.innerHTML = '';
+  status.textContent = '';
   count.textContent = '';
   banner.classList.add('hidden');
-  if (!allReportIssues.length) return;
-  count.textContent = '(' + allReportIssues.length + ')';
+  var groups = (allReportHealth && allReportHealth.groups) ? allReportHealth.groups : [];
+  var total = allReportHealth && allReportHealth.totalIssueCount ? allReportHealth.totalIssueCount : allReportIssues.length;
+  if (!total) return;
+  count.textContent = '(' + total + ')';
   banner.classList.remove('hidden');
-  allReportIssues.forEach(function(issue) {
+  if (!groups.length) {
+    allReportIssues.forEach(function(issue) {
+      var div = document.createElement('div');
+      div.className = 'warning-entry';
+      var artifact = [issue.report, issue.page, issue.visualId, issue.artifactPath].filter(Boolean).join(' | ');
+      div.innerHTML = '<strong>' + esc(issue.issueType || 'report_issue') + '</strong>: ' + esc(issue.message || '')
+        + (artifact ? '<div class="warning-meta">' + esc(artifact) + '</div>' : '');
+      list.appendChild(div);
+    });
+    return;
+  }
+  var wrap = document.createElement('div');
+  wrap.className = 'report-health-groups';
+  groups.forEach(function(group) {
     var div = document.createElement('div');
-    div.className = 'warning-item';
-    var artifact = [issue.report, issue.page, issue.visualId, issue.artifactPath].filter(Boolean).join(' | ');
-    div.innerHTML = '<strong>' + esc(issue.issueType || 'report_issue') + '</strong>: ' + esc(issue.message || '')
-      + (artifact ? '<div class="warning-help">' + esc(artifact) + '</div>' : '');
-    list.appendChild(div);
+    div.className = 'report-health-group';
+    var title = esc(group.label || group.key || 'Report Health');
+    var severity = esc(group.severity || 'warning');
+    var body = [];
+    (group.issues || []).slice(0, 3).forEach(function(issue) {
+      var artifact = [issue.report, issue.page, issue.visualId, issue.artifactPath].filter(Boolean).join(' | ');
+      body.push('<div class="report-health-row"><strong>' + esc(issue.issueType || 'report_issue') + '</strong>: ' + esc(issue.message || '') + (artifact ? '<div class="warning-meta">' + esc(artifact) + '</div>' : '') + '</div>');
+    });
+    (group.items || []).slice(0, 3).forEach(function(item) {
+      var itemName = [item.table, item.name].filter(Boolean).join('[');
+      if (itemName && item.name) itemName += ']';
+      body.push('<div class="report-health-row">' + esc(item.type || 'Item') + ': ' + esc(itemName || item.name || item.table || 'Unknown item') + '</div>');
+    });
+    if ((group.issues || []).length > 3 || (group.items || []).length > 3) {
+      body.push('<div class="report-health-row">+' + esc(String(((group.issues || []).length + (group.items || []).length) - 3)) + ' more</div>');
+    }
+    var actionHtml = '';
+    if (group.action && group.action.type === 'cleanup_stale') {
+      actionHtml = '<div class="report-health-actions"><button class="btn btn-secondary btn-sm" data-report-health-action="cleanup_stale">' + esc(group.action.label || 'Preview cleanup') + '</button></div>';
+    }
+    div.innerHTML = ''
+      + '<div class="report-health-head"><div><div class="report-health-title">' + title + ' <span class="badge badge-review">' + esc(String(group.count || 0)) + '</span></div>'
+      + '<div class="report-health-meta">' + esc(group.description || '') + '</div></div>'
+      + '<span class="badge ' + (severity === 'error' ? 'badge-caution' : 'badge-review') + '">' + severity + '</span></div>'
+      + (body.length ? '<div class="report-health-body">' + body.join('') + '</div>' : '')
+      + actionHtml;
+    wrap.appendChild(div);
+  });
+  list.appendChild(wrap);
+  list.querySelectorAll('[data-report-health-action="cleanup_stale"]').forEach(function(button) {
+    button.onclick = function() { previewReportHealthStaleCleanup(); };
   });
 }
 
@@ -4312,18 +4368,11 @@ $('detailBtnDelete').onclick = function() { queueDetailAction('delete'); };
 $('detailBtnApply').onclick = async function() { await applyQueuedActions(); };
 $('detailBtnReset').onclick = function() { $('btnReset').click(); };
 
-async function cleanCurrentItemStaleRefs() {
-  var item = getItemByKey(detailItemKey);
-  if (!item) {
-    alert('Select an item first');
-    return;
-  }
+function staleCleanupEntriesForItem(item, seen) {
   if (!item.staleUsageDetails || !item.staleUsageDetails.length) {
-    alert('No stale PBIR selectors were recorded for this item');
-    return;
+    return [];
   }
-  var seen = new Set();
-  var entries = item.staleUsageDetails.map(function(ref) {
+  return item.staleUsageDetails.map(function(ref) {
     var reportPath = getReportPathByName(ref.report);
     if (!reportPath || !ref.artifactPath || !ref.sourcePath) return null;
     var dedupeKey = ref.staleKind === 'bookmark_projection_entry'
@@ -4340,6 +4389,52 @@ async function cleanCurrentItemStaleRefs() {
       stale_kind: ref.staleKind || ''
     };
   }).filter(Boolean);
+}
+
+function staleCleanupEntriesForItems(items) {
+  var seen = new Set();
+  var entries = [];
+  items.forEach(function(item) {
+    staleCleanupEntriesForItem(item, seen).forEach(function(entry) {
+      entries.push(entry);
+    });
+  });
+  return entries;
+}
+
+async function previewReportHealthStaleCleanup() {
+  var entries = staleCleanupEntriesForItems(allItems);
+  if (!entries.length) {
+    $('reportHealthActionStatus').textContent = 'Could not resolve stale references to the selected report files.';
+    return;
+  }
+  $('reportHealthActionStatus').textContent = 'Previewing stale PBIR cleanup...';
+  try {
+    var data = await apiPost('/api/report/cleanup-stale', {
+      entries: entries,
+      dry_run: true
+    });
+    if (data.error) throw new Error(data.error);
+    var files = data.result && data.result.updated_files ? data.result.updated_files.length : 0;
+    $('reportHealthActionStatus').textContent = 'Preview: ' + (data.removed_count || 0) + ' stale selector(s) in ' + files + ' PBIR file(s).';
+    logEntry('Previewed stale PBIR cleanup for ' + (data.removed_count || 0) + ' selector(s)', 'info');
+  } catch (err) {
+    $('reportHealthActionStatus').textContent = 'Stale cleanup preview failed: ' + (err && err.message ? err.message : err);
+    logEntry('Stale cleanup preview failed: ' + (err && err.message ? err.message : err), 'err');
+  }
+}
+
+async function cleanCurrentItemStaleRefs() {
+  var item = getItemByKey(detailItemKey);
+  if (!item) {
+    alert('Select an item first');
+    return;
+  }
+  if (!item.staleUsageDetails || !item.staleUsageDetails.length) {
+    alert('No stale PBIR selectors were recorded for this item');
+    return;
+  }
+  var entries = staleCleanupEntriesForItems([item]);
   if (!entries.length) {
     alert('Could not resolve stale references to the selected report files.');
     return;
