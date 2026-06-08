@@ -1189,13 +1189,13 @@ def scan_report_extension_issues(report_path: Path) -> list[ReportIssue]:
             )
         ]
 
-    for field in ("$schema", "name"):
-        value = data.get(field)
+    for required_field in ("$schema", "name"):
+        value = data.get(required_field)
         if not isinstance(value, str) or not value.strip():
             issues.append(_report_extension_issue(
                 report_path=report_path,
                 issue_type="invalid_report_extension",
-                message=f"Report extension is missing required field '{field}'.",
+                message=f"Report extension is missing required field '{required_field}'.",
             ))
 
     entities = data.get("entities", [])
@@ -1250,13 +1250,13 @@ def scan_report_extension_issues(report_path: Path) -> list[ReportIssue]:
                 continue
 
             subject = _report_extension_measure_subject(entity_name, measure)
-            for field in ("dataType", "expression", "name"):
-                value = measure.get(field)
+            for required_field in ("dataType", "expression", "name"):
+                value = measure.get(required_field)
                 if not isinstance(value, str) or not value.strip():
                     issues.append(_report_extension_issue(
                         report_path=report_path,
                         issue_type="invalid_report_extension_measure",
-                        message=f"{subject} is missing required field '{field}'.",
+                        message=f"{subject} is missing required field '{required_field}'.",
                     ))
 
             data_type = measure.get("dataType")
@@ -1298,15 +1298,15 @@ def scan_report_extension_issues(report_path: Path) -> list[ReportIssue]:
                             ),
                         ))
                         continue
-                    for field in ("name", "value"):
-                        value = annotation.get(field)
+                    for required_field in ("name", "value"):
+                        value = annotation.get(required_field)
                         if not isinstance(value, str) or not value.strip():
                             issues.append(_report_extension_issue(
                                 report_path=report_path,
                                 issue_type="invalid_report_extension_measure",
                                 message=(
                                     f"{subject} annotation at annotations[{annotation_idx}] "
-                                    f"is missing required field '{field}'."
+                                    f"is missing required field '{required_field}'."
                                 ),
                             ))
 
