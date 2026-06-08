@@ -415,6 +415,60 @@ def test_rename_table_preserves_apostrophe_escaping_in_tmdl_and_dax_refs(tmp_pat
     )
 
 
+def test_rename_table_updates_standalone_dax_table_refs(tmp_path):
+    model_path = tmp_path / "Demo.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales Orders.tmdl"
+    sales_file.write_text(
+        "table 'Sales Orders'\n"
+        "\tcolumn Amount\n"
+        "\t\tdataType: decimal\n",
+        encoding="utf-8",
+    )
+    measures_file = tables_dir / "_Measures.tmdl"
+    measures_file.write_text(
+        "table _Measures\n"
+        "\tmeasure Row Count = COUNTROWS('Sales Orders')\n"
+        "\tmeasure Summary = COUNTROWS(SUMMARIZE('Sales Orders', 'Customer'[Id]))\n"
+        "\tmeasure Amount = SUM('Sales Orders'[Amount])\n",
+        encoding="utf-8",
+    )
+
+    result = tmdl_writer.rename_table(model_path, "Sales Orders", "Fact Sales Orders")
+
+    assert result["ok"] is True
+    content = measures_file.read_text(encoding="utf-8")
+    assert "COUNTROWS('Fact Sales Orders')" in content
+    assert "SUMMARIZE('Fact Sales Orders', 'Customer'[Id])" in content
+    assert "SUM('Fact Sales Orders'[Amount])" in content
+    assert "'Sales Orders'" not in content
+
+
+def test_rename_table_can_repair_remaining_refs_after_file_was_already_renamed(tmp_path):
+    model_path = tmp_path / "Demo.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    (tables_dir / "Fact Sales Orders.tmdl").write_text(
+        "table 'Fact Sales Orders'\n"
+        "\tcolumn Amount\n",
+        encoding="utf-8",
+    )
+    measures_file = tables_dir / "_Measures.tmdl"
+    measures_file.write_text(
+        "table _Measures\n"
+        "\tmeasure Row Count = COUNTROWS('Sales Orders')\n",
+        encoding="utf-8",
+    )
+
+    result = tmdl_writer.rename_table(model_path, "Sales Orders", "Fact Sales Orders")
+
+    assert result["ok"] is True
+    assert result["repair_only"] is True
+    assert result["updated_reference_count"] == 1
+    assert "COUNTROWS('Fact Sales Orders')" in measures_file.read_text(encoding="utf-8")
+
+
 def test_create_backup_can_run_twice_quickly(tmp_path):
     model_path = tmp_path / "Demo.SemanticModel"
     tables_dir = model_path / "definition" / "tables"

@@ -219,6 +219,70 @@ def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):
     assert payload["tables"][0]["directReportMeasureCount"] == 0
     assert payload["tables"][0]["directReportColumnCount"] == 0
     assert payload["tables"][0]["signals"] == ["No direct report references were found for this table."]
+    assert payload["reportIssues"] == []
+
+
+def test_api_analyze_returns_report_issues_for_selected_reports(tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    report_path = tmp_path / "Executive.Report"
+    tables_dir = model_path / "definition" / "tables"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    tables_dir.mkdir(parents=True)
+    visual_dir.mkdir(parents=True)
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n"
+        "\tmeasure 'Revenue Total' = SUM(Sales[Amount])\n",
+        encoding="utf-8",
+    )
+    (report_path / "definition" / "pages" / "Page1" / "page.json").write_text(
+        json.dumps({"displayName": "Overview"}, indent=2),
+        encoding="utf-8",
+    )
+    (visual_dir / "visual.json").write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "visualType": "card",
+                    "query": {
+                        "queryState": {
+                            "Values": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Measure": {
+                                                "Property": "Revenue Totl",
+                                                "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/analyze",
+        json={
+            "model_paths": [str(model_path)],
+            "report_paths": [str(report_path)],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["reportIssues"][0]["issueType"] == "missing_measure"
+    assert payload["reportIssues"][0]["report"] == "Executive"
+    assert payload["reportIssues"][0]["page"] == "Overview"
+    assert payload["reportIssues"][0]["suggestions"][0]["name"] == "Revenue Total"
 
 
 def test_serialize_results_includes_bare_table_dependencies():
@@ -1627,6 +1691,46 @@ def test_index_renders_empty_selection_state():
     assert "No model selected" in html
     assert "No reports selected" in html
     assert 'data-view="tables"' in html
+    assert 'data-view="reports"' in html
+    assert 'id="reportsTableSection"' in html
+    assert 'data-reportcol="severity"' in html
+    assert 'data-reportcol="visualTitle"' in html
+    assert 'id="reportIssueCategoryButtons"' in html
+    assert 'id="reportIssueReportSelect"' in html
+    assert 'id="reportIssuePageSelect"' in html
+    assert 'id="checkAllReportIssues"' in html
+    assert 'id="btnApplyReportSuggestionsShown"' in html
+    assert 'id="btnRemoveReportIssuesShown"' in html
+    assert 'id="btnCleanStaleShown"' in html
+    assert 'id="btnCleanAllCleanup"' in html
+    assert "Apply selected" in html
+    assert "Remove selected" in html
+    assert "Clean selected cleanup" in html
+    assert "Clean all cleanup" in html
+    assert "function applyReportIssueFilters() {" in html
+    assert "function reportIssueKey(issue) {" in html
+    assert "function getSelectedReportIssues() {" in html
+    assert "function isReportIssueActionable(issue) {" in html
+    assert "function isReportIssueCleanup(issue) {" in html
+    assert "function renderReportsTable() {" in html
+    assert "function reportIssueHiddenHtml(issue) {" in html
+    assert "Visual hidden" in html
+    assert "Visual visible" in html
+    assert "Page hidden" in html
+    assert "Page visible" in html
+    assert "function reportIssuePositionLabel(issue) {" in html
+    assert "function cleanVisibleReportStaleIssues() {" in html
+    assert "function cleanAllReportCleanupIssues() {" in html
+    assert "function reportCleanupEntriesForIssues(issues) {" in html
+    assert "function applyVisibleReportSuggestions() {" in html
+    assert "function removeVisibleReportIssues() {" in html
+    assert "function reportIssueSelectedSuggestion(issue) {" in html
+    assert "class=\"report-suggestion-select\"" in html
+    assert "Replacement as Table[Name]" not in html
+    assert "Inactive filter card" in html
+    assert "Bookmark visual state" in html
+    assert "function reportIssueSuggestionHtml(issue) {" in html
+    assert "async function cleanReportIssueStaleRef(index) {" in html
     assert "Table Details" in html
     assert "/api/discover" not in html
     assert "function reportStartPathFromModel(modelPath) {" in html
@@ -1691,6 +1795,8 @@ def test_index_renders_empty_selection_state():
     assert "var columnWidthStoragePrefix = 'smc.columnWidths.'" in html
     assert "function fitCurrentTableColumnsToScreen() {" in html
     assert "function fitMinWidthForHeader(th, index) {" in html
+    assert "th.dataset.reportcol" in html
+    assert "function isReportHeader(th) {" in html
     assert "function calculateDefaultWidths(tableSectionId) {" in html
     assert "function setupResizableTable(tableSectionId) {" in html
     assert "function otherModelUseCellContent(item) {" in html

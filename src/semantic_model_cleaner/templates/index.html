@@ -180,6 +180,37 @@ body.wrap-table-text .cell-ellipsis-link { overflow: visible; text-overflow: cli
 body.wrap-table-text .table-wrap-link,
 body.wrap-table-text .table-summary-text,
 body.wrap-table-text .table-signals li { overflow: visible; text-overflow: clip; white-space: normal; word-break: break-word; }
+.report-health-toolbar { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: stretch; padding: 10px 12px; border-bottom: 1px solid var(--border); background: #fff; }
+.report-health-summary { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.report-health-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; background: #f1f5f9; color: var(--text-light); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.report-health-pill strong { color: var(--text); }
+.report-health-pill.error { background: #fee2e2; color: #991b1b; }
+.report-health-pill.stale { background: #fff7ed; color: #9a3412; }
+.report-health-pill.other { background: #e0e7ff; color: #3730a3; }
+.report-health-controls { display: grid; grid-template-columns: max-content minmax(180px, 1fr) minmax(180px, 1fr) max-content max-content max-content max-content; gap: 8px; align-items: center; width: 100%; min-width: 0; }
+.report-segment-group { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 8px; background: #f8fafc; gap: 2px; }
+.report-segment { border: 0; border-radius: 6px; background: transparent; color: var(--text-light); padding: 6px 9px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.report-segment:hover { color: var(--text); background: #eef2f7; }
+.report-segment.active { color: #fff; background: var(--primary); }
+.report-health-select { width: 100%; min-width: 0; min-height: 32px; padding: 6px 28px 6px 9px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text); font-size: 12px; }
+.reports-table { min-width: 1700px; }
+.reports-table th.report-select-col { width: 42px; }
+.reports-table th[data-reportcol="severity"] { width: 180px; }
+.reports-table th[data-reportcol="report"] { width: 270px; }
+.reports-table th[data-reportcol="page"] { width: 270px; }
+.reports-table th[data-reportcol="visualTitle"] { width: 320px; }
+.reports-table th[data-reportcol="table"] { width: 340px; }
+.reports-table th.report-action-col { width: 380px; }
+.report-issue-cell, .report-location-cell, .report-visual-cell, .report-ref-cell, .report-action-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 13px; line-height: 1.35; }
+.report-issue-line { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; overflow: hidden; }
+.report-issue-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #111827; font-weight: 700; }
+.report-issue-title.warning { color: #9a3412; }
+.report-meta-line { color: var(--text-light); font-size: 12px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-action-cell .btn { align-self: flex-start; }
+.report-action-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.report-action-cell .btn-xs { padding: 3px 8px; font-size: 11px; }
+.report-suggestion-select { max-width: 100%; min-height: 28px; padding: 4px 26px 4px 7px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text); font-size: 12px; }
+.report-row-selected { background: #f8fbff; }
 .status-log { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-top: 16px; max-height: 200px; overflow-y: auto; }
 .status-log h3 { font-size: 13px; margin-bottom: 8px; color: var(--text-light); }
 .status-log .log-entry { font-size: 12px; padding: 3px 0; font-family: 'SF Mono', Monaco, Consolas, monospace; }
@@ -376,6 +407,8 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
   .view-toolbar { align-items: flex-start; flex-direction: column; }
   .view-tabs { width: 100%; overflow-x: auto; }
   .table-tools { justify-content: flex-start; flex-wrap: wrap; width: 100%; }
+  .report-health-controls { grid-template-columns: 1fr; }
+  .report-segment-group { overflow-x: auto; }
   .detail-header { flex-direction: column; }
   .detail-decision-grid, .detail-workbench-grid, .detail-inspector-grid { grid-template-columns: 1fr; }
   .detail-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -507,6 +540,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="view-tabs" id="viewTabs">
       <div class="view-tab active" data-view="details" id="tabDetails">Details <span class="tab-count" id="tabDetailsCount"></span></div>
       <div class="view-tab" data-view="tables" id="tabTables">Tables <span class="tab-count" id="tabTablesCount"></span></div>
+      <div class="view-tab" data-view="reports" id="tabReports">Reports <span class="tab-count" id="tabReportsCount"></span></div>
       <div class="view-tab" data-view="refs" id="tabRefs">All References <span class="tab-count" id="tabRefsCount"></span></div>
       <div class="view-tab" data-view="item" id="tabItem">Item Details</div>
       <div class="view-tab" data-view="table" id="tabTable">Table Details</div>
@@ -616,6 +650,38 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <th data-refcol="deleteSafety">Cleanup <span class="sort-arrow"></span></th>
       </tr></thead>
       <tbody id="refsTableBody"></tbody>
+    </table>
+  </div>
+  <div class="table-container hidden" id="reportsTableSection">
+    <div class="report-health-toolbar">
+      <div class="report-health-summary" id="reportHealthSummary"></div>
+      <div class="report-health-controls">
+        <div class="report-segment-group" id="reportIssueCategoryButtons">
+          <button type="button" class="report-segment active" data-report-issue-group="all">All</button>
+          <button type="button" class="report-segment" data-report-issue-group="broken">Broken refs</button>
+          <button type="button" class="report-segment" data-report-issue-group="stale">Stale cleanup</button>
+          <button type="button" class="report-segment" data-report-issue-group="not_visible">Not visible</button>
+          <button type="button" class="report-segment" data-report-issue-group="other">Other</button>
+        </div>
+        <select class="report-health-select" id="reportIssueReportSelect" title="Filter report health rows by report"></select>
+        <select class="report-health-select" id="reportIssuePageSelect" title="Filter report health rows by page"></select>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnApplyReportSuggestionsShown" title="Apply the top suggestion for selected report issue rows">Apply selected</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnRemoveReportIssuesShown" title="Remove selected report issue references from PBIR">Remove selected</button>
+        <button type="button" class="btn btn-warning btn-sm" id="btnCleanStaleShown" title="Clean selected report cleanup rows">Clean selected cleanup</button>
+        <button type="button" class="btn btn-warning btn-sm" id="btnCleanAllCleanup" title="Clean every report cleanup row in the selected reports">Clean all cleanup</button>
+      </div>
+    </div>
+    <table class="reports-table">
+      <thead><tr>
+        <th class="report-select-col"><input type="checkbox" id="checkAllReportIssues" title="Select actionable report rows on this page"></th>
+        <th data-reportcol="severity">Issue <span class="sort-arrow"></span></th>
+        <th data-reportcol="report">Report <span class="sort-arrow"></span></th>
+        <th data-reportcol="page">Page <span class="sort-arrow"></span></th>
+        <th data-reportcol="visualTitle">Visual <span class="sort-arrow"></span></th>
+        <th data-reportcol="table">Reference <span class="sort-arrow"></span></th>
+        <th class="report-action-col">Fix / suggestion</th>
+      </tr></thead>
+      <tbody id="reportsTableBody"></tbody>
     </table>
   </div>
   <div class="detail-panel hidden" id="itemDetailSection">
@@ -906,6 +972,8 @@ var allTables = [];
 var filteredTables = [];
 var allRefs = [];
 var filteredRefs = [];
+var allReportIssues = [];
+var filteredReportIssues = [];
 var initialConfig = {
   defaultRoot: {{ default_root|tojson }},
   runtime: {{ runtime|tojson }},
@@ -913,12 +981,19 @@ var initialConfig = {
   initialReports: {{ initial_reports|tojson }}
 };
 var selectedKeys = new Set();
+var selectedReportIssueKeys = new Set();
+var selectedReportSuggestionChoices = new Map();
 var sortCol = 'deleteSafety';
 var sortAsc = true;
 var tableSortCol = 'unusedItemCount';
 var tableSortAsc = false;
 var refSortCol = 'table';
 var refSortAsc = true;
+var reportIssueSortCol = 'severity';
+var reportIssueSortAsc = true;
+var reportIssueGroupFilter = 'all';
+var reportIssueReportFilter = '__all__';
+var reportIssuePageFilter = '__all__';
 var currentView = 'details';
 var chosenModels = (initialConfig.initialModels || []).slice();
 var chosenReports = (initialConfig.initialReports || []).slice();
@@ -1014,7 +1089,7 @@ var wrapTableTextStorageKey = 'smc.wrapTableText';
 var pageSizeStorageKey = 'smc.pageSize';
 var columnWidthStoragePrefix = 'smc.columnWidths.';
 var explorerDefaultPathStoragePrefix = 'smc.explorerDefaultPath.';
-var currentPageByView = { details: 1, tables: 1, refs: 1 };
+var currentPageByView = { details: 1, tables: 1, reports: 1, refs: 1 };
 
 function $(id) { return document.getElementById(id); }
 
@@ -1132,7 +1207,7 @@ function getTableSectionInfo(tableSectionId) {
 
 function readStoredColumnWidths(tableSectionId) {
   try {
-    var raw = window.localStorage.getItem(columnWidthStoragePrefix + tableSectionId);
+    var raw = window.localStorage.getItem(columnWidthStorageKey(tableSectionId));
     var parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
@@ -1142,17 +1217,34 @@ function readStoredColumnWidths(tableSectionId) {
 
 function writeStoredColumnWidths(tableSectionId, widths) {
   try {
-    window.localStorage.setItem(columnWidthStoragePrefix + tableSectionId, JSON.stringify(widths));
+    window.localStorage.setItem(columnWidthStorageKey(tableSectionId), JSON.stringify(widths));
   } catch (e) {}
 }
 
+function columnWidthStorageKey(tableSectionId) {
+  var version = tableSectionId === 'reportsTableSection' ? 'v2.' : '';
+  return columnWidthStoragePrefix + version + tableSectionId;
+}
+
 function headerKey(th) {
-  return th.dataset.col || th.dataset.tablecol || th.dataset.refcol || (th.textContent || '').trim();
+  return th.dataset.col || th.dataset.tablecol || th.dataset.refcol || th.dataset.reportcol || (th.textContent || '').trim();
+}
+
+function isReportHeader(th) {
+  return Boolean(th && th.closest('#reportsTableSection'));
 }
 
 function minWidthForHeader(th, index) {
-  if (index === 0) return 36;
   var text = headerKey(th);
+  if (isReportHeader(th)) {
+    if (text === 'severity') return 150;
+    if (text === 'report') return 220;
+    if (text === 'page') return 220;
+    if (text === 'visualTitle') return 260;
+    if (text === 'table') return 280;
+    if (text === 'Fix / suggestion') return 300;
+  }
+  if (index === 0) return 36;
   var wrapEnabled = document.body.classList.contains('wrap-table-text');
   if (text === 'name') return wrapEnabled ? 180 : 260;
   if (text === 'table' || text === 'displayFolder' || text === 'Folder') return wrapEnabled ? 120 : 150;
@@ -1175,8 +1267,16 @@ function minWidthForHeader(th, index) {
 }
 
 function maxWidthForHeader(th, index) {
-  if (index === 0) return 36;
   var text = headerKey(th);
+  if (isReportHeader(th)) {
+    if (text === 'severity') return 220;
+    if (text === 'report') return 380;
+    if (text === 'page') return 380;
+    if (text === 'visualTitle') return 460;
+    if (text === 'table') return 520;
+    if (text === 'Fix / suggestion') return 560;
+  }
+  if (index === 0) return 36;
   if (text === 'name') return 420;
   if (text === 'table' || text === 'displayFolder' || text === 'Folder') return 220;
   if (text === 'roleLabel' || text === 'Relationship Shape') return 220;
@@ -1190,8 +1290,16 @@ function maxWidthForHeader(th, index) {
 }
 
 function defaultWidthForHeader(th, index) {
-  if (index === 0) return 36;
   var text = headerKey(th);
+  if (isReportHeader(th)) {
+    if (text === 'severity') return 180;
+    if (text === 'report') return 270;
+    if (text === 'page') return 270;
+    if (text === 'visualTitle') return 320;
+    if (text === 'table') return 340;
+    if (text === 'Fix / suggestion') return 380;
+  }
+  if (index === 0) return 36;
   if (text === 'type') return 88;
   if (text === 'table') return 180;
   if (text === 'name') return 340;
@@ -1216,8 +1324,16 @@ function defaultWidthForHeader(th, index) {
 }
 
 function fitMinWidthForHeader(th, index) {
-  if (index === 0) return 32;
   var text = headerKey(th);
+  if (isReportHeader(th)) {
+    if (text === 'severity') return 150;
+    if (text === 'report') return 200;
+    if (text === 'page') return 200;
+    if (text === 'visualTitle') return 240;
+    if (text === 'table') return 260;
+    if (text === 'Fix / suggestion') return 300;
+  }
+  if (index === 0) return 32;
   if (text === 'type') return 72;
   if (text === 'table') return 88;
   if (text === 'name') return 110;
@@ -1359,6 +1475,8 @@ function fitCurrentTableColumnsToScreen() {
     ? 'tableSection'
     : currentView === 'tables'
       ? 'tablesOverviewSection'
+      : currentView === 'reports'
+        ? 'reportsTableSection'
       : currentView === 'refs'
         ? 'refsTableSection'
         : null;
@@ -1378,7 +1496,7 @@ function fitCurrentTableColumnsToScreen() {
 }
 
 function updateColumnActionButtons() {
-  var enabled = currentView === 'details' || currentView === 'tables' || currentView === 'refs';
+  var enabled = currentView === 'details' || currentView === 'tables' || currentView === 'reports' || currentView === 'refs';
   $('tableToolsSection').classList.toggle('hidden', !enabled);
   $('btnAutoSizeColumns').disabled = !enabled;
   updatePageControls();
@@ -1909,6 +2027,7 @@ function setupResizableTable(tableSectionId) {
 function setupResizableTables() {
   setupResizableTable('tableSection');
   setupResizableTable('tablesOverviewSection');
+  setupResizableTable('reportsTableSection');
   setupResizableTable('refsTableSection');
 }
 
@@ -2302,21 +2421,23 @@ $('pageSizeSelect').onchange = function() {
   updateSelectedCount();
 };
 $('btnPrevPage').onclick = function() {
-  if (!(currentView === 'details' || currentView === 'tables' || currentView === 'refs')) return;
+  if (!(currentView === 'details' || currentView === 'tables' || currentView === 'reports' || currentView === 'refs')) return;
   currentPageByView[currentView] = Math.max(1, (currentPageByView[currentView] || 1) - 1);
   if (currentView === 'details') renderTable();
   else if (currentView === 'tables') renderTablesOverview();
+  else if (currentView === 'reports') renderReportsTable();
   else renderRefsTable();
   updateSelectedCount();
 };
 $('btnNextPage').onclick = function() {
-  if (!(currentView === 'details' || currentView === 'tables' || currentView === 'refs')) return;
+  if (!(currentView === 'details' || currentView === 'tables' || currentView === 'reports' || currentView === 'refs')) return;
   var rows = getCurrentRowsForView(currentView);
   var pageSize = parseInt($('pageSizeSelect').value || '100', 10);
   var totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   currentPageByView[currentView] = Math.min(totalPages, (currentPageByView[currentView] || 1) + 1);
   if (currentView === 'details') renderTable();
   else if (currentView === 'tables') renderTablesOverview();
+  else if (currentView === 'reports') renderReportsTable();
   else renderRefsTable();
   updateSelectedCount();
 };
@@ -2357,22 +2478,28 @@ function setResultsData(data, preserveActionState) {
   allItems = data.items;
   allTables = data.tables || [];
   allRefs = data.references || [];
+  allReportIssues = data.reportIssues || [];
   allWarnings = data.warnings || [];
   allReportIssues = data.reportIssues || [];
   allReportHealth = data.reportHealth || { totalIssueCount: allReportIssues.length, groups: [] };
   if (preserveActionState) {
     var valid = new Set(allItems.map(function(item) { return itemKey(item); }));
     var validTables = new Set(allTables.map(function(table) { return table.name; }));
+    var validReportIssues = new Set(allReportIssues.map(reportIssueKey));
     selectedKeys.forEach(function(key) {
       if (!valid.has(key)) selectedKeys.delete(key);
     });
     selectedTableNames.forEach(function(name) {
       if (!validTables.has(name)) selectedTableNames.delete(name);
     });
+    selectedReportIssueKeys.forEach(function(key) {
+      if (!validReportIssues.has(key)) selectedReportIssueKeys.delete(key);
+    });
     pruneActionState();
   } else {
     selectedKeys.clear();
     selectedTableNames.clear();
+    selectedReportIssueKeys.clear();
     pendingActions.clear();
     actionStatus.clear();
     hidePostRefreshDisclaimer();
@@ -2549,8 +2676,10 @@ function applyFilters() {
   sortItems();
   sortTables();
   computeFilteredRefs();
+  computeFilteredReportIssues();
   renderTable();
   renderTablesOverview();
+  if (currentView === 'reports') renderReportsTable();
   if (currentView === 'refs') renderRefsTable();
   updateFilterCounts();
   updateSelectedCount();
@@ -2560,9 +2689,46 @@ function applyFilters() {
 
 $('filterSearch').addEventListener('input', applyFilters);
 
+document.querySelectorAll('#reportIssueCategoryButtons .report-segment').forEach(function(btn) {
+  btn.onclick = function() {
+    reportIssueGroupFilter = btn.dataset.reportIssueGroup || 'all';
+    currentPageByView.reports = 1;
+    applyReportIssueFilters();
+  };
+});
+
+$('reportIssueReportSelect').onchange = function() {
+  reportIssueReportFilter = $('reportIssueReportSelect').value || '__all__';
+  reportIssuePageFilter = '__all__';
+  currentPageByView.reports = 1;
+  applyReportIssueFilters();
+};
+
+$('reportIssuePageSelect').onchange = function() {
+  reportIssuePageFilter = $('reportIssuePageSelect').value || '__all__';
+  currentPageByView.reports = 1;
+  applyReportIssueFilters();
+};
+
+$('checkAllReportIssues').onchange = function() {
+  var checked = $('checkAllReportIssues').checked;
+  getPagedRows(filteredReportIssues, 'reports').filter(isReportIssueActionable).forEach(function(issue) {
+    var key = reportIssueKey(issue);
+    if (checked) selectedReportIssueKeys.add(key);
+    else selectedReportIssueKeys.delete(key);
+  });
+  renderReportsTable();
+};
+
+$('btnCleanStaleShown').onclick = cleanVisibleReportStaleIssues;
+$('btnCleanAllCleanup').onclick = cleanAllReportCleanupIssues;
+$('btnApplyReportSuggestionsShown').onclick = applyVisibleReportSuggestions;
+$('btnRemoveReportIssuesShown').onclick = removeVisibleReportIssues;
+
 function updateFilterCounts() {
   $('tabDetailsCount').textContent = '(' + filteredItems.length + '/' + allItems.length + ')';
   $('tabTablesCount').textContent = '(' + filteredTables.length + '/' + allTables.length + ')';
+  $('tabReportsCount').textContent = '(' + filteredReportIssues.length + '/' + allReportIssues.length + ')';
   $('tabRefsCount').textContent = '(' + filteredRefs.length + '/' + allRefs.length + ')';
 }
 
@@ -2577,6 +2743,7 @@ function getPagedRows(rows, viewName) {
 function getCurrentRowsForView(viewName) {
   if (viewName === 'details') return filteredItems;
   if (viewName === 'tables') return filteredTables;
+  if (viewName === 'reports') return filteredReportIssues;
   if (viewName === 'refs') return filteredRefs;
   return [];
 }
@@ -2588,11 +2755,12 @@ function getVisibleRowsForCurrentView() {
 function resetPageForDataViews() {
   currentPageByView.details = 1;
   currentPageByView.tables = 1;
+  currentPageByView.reports = 1;
   currentPageByView.refs = 1;
 }
 
 function updatePageControls() {
-  var enabled = currentView === 'details' || currentView === 'tables' || currentView === 'refs';
+  var enabled = currentView === 'details' || currentView === 'tables' || currentView === 'reports' || currentView === 'refs';
   $('pageSizeSelect').disabled = !enabled;
   $('btnPrevPage').disabled = !enabled;
   $('btnNextPage').disabled = !enabled;
@@ -2637,6 +2805,7 @@ function switchView(view) {
   $('tableSection').classList.toggle('hidden', view !== 'details');
   $('tablesOverviewSection').classList.toggle('hidden', view !== 'tables');
   $('actionSection').classList.toggle('hidden', view !== 'details' && view !== 'tables');
+  $('reportsTableSection').classList.toggle('hidden', view !== 'reports');
   $('refsTableSection').classList.toggle('hidden', view !== 'refs');
   $('itemDetailSection').classList.toggle('hidden', view !== 'item');
   $('tableDetailSection').classList.toggle('hidden', view !== 'table');
@@ -2644,6 +2813,7 @@ function switchView(view) {
   updateColumnActionButtons();
   updateFilterCounts();
   updateSelectedCount();
+  if (view === 'reports') { applyReportIssueFilters(); }
   if (view === 'refs') { applyRefFilters(); }
   if (view === 'item') { renderItemDetails(); }
   if (view === 'table') { renderTableDetails(); }
@@ -2721,6 +2891,644 @@ function sortRefs() {
   });
 }
 
+function reportIssueRefText(issue) {
+  if (!issue) return '';
+  if (issue.table && issue.name) return issue.table + '[' + issue.name + ']';
+  return issue.name || issue.table || '';
+}
+
+function reportIssueKey(issue) {
+  return [
+    issue.report || '',
+    issue.page || '',
+    issue.visualId || '',
+    issue.artifactPath || '',
+    issue.sourcePath || '',
+    issue.issueType || '',
+    issue.context || '',
+    issue.table || '',
+    issue.name || '',
+    issue.refType || ''
+  ].join('|||');
+}
+
+function reportIssueRefTypeLabel(issue) {
+  if (!issue) return '';
+  if ((issue.refType || '').toLowerCase() === 'metadata') {
+    return issue.context || 'Metadata';
+  }
+  return issue.refType || '';
+}
+
+function visualTypeLabel(value) {
+  return {
+    tableEx: 'Table',
+    pivotTable: 'Matrix',
+    cardVisual: 'Card',
+    slicer: 'Slicer',
+    columnChart: 'Column chart',
+    lineChart: 'Line chart',
+    barChart: 'Bar chart',
+    DonutChart: 'Donut chart'
+  }[value] || value || 'Report level';
+}
+
+function reportIssueVisualLabel(issue) {
+  if (issue.visualTitle) return issue.visualTitle;
+  var label = visualTypeLabel(issue.visualType);
+  if (issue.visualId) return label + ' ' + issue.visualId;
+  return label;
+}
+
+function reportIssueTypeLabel(value) {
+  return {
+    missing_table: 'Missing table',
+    missing_column: 'Missing field',
+    missing_measure: 'Missing measure',
+    missing_report_measure: 'Missing report measure',
+    stale_visual_selector: 'Stale visual selector',
+    stale_bookmark_projection: 'Stale bookmark',
+    stale_formatting_rule: 'Stale formatting rule',
+    inactive_visual_filter_reference: 'Inactive filter card',
+    orphan_bookmark_visual_state: 'Bookmark visual state',
+    invalid_report_json: 'Invalid JSON',
+    field_parameter_warning: 'Field parameter'
+  }[value] || value || 'Issue';
+}
+
+function isReportIssueStale(issue) {
+  return issue && (
+    issue.issueType === 'stale_visual_selector'
+    || issue.issueType === 'stale_bookmark_projection'
+    || issue.issueType === 'stale_formatting_rule'
+  );
+}
+
+function isReportIssueCleanup(issue) {
+  return issue && (
+    isReportIssueStale(issue)
+    || issue.issueType === 'inactive_visual_filter_reference'
+    || issue.issueType === 'orphan_bookmark_visual_state'
+  );
+}
+
+function isReportIssueBrokenRef(issue) {
+  return issue && ['missing_table', 'missing_column', 'missing_measure', 'missing_report_measure'].includes(issue.issueType);
+}
+
+function isReportIssueActionable(issue) {
+  return Boolean(
+    issue
+      && (
+        isReportIssueCleanup(issue)
+        || reportIssueTopSuggestion(issue)
+        || reportIssueActionEntry(issue, 'remove')
+      )
+  );
+}
+
+function reportIssueGroupLabel(group) {
+  return {
+    all: 'All',
+    broken: 'Broken refs',
+    stale: 'Stale cleanup',
+    not_visible: 'Not visible',
+    other: 'Other'
+  }[group] || 'All';
+}
+
+function reportIssueSeverityBadge(issue) {
+  var severity = (issue.severity || '').toLowerCase();
+  if (severity === 'error') return '<span class="badge badge-status" style="background:#111827;color:#f9fafb">Error</span>';
+  if (severity === 'warning') return '<span class="badge badge-status" style="background:#fff7ed;color:#9a3412">Warning</span>';
+  return '<span class="badge badge-muted">' + esc(issue.severity || 'Info') + '</span>';
+}
+
+function reportIssueHiddenLabel(issue) {
+  var hasVisual = issue.visualId || issue.visualTitle || issue.visualType;
+  if (hasVisual) {
+    var visualState = issue.visualHidden ? 'Visual hidden' : 'Visual visible';
+    if (issue.pageHidden) return visualState + ' | Page hidden';
+    return visualState + ' | Page visible';
+  }
+  if (issue.pageHidden) return 'Page hidden';
+  return '';
+}
+
+function reportIssueHiddenHtml(issue) {
+  var label = reportIssueHiddenLabel(issue);
+  if (!label) return '<span class="detail-empty">N/A</span>';
+  if (issue.visualHidden || issue.pageHidden) return '<span class="badge badge-muted">' + esc(label) + '</span>';
+  return '<span class="detail-empty">' + esc(label) + '</span>';
+}
+
+function reportIssuePositionLabel(issue) {
+  if (issue.visualX == null || issue.visualY == null) return '';
+  var label = 'x ' + Math.round(Number(issue.visualX)) + ', y ' + Math.round(Number(issue.visualY));
+  if (issue.visualWidth != null && issue.visualHeight != null) {
+    label += ' | ' + Math.round(Number(issue.visualWidth)) + 'x' + Math.round(Number(issue.visualHeight));
+  }
+  return label;
+}
+
+function reportIssueSuggestionHtml(issue) {
+  var suggestions = issue.suggestions || [];
+  if (!suggestions.length) return '<span class="detail-empty">No suggestion</span>';
+  var replacements = suggestions.filter(function(s) { return s.action === 'suggest_replace'; });
+  if (!replacements.length && suggestions.some(function(s) { return s.action === 'clean_stale'; })) {
+    return '<span class="badge badge-safe">Clean stale PBIR</span>';
+  }
+  if (!replacements.length) return '<span class="detail-empty">No replacement</span>';
+  return replacements.slice(0, 2).map(function(s) {
+    return '<div class="table-summary-text"><strong>' + esc(s.confidence || 'Suggestion') + ':</strong> '
+      + esc(s.table + '[' + s.name + ']') + '</div>';
+  }).join('');
+}
+
+function reportIssueReplacementSuggestions(issue) {
+  return (issue && issue.suggestions || []).filter(function(s) { return s.action === 'suggest_replace'; });
+}
+
+function reportIssueSuggestionSelectHtml(issue, index) {
+  var replacements = reportIssueReplacementSuggestions(issue);
+  if (!replacements.length) return '<span class="detail-empty">No suggestion</span>';
+  var issueKey = reportIssueKey(issue);
+  var selectedIdx = selectedReportSuggestionChoices.has(issueKey)
+    ? selectedReportSuggestionChoices.get(issueKey)
+    : '0';
+  return '<select class="report-suggestion-select" data-report-issue-index="' + esc(String(index)) + '" title="Choose the replacement field">'
+    + replacements.map(function(s, idx) {
+      var value = String(idx);
+      var label = (s.confidence || 'Suggestion') + ': ' + s.table + '[' + s.name + ']';
+      return '<option value="' + esc(value) + '"' + (value === String(selectedIdx) ? ' selected' : '') + '>' + esc(label) + '</option>';
+    }).join('')
+    + '</select>';
+}
+
+function reportIssueActionHtml(issue, index) {
+  if (isReportIssueStale(issue)) {
+    var label = issue.issueType === 'stale_formatting_rule' ? 'Clean formatting' : 'Clean stale';
+    var title = issue.issueType === 'stale_formatting_rule'
+      ? 'Remove this stale formatting rule from the report file'
+      : 'Remove this stale PBIR selector from the report file';
+    return '<div class="report-action-row"><button class="btn btn-secondary btn-xs report-clean-stale-btn" data-report-issue-index="' + esc(String(index)) + '" title="' + esc(title) + '">' + esc(label) + '</button></div>';
+  }
+  var replacements = reportIssueReplacementSuggestions(issue);
+  var html = '<div class="report-action-row">';
+  if (replacements.length) {
+    html += reportIssueSuggestionSelectHtml(issue, index);
+    html += '<button class="btn btn-primary btn-xs report-apply-suggestion-btn" data-report-issue-index="' + esc(String(index)) + '" title="Apply the selected replacement to this exact PBIR reference">Apply</button>';
+  }
+  if (issue.artifactPath && issue.sourcePath) {
+    html += '<button class="btn btn-danger btn-xs report-remove-issue-btn" data-report-issue-index="' + esc(String(index)) + '" title="Remove this exact PBIR reference">Remove</button>';
+  }
+  html += '</div>';
+  if (!replacements.length) {
+    html += '<div><span class="detail-empty">No suggestion</span></div>';
+  }
+  return html;
+}
+
+function computeFilteredReportIssues() {
+  reconcileReportIssueFilters();
+  filteredReportIssues = filterReportIssues();
+  sortReportIssues();
+}
+
+function applyReportIssueFilters() {
+  computeFilteredReportIssues();
+  renderReportsTable();
+  updateFilterCounts();
+}
+
+function filterReportIssues() {
+  var search = $('filterSearch').value.toLowerCase();
+  return allReportIssues.filter(function(issue) {
+    if (reportIssueGroupFilter === 'broken' && !isReportIssueBrokenRef(issue)) return false;
+    if (reportIssueGroupFilter === 'stale' && !isReportIssueCleanup(issue)) return false;
+    if (reportIssueGroupFilter === 'not_visible' && !(issue.visualHidden || issue.pageHidden || isReportIssueCleanup(issue))) return false;
+    if (reportIssueGroupFilter === 'other' && (isReportIssueBrokenRef(issue) || isReportIssueCleanup(issue))) return false;
+    if (reportIssueReportFilter !== '__all__' && issue.report !== reportIssueReportFilter) return false;
+    if (reportIssuePageFilter !== '__all__' && (issue.page || '') !== reportIssuePageFilter) return false;
+    if (!search) return true;
+    var haystack = [
+      issue.severity,
+      reportIssueTypeLabel(issue.issueType),
+      issue.report,
+      issue.page,
+      issue.visualTitle,
+      issue.visualType,
+      reportIssuePositionLabel(issue),
+      reportIssueHiddenLabel(issue),
+      issue.context,
+      reportIssueRefText(issue),
+      issue.message,
+      (issue.suggestions || []).map(function(s) { return [s.table, s.name, s.confidence].join(' '); }).join(' ')
+    ].join(' ').toLowerCase();
+    return haystack.includes(search);
+  });
+}
+
+function reconcileReportIssueFilters() {
+  var reports = Array.from(new Set(allReportIssues.map(function(issue) { return issue.report || ''; }).filter(Boolean)));
+  if (reportIssueReportFilter !== '__all__' && !reports.includes(reportIssueReportFilter)) reportIssueReportFilter = '__all__';
+  var pageSource = reportIssueReportFilter === '__all__'
+    ? allReportIssues
+    : allReportIssues.filter(function(issue) { return issue.report === reportIssueReportFilter; });
+  var pages = Array.from(new Set(pageSource.map(function(issue) { return issue.page || ''; })));
+  if (reportIssuePageFilter !== '__all__' && !pages.includes(reportIssuePageFilter)) reportIssuePageFilter = '__all__';
+}
+
+function reportIssueOptionHtml(value, label, selectedValue) {
+  return '<option value="' + esc(value) + '"' + (value === selectedValue ? ' selected' : '') + '>' + esc(label) + '</option>';
+}
+
+function getSelectedReportIssues() {
+  return allReportIssues.filter(function(issue) { return selectedReportIssueKeys.has(reportIssueKey(issue)); });
+}
+
+function renderReportHealthControls() {
+  var brokenCount = allReportIssues.filter(isReportIssueBrokenRef).length;
+  var cleanupCount = allReportIssues.filter(isReportIssueCleanup).length;
+  var otherCount = allReportIssues.length - brokenCount - cleanupCount;
+  var hiddenCount = allReportIssues.filter(function(issue) { return issue.visualHidden || issue.pageHidden || isReportIssueCleanup(issue); }).length;
+  var selectedIssues = getSelectedReportIssues();
+  var cleanupSelected = selectedIssues.filter(isReportIssueCleanup).length;
+  var staleSelected = selectedIssues.filter(isReportIssueStale).length;
+  var suggestionsSelected = selectedIssues.filter(function(issue) { return reportIssueTopSuggestion(issue); }).length;
+  var removableSelected = selectedIssues.filter(function(issue) { return !isReportIssueStale(issue) && reportIssueActionEntry(issue, 'remove'); }).length;
+  $('reportHealthSummary').innerHTML = [
+    '<span class="report-health-pill"><strong>' + esc(String(filteredReportIssues.length)) + '</strong> shown</span>',
+    '<span class="report-health-pill"><strong>' + esc(String(selectedIssues.length)) + '</strong> selected</span>',
+    '<span class="report-health-pill error"><strong>' + esc(String(brokenCount)) + '</strong> broken refs</span>',
+    '<span class="report-health-pill stale"><strong>' + esc(String(cleanupCount)) + '</strong> cleanup</span>',
+    '<span class="report-health-pill"><strong>' + esc(String(hiddenCount)) + '</strong> not visible</span>',
+    '<span class="report-health-pill other"><strong>' + esc(String(otherCount)) + '</strong> other</span>'
+  ].join('');
+
+  document.querySelectorAll('#reportIssueCategoryButtons .report-segment').forEach(function(btn) {
+    btn.classList.toggle('active', btn.dataset.reportIssueGroup === reportIssueGroupFilter);
+  });
+
+  var reports = Array.from(new Set(allReportIssues.map(function(issue) { return issue.report || ''; }).filter(Boolean))).sort(function(a, b) { return a.localeCompare(b); });
+  $('reportIssueReportSelect').innerHTML = reportIssueOptionHtml('__all__', 'All reports', reportIssueReportFilter)
+    + reports.map(function(report) { return reportIssueOptionHtml(report, report, reportIssueReportFilter); }).join('');
+
+  var pageSource = reportIssueReportFilter === '__all__'
+    ? allReportIssues
+    : allReportIssues.filter(function(issue) { return issue.report === reportIssueReportFilter; });
+  var pages = Array.from(new Set(pageSource.map(function(issue) { return issue.page || ''; }))).sort(function(a, b) { return a.localeCompare(b); });
+  $('reportIssuePageSelect').innerHTML = reportIssueOptionHtml('__all__', 'All pages', reportIssuePageFilter)
+    + pages.map(function(page) { return reportIssueOptionHtml(page, page || 'Report level', reportIssuePageFilter); }).join('');
+
+  $('btnCleanStaleShown').disabled = cleanupSelected === 0;
+  $('btnCleanStaleShown').textContent = cleanupSelected ? 'Clean selected cleanup (' + cleanupSelected + ')' : 'Clean selected cleanup';
+  $('btnCleanAllCleanup').disabled = cleanupCount === 0;
+  $('btnCleanAllCleanup').textContent = cleanupCount ? 'Clean all cleanup (' + cleanupCount + ')' : 'Clean all cleanup';
+  $('btnApplyReportSuggestionsShown').disabled = suggestionsSelected === 0;
+  $('btnApplyReportSuggestionsShown').textContent = suggestionsSelected ? 'Apply selected suggestions (' + suggestionsSelected + ')' : 'Apply selected';
+  $('btnRemoveReportIssuesShown').disabled = removableSelected === 0;
+  $('btnRemoveReportIssuesShown').textContent = removableSelected ? 'Remove selected (' + removableSelected + ')' : 'Remove selected';
+
+  var visibleIssues = getPagedRows(filteredReportIssues, 'reports');
+  var actionableVisible = visibleIssues.filter(isReportIssueActionable);
+  var selectedVisible = actionableVisible.filter(function(issue) { return selectedReportIssueKeys.has(reportIssueKey(issue)); }).length;
+  $('checkAllReportIssues').disabled = actionableVisible.length === 0;
+  $('checkAllReportIssues').checked = actionableVisible.length > 0 && selectedVisible === actionableVisible.length;
+  $('checkAllReportIssues').indeterminate = selectedVisible > 0 && selectedVisible < actionableVisible.length;
+}
+
+function sortReportIssues() {
+  var severityOrder = { error: 0, warning: 1, info: 2 };
+  filteredReportIssues.sort(function(a, b) {
+    var va = a[reportIssueSortCol], vb = b[reportIssueSortCol];
+    if (reportIssueSortCol === 'severity') {
+      va = severityOrder[String(a.severity || '').toLowerCase()] != null ? severityOrder[String(a.severity || '').toLowerCase()] : 99;
+      vb = severityOrder[String(b.severity || '').toLowerCase()] != null ? severityOrder[String(b.severity || '').toLowerCase()] : 99;
+    }
+    if (reportIssueSortCol === 'visualHidden') {
+      va = a.visualHidden ? 0 : (a.pageHidden ? 1 : 2);
+      vb = b.visualHidden ? 0 : (b.pageHidden ? 1 : 2);
+    }
+    if (typeof va === 'number' && typeof vb === 'number') return reportIssueSortAsc ? va - vb : vb - va;
+    va = String(va || '').toLowerCase(); vb = String(vb || '').toLowerCase();
+    return reportIssueSortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+}
+
+function renderReportsTable() {
+  var tbody = $('reportsTableBody');
+  renderReportHealthControls();
+  var visibleIssues = getPagedRows(filteredReportIssues, 'reports');
+  tbody.innerHTML = visibleIssues.map(function(issue) {
+    var index = allReportIssues.indexOf(issue);
+    var key = reportIssueKey(issue);
+    var canSelect = isReportIssueActionable(issue);
+    var checked = selectedReportIssueKeys.has(key) ? ' checked' : '';
+    var disabled = canSelect ? '' : ' disabled';
+    var selectedClass = checked ? ' class="report-row-selected"' : '';
+    var visualMain = reportIssueVisualLabel(issue);
+    var visualDetails = [];
+    if (issue.visualId) visualDetails.push(issue.visualId);
+    var positionLabel = reportIssuePositionLabel(issue);
+    if (positionLabel) visualDetails.push(positionLabel);
+    var visualLabel = '<div class="cell-ellipsis" title="' + esc(visualDetails.join(' | ')) + '">' + esc(visualMain || 'Report level') + '</div>';
+    var hiddenLabel = reportIssueHiddenLabel(issue);
+    if (hiddenLabel) {
+      visualLabel += '<div class="report-meta-line">' + esc(hiddenLabel) + '</div>';
+    }
+    var severity = (issue.severity || '').toLowerCase();
+    var issueCell = '<div class="report-issue-cell">'
+      + '<div class="report-issue-line"><span class="report-issue-title ' + esc(severity) + '" title="' + esc(reportIssueTypeLabel(issue.issueType)) + '">' + esc(reportIssueTypeLabel(issue.issueType)) + '</span></div>'
+      + '<div class="report-meta-line" title="' + esc(issue.context || '') + '">' + esc(issue.context || 'Report metadata') + '</div>'
+      + '</div>';
+    var reportCell = '<div class="report-location-cell">'
+      + '<div class="cell-ellipsis" title="' + esc(issue.report || '') + '">' + esc(issue.report || '') + '</div>'
+      + '</div>';
+    var pageCell = '<div class="report-location-cell">'
+      + '<div class="report-meta-line" title="' + esc(issue.page || '') + '">' + esc(issue.page || 'Report level') + '</div>'
+      + '</div>';
+    var refCell = '<div class="report-ref-cell">'
+      + '<div class="cell-ellipsis" title="' + esc(reportIssueRefText(issue)) + '">' + esc(reportIssueRefText(issue)) + '</div>'
+      + '<div class="report-meta-line">' + esc(reportIssueRefTypeLabel(issue)) + '</div>'
+      + '</div>';
+    var fixCell = '<div class="report-action-cell">' + reportIssueActionHtml(issue, index);
+    fixCell += '</div>';
+    return '<tr' + selectedClass + '>'
+      + '<td><input type="checkbox" class="report-row-check" data-report-issue-key="' + esc(key) + '"' + checked + disabled + ' title="' + esc(canSelect ? 'Select this report issue for a bulk action' : 'No safe bulk action is available for this row') + '"></td>'
+      + '<td title="' + esc(issue.message || '') + '">' + issueCell + '</td>'
+      + '<td>' + reportCell + '</td>'
+      + '<td>' + pageCell + '</td>'
+      + '<td><div class="report-visual-cell" title="' + esc((issue.visualTitle || issue.visualType || issue.visualId || '')) + '">' + visualLabel + '</div></td>'
+      + '<td>' + refCell + '</td>'
+      + '<td>' + fixCell + '</td>'
+      + '</tr>';
+  }).join('');
+  tbody.querySelectorAll('.report-row-check').forEach(function(cb) {
+    cb.onchange = function() {
+      if (cb.checked) selectedReportIssueKeys.add(cb.dataset.reportIssueKey);
+      else selectedReportIssueKeys.delete(cb.dataset.reportIssueKey);
+      cb.closest('tr').classList.toggle('report-row-selected', cb.checked);
+      renderReportHealthControls();
+    };
+  });
+  tbody.querySelectorAll('.report-clean-stale-btn').forEach(function(btn) {
+    btn.onclick = async function() {
+      await cleanReportIssueStaleRef(parseInt(btn.dataset.reportIssueIndex || '-1', 10));
+    };
+  });
+  tbody.querySelectorAll('.report-apply-suggestion-btn').forEach(function(btn) {
+    btn.onclick = async function() {
+      await applyReportIssueSuggestion(parseInt(btn.dataset.reportIssueIndex || '-1', 10));
+    };
+  });
+  tbody.querySelectorAll('.report-suggestion-select').forEach(function(select) {
+    select.onchange = function() {
+      var issue = allReportIssues[parseInt(select.dataset.reportIssueIndex || '-1', 10)];
+      if (issue) selectedReportSuggestionChoices.set(reportIssueKey(issue), select.value || '0');
+    };
+  });
+  tbody.querySelectorAll('.report-remove-issue-btn').forEach(function(btn) {
+    btn.onclick = async function() {
+      await removeReportIssueReference(parseInt(btn.dataset.reportIssueIndex || '-1', 10));
+    };
+  });
+  updatePageControls();
+}
+
+async function cleanReportIssueStaleRef(index) {
+  var issue = allReportIssues[index];
+  if (!issue) return;
+  var entry = reportIssueCleanupEntry(issue);
+  if (!entry) {
+    alert('Could not resolve this stale issue to a selected report file.');
+    return;
+  }
+  await cleanReportIssueEntries([entry]);
+}
+
+function reportIssueCleanupEntry(issue) {
+  var reportPath = getReportPathByName(issue.report);
+  if (!reportPath || !issue.artifactPath || !issue.sourcePath) {
+    return null;
+  }
+  return {
+    report_path: reportPath,
+    artifact_path: issue.artifactPath,
+    selector_value: issue.selectorValue || '',
+    source_path: issue.sourcePath || '',
+    stale_kind: issue.staleKind || ''
+  };
+}
+
+async function cleanReportIssueEntries(entries) {
+  if (!entries.length) return;
+  try {
+    var data = await apiPost('/api/report/cleanup-stale', {
+      entries: entries,
+      create_backup: $('applyBackupCheckbox').checked
+    });
+    if (data.error) throw new Error(data.error);
+    if (data.backup_paths && data.backup_paths.length) {
+      $('backupBanner').classList.remove('hidden');
+      $('backupPath').textContent = data.backup_paths.join(' | ');
+    }
+    logEntry('Removed ' + (data.removed_count || 0) + ' stale PBIR selector(s)', 'ok');
+    selectedReportIssueKeys.clear();
+    await reAnalyze({});
+  } catch (err) {
+    logEntry('Report stale cleanup failed: ' + (err && err.message ? err.message : err), 'err');
+    alert('Report stale cleanup failed: ' + (err && err.message ? err.message : err));
+  }
+}
+
+async function cleanVisibleReportStaleIssues() {
+  var entries = reportCleanupEntriesForIssues(getSelectedReportIssues());
+  var totalEntries = entries.stale.length + entries.remove.length;
+  if (!totalEntries) {
+    alert('Select one or more cleanup rows first.');
+    return;
+  }
+  if (!confirm('Clean ' + totalEntries + ' selected report cleanup row(s)?')) return;
+  await cleanReportIssueCleanupEntries(entries.stale, entries.remove);
+}
+
+async function cleanAllReportCleanupIssues() {
+  var entries = reportCleanupEntriesForIssues(allReportIssues.filter(isReportIssueCleanup));
+  var totalEntries = entries.stale.length + entries.remove.length;
+  if (!totalEntries) {
+    alert('No cleanup rows were found.');
+    return;
+  }
+  if (!confirm('Clean all ' + totalEntries + ' report cleanup row(s) in the selected reports?')) return;
+  await cleanReportIssueCleanupEntries(entries.stale, entries.remove);
+}
+
+function reportCleanupEntriesForIssues(issues) {
+  var staleEntriesByKey = new Map();
+  var removeEntriesByKey = new Map();
+  issues.filter(isReportIssueStale).forEach(function(issue) {
+    var entry = reportIssueCleanupEntry(issue);
+    if (!entry) return;
+    var key = [entry.report_path, entry.artifact_path, entry.source_path, entry.selector_value, entry.stale_kind].join('|||');
+    staleEntriesByKey.set(key, entry);
+  });
+  issues.filter(function(issue) { return isReportIssueCleanup(issue) && !isReportIssueStale(issue); }).forEach(function(issue) {
+    var entry = reportIssueActionEntry(issue, 'remove');
+    if (!entry) return;
+    var key = [entry.report_path, entry.artifact_path, entry.source_path].join('|||');
+    removeEntriesByKey.set(key, entry);
+  });
+  return {
+    stale: Array.from(staleEntriesByKey.values()),
+    remove: Array.from(removeEntriesByKey.values())
+  };
+}
+
+async function cleanReportIssueCleanupEntries(staleEntries, removeEntries) {
+  try {
+    var backupPaths = [];
+    var cleanupEntries = staleEntries.concat(removeEntries.map(function(entry) {
+      return {
+        report_path: entry.report_path,
+        artifact_path: entry.artifact_path,
+        source_path: entry.source_path,
+        selector_value: '',
+        stale_kind: 'exact_reference'
+      };
+    }));
+    var cleanupData = await apiPost('/api/report/cleanup-stale', {
+      entries: cleanupEntries,
+      create_backup: $('applyBackupCheckbox').checked
+    });
+    if (cleanupData.error) throw new Error(cleanupData.error);
+    var removedCount = cleanupData.removed_count || 0;
+    backupPaths = backupPaths.concat(cleanupData.backup_paths || []);
+    if (backupPaths.length) {
+      var uniqueBackups = Array.from(new Set(backupPaths));
+      $('backupBanner').classList.remove('hidden');
+      $('backupPath').textContent = uniqueBackups.join(' | ');
+    }
+    logEntry('Cleaned report cleanup rows: ' + removedCount + ' row(s)', 'ok');
+    selectedReportIssueKeys.clear();
+    await reAnalyze({});
+  } catch (err) {
+    logEntry('Report cleanup failed: ' + (err && err.message ? err.message : err), 'err');
+    alert('Report cleanup failed: ' + (err && err.message ? err.message : err));
+  }
+}
+
+function reportIssueTopSuggestion(issue) {
+  return reportIssueReplacementSuggestions(issue)[0] || null;
+}
+
+function reportIssueSelectedSuggestion(issue) {
+  var replacements = reportIssueReplacementSuggestions(issue);
+  if (!replacements.length) return null;
+  var selectedIdx = parseInt(selectedReportSuggestionChoices.get(reportIssueKey(issue)) || '0', 10);
+  if (!Number.isFinite(selectedIdx) || selectedIdx < 0 || selectedIdx >= replacements.length) selectedIdx = 0;
+  return replacements[selectedIdx] || null;
+}
+
+function reportIssueActionEntry(issue, action, suggestion) {
+  var reportPath = getReportPathByName(issue.report);
+  if (!reportPath || !issue.artifactPath || !issue.sourcePath) return null;
+  var entry = {
+    action: action,
+    report_path: reportPath,
+    artifact_path: issue.artifactPath,
+    source_path: issue.sourcePath || '',
+    table: issue.table || '',
+    name: issue.name || '',
+    ref_type: issue.refType || ''
+  };
+  if (action === 'replace') {
+    if (!suggestion || !suggestion.table || !suggestion.name) return null;
+    entry.target_table = suggestion.table;
+    entry.target_name = suggestion.name;
+  }
+  return entry;
+}
+
+async function applyReportIssueActions(entries, label) {
+  if (!entries.length) return;
+  try {
+    var data = await apiPost('/api/report/issues/apply', {
+      entries: entries,
+      create_backup: $('applyBackupCheckbox').checked
+    });
+    if (data.error) throw new Error(data.error);
+    if (data.backup_paths && data.backup_paths.length) {
+      $('backupBanner').classList.remove('hidden');
+      $('backupPath').textContent = data.backup_paths.join(' | ');
+    }
+    logEntry((label || 'Report issue update') + ': updated ' + (data.updated_reference_count || 0) + ' reference(s)', 'ok');
+    selectedReportIssueKeys.clear();
+    await reAnalyze({});
+  } catch (err) {
+    logEntry('Report issue update failed: ' + (err && err.message ? err.message : err), 'err');
+    alert('Report issue update failed: ' + (err && err.message ? err.message : err));
+  }
+}
+
+async function applyReportIssueSuggestion(index) {
+  var issue = allReportIssues[index];
+  var suggestion = reportIssueSelectedSuggestion(issue);
+  var entry = issue && reportIssueActionEntry(issue, 'replace', suggestion);
+  if (!entry) {
+    alert('Choose an available replacement for this report issue.');
+    return;
+  }
+  await applyReportIssueActions([entry], 'Applied report suggestion');
+}
+
+async function removeReportIssueReference(index) {
+  var issue = allReportIssues[index];
+  var entry = issue && reportIssueActionEntry(issue, 'remove');
+  if (!entry) {
+    alert('Could not build remove action for this report issue.');
+    return;
+  }
+  if (!confirm('Remove ' + reportIssueRefText(issue) + ' from this exact PBIR location?')) return;
+  await applyReportIssueActions([entry], 'Removed report issue reference');
+}
+
+async function applyVisibleReportSuggestions() {
+  var entriesByKey = new Map();
+  getSelectedReportIssues().forEach(function(issue) {
+    var suggestion = reportIssueSelectedSuggestion(issue);
+    var entry = suggestion && reportIssueActionEntry(issue, 'replace', suggestion);
+    if (!entry) return;
+    var key = [entry.report_path, entry.artifact_path, entry.source_path, entry.table, entry.name, entry.target_table, entry.target_name].join('|||');
+    entriesByKey.set(key, entry);
+  });
+  var entries = Array.from(entriesByKey.values());
+  if (!entries.length) {
+    alert('Select one or more rows with suggestions first.');
+    return;
+  }
+  if (!confirm('Apply top suggestions for ' + entries.length + ' selected report issue(s)?')) return;
+  await applyReportIssueActions(entries, 'Applied selected report suggestions');
+}
+
+async function removeVisibleReportIssues() {
+  var entriesByKey = new Map();
+  getSelectedReportIssues().forEach(function(issue) {
+    if (isReportIssueStale(issue)) return;
+    var entry = reportIssueActionEntry(issue, 'remove');
+    if (!entry) return;
+    var key = [entry.report_path, entry.artifact_path, entry.source_path].join('|||');
+    entriesByKey.set(key, entry);
+  });
+  var entries = Array.from(entriesByKey.values());
+  if (!entries.length) {
+    alert('Select one or more removable report issue rows first.');
+    return;
+  }
+  if (!confirm('Remove ' + entries.length + ' selected report issue reference(s) from PBIR?')) return;
+  await applyReportIssueActions(entries, 'Removed selected report issue references');
+}
+
 function renderRefsTable() {
   var tbody = $('refsTableBody');
   var visibleRefs = getPagedRows(filteredRefs, 'refs');
@@ -2773,6 +3581,17 @@ document.querySelectorAll('thead th[data-refcol]').forEach(function(th) {
     th.querySelector('.sort-arrow').textContent = refSortAsc ? '\u25B2' : '\u25BC';
     sortRefs();
     renderRefsTable();
+  };
+});
+document.querySelectorAll('thead th[data-reportcol]').forEach(function(th) {
+  th.onclick = function(e) {
+    if (e.target.closest('.header-help')) return;
+    var col = th.dataset.reportcol;
+    if (reportIssueSortCol === col) reportIssueSortAsc = !reportIssueSortAsc; else { reportIssueSortCol = col; reportIssueSortAsc = true; }
+    document.querySelectorAll('#reportsTableSection .sort-arrow').forEach(function(s) { s.textContent = ''; });
+    th.querySelector('.sort-arrow').textContent = reportIssueSortAsc ? '\u25B2' : '\u25BC';
+    sortReportIssues();
+    renderReportsTable();
   };
 });
 document.querySelectorAll('thead th[data-tablecol]').forEach(function(th) {

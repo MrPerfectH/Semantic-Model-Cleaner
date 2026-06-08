@@ -884,3 +884,718 @@ def test_cleanup_stale_bookmark_projection_entries_removes_exact_projection_row(
     projections = payload["explorationState"]["sections"]["Page1"]["visualContainers"]["Visual1"]["singleVisual"]["projections"]["Y2"]
     assert len(projections) == 1
     assert projections[0]["Measure"]["Property"] == "PL_LINE LY"
+
+
+def test_apply_report_issue_actions_removes_orphan_bookmark_visual_state(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    bookmark_dir = report_path / "definition" / "bookmarks"
+    bookmark_dir.mkdir(parents=True)
+    bookmark_file = bookmark_dir / "bookmark1.bookmark.json"
+    bookmark_file.write_text(
+        json.dumps(
+            {
+                "displayName": "A&P Spend",
+                "explorationState": {
+                    "sections": {
+                        "Page1": {
+                            "visualContainers": {
+                                "Visual1": {"singleVisual": {"visualType": "card"}},
+                                "DeletedVisual": {"singleVisual": {"visualType": "card"}},
+                            }
+                        }
+                    }
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.apply_report_issue_actions(
+        entries=[
+            {
+                "action": "remove",
+                "report_path": str(report_path),
+                "artifact_path": "definition/bookmarks/bookmark1.bookmark.json",
+                "source_path": "explorationState.sections.Page1.visualContainers.DeletedVisual",
+            }
+        ]
+    )
+
+    assert result["ok"] is True
+    assert result["updated_reference_count"] == 1
+    payload = json.loads(bookmark_file.read_text(encoding="utf-8"))
+    visual_containers = payload["explorationState"]["sections"]["Page1"]["visualContainers"]
+    assert "DeletedVisual" not in visual_containers
+    assert "Visual1" in visual_containers
+
+
+def test_cleanup_stale_formatting_selector_entries_removes_exact_data_point(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "visualType": "columnChart",
+                    "objects": {
+                        "dataPoint": [
+                            {
+                                "properties": {"fill": {"solid": {"color": {"expr": {"Literal": {"Value": "'#228B22'"}}}}}},
+                                "selector": {
+                                    "data": [
+                                        {
+                                            "scopeId": {
+                                                "Comparison": {
+                                                    "Left": {
+                                                        "Column": {
+                                                            "Expression": {"SourceRef": {"Entity": "Legacy Sales"}},
+                                                            "Property": "Old Region",
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                },
+                            },
+                            {
+                                "properties": {"fill": {"solid": {"color": {"expr": {"Literal": {"Value": "'#E87722'"}}}}}},
+                                "selector": {
+                                    "data": [
+                                        {
+                                            "scopeId": {
+                                                "Comparison": {
+                                                    "Left": {
+                                                        "Column": {
+                                                            "Expression": {"SourceRef": {"Entity": "Legacy Sales"}},
+                                                            "Property": "Old Region",
+                                                        }
+                                                    },
+                                                    "Right": {"Literal": {"Value": "'West'"}},
+                                                }
+                                            }
+                                        }
+                                    ]
+                                },
+                            },
+                            {
+                                "properties": {"fill": {"solid": {"color": {"expr": {"Literal": {"Value": "'#000000'"}}}}}},
+                            },
+                        ]
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.cleanup_stale_metadata_selectors(
+        entries=[
+            {
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                "source_path": "visual.objects.dataPoint.[0].selector.data.[0].scopeId.Comparison.Left.Column",
+                "selector_value": "Legacy Sales[Old Region]",
+                "stale_kind": "visual_formatting_selector_entry",
+            }
+        ]
+    )
+
+    assert result["ok"] is True
+    assert result["removed_count"] == 2
+
+    payload = json.loads(visual_file.read_text(encoding="utf-8"))
+    data_points = payload["visual"]["objects"]["dataPoint"]
+    assert len(data_points) == 1
+    assert "selector" not in data_points[0]
+
+
+def test_cleanup_stale_formatting_rule_removes_values_rule_entry(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "visualType": "tableEx",
+                    "query": {
+                        "queryState": {
+                            "Values": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Column": {
+                                                "Expression": {"SourceRef": {"Entity": "Current Sales"}},
+                                                "Property": "Region",
+                                            }
+                                        },
+                                        "queryRef": "Current Sales.Region",
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "objects": {
+                        "values": [
+                            {
+                                "properties": {
+                                    "fontFamily": {"expr": {"Literal": {"Value": "'Calibri'"}}},
+                                },
+                            },
+                            {
+                                "properties": {
+                                    "fontColor": {
+                                        "solid": {
+                                            "color": {
+                                                "expr": {
+                                                    "FillRule": {
+                                                        "Input": {
+                                                            "Aggregation": {
+                                                                "Expression": {
+                                                                    "Column": {
+                                                                        "Expression": {"SourceRef": {"Entity": "Orders"}},
+                                                                        "Property": "Sales",
+                                                                    }
+                                                                },
+                                                                "Function": 0,
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "selector": {
+                                    "data": [{"dataViewWildcard": {"matchingOption": 1}}],
+                                    "metadata": "Sum(Orders.Sales)",
+                                },
+                            },
+                            {
+                                "properties": {
+                                    "backColor": {
+                                        "solid": {
+                                            "color": {
+                                                "expr": {
+                                                    "Conditional": {
+                                                        "Cases": [
+                                                            {
+                                                                "Condition": {
+                                                                    "Comparison": {
+                                                                        "Left": {
+                                                                            "Aggregation": {
+                                                                                "Expression": {
+                                                                                    "Column": {
+                                                                                        "Expression": {"SourceRef": {"Entity": "Orders"}},
+                                                                                        "Property": "Sales",
+                                                                                    }
+                                                                                },
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        ]
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                        ]
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.cleanup_stale_metadata_selectors(
+        entries=[
+            {
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                "source_path": "visual.objects.values.[1].properties.fontColor.solid.color.expr.FillRule.Input.Aggregation",
+                "selector_value": "Orders[Sales]",
+                "stale_kind": "formatting_rule_reference",
+            }
+        ]
+    )
+
+    assert result["ok"] is True
+    assert result["removed_count"] == 2
+
+    payload = json.loads(visual_file.read_text(encoding="utf-8"))
+    assert len(payload["visual"]["objects"]["values"]) == 1
+    assert "fontFamily" in payload["visual"]["objects"]["values"][0]["properties"]
+    projections = payload["visual"]["query"]["queryState"]["Values"]["projections"]
+    assert projections[0]["field"]["Column"]["Property"] == "Region"
+
+
+def test_cleanup_mixed_path_entries_removes_all_in_one_pass(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "visualType": "tableEx",
+                    "objects": {
+                        "values": [
+                            {
+                                "properties": {
+                                    "fontColor": {
+                                        "solid": {
+                                            "color": {
+                                                "expr": {
+                                                    "FillRule": {
+                                                        "Input": {
+                                                            "Aggregation": {
+                                                                "Expression": {
+                                                                    "Column": {
+                                                                        "Expression": {"SourceRef": {"Entity": "Orders"}},
+                                                                        "Property": "Sales",
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                "field": {
+                                    "Column": {
+                                        "Expression": {"SourceRef": {"Entity": "Legacy"}},
+                                        "Property": "Removed",
+                                    }
+                                }
+                            },
+                            {
+                                "properties": {
+                                    "fontColor": {
+                                        "solid": {
+                                            "color": {
+                                                "expr": {
+                                                    "FillRule": {
+                                                        "Input": {
+                                                            "Aggregation": {
+                                                                "Expression": {
+                                                                    "Column": {
+                                                                        "Expression": {"SourceRef": {"Entity": "Orders"}},
+                                                                        "Property": "Margin",
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            {"properties": {"fontFamily": {"expr": {"Literal": {"Value": "'Calibri'"}}}}},
+                        ]
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.cleanup_stale_metadata_selectors(
+        entries=[
+            {
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                "source_path": "visual.objects.values.[0].properties.fontColor.solid.color.expr.FillRule.Input.Aggregation",
+                "selector_value": "Orders[Sales]",
+                "stale_kind": "formatting_rule_reference",
+            },
+                {
+                    "report_path": str(report_path),
+                    "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                    "source_path": "visual.objects.values.[1]",
+                    "stale_kind": "exact_reference",
+                },
+            {
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                "source_path": "visual.objects.values.[2].properties.fontColor.solid.color.expr.FillRule.Input.Aggregation",
+                "selector_value": "Orders[Margin]",
+                "stale_kind": "formatting_rule_reference",
+            },
+        ]
+    )
+
+    assert result["ok"] is True
+    assert result["removed_count"] == 3
+
+    payload = json.loads(visual_file.read_text(encoding="utf-8"))
+    values = payload["visual"]["objects"]["values"]
+    assert len(values) == 1
+    assert "fontFamily" in values[0]["properties"]
+
+
+def test_apply_report_issue_actions_replaces_exact_projection_reference(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "query": {
+                        "queryState": {
+                            "Values": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Column": {
+                                                "Expression": {"SourceRef": {"Entity": "Old Sales"}},
+                                                "Property": "Old Region",
+                                            }
+                                        },
+                                        "queryRef": "Old Sales.Old Region",
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "objects": {
+                        "labels": [
+                            {"selector": {"metadata": "Old Sales.Old Region"}},
+                            {"selector": {"metadata": "Other.Table"}},
+                        ]
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.apply_report_issue_actions(
+        entries=[
+            {
+                "action": "replace",
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                "source_path": "visual.query.queryState.Values.projections.[0].field.Column",
+                "table": "Old Sales",
+                "name": "Old Region",
+                "target_table": "Sales",
+                "target_name": "Region",
+            }
+        ]
+    )
+
+    assert result["ok"] is True
+    payload = json.loads(visual_file.read_text(encoding="utf-8"))
+    projection = payload["visual"]["query"]["queryState"]["Values"]["projections"][0]
+    assert projection["field"]["Column"]["Expression"]["SourceRef"]["Entity"] == "Sales"
+    assert projection["field"]["Column"]["Property"] == "Region"
+    assert projection["queryRef"] == "Sales.Region"
+    assert payload["visual"]["objects"]["labels"][0]["selector"]["metadata"] == "Old Sales.Old Region"
+    assert payload["visual"]["objects"]["labels"][1]["selector"]["metadata"] == "Other.Table"
+
+
+def test_apply_report_issue_actions_replaces_filter_alias_reference(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    page_dir = report_path / "definition" / "pages" / "Page1"
+    page_dir.mkdir(parents=True)
+    page_file = page_dir / "page.json"
+    page_file.write_text(
+        json.dumps(
+            {
+                "filterConfig": {
+                    "filters": [
+                        {
+                            "field": {
+                                "Column": {
+                                    "Expression": {"SourceRef": {"Entity": "Cost Center"}},
+                                    "Property": "cost_center_status_name",
+                                }
+                            },
+                            "filter": {
+                                "From": [{"Name": "c", "Entity": "Cost_Center", "Type": 0}],
+                                "Where": [
+                                    {
+                                        "Condition": {
+                                            "In": {
+                                                "Expressions": [
+                                                    {
+                                                        "Column": {
+                                                            "Expression": {"SourceRef": {"Source": "c"}},
+                                                            "Property": "cost_center_include_status",
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        }
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.apply_report_issue_actions(
+        entries=[
+            {
+                "action": "replace",
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/page.json",
+                "source_path": "filterConfig.filters.[0].filter.Where.[0].Condition.In.Expressions.[0].Column",
+                "table": "Cost_Center",
+                "name": "cost_center_include_status",
+                "target_table": "Cost Center",
+                "target_name": "cost_center_status_name",
+            }
+        ]
+    )
+
+    assert result["ok"] is True
+    payload = json.loads(page_file.read_text(encoding="utf-8"))
+    filter_obj = payload["filterConfig"]["filters"][0]
+    assert filter_obj["filter"]["From"][0]["Entity"] == "Cost Center"
+    expression = filter_obj["filter"]["Where"][0]["Condition"]["In"]["Expressions"][0]["Column"]
+    assert expression["Expression"]["SourceRef"]["Source"] == "c"
+    assert expression["Property"] == "cost_center_status_name"
+
+
+def test_apply_report_issue_actions_removes_filter_and_formatting_property(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "objects": {
+                        "values": [
+                            {
+                                "properties": {
+                                    "fontColor": {
+                                        "solid": {
+                                            "color": {
+                                                "expr": {
+                                                    "FillRule": {
+                                                        "Input": {
+                                                            "Aggregation": {
+                                                                "Expression": {
+                                                                    "Column": {
+                                                                        "Expression": {"SourceRef": {"Entity": "Orders"}},
+                                                                        "Property": "Sales",
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "alignment": {"expr": {"Literal": {"Value": "'left'"}}},
+                                }
+                            }
+                        ]
+                    }
+                },
+                "filterConfig": {
+                    "filters": [
+                        {
+                            "field": {
+                                "Column": {
+                                    "Expression": {"SourceRef": {"Entity": "Old Sales"}},
+                                    "Property": "Old Region",
+                                }
+                            }
+                        },
+                        {
+                            "field": {
+                                "Column": {
+                                    "Expression": {"SourceRef": {"Entity": "Keep"}},
+                                    "Property": "Keep Me",
+                                }
+                            }
+                        },
+                    ]
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.apply_report_issue_actions(
+        entries=[
+            {
+                "action": "remove",
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                "source_path": "filterConfig.filters.[0].field.Column",
+            },
+            {
+                "action": "remove",
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                "source_path": "visual.objects.values.[0].properties.fontColor.solid.color.expr.FillRule.Input.Aggregation",
+            },
+        ]
+    )
+
+    assert result["ok"] is True
+    payload = json.loads(visual_file.read_text(encoding="utf-8"))
+    assert len(payload["filterConfig"]["filters"]) == 1
+    assert payload["filterConfig"]["filters"][0]["field"]["Column"]["Expression"]["SourceRef"]["Entity"] == "Keep"
+    properties = payload["visual"]["objects"]["values"][0]["properties"]
+    assert "fontColor" not in properties
+    assert "alignment" in properties
+
+
+def test_apply_report_issue_actions_removes_multiple_filter_rows_in_one_pass(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "filterConfig": {
+                        "filters": [
+                            {"field": {"Column": {"Expression": {"SourceRef": {"Entity": "T"}}, "Property": "A"}}},
+                            {"field": {"Column": {"Expression": {"SourceRef": {"Entity": "T"}}, "Property": "B"}}},
+                            {"field": {"Column": {"Expression": {"SourceRef": {"Entity": "T"}}, "Property": "C"}}},
+                            {"field": {"Column": {"Expression": {"SourceRef": {"Entity": "T"}}, "Property": "D"}}},
+                        ]
+                    }
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.apply_report_issue_actions(
+        entries=[
+            {
+                "action": "remove",
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                "source_path": f"visual.filterConfig.filters.[{idx}].field.Column",
+                "table": "T",
+                "name": name,
+                "ref_type": "Column",
+            }
+            for idx, name in enumerate(["A", "B", "C", "D"])
+        ]
+    )
+
+    assert result["ok"] is True
+    assert result["updated_reference_count"] == 4
+    payload = json.loads(visual_file.read_text(encoding="utf-8"))
+    assert payload["visual"]["filterConfig"]["filters"] == []
+
+
+def test_apply_report_issue_actions_removes_related_visual_references(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "query": {
+                        "queryState": {
+                            "Values": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Column": {
+                                                "Expression": {"SourceRef": {"Entity": "Old Table"}},
+                                                "Property": "Old Field",
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "field": {
+                                            "Column": {
+                                                "Expression": {"SourceRef": {"Entity": "Keep"}},
+                                                "Property": "Keep Field",
+                                            }
+                                        }
+                                    },
+                                ]
+                            }
+                        },
+                        "sortDefinition": {
+                            "sort": [
+                                {
+                                    "field": {
+                                        "Column": {
+                                            "Expression": {"SourceRef": {"Entity": "Old Table"}},
+                                            "Property": "Old Field",
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                    },
+                    "objects": {
+                        "labels": [
+                            {"selector": {"metadata": "Old Table.Old Field"}},
+                            {"selector": {"metadata": "Keep.Keep Field"}},
+                        ]
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = report_writer.apply_report_issue_actions(
+        entries=[
+            {
+                "action": "remove",
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                "source_path": "visual.query.queryState.Values.projections.[0].field.Column",
+                "table": "Old Table",
+                "name": "Old Field",
+            }
+        ]
+    )
+
+    assert result["ok"] is True
+    payload = json.loads(visual_file.read_text(encoding="utf-8"))
+    values = payload["visual"]["query"]["queryState"]["Values"]["projections"]
+    assert len(values) == 1
+    assert values[0]["field"]["Column"]["Expression"]["SourceRef"]["Entity"] == "Keep"
+    assert payload["visual"]["query"]["sortDefinition"]["sort"] == []
+    assert payload["visual"]["objects"]["labels"] == [{"selector": {"metadata": "Keep.Keep Field"}}]

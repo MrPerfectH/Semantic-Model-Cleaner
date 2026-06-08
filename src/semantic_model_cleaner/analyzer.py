@@ -21,7 +21,8 @@ import re
 import sys
 import tempfile
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
 
@@ -75,6 +76,12 @@ class UsageRef:
     selector_value: str = ""
     is_stale: bool = False
     stale_kind: str = ""
+    visual_hidden: bool = False
+    page_hidden: bool = False
+    visual_x: float | int | None = None
+    visual_y: float | int | None = None
+    visual_width: float | int | None = None
+    visual_height: float | int | None = None
 
 
 @dataclass
@@ -120,9 +127,25 @@ class ReportIssue:
     report: str
     message: str
     page: str = ""
+    visual_type: str = ""
+    visual_title: str = ""
     visual_id: str = ""
+    context: str = ""
+    table: str = ""
+    name: str = ""
+    ref_type: str = ""
     artifact_kind: str = ""
     artifact_path: str = ""
+    source_path: str = ""
+    selector_value: str = ""
+    stale_kind: str = ""
+    visual_hidden: bool = False
+    page_hidden: bool = False
+    visual_x: float | int | None = None
+    visual_y: float | int | None = None
+    visual_width: float | int | None = None
+    visual_height: float | int | None = None
+    suggestions: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -164,12 +187,31 @@ def _unique_sorted_paths(paths: list[Path]) -> list[Path]:
     return sorted(unique.values(), key=lambda p: (p.name.casefold(), str(p).casefold()))
 
 
+def _is_semantic_model_cleaner_source_root(root: Path) -> bool:
+    return (
+        (root / "pyproject.toml").exists()
+        and (root / "src" / "semantic_model_cleaner").is_dir()
+    )
+
+
+def _skip_discovery_path(path: Path, root: Path, *, source_root: bool) -> bool:
+    try:
+        parts = path.relative_to(root).parts
+    except ValueError:
+        parts = path.parts
+    if any(part.startswith(".") for part in parts):
+        return True
+    return bool(source_root and parts and parts[0] in {"tests", "examples"})
+
+
 def _discover_artifact_dirs(search_roots: list[Path], suffix: str, conventional_dir: str) -> list[Path]:
     discovered = []
 
     for root in search_roots:
+        root = root.resolve()
         if not root.exists():
             continue
+        source_root = _is_semantic_model_cleaner_source_root(root)
 
         # Direct artifact path support, e.g. /x/Foo.SemanticModel
         if root.is_dir() and root.name.endswith(suffix):
@@ -184,7 +226,7 @@ def _discover_artifact_dirs(search_roots: list[Path], suffix: str, conventional_
         if conventional.exists() and conventional.is_dir():
             conventional_hits = [
                 p for p in conventional.iterdir()
-                if p.is_dir() and p.name.endswith(suffix)
+                if p.is_dir() and p.name.endswith(suffix) and not _skip_discovery_path(p, root, source_root=source_root)
             ]
             discovered.extend(conventional_hits)
             if conventional_hits:
@@ -194,7 +236,7 @@ def _discover_artifact_dirs(search_roots: list[Path], suffix: str, conventional_
         # Fallback recursive discovery for non-standard layouts.
         discovered.extend(
             p for p in root.rglob(f"*{suffix}")
-            if p.is_dir()
+            if p.is_dir() and not _skip_discovery_path(p, root, source_root=source_root)
         )
 
     return _unique_sorted_paths(discovered)
@@ -302,10 +344,26 @@ def _serialize_report_issue(issue: ReportIssue) -> dict:
         "issueType": issue.issue_type,
         "report": issue.report,
         "page": issue.page,
+        "visualType": issue.visual_type,
+        "visualTitle": issue.visual_title,
         "visualId": issue.visual_id,
+        "context": issue.context,
+        "table": issue.table,
+        "name": issue.name,
+        "refType": issue.ref_type,
         "artifactKind": issue.artifact_kind,
         "artifactPath": issue.artifact_path,
+        "sourcePath": issue.source_path,
+        "selectorValue": issue.selector_value,
+        "staleKind": issue.stale_kind,
+        "visualHidden": issue.visual_hidden,
+        "pageHidden": issue.page_hidden,
+        "visualX": issue.visual_x,
+        "visualY": issue.visual_y,
+        "visualWidth": issue.visual_width,
+        "visualHeight": issue.visual_height,
         "message": issue.message,
+        "suggestions": issue.suggestions,
     }
 
 
@@ -1545,6 +1603,8 @@ def _source_aliases_from_tree(obj) -> dict[str, str]:
 
 
 def _source_ref_entity(source_ref: dict, aliases: dict[str, str]) -> str | None:
+    if not isinstance(source_ref, dict):
+        return None
     entity = source_ref.get("Entity")
     if isinstance(entity, str) and entity:
         return entity
@@ -1682,6 +1742,15 @@ def _selector_entry_prefix(path: str) -> str:
     return path
 
 
+def _formatting_selector_entry_prefix(path: str) -> str:
+    return path.split(".selector.", 1)[0] if ".selector." in path else ""
+
+
+def _formatting_rule_entry_prefix(path: str) -> str:
+    match = re.search(r"(.*\.objects\.[^.]+\.\[\d+\])\.properties\.", path)
+    return match.group(1) if match else ""
+
+
 def _determine_context(path: str) -> str:
     if "queryState" in path:
         m = re.search(r"queryState\.(\w+)", path)
@@ -1703,7 +1772,7 @@ def _determine_context(path: str) -> str:
     if "drillthrough" in path.lower():
         return "Drillthrough"
     if "filterConfig" in path:
-        return "Filter"
+        return "Filters pane (visual)"
     if "filter" in path.lower() and "filterConfig" not in path:
         return "Filter"
     if "Aggregation" in path:
@@ -1711,6 +1780,45 @@ def _determine_context(path: str) -> str:
     if "objects" in path or "metadata" in path:
         return "Formatting"
     return "Other"
+
+
+def _filter_pane_refs(filter_obj: dict, path_parts: list[str]) -> list[dict]:
+    active_refs = []
+    for key in ("filter", "filterDefinition", "where", "conditions", "expression", "values"):
+        value = filter_obj.get(key)
+        if isinstance(value, (dict, list)):
+            active_refs.extend(_find_json_refs(value, path_parts + [key]))
+    if active_refs:
+        return active_refs
+
+    field = filter_obj.get("field")
+    if isinstance(field, (dict, list)):
+        refs = _find_json_refs(field, path_parts + ["field"])
+        if refs:
+            return refs
+    return _find_json_refs(filter_obj, path_parts)
+
+
+def _inactive_filter_field_prefixes(data: dict) -> set[str]:
+    prefixes: set[str] = set()
+    filter_configs = [
+        ("filterConfig", data.get("filterConfig")),
+        ("visual.filterConfig", data.get("visual", {}).get("filterConfig") if isinstance(data.get("visual"), dict) else None),
+    ]
+    for path_prefix, filter_config in filter_configs:
+        filters = filter_config.get("filters", []) if isinstance(filter_config, dict) else []
+        if not isinstance(filters, list):
+            continue
+        for idx, filter_obj in enumerate(filters):
+            if not isinstance(filter_obj, dict) or "field" not in filter_obj:
+                continue
+            has_active_state = any(
+                key in filter_obj
+                for key in ("filter", "filterDefinition", "where", "conditions", "expression", "values")
+            )
+            if not has_active_state:
+                prefixes.add(f"{path_prefix}.filters.[{idx}].field")
+    return prefixes
 
 
 def _get_visual_info(data: dict) -> tuple[str, str]:
@@ -1725,8 +1833,10 @@ def _get_visual_info(data: dict) -> tuple[str, str]:
             items = container.get(key, [])
             for obj in items:
                 props = obj.get("properties", {})
-                title_prop = props.get("title", {})
-                if isinstance(title_prop, dict):
+                for prop_name in ("text", "title"):
+                    title_prop = props.get(prop_name, {})
+                    if not isinstance(title_prop, dict):
+                        continue
                     text = title_prop.get("expr", {})
                     if isinstance(text, dict) and "Literal" in text:
                         val = text["Literal"].get("Value", "")
@@ -1746,6 +1856,27 @@ def _get_page_name(page_dir: Path) -> str:
         except (json.JSONDecodeError, KeyError):
             pass
     return page_dir.name
+
+
+def _page_is_hidden(data: dict) -> bool:
+    visibility = str(data.get("visibility", "")).casefold()
+    return bool(data.get("isHidden") is True or data.get("hidden") is True or visibility == "hiddeninviewmode")
+
+
+def _get_page_info(page_dir: Path) -> tuple[str, bool]:
+    page_json = page_dir / "page.json"
+    if page_json.exists():
+        try:
+            data = json.loads(page_json.read_text(encoding="utf-8"))
+            return data.get("displayName", page_dir.name), _page_is_hidden(data)
+        except (json.JSONDecodeError, KeyError):
+            pass
+    return page_dir.name, False
+
+
+def _visual_position(data: dict) -> dict:
+    position = data.get("position", {})
+    return position if isinstance(position, dict) else {}
 
 
 def _artifact_rel_path(report_path: Path, file_path: Path) -> str:
@@ -1844,10 +1975,286 @@ def _bookmark_projection_entry_prefix(path: str) -> str:
     return m.group(1) if m else path
 
 
+def _report_issue_from_usage(
+    usage: UsageRef,
+    *,
+    issue_type: str,
+    severity: str,
+    message: str,
+    suggestions: list[dict] | None = None,
+) -> ReportIssue:
+    return ReportIssue(
+        severity=severity,
+        issue_type=issue_type,
+        report=usage.report,
+        page=usage.page,
+        visual_type=usage.visual_type,
+        visual_title=usage.visual_title,
+        visual_id=usage.visual_id,
+        context=usage.context,
+        table=usage.table,
+        name=usage.name,
+        ref_type=usage.ref_type,
+        artifact_kind=usage.artifact_kind,
+        artifact_path=usage.artifact_path,
+        source_path=usage.source_path,
+        selector_value=usage.selector_value,
+        stale_kind=usage.stale_kind,
+        visual_hidden=usage.visual_hidden,
+        page_hidden=usage.page_hidden,
+        visual_x=usage.visual_x,
+        visual_y=usage.visual_y,
+        visual_width=usage.visual_width,
+        visual_height=usage.visual_height,
+        message=message,
+        suggestions=suggestions or [],
+    )
+
+
+def _report_issue_dedupe_key(issue: ReportIssue) -> tuple:
+    if issue.issue_type == "invalid_report_json":
+        return (issue.issue_type, issue.report, issue.artifact_path)
+    return (
+        issue.issue_type,
+        issue.report,
+        issue.page,
+        issue.visual_id,
+        issue.table.casefold(),
+        issue.name.casefold(),
+        issue.ref_type.casefold(),
+        issue.artifact_path,
+        issue.source_path,
+        issue.selector_value,
+        issue.stale_kind,
+        issue.message,
+    )
+
+
+def _dedupe_report_issues(issues: list[ReportIssue]) -> list[ReportIssue]:
+    deduped: dict[tuple, ReportIssue] = {}
+    for issue in issues:
+        deduped.setdefault(_report_issue_dedupe_key(issue), issue)
+    return list(deduped.values())
+
+
+def _normalize_suggestion_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.casefold())
+
+
+def _suggestion_confidence(score: float) -> str:
+    if score >= 0.92:
+        return "High"
+    if score >= 0.78:
+        return "Medium"
+    return "Low"
+
+
+def _item_matches_ref_type(item: ModelItem, ref_type: str) -> bool:
+    if ref_type == "Measure":
+        return item.item_type == "Measure"
+    if ref_type == "Column":
+        return item.item_type in ("Column", "Calculated Column")
+    if ref_type == "HierarchyLevel":
+        return item.item_type in ("Column", "Calculated Column")
+    return True
+
+
+def _fuzzy_suggestions(usage: UsageRef, items: list[ModelItem]) -> list[dict]:
+    target_name = _normalize_suggestion_text(usage.name)
+    target_table = _normalize_suggestion_text(usage.table)
+    if not target_name:
+        return []
+
+    candidates = []
+    for item in items:
+        if not _item_matches_ref_type(item, usage.ref_type):
+            continue
+        item_name = _normalize_suggestion_text(item.name)
+        item_table = _normalize_suggestion_text(item.table)
+        if not item_name:
+            continue
+        if (
+            target_name[0] != item_name[0]
+            and target_name not in item_name
+            and item_name not in target_name
+            and target_table != item_table
+        ):
+            continue
+
+        name_score = SequenceMatcher(None, target_name, item_name).ratio()
+        table_score = SequenceMatcher(None, target_table, item_table).ratio() if target_table and item_table else 0.0
+        score = (name_score * 0.75) + (table_score * 0.25)
+        if target_name == item_name:
+            score = max(score, 0.93)
+        if score < 0.64:
+            continue
+
+        candidates.append({
+            "table": item.table,
+            "name": item.name,
+            "type": item.item_type,
+            "score": round(score, 3),
+            "confidence": _suggestion_confidence(score),
+            "action": "suggest_replace",
+        })
+
+    candidates.sort(key=lambda s: (-s["score"], s["table"].casefold(), s["name"].casefold()))
+    return candidates[:5]
+
+
+def _classify_missing_usage(
+    usage: UsageRef,
+    *,
+    model_table_names: set[str],
+    report_entity_names: set[str],
+    measure_keys: set[tuple[str, str]],
+    column_keys: set[tuple[str, str]],
+    hierarchy_keys: set[tuple[str, str]],
+) -> str | None:
+    table_key = usage.table.casefold()
+    nkey = normalize_key(usage.table, usage.name)
+    table_known = table_key in model_table_names or table_key in report_entity_names
+
+    if not table_known:
+        return "missing_table"
+    if usage.ref_type == "Measure" and nkey not in measure_keys:
+        return "missing_report_measure" if table_key in report_entity_names and table_key not in model_table_names else "missing_measure"
+    if usage.ref_type == "Column" and nkey not in column_keys:
+        return "missing_column"
+    if usage.ref_type == "HierarchyLevel" and nkey not in hierarchy_keys:
+        return "missing_column"
+    if usage.ref_type == "metadata" and nkey not in measure_keys and nkey not in column_keys:
+        return "missing_column"
+    return None
+
+
+def _missing_issue_message(issue_type: str, usage: UsageRef) -> str:
+    ref_label = f"{usage.table}[{usage.name}]" if usage.table and usage.name else usage.name or usage.table
+    if issue_type == "inactive_visual_filter_reference":
+        return f"Visual filter pane contains an inactive all-values filter card for {ref_label}; remove the stale card or reconnect it to an existing field."
+    if issue_type == "stale_formatting_rule":
+        return f"Visual formatting rule uses old field {ref_label}; clean the stale formatting rule or recreate it from an existing field."
+    if issue_type == "missing_table":
+        return f"Report references table/entity '{usage.table}', but it was not found in the selected semantic model or report metadata."
+    if issue_type == "missing_measure":
+        return f"Report references measure {ref_label}, but that measure was not found."
+    if issue_type == "missing_report_measure":
+        return f"Report references report-level measure {ref_label}, but that report measure definition was not found."
+    if issue_type == "missing_column":
+        return f"Report references {ref_label}, but that field was not found."
+    return f"Report reference {ref_label} could not be resolved."
+
+
+def build_report_issues(
+    *,
+    direct_usages: list[UsageRef],
+    stale_usages: list[UsageRef],
+    invalid_json_issues: list[ReportIssue],
+    all_items: list[ModelItem],
+    model_items: list[ModelItem],
+    hierarchies: list[HierarchyInfo],
+    warnings: list[AnalyzerWarning],
+) -> list[ReportIssue]:
+    model_table_names = {item.table.casefold() for item in model_items}
+    report_entity_names = {item.table.casefold() for item in all_items if item.source_kind == "report"}
+    measure_keys = {normalize_key(*item.key) for item in all_items if item.item_type == "Measure"}
+    column_keys = {normalize_key(*item.key) for item in all_items if item.item_type in ("Column", "Calculated Column")}
+    hierarchy_keys = {normalize_key(info.table, info.name) for info in hierarchies}
+
+    issues: list[ReportIssue] = list(invalid_json_issues)
+    suggestion_cache: dict[tuple[str, str, str], list[dict]] = {}
+    for usage in direct_usages:
+        issue_type = _classify_missing_usage(
+            usage,
+            model_table_names=model_table_names,
+            report_entity_names=report_entity_names,
+            measure_keys=measure_keys,
+            column_keys=column_keys,
+            hierarchy_keys=hierarchy_keys,
+        )
+        if not issue_type:
+            continue
+        severity = "error"
+        if usage.stale_kind == "inactive_visual_filter_reference":
+            issue_type = "inactive_visual_filter_reference"
+            severity = "warning"
+        suggestion_key = (usage.table.casefold(), usage.name.casefold(), usage.ref_type.casefold())
+        if suggestion_key not in suggestion_cache:
+            suggestion_cache[suggestion_key] = _fuzzy_suggestions(usage, all_items)
+        issues.append(_report_issue_from_usage(
+            usage,
+            issue_type=issue_type,
+            severity=severity,
+            message=_missing_issue_message(issue_type, usage),
+            suggestions=suggestion_cache[suggestion_key] if severity == "error" else [],
+        ))
+
+    for usage in stale_usages:
+        if usage.stale_kind == "inactive_visual_filter_reference":
+            missing_type = _classify_missing_usage(
+                usage,
+                model_table_names=model_table_names,
+                report_entity_names=report_entity_names,
+                measure_keys=measure_keys,
+                column_keys=column_keys,
+                hierarchy_keys=hierarchy_keys,
+            )
+            if not missing_type:
+                continue
+            issues.append(_report_issue_from_usage(
+                usage,
+                issue_type="inactive_visual_filter_reference",
+                severity="warning",
+                message=_missing_issue_message("inactive_visual_filter_reference", usage),
+                suggestions=[],
+            ))
+            continue
+
+        if usage.stale_kind == "bookmark_projection_entry":
+            issue_type = "stale_bookmark_projection"
+        elif usage.stale_kind == "formatting_rule_reference":
+            issue_type = "stale_formatting_rule"
+        else:
+            issue_type = "stale_visual_selector"
+        label = f"{usage.table}[{usage.name}]" if usage.table and usage.name else usage.selector_value
+        message = (
+            _missing_issue_message("stale_formatting_rule", usage)
+            if issue_type == "stale_formatting_rule"
+            else f"Stale PBIR metadata still points to {label}, but it is not part of the live visual query."
+        )
+        issues.append(_report_issue_from_usage(
+            usage,
+            issue_type=issue_type,
+            severity="warning",
+            message=message,
+            suggestions=[{"action": "clean_stale", "confidence": "High"}],
+        ))
+
+    report_usage_by_table: dict[str, list[UsageRef]] = defaultdict(list)
+    for usage in direct_usages:
+        report_usage_by_table[usage.table.casefold()].append(usage)
+    for warning in warnings:
+        if warning.code not in ("UNRESOLVED_NAMEOF_TARGET", "AMBIGUOUS_NAMEOF_TARGET") or not warning.table:
+            continue
+        for usage in report_usage_by_table.get(warning.table.casefold(), []):
+            issues.append(_report_issue_from_usage(
+                usage,
+                issue_type="field_parameter_warning",
+                severity="warning",
+                message=warning.message,
+                suggestions=[],
+            ))
+
+    return _dedupe_report_issues(issues)
+
+
 # ── Report Scanning ───────────────────────────────────────────────────────────
 
 
-def scan_report_visuals(report_path: Path) -> tuple[list[UsageRef], list[UsageRef], dict]:
+def scan_report_visuals(
+    report_path: Path,
+    invalid_json_issues: list[ReportIssue] | None = None,
+) -> tuple[list[UsageRef], list[UsageRef], dict]:
     """Returns (live_usages, stale_usages, visual_meta) where visual_meta maps visual_id -> info."""
     rpt_name = report_display_name(report_path)
     pages_dir = report_path / "definition" / "pages"
@@ -1862,7 +2269,7 @@ def scan_report_visuals(report_path: Path) -> tuple[list[UsageRef], list[UsageRe
         if not page_dir.is_dir():
             continue
 
-        page_name = _get_page_name(page_dir)
+        page_name, page_hidden = _get_page_info(page_dir)
         visuals_dir = page_dir / "visuals"
         if not visuals_dir.exists():
             continue
@@ -1877,33 +2284,71 @@ def scan_report_visuals(report_path: Path) -> tuple[list[UsageRef], list[UsageRe
 
             try:
                 data = json.loads(visual_json.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                if invalid_json_issues is not None:
+                    invalid_json_issues.append(ReportIssue(
+                        severity="error",
+                        issue_type="invalid_report_json",
+                        report=rpt_name,
+                        page=page_name,
+                        visual_id=visual_dir.name,
+                        artifact_kind="Visual",
+                        artifact_path=_artifact_rel_path(report_path, visual_json),
+                        message=f"Could not parse PBIR JSON file: {exc}",
+                    ))
                 continue
 
             visual_type, visual_title = _get_visual_info(data)
             visual_id = visual_dir.name
+            visual_hidden = data.get("isHidden") is True or data.get("hidden") is True
+            position = _visual_position(data)
             visual_refs_local = []
             live_query_refs = _extract_query_refs(data.get("visual", {}).get("query", {}).get("queryState", {}))
             field_parameter_buckets = _extract_field_parameter_buckets(data.get("visual", {}).get("query", {}).get("queryState", {}))
+            inactive_filter_prefixes = _inactive_filter_field_prefixes(data)
 
             refs = _find_json_refs(data)
+            formatting_rule_entries = {
+                prefix
+                for ref in refs
+                if _determine_context(ref["path"]) == "Aggregation"
+                and ref["path"].startswith("visual.objects.")
+                for prefix in (_formatting_rule_entry_prefix(ref["path"]),)
+                if prefix
+            }
             stale_entry_selectors: dict[str, str] = {}
             for ref in refs:
                 raw_value = ref.get("raw_value", "")
+                selector_prefix = _selector_entry_prefix(ref["path"])
                 if (
                     ref["ref_type"] == "metadata"
                     and _is_selector_metadata_path(ref["path"])
                     and raw_value
                     and raw_value not in live_query_refs
+                    and selector_prefix not in formatting_rule_entries
                 ):
-                    stale_entry_selectors[_selector_entry_prefix(ref["path"])] = raw_value
+                    stale_entry_selectors[selector_prefix] = raw_value
             for ref in refs:
+                if ref["ref_type"] == "metadata" and _selector_entry_prefix(ref["path"]) in formatting_rule_entries:
+                    continue
                 context = _determine_context(ref["path"])
                 entry_selector_value = next(
                     (selector_value for prefix, selector_value in stale_entry_selectors.items() if ref["path"].startswith(prefix)),
                     "",
                 )
+                formatting_selector_prefix = (
+                    _formatting_selector_entry_prefix(ref["path"])
+                    if context == "Formatting" and ".selector." in ref["path"] and not _is_selector_metadata_path(ref["path"])
+                    else ""
+                )
+                inactive_filter_prefix = next(
+                    (prefix for prefix in inactive_filter_prefixes if ref["path"].startswith(prefix)),
+                    "",
+                )
+                is_formatting_rule_reference = context == "Aggregation" and ref["path"].startswith("visual.objects.")
                 is_stale_selector = bool(entry_selector_value)
+                is_stale_formatting_selector = bool(formatting_selector_prefix)
+                is_inactive_filter_reference = bool(inactive_filter_prefix)
                 u = UsageRef(
                     table=ref["table"],
                     name=ref["name"],
@@ -1917,11 +2362,27 @@ def scan_report_visuals(report_path: Path) -> tuple[list[UsageRef], list[UsageRe
                     source_path=ref["path"],
                     artifact_kind="Visual",
                     artifact_path=_artifact_rel_path(report_path, visual_json),
-                    selector_value=entry_selector_value,
-                    is_stale=is_stale_selector,
+                    selector_value=entry_selector_value or format_item_ref((ref["table"], ref["name"])),
+                    is_stale=is_stale_selector or is_stale_formatting_selector or is_inactive_filter_reference or is_formatting_rule_reference,
+                    stale_kind=(
+                        "visual_formatting_selector_entry" if is_stale_formatting_selector
+                        else "inactive_visual_filter_reference" if inactive_filter_prefix
+                        else "formatting_rule_reference" if is_formatting_rule_reference
+                        else ""
+                    ),
+                    visual_hidden=visual_hidden,
+                    page_hidden=page_hidden,
+                    visual_x=position.get("x"),
+                    visual_y=position.get("y"),
+                    visual_width=position.get("width"),
+                    visual_height=position.get("height"),
                 )
-                if is_stale_selector:
-                    u.context = "Stale Formatting"
+                if is_stale_selector or is_stale_formatting_selector or is_inactive_filter_reference or is_formatting_rule_reference:
+                    u.context = (
+                        "Inactive Filter" if is_inactive_filter_reference
+                        else "Stale Formatting Rule" if is_formatting_rule_reference
+                        else "Stale Formatting"
+                    )
                     stale_usages.append(u)
                 else:
                     usages.append(u)
@@ -1931,6 +2392,12 @@ def scan_report_visuals(report_path: Path) -> tuple[list[UsageRef], list[UsageRe
                 "type": visual_type,
                 "title": visual_title,
                 "page": page_name,
+                "hidden": visual_hidden,
+                "page_hidden": page_hidden,
+                "x": position.get("x"),
+                "y": position.get("y"),
+                "width": position.get("width"),
+                "height": position.get("height"),
                 "refs": visual_refs_local,
                 "field_parameter_buckets": field_parameter_buckets,
             }
@@ -1938,7 +2405,11 @@ def scan_report_visuals(report_path: Path) -> tuple[list[UsageRef], list[UsageRe
     return usages, stale_usages, visual_meta
 
 
-def scan_visual_interactions(report_path: Path, visual_meta: dict) -> list[UsageRef]:
+def scan_visual_interactions(
+    report_path: Path,
+    visual_meta: dict,
+    invalid_json_issues: list[ReportIssue] | None = None,
+) -> list[UsageRef]:
     rpt_name = report_display_name(report_path)
     pages_dir = report_path / "definition" / "pages"
     usages = []
@@ -1956,10 +2427,21 @@ def scan_visual_interactions(report_path: Path, visual_meta: dict) -> list[Usage
 
         try:
             data = json.loads(page_json.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            if invalid_json_issues is not None:
+                invalid_json_issues.append(ReportIssue(
+                    severity="error",
+                    issue_type="invalid_report_json",
+                    report=rpt_name,
+                    page=page_dir.name,
+                    artifact_kind="Page",
+                    artifact_path=_artifact_rel_path(report_path, page_json),
+                    message=f"Could not parse PBIR JSON file: {exc}",
+                ))
             continue
 
         page_name = data.get("displayName", page_dir.name)
+        page_hidden = _page_is_hidden(data)
 
         # ── Visual interactions (slicer targets) ──
         interactions = data.get("visualInteractions", [])
@@ -1992,15 +2474,31 @@ def scan_visual_interactions(report_path: Path, visual_meta: dict) -> list[Usage
                         source_path="visualInteractions",
                         artifact_kind="Page",
                         artifact_path=_artifact_rel_path(report_path, page_json),
+                        visual_hidden=bool(source_meta.get("hidden", False)),
+                        page_hidden=bool(source_meta.get("page_hidden", page_hidden)),
+                        visual_x=source_meta.get("x"),
+                        visual_y=source_meta.get("y"),
+                        visual_width=source_meta.get("width"),
+                        visual_height=source_meta.get("height"),
                     ))
 
         # ── Page-level filters ──
-        page_filters = data.get("filters", [])
-        if isinstance(page_filters, list):
-            for filt in page_filters:
+        page_filter_groups = (
+            ("Page Filter", "Page Filter", data.get("filters", []), ["filters"]),
+            (
+                "Filters pane",
+                "Filters pane (page)",
+                data.get("filterConfig", {}).get("filters", []) if isinstance(data.get("filterConfig"), dict) else [],
+                ["filterConfig", "filters"],
+            ),
+        )
+        for visual_type, context, page_filters, path_prefix in page_filter_groups:
+            if not isinstance(page_filters, list):
+                continue
+            for idx, filt in enumerate(page_filters):
                 if not isinstance(filt, dict):
                     continue
-                refs = _find_json_refs(filt)
+                refs = _filter_pane_refs(filt, path_prefix + [f"[{idx}]"])
                 for ref in refs:
                     usages.append(UsageRef(
                         table=ref["table"],
@@ -2008,13 +2506,14 @@ def scan_visual_interactions(report_path: Path, visual_meta: dict) -> list[Usage
                         ref_type=ref["ref_type"],
                         report=rpt_name,
                         page=page_name,
-                        visual_type="Page Filter",
+                        visual_type=visual_type,
                         visual_title="",
                         visual_id="",
-                        context="Page Filter",
+                        context=context,
                         source_path=ref["path"],
                         artifact_kind="Page",
                         artifact_path=_artifact_rel_path(report_path, page_json),
+                        page_hidden=page_hidden,
                     ))
 
         # ── Drillthrough target fields ──
@@ -2038,6 +2537,7 @@ def scan_visual_interactions(report_path: Path, visual_meta: dict) -> list[Usage
                         source_path=ref["path"],
                         artifact_kind="Page",
                         artifact_path=_artifact_rel_path(report_path, page_json),
+                        page_hidden=page_hidden,
                     ))
         elif isinstance(drillthrough, dict):
             refs = _find_json_refs(drillthrough)
@@ -2055,12 +2555,70 @@ def scan_visual_interactions(report_path: Path, visual_meta: dict) -> list[Usage
                     source_path=ref["path"],
                     artifact_kind="Page",
                     artifact_path=_artifact_rel_path(report_path, page_json),
+                    page_hidden=page_hidden,
                 ))
 
     return usages
 
 
-def scan_bookmarks(report_path: Path, visual_meta: dict | None = None) -> tuple[list[UsageRef], list[UsageRef]]:
+def scan_report_filters(
+    report_path: Path,
+    invalid_json_issues: list[ReportIssue] | None = None,
+) -> list[UsageRef]:
+    rpt_name = report_display_name(report_path)
+    report_json = report_path / "definition" / "report.json"
+    usages = []
+
+    if not report_json.exists():
+        return usages
+
+    try:
+        data = json.loads(report_json.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        if invalid_json_issues is not None:
+            invalid_json_issues.append(ReportIssue(
+                severity="error",
+                issue_type="invalid_report_json",
+                report=rpt_name,
+                artifact_kind="Report",
+                artifact_path=_artifact_rel_path(report_path, report_json),
+                message=f"Could not parse PBIR JSON file: {exc}",
+            ))
+        return usages
+
+    filter_config = data.get("filterConfig", {})
+    report_filters = filter_config.get("filters", []) if isinstance(filter_config, dict) else []
+    if not isinstance(report_filters, list):
+        return usages
+
+    for idx, filt in enumerate(report_filters):
+        if not isinstance(filt, dict):
+            continue
+        refs = _filter_pane_refs(filt, ["filterConfig", "filters", f"[{idx}]"])
+        for ref in refs:
+            usages.append(UsageRef(
+                table=ref["table"],
+                name=ref["name"],
+                ref_type=ref["ref_type"],
+                report=rpt_name,
+                page="",
+                visual_type="Filters pane",
+                visual_title="All pages",
+                visual_id="",
+                context="Filters pane (all pages)",
+                source_path=ref["path"],
+                artifact_kind="Report",
+                artifact_path=_artifact_rel_path(report_path, report_json),
+            ))
+
+    return usages
+
+
+def scan_bookmarks(
+    report_path: Path,
+    visual_meta: dict | None = None,
+    invalid_json_issues: list[ReportIssue] | None = None,
+) -> tuple[list[UsageRef], list[UsageRef]]:
     rpt_name = report_display_name(report_path)
     bookmarks_dir = report_path / "definition" / "bookmarks"
     usages = []
@@ -2073,7 +2631,19 @@ def scan_bookmarks(report_path: Path, visual_meta: dict | None = None) -> tuple[
     for bm_file in sorted(bookmarks_dir.glob("*.bookmark.json")):
         try:
             data = json.loads(bm_file.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            if invalid_json_issues is not None:
+                invalid_json_issues.append(ReportIssue(
+                    severity="error",
+                    issue_type="invalid_report_json",
+                    report=rpt_name,
+                    visual_type="Bookmark",
+                    visual_title=bm_file.stem,
+                    visual_id=bm_file.stem,
+                    artifact_kind="Bookmark",
+                    artifact_path=_artifact_rel_path(report_path, bm_file),
+                    message=f"Could not parse PBIR JSON file: {exc}",
+                ))
             continue
 
         bm_name = data.get("displayName", bm_file.stem)
@@ -2089,12 +2659,36 @@ def scan_bookmarks(report_path: Path, visual_meta: dict | None = None) -> tuple[
                 for visual_id, container in visual_containers.items():
                     if not isinstance(container, dict):
                         continue
+                    visual_info = visual_meta.get(visual_id, {})
+                    if not visual_info and invalid_json_issues is not None:
+                        page_name = _page_name_for_section(report_path, section_id)
+                        source_path = ".".join([
+                            "explorationState",
+                            "sections",
+                            section_id,
+                            "visualContainers",
+                            visual_id,
+                        ])
+                        invalid_json_issues.append(ReportIssue(
+                            severity="warning",
+                            issue_type="orphan_bookmark_visual_state",
+                            report=rpt_name,
+                            page=page_name,
+                            visual_type="Bookmark",
+                            visual_title=bm_name,
+                            visual_id=visual_id,
+                            context=f"Bookmark: {bm_name}" if bm_name else "Bookmark",
+                            artifact_kind="Bookmark",
+                            artifact_path=_artifact_rel_path(report_path, bm_file),
+                            source_path=source_path,
+                            message=f"Bookmark '{bm_name}' stores visual state for '{visual_id}', but that visual was not found on the report page.",
+                            suggestions=[],
+                        ))
                     single_visual = container.get("singleVisual", {})
                     if not isinstance(single_visual, dict):
                         continue
                     bookmark_params = single_visual.get("parameters", {})
                     bookmark_proj = single_visual.get("projections", {})
-                    visual_info = visual_meta.get(visual_id, {})
                     field_parameter_buckets = set(visual_info.get("field_parameter_buckets", set()))
                     if isinstance(bookmark_params, dict):
                         field_parameter_buckets |= {bucket for bucket, values in bookmark_params.items() if isinstance(values, list) and values}
@@ -2137,6 +2731,12 @@ def scan_bookmarks(report_path: Path, visual_meta: dict | None = None) -> tuple[
                                 "visual_type": visual_info.get("type") or single_visual.get("visualType", "Bookmark"),
                                 "visual_title": visual_info.get("title", ""),
                                 "visual_id": visual_id,
+                                "hidden": bool(visual_info.get("hidden", False)),
+                                "page_hidden": bool(visual_info.get("page_hidden", False)),
+                                "x": visual_info.get("x"),
+                                "y": visual_info.get("y"),
+                                "width": visual_info.get("width"),
+                                "height": visual_info.get("height"),
                             }
         refs = _find_json_refs(data)
 
@@ -2148,16 +2748,36 @@ def scan_bookmarks(report_path: Path, visual_meta: dict | None = None) -> tuple[
                 page_name = visual_info.get("page") or _page_name_for_section(report_path, section_id)
                 visual_type = visual_info.get("type") or "Bookmark"
                 visual_title = visual_info.get("title", "")
+                visual_hidden = bool(visual_info.get("hidden", False))
+                page_hidden = bool(visual_info.get("page_hidden", False))
+                visual_x = visual_info.get("x")
+                visual_y = visual_info.get("y")
+                visual_width = visual_info.get("width")
+                visual_height = visual_info.get("height")
             else:
                 page_name = ""
                 visual_type = "Bookmark"
                 visual_title = bm_name
                 visual_id = bm_file.stem
+                visual_hidden = False
+                page_hidden = False
+                visual_x = None
+                visual_y = None
+                visual_width = None
+                visual_height = None
 
             matched_stale = next(
                 (info for prefix, info in stale_entry_prefixes.items() if ref["path"].startswith(prefix)),
                 None,
             )
+            if matched_stale:
+                visual_hidden = bool(matched_stale.get("hidden", visual_hidden))
+                page_hidden = bool(matched_stale.get("page_hidden", page_hidden))
+                visual_x = matched_stale.get("x", visual_x)
+                visual_y = matched_stale.get("y", visual_y)
+                visual_width = matched_stale.get("width", visual_width)
+                visual_height = matched_stale.get("height", visual_height)
+            bookmark_context = f"Bookmark: {bm_name}" if bm_name else "Bookmark"
             usage_ref = UsageRef(
                 table=ref["table"],
                 name=ref["name"],
@@ -2167,16 +2787,22 @@ def scan_bookmarks(report_path: Path, visual_meta: dict | None = None) -> tuple[
                 visual_type=visual_type,
                 visual_title=visual_title or bm_name,
                 visual_id=visual_id,
-                context="Bookmark",
+                context=bookmark_context,
                 source_path=ref["path"],
                 artifact_kind="Bookmark",
                 artifact_path=_artifact_rel_path(report_path, bm_file),
                 is_stale=bool(matched_stale),
                 stale_kind="bookmark_projection_entry" if matched_stale else "",
                 selector_value=matched_stale["bucket"] if matched_stale else "",
+                visual_hidden=visual_hidden,
+                page_hidden=page_hidden,
+                visual_x=visual_x,
+                visual_y=visual_y,
+                visual_width=visual_width,
+                visual_height=visual_height,
             )
             if matched_stale:
-                usage_ref.context = "Stale Bookmark"
+                usage_ref.context = f"Stale Bookmark: {bm_name}" if bm_name else "Stale Bookmark"
                 stale_usages.append(usage_ref)
             else:
                 usages.append(usage_ref)
@@ -2187,6 +2813,7 @@ def scan_bookmarks(report_path: Path, visual_meta: dict | None = None) -> tuple[
 def scan_additional_definition_json(
     report_path: Path,
     excluded_files: set[Path],
+    invalid_json_issues: list[ReportIssue] | None = None,
 ) -> list[UsageRef]:
     """Fallback scan for model refs in report JSON not covered by visual/page/bookmark scanners."""
     rpt_name = report_display_name(report_path)
@@ -2202,7 +2829,16 @@ def scan_additional_definition_json(
 
         try:
             data = json.loads(json_file.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            if invalid_json_issues is not None:
+                invalid_json_issues.append(ReportIssue(
+                    severity="error",
+                    issue_type="invalid_report_json",
+                    report=rpt_name,
+                    artifact_kind=_invalid_json_artifact_kind(_artifact_rel_path(report_path, json_file)),
+                    artifact_path=_artifact_rel_path(report_path, json_file),
+                    message=f"Could not parse PBIR JSON file: {exc}",
+                ))
             continue
 
         refs = _find_json_refs(data)
@@ -2948,10 +3584,12 @@ def analyze(
     all_hierarchies = []
     all_field_parameters = []
     all_unsupported_metadata_refs = []
+    parsed_model_items = []
     warnings: list[AnalyzerWarning] = []
 
     for model_path in models:
         model_items = parse_model_items(model_path)
+        parsed_model_items.extend(model_items)
         all_items.extend(model_items)
         relationship_details = parse_relationship_details(model_path)
         all_relationship_details.extend(relationship_details)
@@ -2981,32 +3619,37 @@ def analyze(
     all_visual_usages = []
     all_stale_visual_usages = []
     all_interaction_usages = []
+    all_report_filter_usages = []
     all_bookmark_usages = []
     all_stale_bookmark_usages = []
     all_definition_meta_usages = []
     all_report_issues = []
+    all_invalid_json_issues = []
 
     for report_path in reports:
         all_report_issues.extend(scan_invalid_report_json(report_path))
         all_report_issues.extend(scan_report_extension_issues(report_path))
-        visual_usages, stale_visual_usages, visual_meta = scan_report_visuals(report_path)
+        visual_usages, stale_visual_usages, visual_meta = scan_report_visuals(report_path, all_invalid_json_issues)
         all_visual_usages.extend(visual_usages)
         all_stale_visual_usages.extend(stale_visual_usages)
-        all_interaction_usages.extend(scan_visual_interactions(report_path, visual_meta))
-        bookmark_usages, stale_bookmark_usages = scan_bookmarks(report_path, visual_meta)
+        all_interaction_usages.extend(scan_visual_interactions(report_path, visual_meta, all_invalid_json_issues))
+        all_report_filter_usages.extend(scan_report_filters(report_path, all_invalid_json_issues))
+        bookmark_usages, stale_bookmark_usages = scan_bookmarks(report_path, visual_meta, all_invalid_json_issues)
         all_bookmark_usages.extend(bookmark_usages)
         all_stale_bookmark_usages.extend(stale_bookmark_usages)
 
         excluded_files = set(report_path.glob("definition/pages/*/visuals/*/visual.json"))
         excluded_files |= set(report_path.glob("definition/pages/*/page.json"))
+        excluded_files.add(report_path / "definition" / "report.json")
         excluded_files |= set(report_path.glob("definition/bookmarks/*.bookmark.json"))
         all_definition_meta_usages.extend(
-            scan_additional_definition_json(report_path, excluded_files)
+            scan_additional_definition_json(report_path, excluded_files, all_invalid_json_issues)
         )
 
     direct_usages = (
         all_visual_usages
         + all_interaction_usages
+        + all_report_filter_usages
         + all_bookmark_usages
         + all_definition_meta_usages
     )
@@ -3026,6 +3669,16 @@ def analyze(
     )
 
     all_usages = direct_usages + synthetic_field_parameter_usages
+
+    report_issues = build_report_issues(
+        direct_usages=direct_usages,
+        stale_usages=all_stale_visual_usages + all_stale_bookmark_usages,
+        invalid_json_issues=all_report_issues + all_invalid_json_issues,
+        all_items=all_items,
+        model_items=parsed_model_items,
+        hierarchies=all_hierarchies,
+        warnings=warnings,
+    )
 
     usage_index: dict[tuple[str, str], list[UsageRef]] = defaultdict(list)
     for u in all_usages:
@@ -3282,7 +3935,7 @@ def analyze(
         "summary": summary,
         "table_summaries": table_summaries,
         "warnings": [_serialize_warning(w) for w in warnings],
-        "report_issues": [_serialize_report_issue(issue) for issue in all_report_issues],
+        "report_issues": [_serialize_report_issue(issue) for issue in report_issues],
     }
 
 

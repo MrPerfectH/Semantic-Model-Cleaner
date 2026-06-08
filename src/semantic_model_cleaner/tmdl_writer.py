@@ -886,13 +886,18 @@ def rename_table(
         return {"ok": False, "error": "Target table name must be different"}
 
     source_file = _find_tmdl_file(model_path, table)
-    if not source_file:
+    target_existing = _find_tmdl_file(model_path, target_table)
+    repair_only = False
+    if not source_file and target_existing:
+        source_file = target_existing
+        repair_only = True
+    elif not source_file:
         return {"ok": False, "error": f"TMDL file not found for table '{table}'"}
-    if _find_tmdl_file(model_path, target_table):
+    if not repair_only and target_existing:
         return {"ok": False, "error": f"Table '{target_table}' already exists"}
 
     target_file = source_file.with_name(f"{target_table}.tmdl")
-    if target_file.exists():
+    if not repair_only and target_file.exists():
         return {"ok": False, "error": f"Target TMDL file already exists: {target_file.name}"}
 
     changed_files = []
@@ -902,11 +907,11 @@ def rename_table(
         new_text, count = _rewrite_table_name_in_text(text, table, target_table)
         if new_text != text:
             reference_count += count
-            changed_files.append(str(target_file if filepath == source_file else filepath))
+            changed_files.append(str(target_file if filepath == source_file and not repair_only else filepath))
             if not dry_run:
                 filepath.write_text(new_text, encoding="utf-8")
 
-    if not dry_run:
+    if not dry_run and not repair_only:
         source_file.rename(target_file)
 
     return {
@@ -917,9 +922,12 @@ def rename_table(
         "source_file": str(source_file),
         "target_file": str(target_file),
         "dry_run": dry_run,
+        "repair_only": repair_only,
         "changed_files": changed_files,
         "updated_reference_count": reference_count,
-        "warnings": [],
+        "warnings": [f"Table '{target_table}' already exists; repaired remaining references from '{table}'."]
+        if repair_only
+        else [],
     }
 
 

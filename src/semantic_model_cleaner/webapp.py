@@ -1518,6 +1518,37 @@ def api_cleanup_stale_report_metadata():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/report/issues/apply", methods=["POST"])
+def api_apply_report_issue_actions():
+    """Apply exact report-health row actions to PBIR report files."""
+    try:
+        data = request.get_json(silent=True) or {}
+        entries = data.get("entries", [])
+        if not entries:
+            return jsonify({"error": "No report issue actions provided"}), 400
+
+        backup_paths = []
+        if data.get("create_backup", False):
+            for report_path_str in sorted({str(entry.get("report_path", "") or "").strip() for entry in entries if entry.get("report_path")}):
+                report_path = Path(report_path_str)
+                if not report_path.exists():
+                    return jsonify({"error": f"Report path not found: {report_path}"}), 400
+                backup_paths.append(str(report_writer.create_backup(report_path)))
+
+        result = report_writer.apply_report_issue_actions(entries=entries)
+        if not result.get("ok"):
+            return jsonify(result), 400
+
+        return jsonify({
+            "result": result,
+            "updated_reference_count": result.get("updated_reference_count", 0),
+            "updated_file_count": result.get("updated_file_count", 0),
+            "backup_paths": backup_paths or None,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/backup", methods=["GET"])
 def api_backup_info():
     """Get current backup info."""

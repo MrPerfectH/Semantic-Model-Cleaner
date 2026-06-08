@@ -27,6 +27,26 @@ def _find_item(results: dict, table: str, name: str, item_type: str | None = Non
     return matches[0]
 
 
+def _write_basic_sales_model(model: Path) -> None:
+    tables_dir = model / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n"
+        "\tcolumn Region\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n"
+        "\tmeasure 'Revenue Total' = SUM(Sales[Amount])\n",
+        encoding="utf-8",
+    )
+
+
+def _write_page(report: Path, page_id: str = "Page1", display_name: str = "Overview") -> Path:
+    page_dir = report / "definition" / "pages" / page_id
+    page_dir.mkdir(parents=True)
+    (page_dir / "page.json").write_text(json.dumps({"displayName": display_name}, indent=2), encoding="utf-8")
+    return page_dir
+
+
 def test_field_parameter_targets_are_marked_used():
     results = _analyze_fixture("field_parameter_used")
 
@@ -82,6 +102,35 @@ def test_split_tmdl_item_records_source_file(tmp_path):
     assert payload_revenue["sourceFile"] == str(split_file)
 
 
+def test_source_root_discovery_ignores_internal_fixture_and_hidden_reports(tmp_path):
+    source_root = tmp_path / "Semantic-Model-Cleaner"
+    (source_root / "src" / "semantic_model_cleaner").mkdir(parents=True)
+    (source_root / "pyproject.toml").write_text("[project]\nname = 'semantic-model-cleaner'\n", encoding="utf-8")
+
+    internal_report = source_root / "tests" / "fixtures" / "sample" / "Reports" / "TestReport.Report"
+    demo_report = source_root / "examples" / "public-demo-workspace" / "Reports" / "TestReport.Report"
+    hidden_report = source_root / ".claude" / "worktrees" / "old" / "Reports" / "TestReport.Report"
+    real_report = source_root / "Workspace" / "Reports" / "RealReport.Report"
+    for report in (internal_report, demo_report, hidden_report, real_report):
+        report.mkdir(parents=True)
+
+    reports = analyzer.discover_reports([source_root])
+
+    assert reports == [real_report.resolve()]
+
+
+def test_direct_artifact_discovery_still_allows_explicit_fixture_paths(tmp_path):
+    source_root = tmp_path / "Semantic-Model-Cleaner"
+    (source_root / "src" / "semantic_model_cleaner").mkdir(parents=True)
+    (source_root / "pyproject.toml").write_text("[project]\nname = 'semantic-model-cleaner'\n", encoding="utf-8")
+    explicit_report = source_root / "tests" / "fixtures" / "sample" / "Reports" / "TestReport.Report"
+    explicit_report.mkdir(parents=True)
+
+    reports = analyzer.discover_reports([explicit_report])
+
+    assert reports == [explicit_report.resolve()]
+
+
 def test_unused_field_parameter_table_does_not_promote_targets():
     results = _analyze_fixture("field_parameter_unused")
 
@@ -111,6 +160,495 @@ def test_json_output_includes_warnings():
 
     assert "warnings" in payload
     assert isinstance(payload["warnings"], list)
+    assert "reportIssues" in payload
+    assert isinstance(payload["reportIssues"], list)
+
+
+def test_report_issues_include_missing_visual_fields_filters_and_suggestions(tmp_path):
+    model = tmp_path / "Models" / "Sales.SemanticModel"
+    report = tmp_path / "Reports" / "Executive.Report"
+    _write_basic_sales_model(model)
+    page_dir = _write_page(report)
+    visual_dir = page_dir / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    (visual_dir / "visual.json").write_text(
+        json.dumps(
+            {
+                "isHidden": True,
+                "position": {"x": 120, "y": 240, "width": 320, "height": 180},
+                "visual": {
+                    "visualType": "tableEx",
+                    "query": {
+                        "queryState": {
+                            "Values": {
+                                "projections": [
+                                    {
+                                        "field": {
+                                            "Measure": {
+                                                "Property": "Revenue Totl",
+                                                "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                            }
+                                        },
+                                        "queryRef": "Sales.Revenue Totl",
+                                    },
+                                    {
+                                        "field": {
+                                            "Column": {
+                                                "Property": "Region Missing",
+                                                "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                            }
+                                        },
+                                        "queryRef": "Sales.Region Missing",
+                                    },
+                                ]
+                            }
+                        }
+                    },
+                    "filterConfig": {
+                        "filters": [
+                            {
+                                "field": {
+                                    "Column": {
+                                        "Property": "Inactive Only",
+                                        "Expression": {"SourceRef": {"Entity": "Legacy Sales"}},
+                                    }
+                                }
+                            },
+                            {
+                                "field": {
+                                    "Column": {
+                                        "Property": "Amount",
+                                        "Expression": {"SourceRef": {"Entity": "Legacy Sales"}},
+                                    }
+                                },
+                                "filter": {
+                                    "From": [{"Name": "l", "Entity": "Legacy Sales", "Type": 0}],
+                                    "Where": [
+                                        {
+                                            "Condition": {
+                                                "In": {
+                                                    "Expressions": [
+                                                        {
+                                                            "Column": {
+                                                                "Expression": {"SourceRef": {"Source": "l"}},
+                                                                "Property": "Amount",
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                        }
+                                    ],
+                                },
+                            }
+                        ]
+                    },
+                    "objects": {
+                        "values": [
+                            {
+                                "properties": {
+                                    "fontColor": {
+                                        "solid": {
+                                            "color": {
+                                                "expr": {
+                                                    "FillRule": {
+                                                        "Input": {
+                                                            "Aggregation": {
+                                                                "Expression": {
+                                                                    "Column": {
+                                                                        "Expression": {"SourceRef": {"Entity": "Legacy Sales"}},
+                                                                        "Property": "Old Color Driver",
+                                                                    }
+                                                                },
+                                                                "Function": 0,
+                                                            }
+                                                        },
+                                                        "FillRule": {
+                                                            "linearGradient2": {
+                                                                "min": {"color": {"Literal": {"Value": "'#c1272d'"}}},
+                                                                "max": {"color": {"Literal": {"Value": "'#7faf23'"}}},
+                                                            }
+                                                        },
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "selector": {
+                                    "data": [{"dataViewWildcard": {"matchingOption": 1}}],
+                                    "metadata": "Sum(Legacy Sales.Old Color Driver)",
+                                },
+                            }
+                        ],
+                        "dataPoint": [
+                            {
+                                "properties": {"fill": {"solid": {"color": {"expr": {"Literal": {"Value": "'#228B22'"}}}}}},
+                                "selector": {
+                                    "data": [
+                                        {
+                                            "scopeId": {
+                                                "Comparison": {
+                                                    "Left": {
+                                                        "Column": {
+                                                            "Property": "Old Format Selector",
+                                                            "Expression": {"SourceRef": {"Entity": "Legacy Sales"}},
+                                                        }
+                                                    },
+                                                    "Right": {"Literal": {"Value": "'Old'"}},
+                                                }
+                                            }
+                                        }
+                                    ]
+                                },
+                            }
+                        ]
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    results = analyzer.analyze(tmp_path.resolve())
+    issue_types = {issue["issueType"] for issue in results["report_issues"]}
+
+    assert {"missing_measure", "missing_column", "missing_table"} <= issue_types
+    inactive_issue = next(issue for issue in results["report_issues"] if issue["name"] == "Inactive Only")
+    assert inactive_issue["issueType"] == "inactive_visual_filter_reference"
+    assert inactive_issue["severity"] == "warning"
+    assert inactive_issue["context"] == "Inactive Filter"
+    assert inactive_issue["sourcePath"].endswith("visual.filterConfig.filters.[0].field.Column")
+    old_format_selector = next(issue for issue in results["report_issues"] if issue["name"] == "Old Format Selector")
+    assert old_format_selector["issueType"] == "stale_visual_selector"
+    assert old_format_selector["severity"] == "warning"
+    assert old_format_selector["context"] == "Stale Formatting"
+    assert old_format_selector["staleKind"] == "visual_formatting_selector_entry"
+    assert old_format_selector["suggestions"][0]["action"] == "clean_stale"
+    stale_formatting_rule = next(issue for issue in results["report_issues"] if issue["name"] == "Old Color Driver")
+    assert stale_formatting_rule["issueType"] == "stale_formatting_rule"
+    assert stale_formatting_rule["severity"] == "warning"
+    assert stale_formatting_rule["context"] == "Stale Formatting Rule"
+    assert stale_formatting_rule["staleKind"] == "formatting_rule_reference"
+    assert stale_formatting_rule["suggestions"][0]["action"] == "clean_stale"
+    assert "selector.metadata" not in stale_formatting_rule["sourcePath"]
+    missing_measure = next(issue for issue in results["report_issues"] if issue["issueType"] == "missing_measure")
+    assert missing_measure["report"] == "Executive"
+    assert missing_measure["page"] == "Overview"
+    assert missing_measure["visualId"] == "Visual1"
+    assert missing_measure["context"] == "Values"
+    assert missing_measure["visualHidden"] is True
+    assert missing_measure["pageHidden"] is False
+    assert missing_measure["visualX"] == 120
+    assert missing_measure["visualY"] == 240
+    assert missing_measure["suggestions"][0]["table"] == "Sales"
+    assert missing_measure["suggestions"][0]["name"] == "Revenue Total"
+    assert missing_measure["suggestions"][0]["action"] == "suggest_replace"
+
+    revenue_total = _find_item(results, "Sales", "Revenue Total", "Measure")
+    assert revenue_total["status"] == "NOT USED"
+
+
+def test_report_issue_visual_labels_distinguish_table_visuals(tmp_path):
+    model = tmp_path / "Models" / "Sales.SemanticModel"
+    report = tmp_path / "Reports" / "Executive.Report"
+    _write_basic_sales_model(model)
+    page_dir = _write_page(report)
+
+    first_visual = page_dir / "visuals" / "WhatsNewVisual"
+    second_visual = page_dir / "visuals" / "AlertsVisual"
+    titled_visual = page_dir / "visuals" / "TitledVisual"
+    first_visual.mkdir(parents=True)
+    second_visual.mkdir(parents=True)
+    titled_visual.mkdir(parents=True)
+
+    def write_visual(path: Path, table: str, column: str, title_text: str = "") -> None:
+        visual = {
+            "visual": {
+                "visualType": "tableEx",
+                "query": {
+                    "queryState": {
+                        "Values": {
+                            "projections": [
+                                {
+                                    "field": {
+                                        "Column": {
+                                            "Property": column,
+                                            "Expression": {"SourceRef": {"Entity": table}},
+                                        }
+                                    },
+                                    "queryRef": f"{table}.{column}",
+                                }
+                            ]
+                        }
+                    }
+                },
+            }
+        }
+        if title_text:
+            visual["visual"]["visualContainerObjects"] = {
+                "title": [
+                    {
+                        "properties": {
+                            "text": {"expr": {"Literal": {"Value": f"'{title_text}'"}}},
+                            "show": {"expr": {"Literal": {"Value": "false"}}},
+                        }
+                    }
+                ]
+            }
+        path.write_text(json.dumps(visual, indent=2), encoding="utf-8")
+
+    write_visual(first_visual / "visual.json", "WhatsNew", "Release Date")
+    write_visual(second_visual / "visual.json", "Alerts", "Alert Text")
+    write_visual(titled_visual / "visual.json", "MissingTitleTable", "Name", "Release Notes")
+
+    results = analyzer.analyze(tmp_path.resolve())
+    issues_by_visual = {issue["visualId"]: issue for issue in results["report_issues"]}
+
+    assert issues_by_visual["WhatsNewVisual"]["visualTitle"] == ""
+    assert issues_by_visual["AlertsVisual"]["visualTitle"] == ""
+    assert issues_by_visual["TitledVisual"]["visualTitle"] == "Release Notes"
+
+
+def test_report_issues_include_page_bookmark_definition_and_invalid_json(tmp_path):
+    model = tmp_path / "Models" / "Sales.SemanticModel"
+    report = tmp_path / "Reports" / "Executive.Report"
+    _write_basic_sales_model(model)
+    page_dir = _write_page(report)
+    visual_dir = page_dir / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    bookmarks_dir = report / "definition" / "bookmarks"
+    bookmarks_dir.mkdir(parents=True)
+    (visual_dir / "visual.json").write_text(
+        json.dumps({"visual": {"visualType": "card", "query": {"queryState": {}}}}, indent=2),
+        encoding="utf-8",
+    )
+    (page_dir / "page.json").write_text(
+        json.dumps(
+            {
+                "displayName": "Overview",
+                "visibility": "HiddenInViewMode",
+                "filters": [
+                    {
+                        "field": {
+                            "Column": {
+                                "Property": "Missing Page Filter",
+                                "Expression": {"SourceRef": {"Entity": "Sales"}},
+                            }
+                        }
+                    }
+                ],
+                "filterConfig": {
+                    "filters": [
+                        {
+                            "field": {
+                                "Column": {
+                                    "Property": "Amount",
+                                    "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                }
+                            },
+                            "filter": {
+                                "From": [{"Name": "s", "Entity": "Sales", "Type": 0}],
+                                "Where": [
+                                    {
+                                        "Condition": {
+                                            "In": {
+                                                "Expressions": [
+                                                    {
+                                                        "Column": {
+                                                            "Expression": {"SourceRef": {"Source": "s"}},
+                                                            "Property": "Missing Pane Filter",
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        }
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                },
+                "drillthrough": [
+                    {
+                        "field": {
+                            "Column": {
+                                "Property": "Missing Drill",
+                                "Expression": {"SourceRef": {"Entity": "Sales"}},
+                            }
+                        }
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (report / "definition" / "report.json").write_text(
+        json.dumps(
+            {
+                "filterConfig": {
+                    "filters": [
+                        {
+                            "field": {
+                                "Column": {
+                                    "Property": "Missing All Pages Filter",
+                                    "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (bookmarks_dir / "Broken.bookmark.json").write_text(
+        json.dumps(
+            {
+                "displayName": "Broken bookmark",
+                "explorationState": {
+                    "sections": {
+                        "Page1": {
+                            "visualContainers": {
+                                "Visual1": {
+                                    "singleVisual": {
+                                        "visualType": "card",
+                                        "projections": {
+                                            "Values": [
+                                                {
+                                                    "field": {
+                                                        "Measure": {
+                                                            "Property": "Missing Bookmark Measure",
+                                                            "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                    }
+                                },
+                                "DeletedVisual": {
+                                    "singleVisual": {
+                                        "visualType": "card",
+                                        "projections": {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    custom_dir = report / "definition" / "custom"
+    custom_dir.mkdir(parents=True)
+    (custom_dir / "extra.json").write_text(
+        json.dumps(
+            {
+                "field": {
+                    "Column": {
+                        "Property": "Missing Definition",
+                        "Expression": {"SourceRef": {"Entity": "Sales"}},
+                    }
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (custom_dir / "bad.json").write_text("{ bad json", encoding="utf-8")
+
+    results = analyzer.analyze(tmp_path.resolve())
+    issues = results["report_issues"]
+
+    assert any(issue["issueType"] == "missing_column" and issue["context"] == "Page Filter" for issue in issues)
+    assert any(
+        issue["issueType"] == "missing_column"
+        and issue["context"] == "Filters pane (page)"
+        and issue["pageHidden"] is True
+        and issue["visualHidden"] is False
+        for issue in issues
+    )
+    pane_issue = next(
+        issue for issue in issues
+        if issue["issueType"] == "missing_column"
+        and issue["context"] == "Filters pane (page)"
+        and issue["name"] == "Missing Pane Filter"
+    )
+    assert pane_issue["sourcePath"].endswith("filter.Where.[0].Condition.In.Expressions.[0].Column")
+    assert any(
+        issue["issueType"] == "missing_column"
+        and issue["context"] == "Filters pane (all pages)"
+        and issue["artifactKind"] == "Report"
+        and issue["artifactPath"] == "definition/report.json"
+        for issue in issues
+    )
+    assert any(issue["issueType"] == "missing_column" and issue["context"] == "Drillthrough" for issue in issues)
+    assert any(
+        issue["issueType"] == "missing_measure"
+        and issue["artifactKind"] == "Bookmark"
+        and issue["context"] == "Bookmark: Broken bookmark"
+        for issue in issues
+    )
+    orphan_bookmark = next(issue for issue in issues if issue["issueType"] == "orphan_bookmark_visual_state")
+    assert orphan_bookmark["visualId"] == "DeletedVisual"
+    assert orphan_bookmark["artifactKind"] == "Bookmark"
+    assert orphan_bookmark["sourcePath"].endswith("visualContainers.DeletedVisual")
+    assert any(issue["issueType"] == "missing_column" and issue["artifactKind"] == "Definition JSON" for issue in issues)
+    assert any(issue["issueType"] == "invalid_report_json" and issue["artifactPath"] == "definition/custom/bad.json" for issue in issues)
+
+
+def test_report_issues_respect_selected_reports_only(tmp_path):
+    model = tmp_path / "Models" / "Sales.SemanticModel"
+    selected_report = tmp_path / "Reports" / "Selected.Report"
+    unselected_report = tmp_path / "Reports" / "Unselected.Report"
+    _write_basic_sales_model(model)
+    for report, missing_name in ((selected_report, "Selected Missing"), (unselected_report, "Unselected Missing")):
+        page_dir = _write_page(report)
+        visual_dir = page_dir / "visuals" / "Visual1"
+        visual_dir.mkdir(parents=True)
+        (visual_dir / "visual.json").write_text(
+            json.dumps(
+                {
+                    "visual": {
+                        "visualType": "card",
+                        "query": {
+                            "queryState": {
+                                "Values": {
+                                    "projections": [
+                                        {
+                                            "field": {
+                                                "Measure": {
+                                                    "Property": missing_name,
+                                                    "Expression": {"SourceRef": {"Entity": "Sales"}},
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                    }
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+    results = analyzer.analyze(
+        tmp_path.resolve(),
+        model_paths=[model],
+        report_paths=[selected_report],
+    )
+
+    assert {issue["report"] for issue in results["report_issues"]} == {"Selected"}
+    assert any(issue["name"] == "Selected Missing" for issue in results["report_issues"])
+    assert all(issue["name"] != "Unselected Missing" for issue in results["report_issues"])
 
 
 def test_rls_table_permission_marks_referenced_column_used(tmp_path):
@@ -299,6 +837,13 @@ def test_stale_formatting_selectors_do_not_count_as_live_usage(tmp_path):
         "_Measures.Net Sales - Actuals",
     }
     assert all(usage.context == "Stale Formatting" for usage in stale_measure["stale_usages"])
+    stale_issues = [issue for issue in results["report_issues"] if issue["issueType"] == "stale_visual_selector"]
+    assert len(stale_issues) >= 2
+    assert {
+        "_Measures.Revenue LY",
+        "_Measures.Net Sales - Actuals",
+    } <= {issue["selectorValue"] for issue in stale_issues}
+    assert all(issue["suggestions"][0]["action"] == "clean_stale" for issue in stale_issues)
 
 
 def test_source_ref_alias_counts_as_live_report_usage(tmp_path):
@@ -472,9 +1017,13 @@ def test_stale_bookmark_projections_do_not_count_as_live_usage(tmp_path):
     assert stale_measure["status"] == "NOT USED"
     assert stale_measure["usages"] == []
     assert len(stale_measure["stale_usages"]) == 1
-    assert stale_measure["stale_usages"][0].context == "Stale Bookmark"
+    assert stale_measure["stale_usages"][0].context == "Stale Bookmark: A&P Spend"
     assert stale_measure["stale_usages"][0].stale_kind == "bookmark_projection_entry"
     assert stale_measure["stale_usages"][0].selector_value == "Y2"
+    bookmark_issues = [issue for issue in results["report_issues"] if issue["issueType"] == "stale_bookmark_projection"]
+    assert len(bookmark_issues) == 1
+    assert bookmark_issues[0]["staleKind"] == "bookmark_projection_entry"
+    assert bookmark_issues[0]["selectorValue"] == "Y2"
 
 
 def test_unused_hidden_column_includes_review_triggers(tmp_path):
@@ -920,18 +1469,27 @@ def test_invalid_report_json_is_report_health_issue(tmp_path):
 
     results = analyzer.analyze(workspace.resolve())
 
-    assert results["report_issues"] == [
-        {
-            "severity": "error",
-            "issueType": "invalid_report_json",
-            "report": "Executive",
-            "page": "Overview",
-            "visualId": "Visual1",
-            "artifactKind": "Visual",
-            "artifactPath": "definition/pages/Page1/visuals/Visual1/visual.json",
-            "message": "Could not parse PBIR JSON file: Expecting property name enclosed in double quotes: line 1 column 3 (char 2)",
-        }
-    ]
+    assert len(results["report_issues"]) == 1
+    issue = results["report_issues"][0]
+    assert {
+        "severity": issue["severity"],
+        "issueType": issue["issueType"],
+        "report": issue["report"],
+        "page": issue["page"],
+        "visualId": issue["visualId"],
+        "artifactKind": issue["artifactKind"],
+        "artifactPath": issue["artifactPath"],
+        "message": issue["message"],
+    } == {
+        "severity": "error",
+        "issueType": "invalid_report_json",
+        "report": "Executive",
+        "page": "Overview",
+        "visualId": "Visual1",
+        "artifactKind": "Visual",
+        "artifactPath": "definition/pages/Page1/visuals/Visual1/visual.json",
+        "message": "Could not parse PBIR JSON file: Expecting property name enclosed in double quotes: line 1 column 3 (char 2)",
+    }
 
     payload = json.loads(analyzer.format_json_output(results))
     assert payload["reportIssues"][0]["issueType"] == "invalid_report_json"
