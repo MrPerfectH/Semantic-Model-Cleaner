@@ -139,6 +139,8 @@ python3 -m semantic_model_cleaner.web .
 
 A small synthetic demo workspace is available under [`examples/public-demo-workspace`](examples/public-demo-workspace). It exists to support screenshots, quick validation, and safe public examples.
 
+A richer synthetic QA workspace is available under [`examples/product-qa-workspace`](examples/product-qa-workspace). It exercises trust-critical flows such as Report Health, stale report metadata, broken references, Unsupported Metadata review downgrades, RLS-backed dependencies, and Report Extension Measures.
+
 ## Supported Exports
 
 - CLI: `json`, `xlsx`

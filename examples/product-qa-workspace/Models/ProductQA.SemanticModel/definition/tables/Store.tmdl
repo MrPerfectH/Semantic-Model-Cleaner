@@ -1,0 +1,9 @@
+table Store
+	column 'Store Code'
+		dataType: int64
+
+	column Region
+		dataType: string
+
+	column Name
+		dataType: string

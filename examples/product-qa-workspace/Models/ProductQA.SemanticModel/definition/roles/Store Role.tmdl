@@ -1,0 +1,7 @@
+role 'Store Role'
+	modelPermission: read
+	tablePermission Store =
+		```
+		'Store'[Store Code] IN {1, 10}
+		    && [Region] = "North"
+		```

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/reportExtension/1.0.0/schema.json",
+  "name": "extension",
+  "entities": [
+    {
+      "name": "Report Metrics",
+      "measures": [
+        {
+          "name": "Report Margin",
+          "dataType": "Double",
+          "expression": "DIVIDE('Sales'[Revenue], 100)",
+          "displayFolder": "Executive",
+          "formatString": "0.0%",
+          "references": {
+            "measures": [
+              {
+                "entity": "Sales",
+                "name": "Revenue"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

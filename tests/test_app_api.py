@@ -1,6 +1,12 @@
 import json
+from pathlib import Path
 
 from semantic_model_cleaner import analyzer, webapp as web_app
+
+
+PRODUCT_QA_WORKSPACE_DIR = (
+    Path(__file__).resolve().parents[1] / "examples" / "product-qa-workspace"
+)
 
 
 def _fake_results():
@@ -687,6 +693,42 @@ def test_api_analyze_returns_report_health_issues(tmp_path):
     assert payload["reportIssues"][0]["artifactPath"] == "definition/pages/Page1/visuals/Visual1/visual.json"
     assert payload["reportHealth"]["groups"][0]["key"] == "invalid_pbir_json"
     assert payload["reportHealth"]["groups"][0]["count"] == 1
+
+
+def test_api_analyze_product_qa_workspace_exposes_report_health_groups():
+    model_path = PRODUCT_QA_WORKSPACE_DIR / "Models" / "ProductQA.SemanticModel"
+    report_path = PRODUCT_QA_WORKSPACE_DIR / "Reports" / "Executive.Report"
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/analyze",
+        json={
+            "model_paths": [str(model_path)],
+            "report_paths": [str(report_path)],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    health_keys = {group["key"] for group in payload["reportHealth"]["groups"]}
+    assert {
+        "stale_report_references",
+        "broken_model_references",
+        "unsupported_metadata",
+        "invalid_pbir_json",
+    } <= health_keys
+    assert any(
+        item["table"] == "Report Metrics"
+        and item["name"] == "Report Margin"
+        and item["sourceKind"] == "report"
+        for item in payload["items"]
+    )
+    assert any(
+        item["table"] == "Sales"
+        and item["name"] == "Cleanup Note"
+        and item["deleteSafety"] == "Safe"
+        for item in payload["items"]
+    )
 
 
 def test_api_analyze_rejects_tmsl_model_bim_with_clear_message(tmp_path):

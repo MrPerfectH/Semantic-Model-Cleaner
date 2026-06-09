@@ -1,0 +1,3 @@
+perspective Executive
+	perspectiveTable Sales
+		perspectiveMeasure 'Perspective Revenue'
