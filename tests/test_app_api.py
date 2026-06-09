@@ -1967,6 +1967,28 @@ def test_index_renders_empty_selection_state():
     assert "definition: cleanupHelpText('Blocked')" in html
     assert "definition: cleanupHelpText('Keep')" in html
     assert "$('resultGuideSection').classList.remove('hidden');" in html
+    assert 'id="appFlowSwitcher"' in html
+    assert 'data-app-flow="cleanup"' in html
+    assert 'data-app-flow="compare"' in html
+    assert 'id="compareFlow"' in html
+    assert "Semantic Model Compare (1:1)" in html
+    assert 'id="compareBaselinePills"' in html
+    assert 'id="compareCandidatePills"' in html
+    assert 'id="btnBrowseCompareBaseline"' in html
+    assert 'id="btnBrowseCompareCandidate"' in html
+    assert 'id="btnRunCompare"' in html
+    assert "var compareBaselineModel = null;" in html
+    assert "var compareCandidateModel = null;" in html
+    assert "function setAppFlow(flow) {" in html
+    assert "function renderCompareSelection() {" in html
+    assert "function compareModelPillHtml(model, side) {" in html
+    assert "function isModelExplorerMode(mode) {" in html
+    assert "explorerMode === 'compareBaseline'" in html
+    assert "explorerMode === 'compareCandidate'" in html
+    assert "$('btnBrowseCompareBaseline').onclick = function() { openExplorer('compareBaseline'); };" in html
+    assert "$('btnBrowseCompareCandidate').onclick = function() { openExplorer('compareCandidate'); };" in html
+    assert "if (explorerMode === 'compareBaseline') compareBaselineModel = pickedModels[0] || null;" in html
+    assert "if (explorerMode === 'compareCandidate') compareCandidateModel = pickedModels[0] || null;" in html
     assert 'id="reportHealthBanner"' in html
     assert 'id="reportHealthCount"' in html
     assert 'id="reportHealthList"' in html
