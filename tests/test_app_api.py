@@ -1008,7 +1008,13 @@ def test_api_dax_updates_expression(monkeypatch, tmp_path):
 
 def test_api_action_accepts_move_to_table_group(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
-    model_path.mkdir()
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    (tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tcolumn Amount\n",
+        encoding="utf-8",
+    )
     captured = {}
 
     def fake_apply_actions(passed_model_path, actions):
@@ -1073,6 +1079,117 @@ def test_api_action_returns_batch_errors_without_partial_write(monkeypatch, tmp_
     assert payload["ok"] is False
     assert len(payload["errors"]) == 2
     assert payload["results"][0]["skipped"] is True
+    assert "\t\tisHidden" not in sales_file.read_text(encoding="utf-8")
+
+
+def test_api_action_preview_returns_plan_without_writing(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = 1\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/action/preview",
+        json={
+            "model_path": str(model_path),
+            "create_backup": True,
+            "auto_refresh": False,
+            "actions": [
+                {"action": "hide", "table": "Sales", "name": "Revenue", "item_type": "Measure"},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["plan"]["dry_run"] is True
+    assert payload["plan"]["written"] is False
+    assert payload["plan"]["create_backup"] is True
+    assert payload["plan"]["backup"]["mode"] == "will_create_before_apply"
+    assert payload["plan"]["auto_refresh"] is False
+    assert payload["plan"]["action_count"] == 1
+    assert payload["plan"]["affected_files"] == [str(sales_file)]
+    assert payload["plan"]["actions"][0]["label"] == "Hide"
+    assert "\t\tisHidden" not in sales_file.read_text(encoding="utf-8")
+    assert not list(tmp_path.glob("Sales.SemanticModel_backup_*"))
+
+
+def test_api_action_preview_reports_invalid_batch_without_writing(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = 1\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/action/preview",
+        json={
+            "model_path": str(model_path),
+            "actions": [
+                {"action": "hide", "table": "Sales", "name": "Revenue", "item_type": "Measure"},
+                {"action": "hide", "table": "Sales", "name": "Missing", "item_type": "Measure"},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is False
+    assert payload["plan"]["valid_action_count"] == 1
+    assert payload["plan"]["invalid_action_count"] == 1
+    assert "Missing" in payload["errors"][0]
+    assert "\t\tisHidden" not in sales_file.read_text(encoding="utf-8")
+
+
+def test_api_action_does_not_create_backup_when_plan_is_invalid(monkeypatch, tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = 1\n",
+        encoding="utf-8",
+    )
+    web_app._state["backup_path"] = None
+
+    monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/action",
+        json={
+            "model_path": str(model_path),
+            "create_backup": True,
+            "actions": [
+                {"action": "hide", "table": "Sales", "name": "Revenue", "item_type": "Measure"},
+                {"action": "hide", "table": "Sales", "name": "Missing", "item_type": "Measure"},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is False
+    assert payload["backup_path"] is None
+    assert payload["plan"]["ok"] is False
+    assert not list(tmp_path.glob("Sales.SemanticModel_backup_*"))
     assert "\t\tisHidden" not in sales_file.read_text(encoding="utf-8")
 
 
@@ -1817,6 +1934,14 @@ def test_index_renders_empty_selection_state():
     assert 'id="reportHealthActionStatus"' in html
     assert "var allReportIssues = [];" in html
     assert "var allReportHealth = { totalIssueCount: 0, groups: [] };" in html
+    assert 'id="actionPlanPreview"' in html
+    assert 'id="actionPlanSummary"' in html
+    assert 'id="actionPlanItems"' in html
+    assert 'id="actionPlanFiles"' in html
+    assert "function previewQueuedActionPlan(" in html
+    assert "function renderActionPlanPreview(plan) {" in html
+    assert "function confirmActionPlanApply(plan) {" in html
+    assert "/api/action/preview" in html
     assert "var reportHealthStaleCleanupEntries = [];" in html
     assert "function renderReportHealth() {" in html
     assert "function previewReportHealthStaleCleanup() {" in html

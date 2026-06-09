@@ -1232,6 +1232,87 @@ def delete_item(
 # ── Batch Operations ─────────────────────────────────────────────────────────
 
 
+def _action_plan_label(action: dict) -> str:
+    action_name = str(action.get("action", "") or "")
+    if action_name == "move_to_folder":
+        return f"Move to folder ({action.get('folder', '')})"
+    if action_name == "move_to_table_group":
+        return f"Move to Table Group ({action.get('table_group', '')})"
+    if action_name == "hide":
+        return "Hide"
+    if action_name == "unhide":
+        return "Unhide"
+    if action_name == "delete":
+        return "Delete"
+    return action_name
+
+
+def _action_plan_description(action: dict) -> str:
+    action_name = str(action.get("action", "") or "")
+    if action_name == "move_to_folder":
+        return "Set or remove the displayFolder property on the Semantic Model Item."
+    if action_name == "move_to_table_group":
+        return "Set the TabularEditor_TableGroup table annotation."
+    if action_name == "hide":
+        return "Add the isHidden property to the Semantic Model Item."
+    if action_name == "unhide":
+        return "Remove the isHidden property from the Semantic Model Item."
+    if action_name == "delete":
+        return (
+            "Remove the Semantic Model Item from TMDL. Column or table deletes may also update "
+            "relationships and model table references when the table becomes empty."
+        )
+    return "Unsupported cleanup action."
+
+
+def plan_actions(model_path: Path, actions: list[dict]) -> dict:
+    """Validate model cleanup actions and return the dry-run plan without writing files."""
+    validation_results = [_validate_action(model_path, act) for act in actions]
+    plan_entries: list[dict] = []
+    affected_files: set[str] = set()
+
+    for raw_action, validation in zip(actions, validation_results, strict=False):
+        action_name = str(raw_action.get("action", "") or "")
+        entry = {
+            "ok": bool(validation.get("ok")),
+            "action": validation.get("action"),
+            "table": validation.get("table"),
+            "name": validation.get("name"),
+            "item_type": validation.get("item_type"),
+            "label": _action_plan_label(raw_action),
+            "description": _action_plan_description(raw_action),
+            "destructive": action_name == "delete",
+            "written": False,
+            "dry_run": True,
+        }
+        for optional_key in ("folder", "table_group"):
+            if optional_key in raw_action:
+                entry[optional_key] = raw_action.get(optional_key)
+        if validation.get("source_file"):
+            entry["source_file"] = validation["source_file"]
+            if validation.get("ok"):
+                affected_files.add(str(validation["source_file"]))
+        if validation.get("error"):
+            entry["error"] = validation["error"]
+        plan_entries.append(entry)
+
+    errors = [entry["error"] for entry in plan_entries if entry.get("error")]
+    return {
+        "ok": not errors,
+        "action": "plan_actions",
+        "model_path": str(model_path),
+        "dry_run": True,
+        "written": False,
+        "action_count": len(plan_entries),
+        "valid_action_count": sum(1 for entry in plan_entries if entry.get("ok")),
+        "invalid_action_count": sum(1 for entry in plan_entries if not entry.get("ok")),
+        "destructive_action_count": sum(1 for entry in plan_entries if entry.get("ok") and entry.get("destructive")),
+        "affected_files": sorted(affected_files),
+        "actions": plan_entries,
+        "errors": errors,
+    }
+
+
 def apply_actions(model_path: Path, actions: list[dict]) -> list[dict]:
     """Apply a batch of actions. Each action dict:
     {
@@ -1359,6 +1440,7 @@ def _validate_action(model_path: Path, act: dict) -> dict:
         tmdl_file = _find_table_declaration_file(model_path, table)
         if not tmdl_file:
             return {**result, "ok": False, "error": f"TMDL table declaration not found for table '{table}'"}
+        result["source_file"] = str(tmdl_file)
         try:
             lines = tmdl_file.read_text(encoding="utf-8").splitlines()
         except OSError as exc:
