@@ -92,7 +92,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .btn-success { background: var(--success); color: #fff; }
 .btn-success:hover { background: #15803d; }
 .filters-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px; }
-.filters-grid { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 12px; width: 100%; align-items: flex-end; }
+.filters-grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 12px; width: 100%; align-items: flex-end; }
 .filters-bar .filter-group { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .filters-bar .filter-group label { font-size: 11px; color: var(--text-light); font-weight: 500; text-transform: uppercase; letter-spacing: .3px; }
 .filters-bar input[type="text"] { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; min-width: 0; }
@@ -536,6 +536,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="filters-grid">
       <div class="filter-group"><label>Search</label><input type="text" id="filterSearch" placeholder="Name or table..."></div>
       <div class="filter-group"><label>Usage</label><div class="filter-dropdown" id="filterStatus"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
+      <div class="filter-group"><label>Issues</label><div class="filter-dropdown" id="filterIssue"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
       <div class="filter-group"><label>Cleanup</label><div class="filter-dropdown" id="filterRisk"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
       <div class="filter-group"><label>Type</label><div class="filter-dropdown" id="filterType"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
       <div class="filter-group"><label>Table</label><div class="filter-dropdown" id="filterTable"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
@@ -1059,6 +1060,15 @@ var filterDefinitions = {
       { value: 'Keep', label: 'Keep' }
     ]
   },
+  filterIssue: {
+    allLabel: 'All issues',
+    options: [
+      { value: 'Broken', label: 'Broken' },
+      { value: 'Stale', label: 'Stale' },
+      { value: 'Broken + Stale', label: 'Broken + Stale' },
+      { value: '__none__', label: 'No issues' }
+    ]
+  },
   filterType: {
     allLabel: 'All types',
     options: [
@@ -1096,6 +1106,7 @@ var filterDefinitions = {
 var filterState = {
   filterStatus: [],
   filterRisk: [],
+  filterIssue: [],
   filterType: [],
   filterTable: [],
   filterHidden: [],
@@ -1739,6 +1750,10 @@ function usageHelpText(itemOrStatus) {
 function issueValue(itemOrStatus) {
   if (itemOrStatus && typeof itemOrStatus === 'object') return itemOrStatus.issueState || '';
   return String(itemOrStatus || '').startsWith('BROKEN') ? 'Broken' : '';
+}
+
+function issueFilterValue(itemOrStatus) {
+  return issueValue(itemOrStatus) || '__none__';
 }
 
 function issueHelpText(itemOrStatus) {
@@ -2652,6 +2667,7 @@ function applyFilters() {
   var search = $('filterSearch').value.toLowerCase();
   var statuses = getSelectedValues('filterStatus');
   var risks = getSelectedValues('filterRisk');
+  var issues = getSelectedValues('filterIssue');
   var types = getSelectedValues('filterType');
   var tables = getSelectedValues('filterTable');
   var hiddenValues = getSelectedValues('filterHidden');
@@ -2662,6 +2678,7 @@ function applyFilters() {
     var sourceText = (sourceSummary(item) + ' ' + (item.sourceArtifact || '')).toLowerCase();
     if (search && !item.name.toLowerCase().includes(search) && !item.table.toLowerCase().includes(search) && !sourceText.includes(search)) return false;
     if (!matchesSelectedValues(usageValue(item), statuses)) return false;
+    if (!matchesSelectedValues(issueFilterValue(item), issues)) return false;
     if (!matchesSelectedValues(deleteSafetyValue(item), risks)) return false;
     if (!matchesSelectedValues(item.type, types)) return false;
     if (!matchesSelectedValues(item.table, tables)) return false;
@@ -2692,6 +2709,7 @@ function applyFilters() {
         return false;
       }
       if (!matchesSelectedValues(table.usageState || 'Unused', statuses)) return false;
+      if (!matchesSelectedValues(issueFilterValue(table), issues)) return false;
       if (!matchesSelectedValues(table.name, tables)) return false;
       return true;
     });
@@ -2871,6 +2889,7 @@ function filterRefs() {
   var search = $('filterSearch').value.toLowerCase();
   var statuses = getSelectedValues('filterStatus');
   var risks = getSelectedValues('filterRisk');
+  var issues = getSelectedValues('filterIssue');
   var types = getSelectedValues('filterType');
   var tables = getSelectedValues('filterTable');
   var hiddenValues = getSelectedValues('filterHidden');
@@ -2882,6 +2901,7 @@ function filterRefs() {
         && !(r.report || '').toLowerCase().includes(search) && !(r.page || '').toLowerCase().includes(search)
         && !(r.visualTitle || '').toLowerCase().includes(search) && !sourceText.includes(search)) return false;
     if (!matchesSelectedValues(usageValue(r), statuses)) return false;
+    if (!matchesSelectedValues(issueFilterValue(r), issues)) return false;
     if (!matchesSelectedValues(deleteSafetyValue(r), risks)) return false;
     if (!matchesSelectedValues(r.type, types)) return false;
     if (!matchesSelectedValues(r.table, tables)) return false;

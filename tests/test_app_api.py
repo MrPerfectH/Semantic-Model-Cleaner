@@ -1928,6 +1928,15 @@ def test_index_renders_empty_selection_state():
     assert 'id="pageSizeSelect"' in html
     assert 'id="btnPrevPage"' in html
     assert 'id="btnNextPage"' in html
+    assert 'id="filterIssue"' in html
+    assert "All issues" in html
+    assert "No issues" in html
+    assert "filterIssue: []" in html
+    assert "function issueFilterValue(itemOrStatus) {" in html
+    assert "var issues = getSelectedValues('filterIssue');" in html
+    assert "matchesSelectedValues(issueFilterValue(item), issues)" in html
+    assert "matchesSelectedValues(issueFilterValue(table), issues)" in html
+    assert "matchesSelectedValues(issueFilterValue(r), issues)" in html
     assert 'id="reportHealthBanner"' in html
     assert 'id="reportHealthCount"' in html
     assert 'id="reportHealthList"' in html
