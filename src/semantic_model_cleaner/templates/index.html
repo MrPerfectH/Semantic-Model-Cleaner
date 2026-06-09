@@ -112,6 +112,28 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .filter-dropdown-option:hover { background: #f8fafc; }
 .filter-dropdown-option input { margin-top: 2px; }
 .filter-dropdown-empty { padding: 10px; font-size: 12px; color: var(--text-light); font-style: italic; }
+.result-guide { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
+.result-guide summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px; cursor: pointer; list-style: none; }
+.result-guide summary::-webkit-details-marker { display: none; }
+.result-guide summary::before { content: '\25B8'; color: var(--text-light); font-size: 11px; }
+.result-guide[open] summary { border-bottom: 1px solid #e8edf5; }
+.result-guide[open] summary::before { content: '\25BE'; }
+.result-guide-title { flex: 1 1 auto; min-width: 0; font-weight: 800; color: var(--text); }
+.result-guide-subtitle { flex: 0 1 auto; color: var(--text-light); font-size: 12px; line-height: 1.4; text-align: right; }
+.result-guide-body { padding: 14px 16px 16px; display: grid; gap: 12px; }
+.result-guide-intro { display: grid; grid-template-columns: minmax(220px, .75fr) minmax(0, 1.25fr); gap: 10px; }
+.result-guide-note { padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; color: var(--text-light); font-size: 12px; line-height: 1.5; }
+.result-guide-note strong { display: block; margin-bottom: 3px; color: var(--text); font-size: 12px; }
+.legend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.legend-group { min-width: 0; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+.legend-group h4 { font-size: 12px; color: var(--text); margin-bottom: 4px; }
+.legend-group p { color: var(--text-light); font-size: 12px; line-height: 1.45; }
+.legend-list { display: grid; gap: 8px; margin-top: 10px; }
+.legend-item { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid #eef2f7; }
+.legend-item:first-child { padding-top: 0; border-top: 0; }
+.legend-term { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.legend-term strong { font-size: 13px; color: var(--text); }
+.legend-definition { color: var(--text-light); font-size: 12px; line-height: 1.45; }
 .detail-subtle { margin-top: 4px; font-size: 12px; color: var(--text-light); }
 .export-bar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
 .export-bar .label { margin-right: auto; font-size: 12px; color: var(--text-light); text-transform: uppercase; letter-spacing: .3px; font-weight: 600; }
@@ -422,6 +444,9 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
   .detail-decision-grid, .detail-workbench-grid, .detail-inspector-grid { grid-template-columns: 1fr; }
   .detail-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .detail-evidence-row { grid-template-columns: 1fr; }
+  .result-guide-intro { grid-template-columns: 1fr; }
+  .result-guide summary { align-items: flex-start; }
+  .result-guide-subtitle { text-align: left; }
   .action-bar { flex-direction: column; align-items: stretch; }
   .action-group-card { width: 100%; }
   .action-cleanup-grid .folder-input { width: 100%; }
@@ -515,6 +540,13 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="summary-card"><div class="value" id="sumReview">0</div><div class="label">Review <span class="kpi-help" tabindex="0" data-tooltip="Items that may be removable, but still need a manual check first." aria-label="Explain review">?</span></div></div>
     <div class="summary-card"><div class="value" id="sumCaution">0</div><div class="label">Blocked <span class="kpi-help" tabindex="0" data-tooltip="Items that still have direct or indirect dependencies and should not be deleted now." aria-label="Explain blocked">?</span></div></div>
   </div>
+  <details class="result-guide hidden" id="resultGuideSection" open>
+    <summary>
+      <span class="result-guide-title">How to read these results</span>
+      <span class="result-guide-subtitle">Summary cards, filters, status badges, issue states, and cleanup recommendations.</span>
+    </summary>
+    <div class="result-guide-body" id="resultGuideBody"></div>
+  </details>
   <div class="backup-banner hidden" id="backupBanner">Backup created: <span class="path" id="backupPath"></span></div>
   <div class="git-warning hidden" id="gitWarning"></div>
   <div class="post-refresh-banner hidden" id="postRefreshBanner">
@@ -2579,9 +2611,11 @@ $('btnAnalyze').onclick = async function() {
 function loadResults(data) {
   setResultsData(data, false);
   $('summarySection').classList.remove('hidden');
+  $('resultGuideSection').classList.remove('hidden');
   $('filtersSection').classList.remove('hidden');
   $('viewToolbar').classList.remove('hidden');
   $('exportSection').classList.remove('hidden');
+  renderResultGuideLegend();
   switchView(currentView);
   requestAnimationFrame(function() {
     setupFilterDropdowns();
@@ -3956,6 +3990,62 @@ function deleteSafetyBadge(item) {
   if (value === 'Safe') return '<span class="badge badge-safe" title="' + esc(cleanupHelpText(value)) + '">Safe</span>';
   if (value === 'Keep') return '<span class="badge badge-donotremove" title="' + esc(cleanupHelpText(value)) + '">Keep</span>';
   return '<span class="badge badge-muted">' + esc(value) + '</span>';
+}
+
+function legendItemHtml(entry) {
+  return '<div class="legend-item">'
+    + '<div class="legend-term">' + (entry.badge || '') + '<strong>' + esc(entry.label) + '</strong></div>'
+    + '<div class="legend-definition">' + esc(entry.definition) + '</div>'
+    + '</div>';
+}
+
+function renderResultGuideLegend() {
+  var body = $('resultGuideBody');
+  if (!body) return;
+  var groups = [
+    {
+      title: 'Usage states',
+      description: 'The Usage filter and badges describe evidence the analyzer found before cleanup.',
+      entries: [
+        { label: 'Used', badge: usageBadge({ usageState: 'Used' }), definition: usageHelpText({ usageState: 'Used' }) },
+        { label: 'Indirect', badge: usageBadge({ usageState: 'Indirect' }), definition: usageHelpText({ usageState: 'Indirect' }) },
+        { label: 'Stale only', badge: usageBadge({ usageState: 'Stale only' }), definition: usageHelpText({ usageState: 'Stale only' }) },
+        { label: 'Unused', badge: usageBadge({ usageState: 'Unused' }), definition: usageHelpText({ usageState: 'Unused' }) }
+      ]
+    },
+    {
+      title: 'Issue states',
+      description: 'Issue badges are problem signals that deserve separate review from ordinary usage.',
+      entries: [
+        { label: 'Broken', badge: issueBadge({ issueState: 'Broken' }), definition: issueHelpText({ issueState: 'Broken' }) },
+        { label: 'Stale', badge: issueBadge({ issueState: 'Stale' }), definition: issueHelpText({ issueState: 'Stale' }) }
+      ]
+    },
+    {
+      title: 'Cleanup recommendations',
+      description: 'Cleanup is the app recommendation for what to do next, not a second usage signal.',
+      entries: [
+        { label: 'Safe', badge: deleteSafetyBadge({ deleteSafety: 'Safe' }), definition: cleanupHelpText('Safe') },
+        { label: 'Review', badge: deleteSafetyBadge({ deleteSafety: 'Review' }), definition: cleanupHelpText('Review') },
+        { label: 'Blocked', badge: deleteSafetyBadge({ deleteSafety: 'Blocked' }), definition: cleanupHelpText('Blocked') },
+        { label: 'Keep', badge: deleteSafetyBadge({ deleteSafety: 'Keep' }), definition: cleanupHelpText('Keep') }
+      ]
+    }
+  ];
+  body.innerHTML =
+    '<div class="result-guide-intro">'
+      + '<div class="result-guide-note"><strong>Usage vs Cleanup</strong>Usage describes observed report/model evidence; Cleanup describes the recommended action.</div>'
+      + '<div class="result-guide-note"><strong>Filters and summary</strong>Filters narrow every result view with the same vocabulary shown in badges and the guide. The summary cards show model/report totals and cleanup recommendations for the current analysis.</div>'
+    + '</div>'
+    + '<div class="legend-grid">'
+    + groups.map(function(group) {
+      return '<section class="legend-group">'
+        + '<h4>' + esc(group.title) + '</h4>'
+        + '<p>' + esc(group.description) + '</p>'
+        + '<div class="legend-list">' + group.entries.map(legendItemHtml).join('') + '</div>'
+        + '</section>';
+    }).join('')
+    + '</div>';
 }
 
 function reviewTriggers(item) {

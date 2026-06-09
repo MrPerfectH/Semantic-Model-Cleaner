@@ -1947,6 +1947,26 @@ def test_index_renders_empty_selection_state():
     assert "mainSearchTextForItem(item).includes(search)" in html
     assert "mainSearchTextForTable(table).includes(search)" in html
     assert "mainSearchTextForRef(r).includes(search)" in html
+    assert 'id="resultGuideSection"' in html
+    assert 'id="resultGuideBody"' in html
+    assert "How to read these results" in html
+    assert "function renderResultGuideLegend() {" in html
+    assert "function legendItemHtml(entry) {" in html
+    assert "Usage vs Cleanup" in html
+    assert "Usage describes observed report/model evidence; Cleanup describes the recommended action." in html
+    assert "Filters narrow every result view with the same vocabulary shown in badges and the guide." in html
+    assert "summary cards show model/report totals and cleanup recommendations for the current analysis." in html
+    assert "definition: usageHelpText({ usageState: 'Used' })" in html
+    assert "definition: usageHelpText({ usageState: 'Indirect' })" in html
+    assert "definition: usageHelpText({ usageState: 'Stale only' })" in html
+    assert "definition: usageHelpText({ usageState: 'Unused' })" in html
+    assert "definition: issueHelpText({ issueState: 'Broken' })" in html
+    assert "definition: issueHelpText({ issueState: 'Stale' })" in html
+    assert "definition: cleanupHelpText('Safe')" in html
+    assert "definition: cleanupHelpText('Review')" in html
+    assert "definition: cleanupHelpText('Blocked')" in html
+    assert "definition: cleanupHelpText('Keep')" in html
+    assert "$('resultGuideSection').classList.remove('hidden');" in html
     assert 'id="reportHealthBanner"' in html
     assert 'id="reportHealthCount"' in html
     assert 'id="reportHealthList"' in html
