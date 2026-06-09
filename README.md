@@ -19,6 +19,7 @@ It is designed for local use against files on your machine. The current release 
 - Surfaces warnings for unresolved or ambiguous dynamic references
 - Lets you review analysis results in a local web UI
 - Supports local cleanup actions such as move to folder, hide/unhide, and delete
+- Previews queued cleanup actions before writing TMDL files
 
 ## What It Does Not Do
 
@@ -151,6 +152,7 @@ Both web exports download the latest completed analysis without re-running it.
 ## Safety Notes
 
 - The workflow is intentionally `1 semantic model -> 1 or more reports`
+- Queued model cleanup actions are dry-run planned before `/api/action` writes files
 - The app can create a backup before destructive edits when requested
 - Field parameters backed by `NAMEOF(...)` are supported
 - Remaining caveats include calculation groups, broader metadata indirection, and malformed or skipped JSON

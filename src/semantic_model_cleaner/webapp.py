@@ -52,6 +52,52 @@ def _restore_cleanup_transaction(roots: list[Path], snapshot: dict[Path, str]) -
     return file_transaction.restore_artifact_files(roots, snapshot)
 
 
+def _cleanup_action_model_path(data: dict) -> tuple[Path | None, tuple[dict, int] | None]:
+    model_path_str = data.get("model_path")
+    if not model_path_str:
+        if _state["model_paths"]:
+            model_path_str = _state["model_paths"][0]
+        else:
+            return None, ({"error": "No model path specified"}, 400)
+
+    model_path = Path(model_path_str)
+    if not model_path.exists():
+        return None, ({"error": f"Model path not found: {model_path}"}, 400)
+    return model_path, None
+
+
+def _cleanup_action_plan_response(
+    model_path: Path,
+    actions: list[dict],
+    *,
+    create_backup: bool,
+    auto_refresh: bool | None = None,
+) -> dict:
+    plan = tmdl_writer.plan_actions(model_path, actions)
+    plan["create_backup"] = create_backup
+    plan["backup"] = {
+        "requested": create_backup,
+        "mode": "will_create_before_apply" if create_backup else "not_requested",
+    }
+    if auto_refresh is not None:
+        plan["auto_refresh"] = auto_refresh
+    return plan
+
+
+def _cleanup_action_invalid_results(plan: dict) -> list[dict]:
+    return [
+        {
+            **entry,
+            "ok": False,
+            "validated": False,
+            "written": False,
+            "skipped": bool(entry.get("ok")),
+            "error": entry.get("error") or "Skipped because another action in the batch is invalid.",
+        }
+        for entry in plan.get("actions", [])
+    ]
+
+
 def _normalize_browse_path(raw: str) -> str:
     """Normalize browser-submitted paths before pathlib resolves them.
 
@@ -1122,31 +1168,34 @@ def api_action():
         if not actions:
             return jsonify({"error": "No actions specified"}), 400
 
-        model_path_str = data.get("model_path")
-        if not model_path_str:
-            # Use first discovered model
-            if _state["model_paths"]:
-                model_path_str = _state["model_paths"][0]
-            else:
-                return jsonify({"error": "No model path specified"}), 400
+        model_path, error = _cleanup_action_model_path(data)
+        if error:
+            payload, status = error
+            return jsonify(payload), status
 
-        model_path = Path(model_path_str)
-        if not model_path.exists():
-            return jsonify({"error": f"Model path not found: {model_path}"}), 400
-
-        if data.get("create_backup", False):
-            _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
-
-        # Git dirty check
+        create_backup = bool(data.get("create_backup", False))
+        plan = _cleanup_action_plan_response(
+            model_path,
+            actions,
+            create_backup=create_backup,
+            auto_refresh=data.get("auto_refresh"),
+        )
         git_warning = tmdl_writer.check_git_dirty(model_path)
+        if not plan["ok"]:
+            results = _cleanup_action_invalid_results(plan)
+            return jsonify({
+                "ok": False,
+                "results": results,
+                "errors": [result.get("error") for result in results if result.get("error")],
+                "plan": plan,
+                "backup_path": None,
+                "git_warning": git_warning,
+            })
 
-        # Validate actions
-        for act in actions:
-            if act.get("action") not in ("move_to_folder", "move_to_table_group", "hide", "unhide", "delete"):
-                return jsonify({"error": f"Invalid action: {act.get('action')}"}), 400
-            for field in ("table", "name", "item_type"):
-                if not act.get(field):
-                    return jsonify({"error": f"Missing field '{field}' in action"}), 400
+        backup_path = None
+        if create_backup:
+            backup_path = str(tmdl_writer.create_backup(model_path))
+            _state["backup_path"] = backup_path
 
         results = tmdl_writer.apply_actions(model_path, actions)
         ok = all(result.get("ok") for result in results)
@@ -1155,8 +1204,42 @@ def api_action():
             "ok": ok,
             "results": results,
             "errors": [result.get("error") for result in results if result.get("error")],
-            "backup_path": _state["backup_path"],
+            "plan": plan,
+            "backup_path": backup_path,
             "git_warning": git_warning,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/action/preview", methods=["POST"])
+def api_action_preview():
+    """Preview queued cleanup actions without writing TMDL files."""
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"error": "No JSON body"}), 400
+
+        actions = data.get("actions", [])
+        if not actions:
+            return jsonify({"error": "No actions specified"}), 400
+
+        model_path, error = _cleanup_action_model_path(data)
+        if error:
+            payload, status = error
+            return jsonify(payload), status
+
+        plan = _cleanup_action_plan_response(
+            model_path,
+            actions,
+            create_backup=bool(data.get("create_backup", False)),
+            auto_refresh=data.get("auto_refresh"),
+        )
+        return jsonify({
+            "ok": plan["ok"],
+            "plan": plan,
+            "errors": plan["errors"],
+            "git_warning": tmdl_writer.check_git_dirty(model_path),
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

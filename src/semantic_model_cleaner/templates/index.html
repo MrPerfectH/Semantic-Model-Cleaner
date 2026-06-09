@@ -124,6 +124,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .action-cleanup-grid { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .action-apply-group { flex: 0 0 auto; justify-content: center; margin-left: auto; }
 .action-apply-btn { min-width: 140px; min-height: 40px; font-size: 14px; font-weight: 600; }
+.action-plan-preview { flex: 1 1 100%; display: grid; gap: 8px; padding: 10px 12px; border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; }
+.action-plan-preview.invalid { border-color: #fecaca; background: #fef2f2; }
+.action-plan-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.action-plan-title { font-weight: 700; color: var(--text); }
+.action-plan-meta { color: var(--text-light); font-size: 12px; line-height: 1.45; }
+.action-plan-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); gap: 8px; }
+.action-plan-list { display: grid; gap: 4px; min-width: 0; }
+.action-plan-row { padding: 6px 8px; border: 1px solid #dbeafe; border-radius: 6px; background: #fff; color: var(--text-light); font-size: 12px; line-height: 1.45; word-break: break-word; }
+.action-plan-preview.invalid .action-plan-row { border-color: #fecaca; }
 .help-panel, .inline-help { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
 .help-panel { margin-top: 14px; padding: 12px; }
 .inline-help { width: 100%; padding: 10px 12px; }
@@ -584,6 +593,19 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     </div>
     <div class="action-group-card action-apply-group">
       <button class="btn btn-primary action-apply-btn" id="btnApply" disabled title="Write all queued actions to the model files">Apply</button>
+    </div>
+    <div class="action-plan-preview hidden" id="actionPlanPreview">
+      <div class="action-plan-head">
+        <div>
+          <div class="action-plan-title">Cleanup Action Preview</div>
+          <div class="action-plan-meta" id="actionPlanSummary"></div>
+        </div>
+        <div class="action-plan-meta" id="actionPlanOptions"></div>
+      </div>
+      <div class="action-plan-grid">
+        <div class="action-plan-list" id="actionPlanItems"></div>
+        <div class="action-plan-list" id="actionPlanFiles"></div>
+      </div>
     </div>
   </div>
   <div class="table-container hidden" id="tableSection">
@@ -4775,6 +4797,7 @@ function logEntry(msg, cls) {
 function queueActionsForItems(items, actionName, extra) {
   extra = extra || {};
   if (!items.length) { alert('No items selected'); return; }
+  clearActionPlanPreview();
   var modelItems = items.filter(function(item) { return !isReportItem(item); });
   var skipped = items.length - modelItems.length;
   if (!modelItems.length) {
@@ -4802,6 +4825,7 @@ function queueActionsForItems(items, actionName, extra) {
 function queueActionsForTables(tables, actionName, extra) {
   extra = extra || {};
   if (!tables.length) { alert('No tables selected'); return; }
+  clearActionPlanPreview();
   var queued = 0;
   tables.forEach(function(table) {
     var key = tableActionKey(table.name);
@@ -4922,6 +4946,95 @@ function confirmDeleteApply(deleteCount) {
   });
 }
 
+function clearActionPlanPreview() {
+  var panel = $('actionPlanPreview');
+  if (!panel) return;
+  panel.classList.add('hidden');
+  panel.classList.remove('invalid');
+  $('actionPlanSummary').textContent = '';
+  $('actionPlanOptions').textContent = '';
+  $('actionPlanItems').innerHTML = '';
+  $('actionPlanFiles').innerHTML = '';
+}
+
+function actionPlanTargetLabel(entry) {
+  if (!entry) return '';
+  if (entry.item_type === 'Table') return entry.table || '';
+  return (entry.table || '') + '[' + (entry.name || '') + ']';
+}
+
+function renderActionPlanPreview(plan) {
+  if (!plan) {
+    clearActionPlanPreview();
+    return;
+  }
+  var panel = $('actionPlanPreview');
+  panel.classList.remove('hidden');
+  panel.classList.toggle('invalid', !plan.ok);
+  $('actionPlanSummary').textContent =
+    (plan.ok ? 'Ready' : 'Blocked') + ': ' + (plan.valid_action_count || 0)
+    + ' valid of ' + (plan.action_count || 0) + ' queued action(s), '
+    + (plan.destructive_action_count || 0) + ' destructive.';
+  $('actionPlanOptions').textContent =
+    'Backup: ' + (plan.create_backup ? 'will create before apply' : 'off')
+    + ' | Auto-refresh: ' + (plan.auto_refresh === false ? 'off' : 'on');
+
+  var entries = plan.actions || [];
+  var shownEntries = entries.slice(0, 6).map(function(entry) {
+    var status = entry.ok ? 'OK' : 'Blocked';
+    var message = entry.error ? ' | ' + entry.error : '';
+    return '<div class="action-plan-row"><strong>' + esc(status) + '</strong> '
+      + esc(entry.label || entry.action || '') + ' | '
+      + esc(entry.item_type || '') + ' | ' + esc(actionPlanTargetLabel(entry)) + esc(message) + '</div>';
+  });
+  if (entries.length > 6) {
+    shownEntries.push('<div class="action-plan-row">+' + (entries.length - 6) + ' more action(s)</div>');
+  }
+  $('actionPlanItems').innerHTML = shownEntries.length
+    ? shownEntries.join('')
+    : '<div class="action-plan-row">No actions in plan</div>';
+
+  var files = plan.affected_files || [];
+  var shownFiles = files.slice(0, 6).map(function(file) {
+    return '<div class="action-plan-row">File: ' + esc(file) + '</div>';
+  });
+  if (files.length > 6) {
+    shownFiles.push('<div class="action-plan-row">+' + (files.length - 6) + ' more file(s)</div>');
+  }
+  $('actionPlanFiles').innerHTML = shownFiles.length
+    ? shownFiles.join('')
+    : '<div class="action-plan-row">No writable files resolved</div>';
+}
+
+async function previewQueuedActionPlan(modelPath, actions, createBackup, autoRefresh) {
+  var data = await apiPost('/api/action/preview', {
+    model_path: modelPath,
+    actions: actions,
+    create_backup: createBackup,
+    auto_refresh: autoRefresh
+  });
+  renderActionPlanPreview(data.plan);
+  if (data.git_warning) {
+    $('gitWarning').classList.remove('hidden');
+    $('gitWarning').textContent = data.git_warning;
+  }
+  return data;
+}
+
+function confirmActionPlanApply(plan) {
+  var files = plan && plan.affected_files ? plan.affected_files.length : 0;
+  var invalid = plan && plan.invalid_action_count ? plan.invalid_action_count : 0;
+  if (invalid) return false;
+  return window.confirm(
+    'Apply cleanup action plan?\n'
+      + 'Actions: ' + (plan.action_count || 0) + '\n'
+      + 'Destructive: ' + (plan.destructive_action_count || 0) + '\n'
+      + 'Files: ' + files + '\n'
+      + 'Backup: ' + (plan.create_backup ? 'yes' : 'no') + '\n'
+      + 'Auto-refresh: ' + (plan.auto_refresh === false ? 'no' : 'yes')
+  );
+}
+
 async function applyQueuedActions() {
   if (!pendingActions.size) { alert('No pending actions'); return; }
   var modelPath = getModelPath();
@@ -4946,10 +5059,27 @@ async function applyQueuedActions() {
 
   var btn = $('btnApply');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Applying...';
+  btn.innerHTML = '<span class="spinner"></span>Previewing...';
   var data;
   try {
-    data = await apiPost('/api/action', { model_path: modelPath, actions: actions, create_backup: createBackup });
+    var preview = await previewQueuedActionPlan(modelPath, actions, createBackup, autoRefresh);
+    if (!preview.ok) {
+      (preview.errors || []).forEach(function(error) {
+        logEntry('Preview blocked: ' + error, 'err');
+      });
+      return;
+    }
+    if (!confirmActionPlanApply(preview.plan)) {
+      logEntry('Apply canceled after preview', 'info');
+      return;
+    }
+    btn.innerHTML = '<span class="spinner"></span>Applying...';
+    data = await apiPost('/api/action', {
+      model_path: modelPath,
+      actions: actions,
+      create_backup: createBackup,
+      auto_refresh: autoRefresh
+    });
   } catch (e) {
     logEntry('Apply failed: ' + (e && e.message ? e.message : e), 'err');
     updateApplyButtonState();
@@ -4983,6 +5113,7 @@ async function applyQueuedActions() {
   logEntry('Apply complete: ' + ok + ' succeeded, ' + fail + ' failed', 'info');
   selectedKeys.clear();
   selectedTableNames.clear();
+  clearActionPlanPreview();
   updateApplyButtonState();
   renderTable();
   renderTablesOverview();
@@ -5013,6 +5144,7 @@ $('btnReset').onclick = function() {
   actionStatus.clear();
   selectedKeys.clear();
   selectedTableNames.clear();
+  clearActionPlanPreview();
   updateApplyButtonState();
   renderTable();
   updateSelectedCount();

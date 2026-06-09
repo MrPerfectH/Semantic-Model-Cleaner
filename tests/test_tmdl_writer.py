@@ -508,6 +508,69 @@ def test_apply_actions_validates_whole_batch_before_writing(tmp_path):
     assert "\t\tisHidden" not in sales_file.read_text(encoding="utf-8")
 
 
+def test_plan_actions_previews_valid_batch_without_writing(tmp_path):
+    model_path = tmp_path / "Demo.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = 1\n"
+        "\tmeasure Legacy = 2\n",
+        encoding="utf-8",
+    )
+
+    plan = tmdl_writer.plan_actions(
+        model_path,
+        [
+            {"action": "hide", "table": "Sales", "name": "Revenue", "item_type": "Measure"},
+            {"action": "delete", "table": "Sales", "name": "Legacy", "item_type": "Measure"},
+        ],
+    )
+
+    assert plan["ok"] is True
+    assert plan["action_count"] == 2
+    assert plan["valid_action_count"] == 2
+    assert plan["invalid_action_count"] == 0
+    assert plan["destructive_action_count"] == 1
+    assert plan["affected_files"] == [str(sales_file)]
+    assert plan["actions"][0]["label"] == "Hide"
+    assert plan["actions"][0]["source_file"] == str(sales_file)
+    assert plan["actions"][1]["destructive"] is True
+    assert plan["written"] is False
+    content = sales_file.read_text(encoding="utf-8")
+    assert "\t\tisHidden" not in content
+    assert "\tmeasure Legacy = 2" in content
+
+
+def test_plan_actions_reports_invalid_batch_without_writing(tmp_path):
+    model_path = tmp_path / "Demo.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    sales_file.write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = 1\n",
+        encoding="utf-8",
+    )
+
+    plan = tmdl_writer.plan_actions(
+        model_path,
+        [
+            {"action": "hide", "table": "Sales", "name": "Revenue", "item_type": "Measure"},
+            {"action": "hide", "table": "Sales", "name": "Missing", "item_type": "Measure"},
+        ],
+    )
+
+    assert plan["ok"] is False
+    assert plan["valid_action_count"] == 1
+    assert plan["invalid_action_count"] == 1
+    assert plan["actions"][0]["ok"] is True
+    assert plan["actions"][1]["ok"] is False
+    assert "Missing" in plan["errors"][0]
+    assert "\t\tisHidden" not in sales_file.read_text(encoding="utf-8")
+
+
 def test_apply_actions_targets_split_tmdl_source_file(tmp_path):
     model_path = tmp_path / "Demo.SemanticModel"
     tables_dir = model_path / "definition" / "tables"
