@@ -689,6 +689,30 @@ def test_api_analyze_returns_report_health_issues(tmp_path):
     assert payload["reportHealth"]["groups"][0]["count"] == 1
 
 
+def test_api_analyze_rejects_tmsl_model_bim_with_clear_message(tmp_path):
+    model_path = tmp_path / "Sales.SemanticModel"
+    report_path = tmp_path / "Executive.Report"
+    model_path.mkdir()
+    report_path.mkdir()
+    (model_path / "model.bim").write_text("{}", encoding="utf-8")
+    (model_path / "definition.pbism").write_text('{"version":"4.0"}', encoding="utf-8")
+    (report_path / "definition.pbir").write_text('{"version":"4.0"}', encoding="utf-8")
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/analyze",
+        json={
+            "model_paths": [str(model_path)],
+            "report_paths": [str(report_path)],
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.get_json()["error"]
+    assert "TMSL/model.bim" in error
+    assert "Convert the Semantic Model to TMDL" in error
+
+
 def test_api_cleanup_stale_report_metadata_can_preview_without_writing(tmp_path):
     report_path = tmp_path / "Executive.Report"
     visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"

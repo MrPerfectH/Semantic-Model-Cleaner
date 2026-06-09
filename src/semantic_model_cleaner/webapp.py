@@ -1068,6 +1068,8 @@ def api_analyze():
 
         _state["last_results"] = results
         return jsonify(_serialize_results(results))
+    except analyzer.UnsupportedSemanticModelError as e:
+        return jsonify({"error": str(e)}), 400
     except SystemExit:
         return jsonify({"error": "Analysis failed — no models or reports found at the given paths."}), 400
     except Exception as e:

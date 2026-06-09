@@ -2,6 +2,7 @@ import json
 from io import BytesIO
 from pathlib import Path
 
+import pytest
 from openpyxl import load_workbook
 
 from semantic_model_cleaner import analyzer
@@ -1516,6 +1517,24 @@ def test_invalid_definition_pbir_is_report_health_issue(tmp_path):
     assert results["report_issues"][0]["issueType"] == "invalid_report_json"
     assert results["report_issues"][0]["artifactKind"] == "Report Definition"
     assert results["report_issues"][0]["artifactPath"] == "definition.pbir"
+
+
+def test_tmsl_model_bim_semantic_model_fails_clearly(tmp_path):
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "Sales.SemanticModel"
+    report = workspace / "Reports" / "Executive.Report"
+    model.mkdir(parents=True)
+    report.mkdir(parents=True)
+    (model / "model.bim").write_text("{}", encoding="utf-8")
+    (model / "definition.pbism").write_text('{"version":"4.0"}', encoding="utf-8")
+    (report / "definition.pbir").write_text('{"version":"4.0"}', encoding="utf-8")
+
+    with pytest.raises(analyzer.UnsupportedSemanticModelError) as exc_info:
+        analyzer.analyze(workspace.resolve())
+
+    message = str(exc_info.value)
+    assert "TMSL/model.bim" in message
+    assert "Convert the Semantic Model to TMDL" in message
 
 
 def test_dax_dependency_graph_excludes_self_references():
