@@ -1770,6 +1770,84 @@ function issueHelpText(itemOrStatus) {
   return 'No issue signal was detected for this item.';
 }
 
+function collectSearchText(value, depth) {
+  if (value == null || depth > 3) return [];
+  if (Array.isArray(value)) {
+    return value.flatMap(function(entry) { return collectSearchText(entry, depth + 1); });
+  }
+  if (typeof value === 'object') {
+    return Object.keys(value).flatMap(function(key) {
+      return collectSearchText(value[key], depth + 1);
+    });
+  }
+  var text = String(value).trim();
+  return text ? [text] : [];
+}
+
+function normalizeSearchText(parts) {
+  return collectSearchText(parts, 0).join(' ').toLowerCase();
+}
+
+function issueAndReviewSearchText(record) {
+  if (!record || typeof record !== 'object') return '';
+  var issueLabel = issueValue(record);
+  return normalizeSearchText([
+    issueLabel,
+    issueLabel ? issueHelpText(record) : '',
+    record.reviewTriggers || [],
+    record.brokenDaxRefs || [],
+    record.brokenDaxRefDetails || [],
+    record.staleUsageDetails || [],
+    record.fieldParameterIssues || []
+  ]);
+}
+
+function mainSearchTextForItem(item) {
+  return normalizeSearchText([
+    item.name,
+    item.table,
+    sourceSummary(item),
+    item.sourceArtifact || '',
+    issueAndReviewSearchText(item)
+  ]);
+}
+
+function mainSearchTextForTable(table) {
+  return normalizeSearchText([
+    table.name,
+    table.roleLabel || '',
+    table.signals || [],
+    table.relatedTables || [],
+    table.fieldParameterIssues || [],
+    issueAndReviewSearchText(table),
+    (table.items || []).map(function(item) {
+      return [
+        item.name,
+        item.ref,
+        item.type,
+        item.status,
+        item.removalRisk,
+        item.reviewTriggers || [],
+        item.brokenDaxRefs || [],
+        issueAndReviewSearchText(item)
+      ];
+    })
+  ]);
+}
+
+function mainSearchTextForRef(ref) {
+  return normalizeSearchText([
+    ref.name,
+    ref.table,
+    ref.report || '',
+    ref.page || '',
+    ref.visualTitle || '',
+    sourceKindLabel(ref.sourceKind || 'model'),
+    ref.sourceArtifact || '',
+    issueAndReviewSearchText(ref)
+  ]);
+}
+
 function cleanupHelpText(value) {
   var text = {
     'Safe': 'No report usage or blocking model dependency was found. Lowest-risk cleanup candidate.',
@@ -2675,8 +2753,7 @@ function applyFilters() {
   var modifiedValues = getSelectedValues('filterModified');
   var sourceValues = getSelectedValues('filterSource');
   filteredItems = allItems.filter(function(item) {
-    var sourceText = (sourceSummary(item) + ' ' + (item.sourceArtifact || '')).toLowerCase();
-    if (search && !item.name.toLowerCase().includes(search) && !item.table.toLowerCase().includes(search) && !sourceText.includes(search)) return false;
+    if (search && !mainSearchTextForItem(item).includes(search)) return false;
     if (!matchesSelectedValues(usageValue(item), statuses)) return false;
     if (!matchesSelectedValues(issueFilterValue(item), issues)) return false;
     if (!matchesSelectedValues(deleteSafetyValue(item), risks)) return false;
@@ -2701,11 +2778,7 @@ function applyFilters() {
     return true;
   });
     filteredTables = allTables.filter(function(table) {
-      var signalText = (table.signals || []).join(' ').toLowerCase();
-      var fieldParameterIssueText = (table.fieldParameterIssues || []).join(' ').toLowerCase();
-      var relatedText = (table.relatedTables || []).join(' ').toLowerCase();
-      var roleText = (table.roleLabel || '').toLowerCase();
-      if (search && !table.name.toLowerCase().includes(search) && !roleText.includes(search) && !signalText.includes(search) && !relatedText.includes(search) && !fieldParameterIssueText.includes(search)) {
+      if (search && !mainSearchTextForTable(table).includes(search)) {
         return false;
       }
       if (!matchesSelectedValues(table.usageState || 'Unused', statuses)) return false;
@@ -2896,10 +2969,7 @@ function filterRefs() {
   var folders = getSelectedValues('filterFolder');
   var sourceValues = getSelectedValues('filterSource');
   return allRefs.filter(function(r) {
-    var sourceText = ((sourceKindLabel(r.sourceKind || 'model')) + ' ' + (r.sourceArtifact || '')).toLowerCase();
-    if (search && !r.name.toLowerCase().includes(search) && !r.table.toLowerCase().includes(search)
-        && !(r.report || '').toLowerCase().includes(search) && !(r.page || '').toLowerCase().includes(search)
-        && !(r.visualTitle || '').toLowerCase().includes(search) && !sourceText.includes(search)) return false;
+    if (search && !mainSearchTextForRef(r).includes(search)) return false;
     if (!matchesSelectedValues(usageValue(r), statuses)) return false;
     if (!matchesSelectedValues(issueFilterValue(r), issues)) return false;
     if (!matchesSelectedValues(deleteSafetyValue(r), risks)) return false;

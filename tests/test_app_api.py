@@ -1937,6 +1937,16 @@ def test_index_renders_empty_selection_state():
     assert "matchesSelectedValues(issueFilterValue(item), issues)" in html
     assert "matchesSelectedValues(issueFilterValue(table), issues)" in html
     assert "matchesSelectedValues(issueFilterValue(r), issues)" in html
+    assert "function issueAndReviewSearchText(record) {" in html
+    assert "function mainSearchTextForItem(item) {" in html
+    assert "function mainSearchTextForTable(table) {" in html
+    assert "function mainSearchTextForRef(ref) {" in html
+    assert "record.reviewTriggers || []" in html
+    assert "record.brokenDaxRefs || []" in html
+    assert "record.staleUsageDetails || []" in html
+    assert "mainSearchTextForItem(item).includes(search)" in html
+    assert "mainSearchTextForTable(table).includes(search)" in html
+    assert "mainSearchTextForRef(r).includes(search)" in html
     assert 'id="reportHealthBanner"' in html
     assert 'id="reportHealthCount"' in html
     assert 'id="reportHealthList"' in html
