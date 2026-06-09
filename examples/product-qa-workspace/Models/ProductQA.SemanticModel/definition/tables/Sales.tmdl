@@ -1,0 +1,23 @@
+table Sales
+	column Amount
+		dataType: decimal
+
+	column Region
+		dataType: string
+
+	column 'Cleanup Note'
+		dataType: string
+		displayFolder: Product QA
+
+	column 'Old Color Driver'
+		dataType: decimal
+
+	measure Revenue = SUM(Sales[Amount])
+
+	measure 'Revenue Total' = SUM(Sales[Amount])
+
+	measure 'Perspective Revenue' = [Revenue]
+
+	measure 'Stale Margin' = DIVIDE([Revenue], 100)
+
+	measure 'Broken Forecast' = [Missing Forecast Measure] + SUM('Missing Table'[Amount])

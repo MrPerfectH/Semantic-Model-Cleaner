@@ -10,6 +10,9 @@ from semantic_model_cleaner import analyzer
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 PUBLIC_DEMO_DIR = Path(__file__).resolve().parents[1] / "examples" / "public-demo-workspace"
+PRODUCT_QA_WORKSPACE_DIR = (
+    Path(__file__).resolve().parents[1] / "examples" / "product-qa-workspace"
+)
 
 
 def _analyze_fixture(name: str) -> dict:
@@ -71,6 +74,40 @@ def test_public_demo_workspace_analyzes_cleanly():
     assert revenue["status"] == "USED (Field Parameter: Metric Parameter)"
     assert margin["status"] == "USED (Field Parameter: Metric Parameter)"
     assert results["warnings"] == []
+
+
+def test_product_qa_workspace_exercises_trust_workflows():
+    results = analyzer.analyze(PRODUCT_QA_WORKSPACE_DIR.resolve())
+
+    stale_margin = _find_item(results, "Sales", "Stale Margin", "Measure")
+    perspective_revenue = _find_item(results, "Sales", "Perspective Revenue", "Measure")
+    store_code = _find_item(results, "Store", "Store Code", "Column")
+    cleanup_note = _find_item(results, "Sales", "Cleanup Note", "Column")
+    report_margin = _find_item(results, "Report Metrics", "Report Margin", "Measure")
+
+    assert results["summary"]["models"] == ["ProductQA.SemanticModel"]
+    assert results["summary"]["reports"] == ["Executive"]
+    assert cleanup_note["status"] == "NOT USED"
+    assert cleanup_note["removal_risk"] == "Safe"
+    assert perspective_revenue["status"] == "NOT USED"
+    assert perspective_revenue["removal_risk"] == "Review"
+    assert any(
+        trigger.startswith("Unsupported Metadata: Perspectives")
+        for trigger in perspective_revenue["review_triggers"]
+    )
+    assert store_code["status"] == "USED (RLS: Store Role)"
+    assert report_margin["item"].source_kind == "report"
+
+    stale_issue_types = {issue["issueType"] for issue in results["report_issues"]}
+    assert {
+        "missing_measure",
+        "missing_column",
+        "stale_visual_selector",
+        "stale_formatting_rule",
+    } <= stale_issue_types
+    assert stale_margin["status"] == "NOT USED"
+    assert stale_margin["removal_risk"] == "Safe"
+    assert len(stale_margin["stale_usages"]) >= 2
 
 
 def test_split_tmdl_item_records_source_file(tmp_path):

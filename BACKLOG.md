@@ -4,7 +4,6 @@ Last updated: 2026-06-09
 
 ## Highest priority
 
-- Add a richer product QA workspace that exercises Report Health, stale Report References, broken references, unsupported metadata Review downgrades, RLS/model-backed dependencies, report extension measures, and move/rename rewrite previews.
 - Add a dry-run Cleanup Action plan preview for queued model actions before `/api/action` writes any TMDL files.
 - Show the previewed Cleanup Action plan in the web app, including affected Semantic Model Items, source files, backup choice, and auto-refresh behavior.
 - Add an `Issues` filter/slicer so users can isolate `Broken`, `Stale`, `Broken + Stale`, and no-issue items without mixing those signals into Usage or Cleanup.
@@ -35,6 +34,7 @@ Last updated: 2026-06-09
 
 ## Completed recently
 
+- Added a richer product QA workspace that exercises Report Health, stale Report References, broken references, unsupported metadata Review downgrades, RLS/model-backed dependencies, and Report Extension Measures.
 - Added a setting to turn automatic analysis refresh on or off after cleanup actions, including a post-refresh disclaimer when deleting measures may change dependency safety and usage classifications.
 - Expanded Item Details with Decision, Evidence, and Actions layouts, DAX expression editing, and Power Query / M source display when available.
 - Added cleanup actions to Item Details for move folder, move measure table, rename measure, hide/unhide, delete, apply queued actions, report measure promotion, and stale PBIR cleanup.
