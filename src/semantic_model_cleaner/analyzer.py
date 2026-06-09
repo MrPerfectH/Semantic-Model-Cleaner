@@ -37,6 +37,10 @@ from semantic_model_cleaner.tmdl_identifiers import (
 # ── Data Classes ──────────────────────────────────────────────────────────────
 
 
+class UnsupportedSemanticModelError(RuntimeError):
+    """Raised when a selected Semantic Model uses an unsupported storage format."""
+
+
 @dataclass
 class ModelItem:
     item_type: str  # "Measure", "Column", "Calculated Column"
@@ -407,6 +411,20 @@ def parse_model_items(model_path: Path) -> list[ModelItem]:
     for f in sorted(tables_dir.glob("*.tmdl")):
         items.extend(_parse_tmdl_file(f))
     return items
+
+
+def _unsupported_semantic_model_error(model_path: Path) -> str | None:
+    if (model_path / "definition" / "tables").exists():
+        return None
+
+    if (model_path / "model.bim").exists() or (model_path / "definition" / "model.bim").exists():
+        return (
+            "This Semantic Model is saved as TMSL/model.bim. "
+            "Convert the Semantic Model to TMDL before analyzing with Semantic Model Cleaner: "
+            f"{model_path}"
+        )
+
+    return None
 
 
 def parse_unsupported_metadata_refs(model_path: Path) -> list[UnsupportedMetadataRef]:
@@ -3588,6 +3606,10 @@ def analyze(
     warnings: list[AnalyzerWarning] = []
 
     for model_path in models:
+        unsupported_error = _unsupported_semantic_model_error(model_path)
+        if unsupported_error:
+            raise UnsupportedSemanticModelError(unsupported_error)
+
         model_items = parse_model_items(model_path)
         parsed_model_items.extend(model_items)
         all_items.extend(model_items)
@@ -4519,13 +4541,17 @@ def main():
             )
         sys.exit(1)
 
-    results = analyze(
-        workspace,
-        model_paths=models,
-        report_paths=reports,
-        model_search_roots=model_roots,
-        report_search_roots=report_roots,
-    )
+    try:
+        results = analyze(
+            workspace,
+            model_paths=models,
+            report_paths=reports,
+            model_search_roots=model_roots,
+            report_search_roots=report_roots,
+        )
+    except UnsupportedSemanticModelError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     if args.format == "xlsx":
         output_path = args.output
