@@ -20,7 +20,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
 
-from . import __version__, analyzer, experiments, file_transaction, report_writer, tmdl_writer
+from . import __version__, analyzer, experiments, file_transaction, model_compare, report_writer, tmdl_writer
 
 app = Flask(__name__)
 
@@ -35,6 +35,7 @@ _state = {
     "model_paths": [],
     "report_paths": [],
     "backup_path": None,
+    "last_compare_results": None,
 }
 
 _WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:(?![\\/])")
@@ -1118,6 +1119,37 @@ def api_analyze():
         return jsonify({"error": str(e)}), 400
     except SystemExit:
         return jsonify({"error": "Analysis failed — no models or reports found at the given paths."}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/compare", methods=["POST"])
+def api_compare():
+    """Run a model-to-model TMDL comparison and return JSON results."""
+    try:
+        data = request.get_json(silent=True) or {}
+        baseline_path_str = (
+            data.get("baseline_model_path")
+            or data.get("baselineModelPath")
+            or data.get("baseline_path")
+        )
+        candidate_path_str = (
+            data.get("candidate_model_path")
+            or data.get("candidateModelPath")
+            or data.get("candidate_path")
+        )
+
+        if not baseline_path_str or not candidate_path_str:
+            return jsonify({"error": "Baseline and candidate model paths are required."}), 400
+
+        results = model_compare.compare_models(
+            Path(_normalize_browse_path(str(baseline_path_str))),
+            Path(_normalize_browse_path(str(candidate_path_str))),
+        )
+        _state["last_compare_results"] = results
+        return jsonify(results)
+    except model_compare.UnsupportedCompareModelError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
