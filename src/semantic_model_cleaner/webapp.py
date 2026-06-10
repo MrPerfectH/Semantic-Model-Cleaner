@@ -1154,6 +1154,60 @@ def api_compare():
         return jsonify({"error": str(e)}), 500
 
 
+def _compare_download_basename(results: dict) -> str:
+    baseline = str(results.get("baselineModel", {}).get("name", "Baseline") or "Baseline")
+    candidate = str(results.get("candidateModel", {}).get("name", "Candidate") or "Candidate")
+
+    def clean(value: str) -> str:
+        cleaned = re.sub(r"[^A-Za-z0-9]+", "_", value).strip("_")
+        return cleaned or "Model"
+
+    return f"{clean(baseline)}_vs_{clean(candidate)}_model_compare"
+
+
+@app.route("/api/compare/export", methods=["GET"])
+def api_compare_export():
+    """Download the latest model compare results for review."""
+    try:
+        results = _state.get("last_compare_results")
+        if not results:
+            return jsonify({"error": "No compare results available. Run compare first."}), 400
+
+        export_format = request.args.get("format", "").strip().lower()
+        base_name = _compare_download_basename(results)
+
+        if export_format == "json":
+            payload = json.dumps(results, indent=2).encode("utf-8")
+            return send_file(
+                io.BytesIO(payload),
+                mimetype="application/json",
+                as_attachment=True,
+                download_name=f"{base_name}.json",
+            )
+
+        if export_format in {"md", "markdown"}:
+            payload = model_compare.format_markdown_output(results).encode("utf-8")
+            return send_file(
+                io.BytesIO(payload),
+                mimetype="text/markdown",
+                as_attachment=True,
+                download_name=f"{base_name}.md",
+            )
+
+        if export_format == "csv":
+            payload = model_compare.format_csv_output(results).encode("utf-8")
+            return send_file(
+                io.BytesIO(payload),
+                mimetype="text/csv",
+                as_attachment=True,
+                download_name=f"{base_name}.csv",
+            )
+
+        return jsonify({"error": f"Unsupported compare export format: {export_format or '(empty)'}"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/export", methods=["GET"])
 def api_export():
     """Download the latest analysis as JSON or XLSX."""

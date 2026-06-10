@@ -852,6 +852,72 @@ def test_api_compare_returns_model_to_model_diffs(tmp_path):
     assert any(diff["category"] == "tables" and diff["status"] == "removed" and diff["table"] == "Legacy" for diff in payload["diffs"])
 
 
+def test_api_compare_export_downloads_review_formats(tmp_path):
+    baseline_model = tmp_path / "Baseline.SemanticModel"
+    candidate_model = tmp_path / "Candidate.SemanticModel"
+    baseline_tables_dir = baseline_model / "definition" / "tables"
+    candidate_tables_dir = candidate_model / "definition" / "tables"
+    baseline_tables_dir.mkdir(parents=True)
+    candidate_tables_dir.mkdir(parents=True)
+    (baseline_tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = SUM(Sales[Amount])\n"
+        "\t\tdisplayFolder: Finance\n",
+        encoding="utf-8",
+    )
+    (candidate_tables_dir / "Sales.tmdl").write_text(
+        "table Sales\n"
+        "\tmeasure Revenue = SUMX(Sales, Sales[Amount])\n"
+        "\t\tdisplayFolder: Executive\n"
+        "\t\tisHidden: true\n",
+        encoding="utf-8",
+    )
+
+    client = web_app.app.test_client()
+    compare_response = client.post(
+        "/api/compare",
+        json={
+            "baseline_model_path": str(baseline_model),
+            "candidate_model_path": str(candidate_model),
+        },
+    )
+    assert compare_response.status_code == 200
+
+    markdown = client.get("/api/compare/export?format=md")
+    assert markdown.status_code == 200
+    assert markdown.headers["Content-Disposition"].endswith('filename=Baseline_vs_Candidate_model_compare.md')
+    markdown_text = markdown.get_data(as_text=True)
+    assert "# Semantic Model Compare: Baseline -> Candidate" in markdown_text
+    assert "| Measures | 0 | 0 | 1 | 0 |" in markdown_text
+    assert "Sales[Revenue]" in markdown_text
+    assert "displayFolder" in markdown_text
+
+    csv_response = client.get("/api/compare/export?format=csv")
+    assert csv_response.status_code == 200
+    csv_text = csv_response.get_data(as_text=True)
+    assert "category,status,type,table,name,property,baseline,candidate" in csv_text
+    assert "measures,changed,Measure,Sales,Revenue,expression,SUM(Sales[Amount]),\"SUMX(Sales, Sales[Amount])\"" in csv_text
+
+    json_response = client.get("/api/compare/export?format=json")
+    assert json_response.status_code == 200
+    json_payload = json.loads(json_response.get_data(as_text=True))
+    assert json_payload["summary"]["totalDifferences"] == 1
+    assert json_payload["diffs"][0]["properties"][0]["name"] == "expression"
+
+
+def test_api_compare_export_requires_compare_results():
+    previous_results = web_app._state.get("last_compare_results")
+    web_app._state["last_compare_results"] = None
+    try:
+        client = web_app.app.test_client()
+        response = client.get("/api/compare/export?format=json")
+
+        assert response.status_code == 400
+        assert "No compare results available" in response.get_json()["error"]
+    finally:
+        web_app._state["last_compare_results"] = previous_results
+
+
 def test_api_cleanup_stale_report_metadata_can_preview_without_writing(tmp_path):
     report_path = tmp_path / "Executive.Report"
     visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
@@ -2075,13 +2141,29 @@ def test_index_renders_empty_selection_state():
     assert 'id="btnBrowseCompareCandidate"' in html
     assert 'id="btnRunCompare"' in html
     assert 'id="compareResultSection"' in html
+    assert 'id="compareResultTabs"' in html
+    assert 'data-compare-view="summary"' in html
+    assert 'data-compare-view="details"' in html
+    assert 'id="compareSummaryView"' in html
+    assert 'id="compareDetailsView"' in html
     assert 'id="compareSummaryCards"' in html
     assert 'id="compareDiffBody"' in html
+    assert 'id="compareStatusFilter"' in html
+    assert 'id="compareCategoryFilter"' in html
+    assert 'id="compareVisibleCount"' in html
+    assert 'id="btnExportCompareJson"' in html
+    assert 'id="btnExportCompareMarkdown"' in html
+    assert 'id="btnExportCompareCsv"' in html
     assert "var compareBaselineModel = null;" in html
     assert "var compareCandidateModel = null;" in html
     assert "var compareResults = null;" in html
+    assert "var compareResultView = 'summary';" in html
+    assert "var compareStatusFilter = 'all';" in html
+    assert "var compareCategoryFilter = 'all';" in html
     assert "function setAppFlow(flow) {" in html
     assert "function renderCompareSelection() {" in html
+    assert "function setCompareResultView(view) {" in html
+    assert "function filteredCompareDiffs() {" in html
     assert "function renderCompareResults(data) {" in html
     assert "async function runSemanticModelCompare() {" in html
     assert "function clearCompareResults() {" in html

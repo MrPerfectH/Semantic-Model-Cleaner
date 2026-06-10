@@ -1,5 +1,7 @@
 """Semantic model to semantic model comparison for local TMDL projects."""
 
+import csv
+import io
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -76,6 +78,110 @@ def compare_models(baseline_model_path: Path, candidate_model_path: Path) -> dic
         "summary": summary,
         "diffs": diffs,
     }
+
+
+def format_markdown_output(results: dict[str, Any]) -> str:
+    """Format compare results as a review-friendly Markdown report."""
+    baseline = results.get("baselineModel", {}).get("name", "Baseline")
+    candidate = results.get("candidateModel", {}).get("name", "Candidate")
+    summary = results.get("summary", {})
+
+    lines = [
+        f"# Semantic Model Compare: {baseline} -> {candidate}",
+        "",
+        f"- Baseline: `{results.get('baselineModel', {}).get('path', '')}`",
+        f"- Candidate: `{results.get('candidateModel', {}).get('path', '')}`",
+        f"- Total changed objects: {summary.get('totalDifferences', 0)}",
+        "",
+        "## Summary",
+        "",
+        "| Area | Added | Removed | Changed | Unchanged |",
+        "| --- | ---: | ---: | ---: | ---: |",
+    ]
+
+    for category in ("tables", "measures", "columns"):
+        values = summary.get(category, {}) if isinstance(summary.get(category), dict) else {}
+        lines.append(
+            f"| {compare_category_label(category)} | "
+            f"{values.get('added', 0)} | "
+            f"{values.get('removed', 0)} | "
+            f"{values.get('changed', 0)} | "
+            f"{values.get('unchanged', 0)} |"
+        )
+
+    lines.extend([
+        "",
+        "## Detailed Differences",
+        "",
+        "| Status | Area | Object | Property | Baseline | Candidate |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ])
+
+    rows = list(flatten_diff_rows(results))
+    if not rows:
+        lines.append("| No differences |  |  |  |  |  |")
+    else:
+        for row in rows:
+            lines.append(
+                f"| {_markdown_cell(row['status'])} | "
+                f"{_markdown_cell(compare_category_label(row['category']))} | "
+                f"{_markdown_cell(row['displayName'])} | "
+                f"{_markdown_cell(row['property'])} | "
+                f"{_markdown_cell(row['baseline'])} | "
+                f"{_markdown_cell(row['candidate'])} |"
+            )
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def format_csv_output(results: dict[str, Any]) -> str:
+    """Format compare results as one row per object/property difference."""
+    output = io.StringIO()
+    fieldnames = [
+        "category",
+        "status",
+        "type",
+        "table",
+        "name",
+        "property",
+        "baseline",
+        "candidate",
+        "baselineSourceFile",
+        "candidateSourceFile",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
+    writer.writeheader()
+    for row in flatten_diff_rows(results):
+        writer.writerow({field: row.get(field, "") for field in fieldnames})
+    return output.getvalue()
+
+
+def flatten_diff_rows(results: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = []
+    for diff in results.get("diffs", []):
+        properties = diff.get("properties") or []
+        if not properties:
+            rows.append(_flat_diff_row(diff, "", "", ""))
+            continue
+        for prop in properties:
+            rows.append(_flat_diff_row(
+                diff,
+                prop.get("name", ""),
+                prop.get("baseline", ""),
+                prop.get("candidate", ""),
+            ))
+    return rows
+
+
+def compare_category_label(category: str) -> str:
+    if category == "tables":
+        return "Tables"
+    if category == "measures":
+        return "Measures"
+    if category == "columns":
+        return "Columns"
+    return category
 
 
 def parse_model_snapshot(model_path: Path) -> ModelSnapshot:
@@ -426,3 +532,34 @@ def _model_payload(model_path: Path) -> dict[str, str]:
         "name": model_path.name.replace(".SemanticModel", ""),
         "path": str(model_path),
     }
+
+
+def _flat_diff_row(diff: dict[str, Any], property_name: str, baseline: Any, candidate: Any) -> dict[str, Any]:
+    return {
+        "category": diff.get("category", ""),
+        "status": diff.get("status", ""),
+        "type": diff.get("type", ""),
+        "table": diff.get("table", ""),
+        "name": diff.get("name", ""),
+        "displayName": diff.get("displayName", ""),
+        "property": property_name,
+        "baseline": _scalar_text(baseline),
+        "candidate": _scalar_text(candidate),
+        "baselineSourceFile": diff.get("baselineSourceFile", ""),
+        "candidateSourceFile": diff.get("candidateSourceFile", ""),
+    }
+
+
+def _scalar_text(value: Any) -> str:
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _markdown_cell(value: Any) -> str:
+    text = _scalar_text(value).replace("\n", "<br>")
+    return text.replace("|", "\\|") or " "
