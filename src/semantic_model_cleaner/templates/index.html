@@ -63,6 +63,25 @@ body.app-flow-cleanup #compareFlow { display: none !important; }
 .compare-status { color: var(--text-light); font-size: 12px; line-height: 1.45; }
 .compare-scope-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
 .compare-scope-item { min-height: 46px; padding: 9px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: var(--text); font-size: 12px; font-weight: 700; display: flex; align-items: center; }
+.compare-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.compare-summary-card { min-width: 0; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
+.compare-summary-total { font-size: 24px; line-height: 1; font-weight: 750; color: var(--primary); }
+.compare-summary-label { margin-top: 4px; font-size: 11px; color: var(--text-light); text-transform: uppercase; letter-spacing: .35px; font-weight: 700; }
+.compare-summary-metrics { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; color: var(--text-light); font-size: 12px; }
+.compare-summary-metrics span { padding: 2px 7px; border-radius: 999px; background: #fff; border: 1px solid #e2e8f0; white-space: nowrap; }
+.compare-diff-table-container { max-height: 360px; min-height: 160px; flex: none !important; }
+.compare-diff-table { min-width: 980px; }
+.compare-diff-table th[data-comparecol="change"] { width: 120px; }
+.compare-diff-table th[data-comparecol="object"] { width: 260px; }
+.compare-diff-table th[data-comparecol="properties"] { width: 460px; }
+.compare-diff-table th[data-comparecol="source"] { width: 220px; }
+.compare-object-cell, .compare-property-list, .compare-source-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.compare-object-title { font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compare-object-meta, .compare-source-cell { color: var(--text-light); font-size: 12px; line-height: 1.35; }
+.compare-property-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px; align-items: start; }
+.compare-property-name { color: var(--text); font-weight: 700; }
+.compare-property-values { color: var(--text-light); overflow-wrap: anywhere; }
+.compare-empty { color: var(--text-light); text-align: center; padding: 24px 12px; }
 .pill-list { display: flex; flex-wrap: wrap; gap: 6px; min-height: 36px; padding: 8px; background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; }
 .pill-list.empty { align-items: center; justify-content: center; color: var(--text-light); font-size: 12px; font-style: italic; }
 .pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 14px; font-size: 12px; font-weight: 500; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -457,6 +476,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
   .view-tabs { width: 100%; overflow-x: auto; }
   .table-tools { justify-content: flex-start; flex-wrap: wrap; width: 100%; }
   .compare-setup-grid { grid-template-columns: 1fr; }
+  .compare-summary-grid { grid-template-columns: 1fr; }
   .report-health-controls { grid-template-columns: 1fr; }
   .report-segment-group { overflow-x: auto; }
   .detail-header { flex-direction: column; }
@@ -554,6 +574,28 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <div class="compare-scope-item">Display folders</div>
         <div class="compare-scope-item">Hidden flags</div>
         <div class="compare-scope-item">DAX/properties</div>
+      </div>
+    </div>
+    <div class="compare-panel hidden" id="compareResultSection">
+      <div class="compare-header">
+        <div>
+          <h2>Compare Results</h2>
+          <div class="detail-meta" id="compareResultMeta"></div>
+        </div>
+      </div>
+      <div class="compare-summary-grid" id="compareSummaryCards"></div>
+      <div class="table-container compare-diff-table-container">
+        <table class="compare-diff-table">
+          <thead>
+            <tr>
+              <th data-comparecol="change">Change</th>
+              <th data-comparecol="object">Object</th>
+              <th data-comparecol="properties">Properties</th>
+              <th data-comparecol="source">Source</th>
+            </tr>
+          </thead>
+          <tbody id="compareDiffBody"></tbody>
+        </table>
       </div>
     </div>
   </section>
@@ -1122,6 +1164,7 @@ var chosenReports = (initialConfig.initialReports || []).slice();
 var currentAppFlow = 'cleanup';
 var compareBaselineModel = null;
 var compareCandidateModel = null;
+var compareResults = null;
 var pendingActions = new Map();
 var actionStatus = new Map();
 var selectedTableNames = new Set();
@@ -1262,6 +1305,7 @@ function renderCompareModelSlot(id, model, side, emptyText) {
       e.stopPropagation();
       if (btn.dataset.compareSide === 'baseline') compareBaselineModel = null;
       if (btn.dataset.compareSide === 'candidate') compareCandidateModel = null;
+      clearCompareResults();
       renderCompareSelection();
     };
   });
@@ -1271,10 +1315,156 @@ function renderCompareSelection() {
   renderCompareModelSlot('compareBaselinePills', compareBaselineModel, 'baseline', 'No baseline model selected');
   renderCompareModelSlot('compareCandidatePills', compareCandidateModel, 'candidate', 'No candidate model selected');
   var ready = !!(compareBaselineModel && compareCandidateModel);
-  $('btnRunCompare').disabled = true;
+  $('btnRunCompare').disabled = !ready;
+  $('btnRunCompare').title = ready
+    ? 'Compare the selected baseline and candidate semantic models'
+    : 'Select a baseline and candidate semantic model first';
   $('compareStatus').textContent = ready
     ? 'Model pair ready.'
     : 'Select a baseline and candidate semantic model.';
+}
+
+function clearCompareResults() {
+  compareResults = null;
+  $('compareResultSection').classList.add('hidden');
+  $('compareSummaryCards').innerHTML = '';
+  $('compareDiffBody').innerHTML = '';
+  $('compareResultMeta').textContent = '';
+}
+
+function compareCategoryLabel(category) {
+  if (category === 'tables') return 'Tables';
+  if (category === 'measures') return 'Measures';
+  if (category === 'columns') return 'Columns';
+  return category || '';
+}
+
+function compareStatusLabel(status) {
+  if (status === 'added') return 'Added';
+  if (status === 'removed') return 'Removed';
+  if (status === 'changed') return 'Changed';
+  return status || '';
+}
+
+function compareStatusBadgeClass(status) {
+  if (status === 'added') return 'badge-used';
+  if (status === 'removed') return 'badge-caution';
+  if (status === 'changed') return 'badge-review';
+  return 'badge-muted';
+}
+
+function compareSummaryTotal(summary) {
+  return (summary.added || 0) + (summary.removed || 0) + (summary.changed || 0);
+}
+
+function compareValueText(value) {
+  if (value === true) return 'true';
+  if (value === false) return 'false';
+  if (value === null || value === undefined || value === '') return '(blank)';
+  return String(value);
+}
+
+function compareShortPath(path) {
+  if (!path) return '';
+  var parts = String(path).split(/[\\\/]+/).filter(Boolean);
+  return parts.slice(-3).join('/');
+}
+
+function comparePropertiesHtml(diff) {
+  var props = diff.properties || [];
+  if (!props.length) {
+    return '<span class="compare-property-values">' + esc(compareStatusLabel(diff.status)) + '</span>';
+  }
+  return props.map(function(prop) {
+    return '<div class="compare-property-row">'
+      + '<span class="compare-property-name">' + esc(prop.name) + '</span>'
+      + '<span class="compare-property-values">'
+      + esc(compareValueText(prop.baseline)) + ' -> ' + esc(compareValueText(prop.candidate))
+      + '</span>'
+      + '</div>';
+  }).join('');
+}
+
+function compareSourceHtml(diff) {
+  var baseline = diff.baselineSourceFile || '';
+  var candidate = diff.candidateSourceFile || '';
+  if (diff.status === 'added') {
+    return '<span title="' + esc(candidate) + '">Candidate: ' + esc(compareShortPath(candidate)) + '</span>';
+  }
+  if (diff.status === 'removed') {
+    return '<span title="' + esc(baseline) + '">Baseline: ' + esc(compareShortPath(baseline)) + '</span>';
+  }
+  return '<span title="' + esc(baseline) + '">Baseline: ' + esc(compareShortPath(baseline)) + '</span>'
+    + '<span title="' + esc(candidate) + '">Candidate: ' + esc(compareShortPath(candidate)) + '</span>';
+}
+
+function renderCompareResults(data) {
+  compareResults = data;
+  var summary = data.summary || {};
+  var categories = [
+    { key: 'tables', label: 'Tables' },
+    { key: 'measures', label: 'Measures' },
+    { key: 'columns', label: 'Columns' }
+  ];
+  $('compareResultMeta').textContent = (data.baselineModel ? data.baselineModel.name : 'Baseline')
+    + ' -> ' + (data.candidateModel ? data.candidateModel.name : 'Candidate');
+  $('compareSummaryCards').innerHTML = categories.map(function(category) {
+    var values = summary[category.key] || {};
+    return '<div class="compare-summary-card">'
+      + '<div class="compare-summary-total">' + compareSummaryTotal(values) + '</div>'
+      + '<div class="compare-summary-label">' + esc(category.label) + '</div>'
+      + '<div class="compare-summary-metrics">'
+      + '<span>+' + (values.added || 0) + '</span>'
+      + '<span>-' + (values.removed || 0) + '</span>'
+      + '<span>Changed ' + (values.changed || 0) + '</span>'
+      + '<span>Same ' + (values.unchanged || 0) + '</span>'
+      + '</div>'
+      + '</div>';
+  }).join('');
+
+  var diffs = data.diffs || [];
+  if (!diffs.length) {
+    $('compareDiffBody').innerHTML = '<tr><td colspan="4" class="compare-empty">No differences found</td></tr>';
+  } else {
+    $('compareDiffBody').innerHTML = diffs.map(function(diff) {
+      return '<tr>'
+        + '<td><span class="badge ' + compareStatusBadgeClass(diff.status) + '">' + esc(compareStatusLabel(diff.status)) + '</span></td>'
+        + '<td><div class="compare-object-cell">'
+        + '<span class="compare-object-title" title="' + esc(diff.displayName || diff.name || '') + '">' + esc(diff.displayName || diff.name || '') + '</span>'
+        + '<span class="compare-object-meta">' + esc(compareCategoryLabel(diff.category)) + '</span>'
+        + '</div></td>'
+        + '<td><div class="compare-property-list">' + comparePropertiesHtml(diff) + '</div></td>'
+        + '<td><div class="compare-source-cell">' + compareSourceHtml(diff) + '</div></td>'
+        + '</tr>';
+    }).join('');
+  }
+  $('compareResultSection').classList.remove('hidden');
+}
+
+async function runSemanticModelCompare() {
+  if (!(compareBaselineModel && compareCandidateModel)) return;
+  $('btnRunCompare').disabled = true;
+  $('btnRunCompare').innerHTML = '<span class="spinner"></span>Comparing...';
+  $('compareStatus').textContent = 'Comparing selected semantic models...';
+  try {
+    var data = await apiPost('/api/compare', {
+      baseline_model_path: compareBaselineModel.path,
+      candidate_model_path: compareCandidateModel.path
+    });
+    if (data.error) {
+      clearCompareResults();
+      $('compareStatus').textContent = 'Compare failed: ' + data.error;
+      return;
+    }
+    renderCompareResults(data);
+    $('compareStatus').textContent = 'Compare complete. ' + (data.summary.totalDifferences || 0) + ' difference(s).';
+  } catch (err) {
+    clearCompareResults();
+    $('compareStatus').textContent = 'Compare failed: ' + (err && err.message ? err.message : err);
+  } finally {
+    $('btnRunCompare').disabled = !(compareBaselineModel && compareCandidateModel);
+    $('btnRunCompare').textContent = 'Compare';
+  }
 }
 
 function isModelExplorerMode(mode) {
@@ -2644,8 +2834,14 @@ $('btnExplorerDone').onclick = function() {
     else pickedReports.push(item);
   });
   if (explorerMode === 'model') chosenModels = pickedModels.slice(0, 1);
-  if (explorerMode === 'compareBaseline') compareBaselineModel = pickedModels[0] || null;
-  if (explorerMode === 'compareCandidate') compareCandidateModel = pickedModels[0] || null;
+  if (explorerMode === 'compareBaseline') {
+    compareBaselineModel = pickedModels[0] || null;
+    clearCompareResults();
+  }
+  if (explorerMode === 'compareCandidate') {
+    compareCandidateModel = pickedModels[0] || null;
+    clearCompareResults();
+  }
   if (explorerMode === 'report') chosenReports = pickedReports;
   renderPills();
   renderCompareSelection();
@@ -6046,9 +6242,7 @@ document.querySelectorAll('[data-app-flow]').forEach(function(button) {
     setAppFlow(button.dataset.appFlow);
   };
 });
-$('btnRunCompare').onclick = function() {
-  $('compareStatus').textContent = 'Model pair ready.';
-};
+$('btnRunCompare').onclick = runSemanticModelCompare;
 
 setupFilterDropdowns();
 initializeHeaderTooltips();
