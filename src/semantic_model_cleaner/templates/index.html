@@ -63,12 +63,26 @@ body.app-flow-cleanup #compareFlow { display: none !important; }
 .compare-status { color: var(--text-light); font-size: 12px; line-height: 1.45; }
 .compare-scope-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
 .compare-scope-item { min-height: 46px; padding: 9px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: var(--text); font-size: 12px; font-weight: 700; display: flex; align-items: center; }
+.compare-result-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.compare-result-tabs { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 8px; background: #f8fafc; margin-bottom: 12px; }
+.compare-result-tab { border: 0; border-radius: 6px; padding: 7px 10px; background: transparent; color: var(--text-light); font-size: 12px; font-weight: 700; cursor: pointer; }
+.compare-result-tab.active { background: var(--primary); color: #fff; }
+.compare-view.hidden { display: none !important; }
 .compare-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
 .compare-summary-card { min-width: 0; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
 .compare-summary-total { font-size: 24px; line-height: 1; font-weight: 750; color: var(--primary); }
 .compare-summary-label { margin-top: 4px; font-size: 11px; color: var(--text-light); text-transform: uppercase; letter-spacing: .35px; font-weight: 700; }
 .compare-summary-metrics { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; color: var(--text-light); font-size: 12px; }
 .compare-summary-metrics span { padding: 2px 7px; border-radius: 999px; background: #fff; border: 1px solid #e2e8f0; white-space: nowrap; }
+.compare-review-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.compare-review-card { min-width: 0; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+.compare-review-value { font-size: 20px; font-weight: 750; color: var(--text); }
+.compare-review-label { margin-top: 3px; color: var(--text-light); font-size: 12px; line-height: 1.35; }
+.compare-filter-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.compare-filter-group { display: flex; flex-direction: column; gap: 3px; min-width: 150px; }
+.compare-filter-group label { font-size: 11px; color: var(--text-light); font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+.compare-filter-group select { min-height: 34px; padding: 6px 28px 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text); font-size: 13px; }
+.compare-visible-count { margin-left: auto; color: var(--text-light); font-size: 12px; font-weight: 700; }
 .compare-diff-table-container { max-height: 360px; min-height: 160px; flex: none !important; }
 .compare-diff-table { min-width: 980px; }
 .compare-diff-table th[data-comparecol="change"] { width: 120px; }
@@ -582,20 +596,55 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
           <h2>Compare Results</h2>
           <div class="detail-meta" id="compareResultMeta"></div>
         </div>
+        <div class="compare-result-actions">
+          <button class="btn btn-secondary btn-sm" id="btnExportCompareMarkdown" title="Download compare results as Markdown">Export Markdown</button>
+          <button class="btn btn-secondary btn-sm" id="btnExportCompareCsv" title="Download compare differences as CSV">Export CSV</button>
+          <button class="btn btn-secondary btn-sm" id="btnExportCompareJson" title="Download compare results as JSON">Export JSON</button>
+        </div>
       </div>
-      <div class="compare-summary-grid" id="compareSummaryCards"></div>
-      <div class="table-container compare-diff-table-container">
-        <table class="compare-diff-table">
-          <thead>
-            <tr>
-              <th data-comparecol="change">Change</th>
-              <th data-comparecol="object">Object</th>
-              <th data-comparecol="properties">Properties</th>
-              <th data-comparecol="source">Source</th>
-            </tr>
-          </thead>
-          <tbody id="compareDiffBody"></tbody>
-        </table>
+      <div class="compare-result-tabs" id="compareResultTabs" aria-label="Compare result view">
+        <button type="button" class="compare-result-tab active" data-compare-view="summary">Summary</button>
+        <button type="button" class="compare-result-tab" data-compare-view="details">Detailed differences</button>
+      </div>
+      <div class="compare-view" id="compareSummaryView">
+        <div class="compare-summary-grid" id="compareSummaryCards"></div>
+        <div class="compare-review-summary" id="compareReviewSummary"></div>
+      </div>
+      <div class="compare-view hidden" id="compareDetailsView">
+        <div class="compare-filter-bar">
+          <div class="compare-filter-group">
+            <label for="compareStatusFilter">Change</label>
+            <select id="compareStatusFilter">
+              <option value="all">All changes</option>
+              <option value="added">Added</option>
+              <option value="removed">Removed</option>
+              <option value="changed">Changed</option>
+            </select>
+          </div>
+          <div class="compare-filter-group">
+            <label for="compareCategoryFilter">Area</label>
+            <select id="compareCategoryFilter">
+              <option value="all">All areas</option>
+              <option value="tables">Tables</option>
+              <option value="measures">Measures</option>
+              <option value="columns">Columns</option>
+            </select>
+          </div>
+          <div class="compare-visible-count" id="compareVisibleCount">0 differences shown</div>
+        </div>
+        <div class="table-container compare-diff-table-container">
+          <table class="compare-diff-table">
+            <thead>
+              <tr>
+                <th data-comparecol="change">Change</th>
+                <th data-comparecol="object">Object</th>
+                <th data-comparecol="properties">Properties</th>
+                <th data-comparecol="source">Source</th>
+              </tr>
+            </thead>
+            <tbody id="compareDiffBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </section>
@@ -1165,6 +1214,9 @@ var currentAppFlow = 'cleanup';
 var compareBaselineModel = null;
 var compareCandidateModel = null;
 var compareResults = null;
+var compareResultView = 'summary';
+var compareStatusFilter = 'all';
+var compareCategoryFilter = 'all';
 var pendingActions = new Map();
 var actionStatus = new Map();
 var selectedTableNames = new Set();
@@ -1326,10 +1378,29 @@ function renderCompareSelection() {
 
 function clearCompareResults() {
   compareResults = null;
+  compareResultView = 'summary';
+  compareStatusFilter = 'all';
+  compareCategoryFilter = 'all';
   $('compareResultSection').classList.add('hidden');
   $('compareSummaryCards').innerHTML = '';
+  $('compareReviewSummary').innerHTML = '';
   $('compareDiffBody').innerHTML = '';
   $('compareResultMeta').textContent = '';
+  $('compareVisibleCount').textContent = '0 differences shown';
+  $('compareStatusFilter').value = 'all';
+  $('compareCategoryFilter').value = 'all';
+  setCompareResultView('summary');
+}
+
+function setCompareResultView(view) {
+  compareResultView = view === 'details' ? 'details' : 'summary';
+  document.querySelectorAll('[data-compare-view]').forEach(function(button) {
+    var active = button.dataset.compareView === compareResultView;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  $('compareSummaryView').classList.toggle('hidden', compareResultView !== 'summary');
+  $('compareDetailsView').classList.toggle('hidden', compareResultView !== 'details');
 }
 
 function compareCategoryLabel(category) {
@@ -1355,6 +1426,12 @@ function compareStatusBadgeClass(status) {
 
 function compareSummaryTotal(summary) {
   return (summary.added || 0) + (summary.removed || 0) + (summary.changed || 0);
+}
+
+function compareSummaryMetric(summary, metric) {
+  return ((summary.tables && summary.tables[metric]) || 0)
+    + ((summary.measures && summary.measures[metric]) || 0)
+    + ((summary.columns && summary.columns[metric]) || 0);
 }
 
 function compareValueText(value) {
@@ -1398,16 +1475,22 @@ function compareSourceHtml(diff) {
     + '<span title="' + esc(candidate) + '">Candidate: ' + esc(compareShortPath(candidate)) + '</span>';
 }
 
-function renderCompareResults(data) {
-  compareResults = data;
+function filteredCompareDiffs() {
+  if (!compareResults) return [];
+  return (compareResults.diffs || []).filter(function(diff) {
+    if (compareStatusFilter !== 'all' && diff.status !== compareStatusFilter) return false;
+    if (compareCategoryFilter !== 'all' && diff.category !== compareCategoryFilter) return false;
+    return true;
+  });
+}
+
+function renderCompareSummary(data) {
   var summary = data.summary || {};
   var categories = [
     { key: 'tables', label: 'Tables' },
     { key: 'measures', label: 'Measures' },
     { key: 'columns', label: 'Columns' }
   ];
-  $('compareResultMeta').textContent = (data.baselineModel ? data.baselineModel.name : 'Baseline')
-    + ' -> ' + (data.candidateModel ? data.candidateModel.name : 'Candidate');
   $('compareSummaryCards').innerHTML = categories.map(function(category) {
     var values = summary[category.key] || {};
     return '<div class="compare-summary-card">'
@@ -1421,8 +1504,26 @@ function renderCompareResults(data) {
       + '</div>'
       + '</div>';
   }).join('');
+  var changedProperties = (data.diffs || []).reduce(function(total, diff) {
+    return total + ((diff.properties || []).length || 0);
+  }, 0);
+  $('compareReviewSummary').innerHTML = [
+    { value: summary.totalDifferences || 0, label: 'Objects needing review' },
+    { value: compareSummaryMetric(summary, 'added'), label: 'Added objects' },
+    { value: compareSummaryMetric(summary, 'removed'), label: 'Removed objects' },
+    { value: changedProperties, label: 'Property-level changes' }
+  ].map(function(item) {
+    return '<div class="compare-review-card">'
+      + '<div class="compare-review-value">' + item.value + '</div>'
+      + '<div class="compare-review-label">' + esc(item.label) + '</div>'
+      + '</div>';
+  }).join('');
+}
 
-  var diffs = data.diffs || [];
+function renderCompareDetails() {
+  var diffs = filteredCompareDiffs();
+  var total = compareResults && compareResults.diffs ? compareResults.diffs.length : 0;
+  $('compareVisibleCount').textContent = diffs.length + ' of ' + total + ' differences shown';
   if (!diffs.length) {
     $('compareDiffBody').innerHTML = '<tr><td colspan="4" class="compare-empty">No differences found</td></tr>';
   } else {
@@ -1438,7 +1539,26 @@ function renderCompareResults(data) {
         + '</tr>';
     }).join('');
   }
+}
+
+function renderCompareResults(data) {
+  compareResults = data;
+  compareResultView = 'summary';
+  compareStatusFilter = 'all';
+  compareCategoryFilter = 'all';
+  $('compareStatusFilter').value = 'all';
+  $('compareCategoryFilter').value = 'all';
+  $('compareResultMeta').textContent = (data.baselineModel ? data.baselineModel.name : 'Baseline')
+    + ' -> ' + (data.candidateModel ? data.candidateModel.name : 'Candidate');
+  renderCompareSummary(data);
+  renderCompareDetails();
+  setCompareResultView('summary');
   $('compareResultSection').classList.remove('hidden');
+}
+
+function exportCompareResults(format) {
+  if (!compareResults) return;
+  window.location.href = '/api/compare/export?format=' + encodeURIComponent(format);
 }
 
 async function runSemanticModelCompare() {
@@ -2853,6 +2973,20 @@ $('btnBrowseReports').onclick = function() { openExplorer('report'); };
 $('btnBrowseConnectedReportRoot').onclick = function() { openExplorer('folder'); };
 $('btnBrowseCompareBaseline').onclick = function() { openExplorer('compareBaseline'); };
 $('btnBrowseCompareCandidate').onclick = function() { openExplorer('compareCandidate'); };
+document.querySelectorAll('[data-compare-view]').forEach(function(button) {
+  button.onclick = function() { setCompareResultView(button.dataset.compareView); };
+});
+$('compareStatusFilter').onchange = function() {
+  compareStatusFilter = $('compareStatusFilter').value;
+  renderCompareDetails();
+};
+$('compareCategoryFilter').onchange = function() {
+  compareCategoryFilter = $('compareCategoryFilter').value;
+  renderCompareDetails();
+};
+$('btnExportCompareMarkdown').onclick = function() { exportCompareResults('md'); };
+$('btnExportCompareCsv').onclick = function() { exportCompareResults('csv'); };
+$('btnExportCompareJson').onclick = function() { exportCompareResults('json'); };
 async function findConnectedReports() {
   if (!chosenModels.length) {
     alert('Select a semantic model first');
