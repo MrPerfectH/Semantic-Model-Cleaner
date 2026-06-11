@@ -1152,6 +1152,13 @@ def api_analyze():
             return jsonify({
                 "error": "Select exactly one semantic model and one or more reports before analyzing.",
             }), 400
+        missing = [p for p in [*model_paths, *report_paths] if not Path(p).is_dir()]
+        if missing:
+            return jsonify({
+                "error": "These folders were not found: "
+                + ", ".join(str(p) for p in missing)
+                + ". Check that the paths still exist and try again.",
+            }), 400
         _state["model_paths"] = model_paths
         _state["report_paths"] = report_paths
 

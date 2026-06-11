@@ -2378,3 +2378,19 @@ def test_bundled_demo_workspace_ships_with_package():
     assert demo_root == Path(web_app.__file__).resolve().parent / "demo_workspace"
     assert (demo_root / "Models" / "TestModel.SemanticModel").is_dir()
     assert (demo_root / "Reports" / "TestReport.Report").is_dir()
+
+
+def test_api_analyze_rejects_missing_paths(tmp_path):
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/analyze",
+        json={
+            "model_paths": [str(tmp_path / "Missing.SemanticModel")],
+            "report_paths": [str(tmp_path / "Missing.Report")],
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.get_json()["error"]
+    assert "were not found" in error
+    assert "Missing.SemanticModel" in error

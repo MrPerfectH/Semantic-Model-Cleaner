@@ -39,6 +39,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .setup.is-collapsed h2 { font-size: 14px; }
 .setup.is-collapsed .setup-toggle { padding-top: 4px; padding-bottom: 4px; }
 .setup-intro { font-size: 13px; color: var(--text-light); margin-bottom: 14px; line-height: 1.9; }
+.editor-status.analyze-error { color: var(--danger); max-width: 220px; }
 .setup-intro code { font-size: 12px; }
 .setup-intro-note { font-style: italic; }
 .setup-columns { display: flex; gap: 16px; align-items: flex-start; }
@@ -660,7 +661,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="setup-intro" id="setupIntro">
       Point the app at a Power BI Project on your machine: pick one <code>.SemanticModel</code> folder and the <code>.Report</code> folders that use it.
       New here? <button class="btn btn-secondary btn-sm" id="btnLoadDemo" type="button" title="Copies a small sample workspace to a safe location and analyzes it — your own files are never touched">Try the demo workspace</button>
-      <span class="setup-intro-note">loads a small sample model and report you can safely analyze and clean.</span>
+      <span class="setup-intro-note">&mdash; it loads a small sample model and report you can safely analyze and clean.</span>
       <span class="editor-status" id="demoStatus"></span>
     </div>
     <div class="setup-columns">
@@ -681,6 +682,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       </div>
       <div class="setup-actions">
         <button class="btn btn-primary" id="btnAnalyze" disabled title="Run the analysis for the selected model and reports">Analyze</button>
+        <div class="editor-status analyze-error" id="analyzeStatus" role="alert"></div>
       </div>
     </div>
     <div class="setup-options">
@@ -3073,13 +3075,16 @@ async function runAnalyze() {
   hidePostRefreshDisclaimer();
   $('btnAnalyze').disabled = true;
   $('btnAnalyze').innerHTML = '<span class="spinner"></span>Analyzing...';
+  $('analyzeStatus').textContent = '';
   try {
     var data = await apiPost('/api/analyze', {
       model_paths: chosenModels.map(function(m) { return m.path; }),
       report_paths: chosenReports.map(function(r) { return r.path; }),
     });
-    if (data.error) { alert(data.error); return; }
+    if (data.error) { $('analyzeStatus').textContent = data.error; return; }
     loadResults(data);
+  } catch (err) {
+    $('analyzeStatus').textContent = 'Analysis failed: ' + (err && err.message ? err.message : err);
   } finally {
     $('btnAnalyze').disabled = false;
     $('btnAnalyze').textContent = 'Analyze';
