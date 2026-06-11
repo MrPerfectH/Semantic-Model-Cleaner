@@ -1062,13 +1062,46 @@ def api_find_connected_reports():
 
             dataset_reference = definition.get("datasetReference", {})
             if isinstance(dataset_reference, dict) and "byConnection" in dataset_reference:
+                connection = dataset_reference.get("byConnection")
+                published_name = ""
+                if isinstance(connection, dict):
+                    connection_string = connection.get("connectionString")
+                    if isinstance(connection_string, str):
+                        catalog_match = re.search(
+                            r"initial catalog\s*=\s*([^;]+)", connection_string, re.IGNORECASE
+                        )
+                        if catalog_match:
+                            published_name = catalog_match.group(1).strip()
+                if published_name:
+                    status["publishedModelName"] = published_name
+                if published_name and published_name.casefold() == model_name.casefold():
+                    status["status"] = "connected_by_name"
+                    status["message"] = (
+                        f"Live connection to a published semantic model named '{published_name}', "
+                        "which matches the selected Semantic Model. Matched by name, not by folder path."
+                    )
+                    report_statuses.append(status)
+                    reports_by_path.setdefault(report_root, {
+                        "path": str(report_root),
+                        "name": analyzer.report_display_name(report_root),
+                        "status": "connected_by_name",
+                        "definitionFiles": [],
+                    })
+                    reports_by_path[report_root]["definitionFiles"].append(str(definition_file.resolve()))
+                    continue
                 status["status"] = "remote"
-                status["message"] = (
-                    "definition.pbir uses datasetReference.byConnection; "
-                    "the remote Semantic Model cannot be verified against a local Semantic Model path."
-                )
+                if published_name:
+                    status["message"] = (
+                        f"Live connection to a published semantic model named '{published_name}', "
+                        f"which does not match the selected model '{model_name}'."
+                    )
+                else:
+                    status["message"] = (
+                        "Live connection to a published semantic model in the Power BI service; "
+                        "no model name could be read from the connection string."
+                    )
                 report_statuses.append(status)
-                warnings.append(f"{report_root.name} uses a remote Semantic Model connection and was not selected.")
+                warnings.append(f"{report_root.name}: {status['message']}")
                 continue
 
             by_path = dataset_reference.get("byPath", {}) if isinstance(dataset_reference, dict) else {}
