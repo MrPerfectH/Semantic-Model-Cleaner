@@ -1887,8 +1887,8 @@ def test_api_find_connected_reports_marks_by_connection_reports_as_remote(tmp_pa
     assert payload["reports"] == []
     remote_status = next(status for status in payload["reportStatuses"] if status["path"] == str(remote.resolve()))
     assert remote_status["status"] == "remote"
-    assert "cannot be verified against a local Semantic Model path" in remote_status["message"]
-    assert any("Remote.Report" in warning and "remote" in warning for warning in payload["warnings"])
+    assert "no model name could be read" in remote_status["message"]
+    assert any("Remote.Report" in warning for warning in payload["warnings"])
 
 
 def test_api_find_connected_reports_reports_invalid_definition_pbir(tmp_path):
@@ -2440,3 +2440,52 @@ def test_index_shows_compare_flow_switcher_on_beta_channel():
 
     assert response.status_code == 200
     assert b'class="app-flow-switcher"' in response.data
+
+
+def _write_live_connection_pbir(report_dir, catalog):
+    report_dir.mkdir(parents=True)
+    (report_dir / "definition.pbir").write_text(
+        json.dumps({
+            "datasetReference": {
+                "byConnection": {
+                    "connectionString": (
+                        "Data Source=powerbi://api.powerbi.com/v1.0/myorg/Workspace;"
+                        f"Initial Catalog={catalog};Integrated Security=ClaimsToken"
+                    ),
+                    "pbiServiceModelId": "00000000-0000-0000-0000-000000000000",
+                }
+            }
+        }),
+        encoding="utf-8",
+    )
+
+
+def test_api_find_connected_reports_matches_live_connections_by_model_name(tmp_path):
+    model_path = tmp_path / "Models" / "PMRA_POC.SemanticModel"
+    model_path.mkdir(parents=True)
+    reports_root = tmp_path / "Reports"
+    matching = reports_root / "Scorecard.Report"
+    other = reports_root / "Other.Report"
+    _write_live_connection_pbir(matching, "pmra_poc")
+    _write_live_connection_pbir(other, "Finance Model")
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/reports/find-connected",
+        json={"model_path": str(model_path), "search_root": str(reports_root)},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert [r["path"] for r in payload["reports"]] == [str(matching.resolve())]
+    assert payload["reports"][0]["status"] == "connected_by_name"
+
+    matched_status = next(s for s in payload["reportStatuses"] if s["path"] == str(matching.resolve()))
+    assert matched_status["status"] == "connected_by_name"
+    assert matched_status["publishedModelName"] == "pmra_poc"
+    assert "Matched by name" in matched_status["message"]
+
+    other_status = next(s for s in payload["reportStatuses"] if s["path"] == str(other.resolve()))
+    assert other_status["status"] == "remote"
+    assert "'Finance Model'" in other_status["message"]
+    assert "does not match the selected model 'PMRA_POC'" in other_status["message"]

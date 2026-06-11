@@ -3033,13 +3033,18 @@ async function findConnectedReports() {
     });
     chosenReports = Array.from(existing.values()).sort(function(a, b) { return a.name.localeCompare(b.name); });
     renderPills();
-    var statusMessage = 'Found ' + (data.reports || []).length + ' connected report(s) from '
+    var foundReports = data.reports || [];
+    var nameMatched = foundReports.filter(function(report) { return report.status === 'connected_by_name'; }).length;
+    var statusMessage = 'Found ' + foundReports.length + ' connected report(s) from '
       + (data.scanned_definition_files || 0) + ' definition file(s).';
-    if (!(data.reports || []).length && (data.reportStatuses || []).length) {
+    if (nameMatched) {
+      statusMessage += ' ' + nameMatched + ' connect live to a published model with the same name as the selected model.';
+    }
+    if (!foundReports.length && (data.reportStatuses || []).length) {
       var reasonLabels = {
-        not_connected: 'reference a different Semantic Model',
-        remote: 'use a remote Semantic Model connection (datasetReference.byConnection), which cannot be matched to a local folder',
-        missing_dataset_reference: 'have no datasetReference.byPath in definition.pbir',
+        not_connected: 'point to a different local model folder',
+        remote: 'connect live to a published model with a different name than the selected model',
+        missing_dataset_reference: 'have no model reference in definition.pbir',
         missing_definition: 'are missing definition.pbir',
         invalid_definition: 'have invalid definition.pbir JSON'
       };
@@ -3050,8 +3055,9 @@ async function findConnectedReports() {
       var reasons = Object.keys(reasonCounts).map(function(key) {
         return reasonCounts[key] + ' ' + (reasonLabels[key] || ('reported status "' + key + '"'));
       });
-      if (reasons.length) statusMessage += ' Why: ' + reasons.join('; ') + '.';
-    } else if ((data.reports || []).length) {
+      if (reasons.length) statusMessage += ' None matched: ' + reasons.join('; ') + '.';
+      statusMessage += ' You can still add report folders manually with Browse for reports.';
+    } else if (foundReports.length) {
       statusMessage += ' Remove report pills to unselect.';
     }
     $('connectedReportSearchStatus').textContent = statusMessage;
