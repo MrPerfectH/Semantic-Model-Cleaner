@@ -2489,3 +2489,59 @@ def test_api_find_connected_reports_matches_live_connections_by_model_name(tmp_p
     assert other_status["status"] == "remote"
     assert "'Finance Model'" in other_status["message"]
     assert "does not match the selected model 'PMRA_POC'" in other_status["message"]
+
+
+def test_api_find_connected_reports_matches_live_connections_by_platform_display_name(tmp_path):
+    model_path = tmp_path / "Models" / "PMRA_POC.SemanticModel"
+    model_path.mkdir(parents=True)
+    (model_path / ".platform").write_text(
+        json.dumps({
+            "metadata": {"type": "SemanticModel", "displayName": "PMRA - Production Model"},
+            "config": {"version": "2.0"},
+        }),
+        encoding="utf-8",
+    )
+    reports_root = tmp_path / "Reports"
+    by_display_name = reports_root / "Scorecard.Report"
+    by_folder_name = reports_root / "Legacy.Report"
+    other = reports_root / "Other.Report"
+    _write_live_connection_pbir(by_display_name, "PMRA - Production Model")
+    _write_live_connection_pbir(by_folder_name, "PMRA_POC")
+    _write_live_connection_pbir(other, "Finance Model")
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/reports/find-connected",
+        json={"model_path": str(model_path), "search_root": str(reports_root)},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["model_display_name"] == "PMRA - Production Model"
+    connected_paths = {r["path"] for r in payload["reports"]}
+    assert connected_paths == {str(by_display_name.resolve()), str(by_folder_name.resolve())}
+    assert all(r["status"] == "connected_by_name" for r in payload["reports"])
+
+    other_status = next(s for s in payload["reportStatuses"] if s["path"] == str(other.resolve()))
+    assert other_status["status"] == "remote"
+    assert "does not match the selected model 'PMRA - Production Model'" in other_status["message"]
+
+
+def test_api_find_connected_reports_ignores_corrupt_platform_file(tmp_path):
+    model_path = tmp_path / "Models" / "Sales.SemanticModel"
+    model_path.mkdir(parents=True)
+    (model_path / ".platform").write_text("{not json", encoding="utf-8")
+    reports_root = tmp_path / "Reports"
+    report = reports_root / "Scorecard.Report"
+    _write_live_connection_pbir(report, "Sales")
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/reports/find-connected",
+        json={"model_path": str(model_path), "search_root": str(reports_root)},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["model_display_name"] == ""
+    assert [r["status"] for r in payload["reports"]] == ["connected_by_name"]

@@ -134,6 +134,25 @@ def _paths_match(a: Path, b: Path) -> bool:
         return os.path.normcase(str(a)) == os.path.normcase(str(b))
 
 
+def _platform_display_name(artifact_path: Path) -> str:
+    """Read the Fabric display name from an artifact's .platform file, if present.
+
+    The folder name (e.g. PMRA_POC.SemanticModel) is only a local convention;
+    the .platform metadata.displayName is the name the artifact is published
+    under, so it is what live report connections refer to.
+    """
+    platform_file = artifact_path / ".platform"
+    if not platform_file.is_file():
+        return ""
+    try:
+        payload = json.loads(platform_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    metadata = payload.get("metadata") if isinstance(payload, dict) else None
+    display_name = metadata.get("displayName") if isinstance(metadata, dict) else None
+    return display_name.strip() if isinstance(display_name, str) else ""
+
+
 def _user_data_dir() -> Path:
     return Path(os.environ.get("SMC_USER_DIR") or Path.home() / ".semantic-model-cleaner")
 
@@ -1019,6 +1038,15 @@ def api_find_connected_reports():
 
         model_path = model_path.resolve()
         model_name = model_path.name.replace(".SemanticModel", "")
+        model_display_name = _platform_display_name(model_path)
+        # Live report connections refer to the published (display) name; the folder
+        # name is only a fallback for workspaces without a .platform file.
+        model_name_candidates = {
+            candidate.casefold()
+            for candidate in (model_display_name, model_name)
+            if candidate
+        }
+        selected_model_label = model_display_name or model_name
         reports_by_path: dict[Path, dict] = {}
         report_statuses = []
         scanned_files = 0
@@ -1074,7 +1102,7 @@ def api_find_connected_reports():
                             published_name = catalog_match.group(1).strip()
                 if published_name:
                     status["publishedModelName"] = published_name
-                if published_name and published_name.casefold() == model_name.casefold():
+                if published_name and published_name.casefold() in model_name_candidates:
                     status["status"] = "connected_by_name"
                     status["message"] = (
                         f"Live connection to a published semantic model named '{published_name}', "
@@ -1093,7 +1121,7 @@ def api_find_connected_reports():
                 if published_name:
                     status["message"] = (
                         f"Live connection to a published semantic model named '{published_name}', "
-                        f"which does not match the selected model '{model_name}'."
+                        f"which does not match the selected model '{selected_model_label}'."
                     )
                 else:
                     status["message"] = (
@@ -1132,6 +1160,7 @@ def api_find_connected_reports():
         reports = sorted(reports_by_path.values(), key=lambda item: item["name"].casefold())
         return jsonify({
             "model_name": model_name,
+            "model_display_name": model_display_name,
             "search_root": str(search_root),
             "scanned_definition_files": scanned_files,
             "reports": reports,
