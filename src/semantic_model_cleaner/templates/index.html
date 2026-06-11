@@ -22,7 +22,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .header .title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .header .build-stamp { margin-top: 4px; font-size: 11px; opacity: .9; font-family: 'SF Mono', Monaco, Consolas, monospace; }
 .beta-badge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; background: #f59e0b; color: #fff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .35px; }
-.container { max-width: 1600px; margin: 0 auto; padding: 16px 24px; display: flex; flex-direction: column; height: calc(100vh - 80px); overflow: hidden; }
+.container { max-width: 1600px; margin: 0 auto; padding: 16px 24px; display: flex; flex-direction: column; height: calc(100vh - 80px); overflow-y: auto; overflow-x: hidden; }
 .container > * { flex-shrink: 0; }
 .table-container, .detail-panel { flex-shrink: 1 !important; }
 .beta-banner { background: #fffbeb; border: 1px solid #f59e0b; border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px; color: #92400e; }
@@ -217,7 +217,7 @@ body.app-flow-cleanup #compareFlow { display: none !important; }
 .help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 14px; }
 .help-item { font-size: 12px; line-height: 1.45; color: var(--text-light); }
 .help-item strong { color: var(--text); }
-.table-container { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); position: relative; overflow-y: auto; overflow-x: auto; flex: 1 1 0; min-height: 200px; }
+.table-container { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); position: relative; overflow-y: auto; overflow-x: auto; flex: 1 1 0; min-height: 320px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 thead th { position: sticky; top: 0; z-index: 2; background: #f8fafc; border-bottom: 2px solid var(--border); padding: 10px 12px; text-align: left; font-weight: 600; font-size: 13px; text-transform: none; letter-spacing: normal; color: var(--text-light); cursor: pointer; user-select: none; white-space: nowrap; overflow-wrap: normal; overflow: hidden; text-overflow: ellipsis; }
 thead th:hover { color: var(--text); }
@@ -320,6 +320,14 @@ body.wrap-table-text .table-signals li { overflow: visible; text-overflow: clip;
 .post-refresh-banner strong { font-weight: 700; }
 .warning-banner { background: #fffbeb; border: 1px solid #f59e0b; border-radius: var(--radius); padding: 12px 16px; margin-bottom: 12px; color: #92400e; }
 .warning-banner h3 { font-size: 13px; margin-bottom: 8px; }
+.report-health-toggle { display: flex; align-items: baseline; gap: 10px; cursor: pointer; list-style: none; }
+.report-health-toggle::-webkit-details-marker { display: none; }
+.report-health-toggle::before { content: '\25B8'; color: #92400e; font-size: 11px; }
+details[open] > .report-health-toggle::before { content: '\25BE'; }
+.report-health-toggle h3 { margin-bottom: 0; }
+.report-health-toggle-hint { flex: 1 1 auto; min-width: 0; font-size: 12px; color: #a16207; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details[open] > .report-health-toggle { margin-bottom: 8px; }
+#reportHealthList { max-height: 45vh; overflow-y: auto; }
 .warning-banner .warning-note { font-size: 12px; line-height: 1.5; margin-bottom: 8px; color: #92400e; }
 .warning-banner .warning-entry { font-size: 12px; line-height: 1.5; }
 .warning-banner .warning-entry + .warning-entry { margin-top: 4px; }
@@ -549,7 +557,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     {% endif %}
   </div>
   {% endif %}
-  <div class="app-flow-switcher" id="appFlowSwitcher" aria-label="Workspace flow">
+  <div class="app-flow-switcher{% if not runtime.betaEnabled %} hidden{% endif %}" id="appFlowSwitcher" aria-label="Workspace flow">
     <button type="button" class="app-flow-tab active" id="btnCleanupFlow" data-app-flow="cleanup">Usage &amp; Cleanup</button>
     <button type="button" class="app-flow-tab" id="btnCompareFlow" data-app-flow="compare">Semantic Model Compare (1:1)</button>
   </div>
@@ -709,7 +717,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="summary-card"><div class="value" id="sumReview">0</div><div class="label">Review <span class="kpi-help" tabindex="0" data-tooltip="Items that may be removable, but still need a manual check first." aria-label="Explain review">?</span></div></div>
     <div class="summary-card"><div class="value" id="sumCaution">0</div><div class="label">Blocked <span class="kpi-help" tabindex="0" data-tooltip="Items that still have direct or indirect dependencies and should not be deleted now." aria-label="Explain blocked">?</span></div></div>
   </div>
-  <details class="result-guide hidden cleanup-flow" id="resultGuideSection" open>
+  <details class="result-guide hidden cleanup-flow" id="resultGuideSection">
     <summary>
       <span class="result-guide-title">How to read these results</span>
       <span class="result-guide-subtitle">Summary cards, filters, status badges, issue states, and cleanup recommendations.</span>
@@ -726,13 +734,16 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="warning-note">Warnings mean the analyzer found ambiguous or unsupported metadata patterns. Results are still usable, but some usage links may be incomplete or conservative.</div>
     <div id="warningList"></div>
   </div>
-  <div class="warning-banner hidden cleanup-flow" id="reportHealthBanner">
-    <h3>Report Health <span id="reportHealthCount"></span></h3>
-    <div class="warning-note">Review report-side issues, stale metadata, and conservative cleanup downgrades before applying changes.</div>
+  <details class="warning-banner hidden cleanup-flow" id="reportHealthBanner">
+    <summary class="report-health-toggle">
+      <h3>Report Health <span id="reportHealthCount"></span></h3>
+      <span class="report-health-toggle-hint" id="reportHealthSummaryHint"></span>
+    </summary>
+    <div class="warning-note">These problems live in the report files (PBIR), not the semantic model: references to measures that no longer exist, stale formatting selectors, invalid JSON, and metadata the analyzer cannot fully verify. They matter because they downgrade Cleanup recommendations to Review and can make Usage look stronger or weaker than what report authors actually see. The repair actions here fix the report files.</div>
     <div id="reportHealthList"></div>
     <div class="report-health-status" id="reportHealthActionStatus"></div>
     <div class="report-health-preview" id="reportHealthPreviewList"></div>
-  </div>
+  </details>
   <div class="filters-bar hidden cleanup-flow" id="filtersSection">
     <div class="filters-grid">
       <div class="filter-group"><label>Search</label><input type="text" id="filterSearch" placeholder="Name or table..."></div>
@@ -3022,9 +3033,28 @@ async function findConnectedReports() {
     });
     chosenReports = Array.from(existing.values()).sort(function(a, b) { return a.name.localeCompare(b.name); });
     renderPills();
-    $('connectedReportSearchStatus').textContent =
-      'Found ' + (data.reports || []).length + ' connected report(s) from '
-      + (data.scanned_definition_files || 0) + ' definition file(s). Remove report pills to unselect.';
+    var statusMessage = 'Found ' + (data.reports || []).length + ' connected report(s) from '
+      + (data.scanned_definition_files || 0) + ' definition file(s).';
+    if (!(data.reports || []).length && (data.reportStatuses || []).length) {
+      var reasonLabels = {
+        not_connected: 'reference a different Semantic Model',
+        remote: 'use a remote Semantic Model connection (datasetReference.byConnection), which cannot be matched to a local folder',
+        missing_dataset_reference: 'have no datasetReference.byPath in definition.pbir',
+        missing_definition: 'are missing definition.pbir',
+        invalid_definition: 'have invalid definition.pbir JSON'
+      };
+      var reasonCounts = {};
+      (data.reportStatuses || []).forEach(function(entry) {
+        reasonCounts[entry.status] = (reasonCounts[entry.status] || 0) + 1;
+      });
+      var reasons = Object.keys(reasonCounts).map(function(key) {
+        return reasonCounts[key] + ' ' + (reasonLabels[key] || ('reported status "' + key + '"'));
+      });
+      if (reasons.length) statusMessage += ' Why: ' + reasons.join('; ') + '.';
+    } else if ((data.reports || []).length) {
+      statusMessage += ' Remove report pills to unselect.';
+    }
+    $('connectedReportSearchStatus').textContent = statusMessage;
     if (data.warnings && data.warnings.length) {
       logEntry('Connected report search warnings: ' + data.warnings.join(' | '), 'warn');
     }
@@ -3123,6 +3153,7 @@ function loadResults(data) {
   $('viewToolbar').classList.remove('hidden');
   $('exportSection').classList.remove('hidden');
   renderResultGuideLegend();
+  applyResultGuideState();
   switchView(currentView);
   requestAnimationFrame(function() {
     setupFilterDropdowns();
@@ -3195,8 +3226,17 @@ function renderReportHealth() {
   banner.classList.add('hidden');
   var groups = (allReportHealth && allReportHealth.groups) ? allReportHealth.groups : [];
   var total = allReportHealth && allReportHealth.totalIssueCount ? allReportHealth.totalIssueCount : allReportIssues.length;
+  var summaryHint = $('reportHealthSummaryHint');
+  if (summaryHint) summaryHint.textContent = '';
   if (!total) return;
   count.textContent = '(' + total + ')';
+  if (summaryHint) {
+    summaryHint.textContent = groups.length
+      ? groups.map(function(group) {
+          return (group.label || group.key || 'Issues') + ': ' + (group.count || 0);
+        }).join(' · ')
+      : 'Report-side issues found in the selected reports.';
+  }
   banner.classList.remove('hidden');
   if (!groups.length) {
     allReportIssues.forEach(function(issue) {
@@ -4501,7 +4541,7 @@ function deleteSafetyBadge(item) {
 
 function legendItemHtml(entry) {
   return '<div class="legend-item">'
-    + '<div class="legend-term">' + (entry.badge || '') + '<strong>' + esc(entry.label) + '</strong></div>'
+    + '<div class="legend-term">' + (entry.badge || '<strong>' + esc(entry.label) + '</strong>') + '</div>'
     + '<div class="legend-definition">' + esc(entry.definition) + '</div>'
     + '</div>';
 }
@@ -4553,6 +4593,21 @@ function renderResultGuideLegend() {
         + '</section>';
     }).join('')
     + '</div>';
+}
+
+var GUIDE_OPEN_KEY = 'smcResultGuideOpen';
+function applyResultGuideState() {
+  var guide = $('resultGuideSection');
+  if (!guide) return;
+  var stored = null;
+  try { stored = localStorage.getItem(GUIDE_OPEN_KEY); } catch (e) {}
+  guide.open = stored === null ? true : stored === 'true';
+  if (!guide.dataset.persistBound) {
+    guide.dataset.persistBound = '1';
+    guide.addEventListener('toggle', function() {
+      try { localStorage.setItem(GUIDE_OPEN_KEY, guide.open ? 'true' : 'false'); } catch (e) {}
+    });
+  }
 }
 
 function reviewTriggers(item) {
