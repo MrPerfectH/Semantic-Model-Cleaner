@@ -205,7 +205,7 @@ def _skip_discovery_path(path: Path, root: Path, *, source_root: bool) -> bool:
         parts = path.parts
     if any(part.startswith(".") for part in parts):
         return True
-    return bool(source_root and parts and parts[0] in {"tests", "examples"})
+    return bool(source_root and parts and parts[0] in {"tests", "examples", "src"})
 
 
 def _discover_artifact_dirs(search_roots: list[Path], suffix: str, conventional_dir: str) -> list[Path]:

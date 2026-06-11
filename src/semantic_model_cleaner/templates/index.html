@@ -38,6 +38,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .setup.is-collapsed .setup-header { margin-bottom: 0; }
 .setup.is-collapsed h2 { font-size: 14px; }
 .setup.is-collapsed .setup-toggle { padding-top: 4px; padding-bottom: 4px; }
+.setup-intro { font-size: 13px; color: var(--text-light); margin-bottom: 14px; line-height: 1.9; }
+.editor-status.analyze-error { color: var(--danger); max-width: 220px; }
+.setup-intro code { font-size: 12px; }
+.setup-intro-note { font-style: italic; }
 .setup-columns { display: flex; gap: 16px; align-items: flex-start; }
 .setup-col { flex: 1; min-width: 0; }
 .setup-col h3 { font-size: 12px; color: var(--text-light); text-transform: uppercase; letter-spacing: .4px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
@@ -654,6 +658,12 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       <button class="btn btn-secondary btn-sm setup-toggle" id="btnToggleSetup" type="button" aria-expanded="true" aria-controls="setupBody">Hide</button>
     </div>
     <div id="setupBody">
+    <div class="setup-intro" id="setupIntro">
+      Point the app at a Power BI Project on your machine: pick one <code>.SemanticModel</code> folder and the <code>.Report</code> folders that use it.
+      New here? <button class="btn btn-secondary btn-sm" id="btnLoadDemo" type="button" title="Copies a small sample workspace to a safe location and analyzes it — your own files are never touched">Try the demo workspace</button>
+      <span class="setup-intro-note">&mdash; it loads a small sample model and report you can safely analyze and clean.</span>
+      <span class="editor-status" id="demoStatus"></span>
+    </div>
     <div class="setup-columns">
       <div class="setup-col">
         <h3>Semantic Model <span class="count-badge" id="modelCountBadge">0</span></h3>
@@ -672,6 +682,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       </div>
       <div class="setup-actions">
         <button class="btn btn-primary" id="btnAnalyze" disabled title="Run the analysis for the selected model and reports">Analyze</button>
+        <div class="editor-status analyze-error" id="analyzeStatus" role="alert"></div>
       </div>
     </div>
     <div class="setup-options">
@@ -3059,21 +3070,48 @@ $('btnNextPage').onclick = function() {
 };
 
 /* == Analyze == */
-$('btnAnalyze').onclick = async function() {
+async function runAnalyze() {
   if (!chosenModels.length || !chosenReports.length) return;
   hidePostRefreshDisclaimer();
   $('btnAnalyze').disabled = true;
   $('btnAnalyze').innerHTML = '<span class="spinner"></span>Analyzing...';
+  $('analyzeStatus').textContent = '';
   try {
     var data = await apiPost('/api/analyze', {
       model_paths: chosenModels.map(function(m) { return m.path; }),
       report_paths: chosenReports.map(function(r) { return r.path; }),
     });
-    if (data.error) { alert(data.error); return; }
+    if (data.error) { $('analyzeStatus').textContent = data.error; return; }
     loadResults(data);
+  } catch (err) {
+    $('analyzeStatus').textContent = 'Analysis failed: ' + (err && err.message ? err.message : err);
   } finally {
     $('btnAnalyze').disabled = false;
     $('btnAnalyze').textContent = 'Analyze';
+  }
+}
+$('btnAnalyze').onclick = runAnalyze;
+
+/* == Demo workspace == */
+$('btnLoadDemo').onclick = async function() {
+  var btn = $('btnLoadDemo');
+  var status = $('demoStatus');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Loading demo...';
+  status.textContent = '';
+  try {
+    var data = await apiPost('/api/demo', {});
+    if (data.error) { status.textContent = data.error; return; }
+    chosenModels = (data.models || []).slice(0, 1);
+    chosenReports = (data.reports || []).slice();
+    renderPills();
+    status.textContent = data.reset
+      ? 'Demo workspace reset to its original state at ' + data.workspace
+      : 'Demo workspace copied to ' + data.workspace;
+    await runAnalyze();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Try the demo workspace';
   }
 };
 

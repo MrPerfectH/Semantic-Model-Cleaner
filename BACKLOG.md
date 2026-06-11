@@ -1,15 +1,18 @@
 # Backlog
 
-Last updated: 2026-06-10
+Last updated: 2026-06-11
 
 ## Highest priority
 
-- Keep optional backup before cleanup actions, but switch default to off.
+- Cut release v0.2.0 (prerelease) so testers get the compare screen, interpretation guide, and dry-run preview work shipped since v0.1.1.
+- Time-boxed UX paper-cut pass on the first-session path (analyze loading feedback, actionable path errors, label/legend clarity).
 
 ## Near-term
 
-- Export cleanup plans as JSON or Markdown for review before edits are applied.
-- Add an ignore/protect list for items that should never be flagged or modified.
+- Export Cleanup Action plans as JSON or Markdown for review before edits are applied.
+  Design: reuse `tmdl_writer.plan_actions()` output and the `model_compare` formatter patterns; store the last plan in `_state`; add `GET /api/action/plan/export`; export buttons in the action plan preview panel.
+- Add a Protected Items list for items that should never be flagged or modified.
+  Design: app-side store in the user dir keyed by resolved model path (`~/.semantic-model-cleaner/protected_items.json`); new `Protected` Cleanup Recommendation distinct from `Keep`; hard block on delete/rename/move/DAX-edit in `_validate_action`/`plan_actions`/`apply_actions` (incl. protected-table cascade); annotate analysis and plan exports; Protect/Unprotect toggle in Item Details.
 - Expand analyzer fixtures for metadata and report-definition edge cases.
 - Split the single-page web template into smaller front-end modules around cleanup planning, product-language helpers, and render helpers once the next product slices settle.
 
@@ -22,10 +25,12 @@ Last updated: 2026-06-10
 
 ## Later
 
+- Make backups less annoying instead of changing the default: single backup folder and/or auto-pruning of old backups. (Decision 2026-06-11: backup before apply stays on by default — it is cheap insurance and a trust signal for a file-editing tool.)
 - Prepare the repo for public release with an OSS license, public-facing demo assets, and issue/community scaffolding.
 
 ## Completed recently
 
+- Added a first-run demo experience: the demo workspace ships inside the package, and a `Try the demo workspace` button copies it to the user data dir, then discovers and analyzes it automatically.
 - Added compare output views for summary and detailed differences, with review filters and JSON/Markdown/CSV exports.
 - Support baseline vs candidate model selection and run model-to-model diffs for tables, measures, columns, display folders, hidden flags, and key DAX/property changes.
 - Added a new `Semantic Model Compare (1:1)` screen in the web app as a separate feature flow.

@@ -9,7 +9,9 @@ from semantic_model_cleaner import analyzer
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
-PUBLIC_DEMO_DIR = Path(__file__).resolve().parents[1] / "examples" / "public-demo-workspace"
+PUBLIC_DEMO_DIR = (
+    Path(__file__).resolve().parents[1] / "src" / "semantic_model_cleaner" / "demo_workspace"
+)
 PRODUCT_QA_WORKSPACE_DIR = (
     Path(__file__).resolve().parents[1] / "examples" / "product-qa-workspace"
 )
@@ -146,10 +148,13 @@ def test_source_root_discovery_ignores_internal_fixture_and_hidden_reports(tmp_p
     (source_root / "pyproject.toml").write_text("[project]\nname = 'semantic-model-cleaner'\n", encoding="utf-8")
 
     internal_report = source_root / "tests" / "fixtures" / "sample" / "Reports" / "TestReport.Report"
-    demo_report = source_root / "examples" / "public-demo-workspace" / "Reports" / "TestReport.Report"
+    example_report = source_root / "examples" / "product-qa-workspace" / "Reports" / "TestReport.Report"
+    demo_report = (
+        source_root / "src" / "semantic_model_cleaner" / "demo_workspace" / "Reports" / "TestReport.Report"
+    )
     hidden_report = source_root / ".claude" / "worktrees" / "old" / "Reports" / "TestReport.Report"
     real_report = source_root / "Workspace" / "Reports" / "RealReport.Report"
-    for report in (internal_report, demo_report, hidden_report, real_report):
+    for report in (internal_report, example_report, demo_report, hidden_report, real_report):
         report.mkdir(parents=True)
 
     reports = analyzer.discover_reports([source_root])

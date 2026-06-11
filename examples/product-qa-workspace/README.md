@@ -1,7 +1,8 @@
 # Product QA Workspace
 
 This directory contains a synthetic Power BI Project workspace for internal product QA.
-It is safe to share publicly, but it is intentionally richer than `public-demo-workspace`.
+It is safe to share publicly, but it is intentionally richer than the bundled demo
+workspace at `src/semantic_model_cleaner/demo_workspace`.
 
 Use it when checking trust-critical web workflows:
 
