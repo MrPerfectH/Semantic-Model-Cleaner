@@ -2394,3 +2394,49 @@ def test_api_analyze_rejects_missing_paths(tmp_path):
     error = response.get_json()["error"]
     assert "were not found" in error
     assert "Missing.SemanticModel" in error
+
+
+def test_api_find_connected_reports_tolerates_path_case_differences(tmp_path):
+    probe = tmp_path / "CaseProbe"
+    probe.mkdir()
+    if not (tmp_path / "caseprobe").exists():
+        import pytest
+        pytest.skip("requires a case-insensitive filesystem")
+
+    model_path = tmp_path / "Models" / "Sales.SemanticModel"
+    model_path.mkdir(parents=True)
+    report = tmp_path / "Reports" / "Executive.Report"
+    report.mkdir(parents=True)
+    (report / "definition.pbir").write_text(
+        json.dumps({"datasetReference": {"byPath": {"path": "../../models/sales.semanticmodel"}}}),
+        encoding="utf-8",
+    )
+
+    client = web_app.app.test_client()
+    response = client.post(
+        "/api/reports/find-connected",
+        json={"model_path": str(model_path), "search_root": str(tmp_path / "Reports")},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert [r["path"] for r in payload["reports"]] == [str(report.resolve())]
+    assert payload["reports"][0]["status"] == "connected"
+
+
+def test_index_hides_compare_flow_switcher_on_stable_channel():
+    web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="stable")
+    client = web_app.app.test_client()
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b'class="app-flow-switcher hidden"' in response.data
+
+
+def test_index_shows_compare_flow_switcher_on_beta_channel():
+    web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="beta")
+    client = web_app.app.test_client()
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b'class="app-flow-switcher"' in response.data

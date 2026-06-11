@@ -124,6 +124,16 @@ def _default_workspace_root() -> Path:
     return Path.cwd().resolve()
 
 
+def _paths_match(a: Path, b: Path) -> bool:
+    """Compare two resolved paths, tolerating case differences on case-insensitive filesystems."""
+    if a == b:
+        return True
+    try:
+        return a.samefile(b)
+    except OSError:
+        return os.path.normcase(str(a)) == os.path.normcase(str(b))
+
+
 def _user_data_dir() -> Path:
     return Path(os.environ.get("SMC_USER_DIR") or Path.home() / ".semantic-model-cleaner")
 
@@ -1071,7 +1081,7 @@ def api_find_connected_reports():
                 continue
             resolved_reference = (definition_file.parent / referenced_path).resolve()
             status["resolvedModelPath"] = str(resolved_reference)
-            if resolved_reference != model_path:
+            if not _paths_match(resolved_reference, model_path):
                 report_statuses.append(status)
                 continue
 
