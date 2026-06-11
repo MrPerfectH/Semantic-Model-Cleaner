@@ -662,7 +662,7 @@ def test_actions_handle_quoted_tmdl_names_and_relationships(tmp_path):
 
 def test_analyze_after_cleanup_on_fixture_copy(tmp_path):
     workspace = tmp_path / "workspace"
-    shutil.copytree("examples/public-demo-workspace", workspace)
+    shutil.copytree("src/semantic_model_cleaner/demo_workspace", workspace)
     model_path = workspace / "Models" / "TestModel.SemanticModel"
     report_path = workspace / "Reports" / "TestReport.Report"
 

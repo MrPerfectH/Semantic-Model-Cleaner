@@ -57,7 +57,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-semantic_model_cleaner = ["templates/*.html"]
+semantic_model_cleaner = ["templates/*.html", "demo_workspace/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

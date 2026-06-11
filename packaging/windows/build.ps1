@@ -13,6 +13,7 @@ python -m PyInstaller `
   --console `
   --name "Semantic Model Cleaner" `
   --add-data "src/semantic_model_cleaner/templates;semantic_model_cleaner/templates" `
+  --add-data "src/semantic_model_cleaner/demo_workspace;semantic_model_cleaner/demo_workspace" `
   src/semantic_model_cleaner/windows_launcher.py
 
 $zipName = "semantic-model-cleaner-windows-x64-$version.zip"

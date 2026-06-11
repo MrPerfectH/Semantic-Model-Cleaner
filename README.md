@@ -138,7 +138,7 @@ python3 -m semantic_model_cleaner.web .
 
 ## Demo Workspace
 
-A small synthetic demo workspace is available under [`examples/public-demo-workspace`](examples/public-demo-workspace). It exists to support screenshots, quick validation, and safe public examples.
+The app bundles a small synthetic demo workspace. In the web UI, click **Try the demo workspace** to copy it to `~/.semantic-model-cleaner/demo-workspace` and analyze it — no Power BI Project files of your own are needed, and the bundled copy is never modified. The source lives under [`src/semantic_model_cleaner/demo_workspace`](src/semantic_model_cleaner/demo_workspace) and also supports screenshots, quick validation, and safe public examples.
 
 A richer synthetic QA workspace is available under [`examples/product-qa-workspace`](examples/product-qa-workspace). It exercises trust-critical flows such as Report Health, stale report metadata, broken references, Unsupported Metadata review downgrades, RLS-backed dependencies, and Report Extension Measures.
 
@@ -197,7 +197,8 @@ See `tests/test_experiments.py` for the supported experiment keys and release-ch
 - `src/semantic_model_cleaner/webapp.py`: Flask app and API
 - `src/semantic_model_cleaner/tmdl_writer.py`: TMDL edit engine
 - `src/semantic_model_cleaner/templates/index.html`: single-page web UI template
-- `examples/public-demo-workspace/`: synthetic example workspace
+- `src/semantic_model_cleaner/demo_workspace/`: bundled synthetic demo workspace
+- `examples/product-qa-workspace/`: richer synthetic QA workspace
 - `scripts/analyze_model_usage.py`: compatibility wrapper for the packaged CLI
 - `scripts/app.py`: compatibility wrapper for the packaged web app
 - `tests/`: automated tests and fixtures

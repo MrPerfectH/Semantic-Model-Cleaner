@@ -15,6 +15,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -121,6 +122,14 @@ def _normalize_browse_path(raw: str) -> str:
 def _default_workspace_root() -> Path:
     """Use the current working directory as the local-first default root."""
     return Path.cwd().resolve()
+
+
+def _user_data_dir() -> Path:
+    return Path(os.environ.get("SMC_USER_DIR") or Path.home() / ".semantic-model-cleaner")
+
+
+def _bundled_demo_workspace_root() -> Path:
+    return Path(__file__).resolve().parent / "demo_workspace"
 
 
 def _extract_tmdl_table_source_details(model_path: Path | None) -> dict[str, str]:
@@ -1085,6 +1094,45 @@ def api_find_connected_reports():
             "reports": reports,
             "reportStatuses": sorted(report_statuses, key=lambda item: item["name"].casefold()),
             "warnings": warnings,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/demo", methods=["POST"])
+def api_demo():
+    """Load the bundled demo workspace.
+
+    Copies the packaged demo workspace to a writable location under the user
+    data directory so cleanup actions never touch installed package files.
+    Loading again resets the copy to its original state.
+    """
+    try:
+        source = _bundled_demo_workspace_root()
+        if not source.is_dir():
+            return jsonify({"error": "The bundled demo workspace is missing from this installation."}), 500
+
+        target = _user_data_dir() / "demo-workspace"
+        reset = target.exists()
+        if reset:
+            shutil.rmtree(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source, target)
+
+        _state["workspace"] = str(target)
+        _state["model_search_roots"] = [str(target)]
+        _state["report_search_roots"] = [str(target)]
+
+        models = analyzer.discover_models([target])
+        reports = analyzer.discover_reports([target])
+        _state["model_paths"] = [str(m) for m in models]
+        _state["report_paths"] = [str(r) for r in reports]
+
+        return jsonify({
+            "workspace": str(target),
+            "reset": reset,
+            "models": [{"path": str(m), "name": m.name.replace(".SemanticModel", "")} for m in models],
+            "reports": [{"path": str(r), "name": analyzer.report_display_name(r)} for r in reports],
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

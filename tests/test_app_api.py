@@ -2294,3 +2294,87 @@ def test_normalize_browse_path_removes_leading_slash_from_windows_drive(monkeypa
     assert web_app._normalize_browse_path(r"/C:\Projects\Semantic-Model-Cleaner") == (
         r"C:\Projects\Semantic-Model-Cleaner"
     )
+
+
+def test_index_renders_demo_workspace_button():
+    web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="stable")
+    client = web_app.app.test_client()
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"btnLoadDemo" in response.data
+    assert b"Try the demo workspace" in response.data
+
+
+def _snapshot_workspace_state():
+    keys = ("workspace", "model_search_roots", "report_search_roots", "model_paths", "report_paths")
+    return {key: web_app._state[key] for key in keys}
+
+
+def _restore_workspace_state(snapshot):
+    web_app._state.update(snapshot)
+
+
+def test_api_demo_copies_bundled_workspace_and_analyzes(monkeypatch, tmp_path):
+    monkeypatch.setenv("SMC_USER_DIR", str(tmp_path / "userdir"))
+    snapshot = _snapshot_workspace_state()
+    try:
+        client = web_app.app.test_client()
+        response = client.post("/api/demo")
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        target = Path(payload["workspace"])
+        assert target == tmp_path / "userdir" / "demo-workspace"
+        assert payload["reset"] is False
+        assert [m["name"] for m in payload["models"]] == ["TestModel"]
+        assert [r["name"] for r in payload["reports"]] == ["TestReport"]
+        assert (target / "Models" / "TestModel.SemanticModel" / "definition" / "tables" / "Sales.tmdl").is_file()
+
+        analyze_response = client.post(
+            "/api/analyze",
+            json={
+                "model_paths": [m["path"] for m in payload["models"]],
+                "report_paths": [r["path"] for r in payload["reports"]],
+            },
+        )
+
+        assert analyze_response.status_code == 200
+        analyze_payload = analyze_response.get_json()
+        assert analyze_payload["items"]
+        assert analyze_payload["summary"]["models"] == ["TestModel.SemanticModel"]
+    finally:
+        _restore_workspace_state(snapshot)
+
+
+def test_api_demo_resets_modified_copy(monkeypatch, tmp_path):
+    monkeypatch.setenv("SMC_USER_DIR", str(tmp_path / "userdir"))
+    snapshot = _snapshot_workspace_state()
+    try:
+        client = web_app.app.test_client()
+        first = client.post("/api/demo").get_json()
+        sales_tmdl = (
+            Path(first["workspace"]) / "Models" / "TestModel.SemanticModel"
+            / "definition" / "tables" / "Sales.tmdl"
+        )
+        sales_tmdl.write_text("table Broken", encoding="utf-8")
+        marker = Path(first["workspace"]) / "tester-notes.txt"
+        marker.write_text("scratch", encoding="utf-8")
+
+        second = client.post("/api/demo").get_json()
+
+        assert second["reset"] is True
+        assert second["workspace"] == first["workspace"]
+        assert "table Sales" in sales_tmdl.read_text(encoding="utf-8")
+        assert not marker.exists()
+    finally:
+        _restore_workspace_state(snapshot)
+
+
+def test_bundled_demo_workspace_ships_with_package():
+    demo_root = web_app._bundled_demo_workspace_root()
+
+    assert demo_root.is_dir()
+    assert demo_root == Path(web_app.__file__).resolve().parent / "demo_workspace"
+    assert (demo_root / "Models" / "TestModel.SemanticModel").is_dir()
+    assert (demo_root / "Reports" / "TestReport.Report").is_dir()
