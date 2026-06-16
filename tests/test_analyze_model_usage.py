@@ -65,6 +65,123 @@ def test_field_parameter_targets_are_marked_used():
     assert [u.context for u in margin["usages"]] == ["Field Parameter"]
 
 
+def test_extract_nameof_targets_handles_parens_inside_names():
+    text = (
+        "{\n"
+        '    ("Order Number", NAMEOF(\'Work Order Maintenance (IW_49n)\'[work_order_id]), 0),\n'
+        '    ("Duration", NAMEOF(\'Work Order Maintenance (IW_49n)\'[normal_duration_qty]), 1)\n'
+        "}\n"
+    )
+
+    targets = analyzer._extract_nameof_targets(text)
+
+    assert targets == [
+        ("Work Order Maintenance (IW_49n)", "work_order_id"),
+        ("Work Order Maintenance (IW_49n)", "normal_duration_qty"),
+    ]
+
+
+def test_extract_nameof_targets_handles_unqualified_measure_refs():
+    text = (
+        "{\n"
+        '    ("Emergency", NAMEOF( [% Emergency WO (PM01) vs All Orders_PMSC] ), 1, "alias"),\n'
+        '    ("Breakdowns", NAMEOF( [#_Breakdowns_PMSC] ), 2, "alias2")\n'
+        "}\n"
+    )
+
+    targets = analyzer._extract_nameof_targets(text)
+
+    assert targets == [
+        ("", "% Emergency WO (PM01) vs All Orders_PMSC"),
+        ("", "#_Breakdowns_PMSC"),
+    ]
+
+
+def _write_fp_workspace(tmp_path, fp_source_lines: str, sales_table: str = "Sales") -> Path:
+    workspace = tmp_path / "Workspace"
+    model = workspace / "Models" / "TestModel.SemanticModel"
+    report = workspace / "Reports" / "TestReport.Report"
+    tables_dir = model / "definition" / "tables"
+    visuals_dir = report / "definition" / "pages" / "Page 1" / "visuals" / "visual1"
+    tables_dir.mkdir(parents=True)
+    visuals_dir.mkdir(parents=True)
+
+    (tables_dir / f"{sales_table}.tmdl").write_text(
+        f"table '{sales_table}'\n"
+        "\tcolumn Amount\n"
+        "\tmeasure 'Total Sales (USD)' = SUM('" + sales_table + "'[Amount])\n",
+        encoding="utf-8",
+    )
+    (tables_dir / "Metric Parameter.tmdl").write_text(
+        "table 'Metric Parameter'\n"
+        "\tcolumn Metric\n"
+        "\tcolumn 'Metric Fields'\n"
+        "\tpartition 'Metric Parameter' = calculated\n"
+        "\t\tsource =\n"
+        + fp_source_lines,
+        encoding="utf-8",
+    )
+    (report / "definition" / "pages" / "Page 1" / "page.json").write_text(
+        '{"displayName":"Overview"}', encoding="utf-8"
+    )
+    (visuals_dir / "visual.json").write_text(
+        json.dumps({
+            "visual": {
+                "visualType": "slicer",
+                "query": {
+                    "queryState": {
+                        "Values": {
+                            "projections": [
+                                {"field": {"Column": {
+                                    "Expression": {"SourceRef": {"Entity": "Metric Parameter"}},
+                                    "Property": "Metric",
+                                }}}
+                            ]
+                        }
+                    }
+                },
+            }
+        }),
+        encoding="utf-8",
+    )
+    return workspace
+
+
+def test_field_parameter_with_parens_in_table_name_promotes_targets(tmp_path):
+    workspace = _write_fp_workspace(
+        tmp_path,
+        "\t\t\t{\n"
+        "\t\t\t    (\"Amount\", NAMEOF('Orders (IW_49n)'[Amount]), 0)\n"
+        "\t\t\t}\n",
+        sales_table="Orders (IW_49n)",
+    )
+
+    results = analyzer.analyze(workspace.resolve())
+
+    amount = _find_item(results, "Orders (IW_49n)", "Amount", "Column")
+    assert amount["status"] == "USED (Field Parameter: Metric Parameter)"
+    assert not any(
+        w["code"] == "NAMEOF_PATTERN_NOT_IN_FIELD_PARAMETER_TABLE" for w in results["warnings"]
+    )
+
+
+def test_field_parameter_with_unqualified_measure_refs_promotes_targets(tmp_path):
+    workspace = _write_fp_workspace(
+        tmp_path,
+        "\t\t\t{\n"
+        "\t\t\t    (\"Total\", NAMEOF([Total Sales (USD)]), 0)\n"
+        "\t\t\t}\n",
+    )
+
+    results = analyzer.analyze(workspace.resolve())
+
+    total = _find_item(results, "Sales", "Total Sales (USD)", "Measure")
+    assert total["status"] == "USED (Field Parameter: Metric Parameter)"
+    assert not any(
+        w["code"] == "NAMEOF_PATTERN_NOT_IN_FIELD_PARAMETER_TABLE" for w in results["warnings"]
+    )
+
+
 def test_public_demo_workspace_analyzes_cleanly():
     results = analyzer.analyze(PUBLIC_DEMO_DIR.resolve())
 
