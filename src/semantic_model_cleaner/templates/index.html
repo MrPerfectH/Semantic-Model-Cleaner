@@ -3027,16 +3027,18 @@ async function findConnectedReports() {
       search_root: searchRoot
     });
     if (data.error) throw new Error(data.error);
-    var existing = new Map(chosenReports.map(function(report) { return [report.path, report]; }));
-    (data.reports || []).forEach(function(report) {
-      existing.set(report.path, { path: report.path, name: report.name });
-    });
-    chosenReports = Array.from(existing.values()).sort(function(a, b) { return a.name.localeCompare(b.name); });
-    renderPills();
     var foundReports = data.reports || [];
+    if (foundReports.length) {
+      chosenReports = foundReports
+        .map(function(report) { return { path: report.path, name: report.name }; })
+        .sort(function(a, b) { return a.name.localeCompare(b.name); });
+      renderPills();
+    }
     var nameMatched = foundReports.filter(function(report) { return report.status === 'connected_by_name'; }).length;
-    var statusMessage = 'Found ' + foundReports.length + ' connected report(s) from '
-      + (data.scanned_definition_files || 0) + ' definition file(s).';
+    var statusMessage = foundReports.length
+      ? 'Selected the ' + foundReports.length + ' report(s) connected to this model ('
+        + (data.scanned_definition_files || 0) + ' definition file(s) scanned).'
+      : 'Found 0 connected report(s) from ' + (data.scanned_definition_files || 0) + ' definition file(s).';
     if (nameMatched) {
       statusMessage += ' ' + nameMatched + ' connect live to a published model with the same name as the selected model.';
     }
@@ -3058,7 +3060,7 @@ async function findConnectedReports() {
       if (reasons.length) statusMessage += ' None matched: ' + reasons.join('; ') + '.';
       statusMessage += ' You can still add report folders manually with Browse for reports.';
     } else if (foundReports.length) {
-      statusMessage += ' Remove report pills to unselect.';
+      statusMessage += ' Add more with Browse for reports, or remove pills to unselect.';
     }
     $('connectedReportSearchStatus').textContent = statusMessage;
     if (data.warnings && data.warnings.length) {
