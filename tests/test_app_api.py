@@ -592,6 +592,79 @@ def test_api_serialization_groups_report_health_workflow():
     assert unsupported_group["items"][0]["reviewTriggers"] == [unsupported_reason]
 
 
+def test_build_report_root_cause_groups_collapses_by_target():
+    issues = []
+    # A renamed-table cascade: 3 references to a missing table, 2 hidden + 1 visible,
+    # spanning two issue types, one carrying a fuzzy replacement suggestion.
+    issues.append({
+        "issueType": "missing_table", "severity": "error", "report": "R1", "page": "P1",
+        "table": "IW_49n", "name": "", "visualId": "v1", "artifactPath": "a1",
+        "pageHidden": False, "visualHidden": False,
+        "suggestions": [{"action": "suggest_replace", "confidence": "High",
+                          "table": "Work Order Maintenance (IW_49n)", "name": "IW_49n"}],
+    })
+    issues.append({
+        "issueType": "missing_column", "severity": "error", "report": "R1", "page": "P2",
+        "table": "IW_49n", "name": "work_order_id", "visualId": "v2", "artifactPath": "a2",
+        "pageHidden": True, "visualHidden": False, "suggestions": [],
+    })
+    issues.append({
+        "issueType": "missing_column", "severity": "error", "report": "R2", "page": "P3",
+        "table": "iw_49n", "name": "order_type_id", "visualId": "v3", "artifactPath": "a3",
+        "pageHidden": False, "visualHidden": True, "suggestions": [],
+    })
+    # A separate stale-selector group (same selector twice).
+    for hidden in (False, True):
+        issues.append({
+            "issueType": "stale_visual_selector", "severity": "warning", "report": "R1", "page": "P1",
+            "table": "Sales", "name": "Old", "selectorValue": "Sales.Old", "staleKind": "",
+            "visualId": "v4", "artifactPath": "a4", "pageHidden": hidden, "visualHidden": False,
+            "suggestions": [],
+        })
+    # An "other" issue that counts toward the impact line but forms no card.
+    issues.append({
+        "issueType": "report_metadata", "severity": "warning", "report": "R3", "page": "",
+        "table": "", "name": "", "pageHidden": False, "visualHidden": False, "suggestions": [],
+    })
+
+    result = web_app._build_report_root_cause_groups(issues)
+
+    # Impact totals span ALL issues (6 here): 3 visible (the missing_table, one
+    # stale, the report_metadata), 3 hidden.
+    assert result["totalCount"] == 6
+    assert result["visibleCount"] == 3
+    assert result["hiddenCount"] == 3
+    # Only broken + stale issues form cards (the report_metadata one does not).
+    assert result["groupedCount"] == 5
+
+    broken = next(g for g in result["groups"] if g["kind"] == "broken")
+    assert broken["targetLabel"] == "IW_49n"
+    assert broken["totalCount"] == 3          # casefold collapse across IW_49n / iw_49n
+    assert broken["visibleCount"] == 1
+    assert broken["hiddenCount"] == 2
+    assert broken["reportCount"] == 2
+    assert broken["severity"] == "error"
+    assert set(broken["issueTypes"]) == {"missing_table", "missing_column"}
+    assert broken["topHint"] == {
+        "table": "Work Order Maintenance (IW_49n)", "name": "IW_49n", "confidence": "High",
+    }
+    assert len(broken["sampleLocations"]) <= 5
+
+    stale = next(g for g in result["groups"] if g["kind"] == "stale")
+    assert stale["totalCount"] == 2
+    assert stale["topHint"] is None
+
+    # Visible-first ordering: the group with more visible references sorts ahead.
+    assert result["groups"][0]["visibleCount"] >= result["groups"][-1]["visibleCount"]
+
+    # Each grouped issue is stamped with its group's key so the frontend filters
+    # by it directly (no JS-side case-folding that could diverge from casefold()).
+    assert issues[0]["rootCauseGroupKey"] == broken["groupKey"]
+    assert issues[1]["rootCauseGroupKey"] == broken["groupKey"]  # casefold collapse
+    # The ungrouped report_metadata issue gets no key.
+    assert "rootCauseGroupKey" not in issues[-1]
+
+
 def test_report_health_groups_truncate_previews_for_large_issue_sets():
     issues = [
         {"issueType": "missing_column", "severity": "error", "message": f"col {i}"}

@@ -279,6 +279,21 @@ body.wrap-table-text .table-signals li { overflow: visible; text-overflow: clip;
 .report-segment:hover { color: var(--text); background: #eef2f7; }
 .report-segment.active { color: #fff; background: var(--primary); }
 .report-health-select { width: 100%; min-width: 0; min-height: 32px; padding: 6px 28px 6px 9px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text); font-size: 12px; }
+.root-cause-panel { padding: 12px; border-bottom: 1px solid var(--border); background: #fbfdff; }
+.root-cause-panel.hidden { display: none; }
+.root-cause-impact { font-size: 14px; color: var(--text); margin-bottom: 10px; }
+.root-cause-impact strong { color: var(--primary); }
+.root-cause-active { font-size: 12px; color: var(--text-light); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.root-cause-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.root-cause-cards-hidden { margin-top: 8px; opacity: 0.85; }
+.root-cause-card { text-align: left; border: 1px solid var(--border); border-radius: 8px; background: #fff; padding: 9px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+.root-cause-card:hover { border-color: var(--primary); box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.root-cause-card.active { border-color: var(--primary); background: #eff6ff; }
+.root-cause-card-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.root-cause-card-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.root-cause-card-counts { font-size: 12px; color: var(--text-light); }
+.root-cause-hint { font-size: 11px; color: #9a3412; background: #fff7ed; border-radius: 6px; padding: 4px 6px; }
+.root-cause-note { font-size: 12px; color: var(--text-light); margin: 6px 0; }
 .reports-table { min-width: 1700px; }
 .reports-table th.report-select-col { width: 42px; }
 .reports-table th[data-reportcol="severity"] { width: 180px; }
@@ -906,6 +921,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <button type="button" class="btn btn-warning btn-sm" id="btnCleanAllCleanup" title="Clean every report cleanup row in the selected reports">Clean all cleanup</button>
       </div>
     </div>
+    <div class="root-cause-panel" id="rootCausePanel"></div>
     <table class="reports-table">
       <thead><tr>
         <th class="report-select-col"><input type="checkbox" id="checkAllReportIssues" title="Select actionable report rows on this page"></th>
@@ -1229,6 +1245,9 @@ var reportIssueSortAsc = true;
 var reportIssueGroupFilter = 'all';
 var reportIssueReportFilter = '__all__';
 var reportIssuePageFilter = '__all__';
+var reportIssueRootCauseFilter = '__all__';
+var allRootCauseGroups = { totalCount: 0, visibleCount: 0, hiddenCount: 0, groupedCount: 0, groups: [] };
+var rootCauseHiddenExpanded = false;
 var currentView = 'details';
 var chosenModels = (initialConfig.initialModels || []).slice();
 var chosenReports = (initialConfig.initialReports || []).slice();
@@ -3175,8 +3194,8 @@ function setResultsData(data, preserveActionState) {
   allRefs = data.references || [];
   allReportIssues = data.reportIssues || [];
   allWarnings = data.warnings || [];
-  allReportIssues = data.reportIssues || [];
   allReportHealth = data.reportHealth || { totalIssueCount: allReportIssues.length, groups: [] };
+  allRootCauseGroups = data.rootCauseGroups || { totalCount: 0, visibleCount: 0, hiddenCount: 0, groupedCount: 0, groups: [] };
   if (preserveActionState) {
     var valid = new Set(allItems.map(function(item) { return itemKey(item); }));
     var validTables = new Set(allTables.map(function(table) { return table.name; }));
@@ -3680,6 +3699,14 @@ function isReportIssueBrokenRef(issue) {
   return issue && ['missing_table', 'missing_column', 'missing_measure', 'missing_report_measure'].includes(issue.issueType);
 }
 
+// The backend stamps each grouped issue with its group key (rootCauseGroupKey),
+// so the flat-table filter compares that directly. We must NOT recompute the key
+// in JS: Python str.casefold() and JS toLowerCase() diverge on non-ASCII names,
+// which would make a card filter the table to an empty set.
+function reportIssueRootCauseKey(issue) {
+  return (issue && issue.rootCauseGroupKey) || null;
+}
+
 function isReportIssueActionable(issue) {
   return Boolean(
     issue
@@ -3812,6 +3839,7 @@ function filterReportIssues() {
     if (reportIssueGroupFilter === 'stale' && !isReportIssueCleanup(issue)) return false;
     if (reportIssueGroupFilter === 'not_visible' && !(issue.visualHidden || issue.pageHidden || isReportIssueCleanup(issue))) return false;
     if (reportIssueGroupFilter === 'other' && (isReportIssueBrokenRef(issue) || isReportIssueCleanup(issue))) return false;
+    if (reportIssueRootCauseFilter !== '__all__' && reportIssueRootCauseKey(issue) !== reportIssueRootCauseFilter) return false;
     if (reportIssueReportFilter !== '__all__' && issue.report !== reportIssueReportFilter) return false;
     if (reportIssuePageFilter !== '__all__' && (issue.page || '') !== reportIssuePageFilter) return false;
     if (!search) return true;
@@ -3841,6 +3869,10 @@ function reconcileReportIssueFilters() {
     : allReportIssues.filter(function(issue) { return issue.report === reportIssueReportFilter; });
   var pages = Array.from(new Set(pageSource.map(function(issue) { return issue.page || ''; })));
   if (reportIssuePageFilter !== '__all__' && !pages.includes(reportIssuePageFilter)) reportIssuePageFilter = '__all__';
+  if (reportIssueRootCauseFilter !== '__all__') {
+    var groups = (allRootCauseGroups && allRootCauseGroups.groups) || [];
+    if (!groups.some(function(g) { return g.groupKey === reportIssueRootCauseFilter; })) reportIssueRootCauseFilter = '__all__';
+  }
 }
 
 function reportIssueOptionHtml(value, label, selectedValue) {
@@ -3920,9 +3952,97 @@ function sortReportIssues() {
   });
 }
 
+function rootCauseCardHtml(group, active) {
+  var kindLabel = group.kind === 'broken' ? 'Missing model item' : 'Stale reference';
+  var kindClass = group.kind === 'broken' ? 'error' : 'stale';
+  var label = group.kind === 'broken'
+    ? group.totalCount + ' reference' + (group.totalCount === 1 ? '' : 's') + ' to a missing item under table ' + group.targetLabel
+    : group.totalCount + ' stale reference' + (group.totalCount === 1 ? '' : 's') + ' to ' + group.targetLabel;
+  var counts = group.visibleCount + ' visible · ' + group.hiddenCount + ' hidden · '
+    + group.reportCount + ' report' + (group.reportCount === 1 ? '' : 's');
+  var hint = '';
+  if (group.topHint && group.topHint.table) {
+    hint = '<div class="root-cause-hint">closest current item: <strong>'
+      + esc(group.topHint.table + '[' + group.topHint.name + ']') + '</strong>'
+      + (group.topHint.confidence ? ' (' + esc(group.topHint.confidence) + ')' : '')
+      + ' — review only, not applied</div>';
+  }
+  return '<button type="button" class="root-cause-card' + (active ? ' active' : '') + '" data-root-cause-key="' + esc(group.groupKey) + '">'
+    + '<div class="root-cause-card-head"><span class="report-health-pill ' + kindClass + '">' + esc(kindLabel) + '</span>'
+    + '<span class="badge badge-muted">' + esc(group.severity || 'info') + '</span></div>'
+    + '<div class="root-cause-card-label">' + esc(label) + '</div>'
+    + '<div class="root-cause-card-counts">' + esc(counts) + '</div>'
+    + hint
+    + '</button>';
+}
+
+function setReportCauseFilter(key) {
+  reportIssueRootCauseFilter = key || '__all__';
+  // Drilling into a group must show the whole group: clear any segment filter
+  // (broken/stale/not_visible/other) that would AND the table down to a subset
+  // and contradict the card's count.
+  if (reportIssueRootCauseFilter !== '__all__') reportIssueGroupFilter = 'all';
+  currentPageByView.reports = 1;
+  applyReportIssueFilters();
+}
+
+function renderRootCausePanel() {
+  var panel = $('rootCausePanel');
+  if (!panel) return;
+  var data = allRootCauseGroups || {};
+  var groups = data.groups || [];
+  if (!groups.length) { panel.innerHTML = ''; panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+  var CAP = 24;
+  var visibleTier = groups.filter(function(g) { return g.visibleCount > 0; });
+  var hiddenTier = groups.filter(function(g) { return g.visibleCount === 0; });
+  var html = [];
+  html.push('<div class="root-cause-impact">'
+    + '<strong>' + esc(String(data.visibleCount || 0)) + '</strong> report references on <strong>visible</strong> pages · '
+    + '<strong>' + esc(String(data.hiddenCount || 0)) + '</strong> on hidden pages · '
+    + esc(String(data.totalCount || 0)) + ' total · '
+    + esc(String(data.groupedCount || 0)) + ' grouped into ' + groups.length + ' root cause' + (groups.length === 1 ? '' : 's')
+    + '</div>');
+  if (reportIssueRootCauseFilter !== '__all__') {
+    var activeGroup = groups.filter(function(g) { return g.groupKey === reportIssueRootCauseFilter; })[0];
+    html.push('<div class="root-cause-active">Showing one group: <strong>'
+      + esc(activeGroup ? activeGroup.targetLabel : reportIssueRootCauseFilter) + '</strong> '
+      + '<button type="button" class="btn btn-secondary btn-sm" data-root-cause-clear="1">Clear group filter</button></div>');
+  }
+  html.push('<div class="root-cause-cards">'
+    + visibleTier.slice(0, CAP).map(function(g) { return rootCauseCardHtml(g, g.groupKey === reportIssueRootCauseFilter); }).join('')
+    + '</div>');
+  if (visibleTier.length > CAP) {
+    html.push('<div class="root-cause-note">+' + (visibleTier.length - CAP) + ' more groups touching visible pages — narrow with the filters below</div>');
+  }
+  if (hiddenTier.length) {
+    html.push('<button type="button" class="btn btn-secondary btn-sm" data-root-cause-toggle-hidden="1">'
+      + (rootCauseHiddenExpanded ? 'Hide' : 'Show') + ' ' + hiddenTier.length + ' hidden-only group' + (hiddenTier.length === 1 ? '' : 's') + '</button>');
+    if (rootCauseHiddenExpanded) {
+      html.push('<div class="root-cause-cards root-cause-cards-hidden">'
+        + hiddenTier.slice(0, CAP).map(function(g) { return rootCauseCardHtml(g, g.groupKey === reportIssueRootCauseFilter); }).join('')
+        + '</div>');
+      if (hiddenTier.length > CAP) {
+        html.push('<div class="root-cause-note">+' + (hiddenTier.length - CAP) + ' more hidden-only groups</div>');
+      }
+    }
+  }
+  panel.innerHTML = html.join('');
+  panel.querySelectorAll('[data-root-cause-key]').forEach(function(btn) {
+    btn.onclick = function() {
+      setReportCauseFilter(btn.dataset.rootCauseKey === reportIssueRootCauseFilter ? '__all__' : btn.dataset.rootCauseKey);
+    };
+  });
+  var clearBtn = panel.querySelector('[data-root-cause-clear]');
+  if (clearBtn) clearBtn.onclick = function() { setReportCauseFilter('__all__'); };
+  var toggleBtn = panel.querySelector('[data-root-cause-toggle-hidden]');
+  if (toggleBtn) toggleBtn.onclick = function() { rootCauseHiddenExpanded = !rootCauseHiddenExpanded; renderRootCausePanel(); };
+}
+
 function renderReportsTable() {
   var tbody = $('reportsTableBody');
   renderReportHealthControls();
+  renderRootCausePanel();
   var visibleIssues = getPagedRows(filteredReportIssues, 'reports');
   tbody.innerHTML = visibleIssues.map(function(issue) {
     var index = allReportIssues.indexOf(issue);
