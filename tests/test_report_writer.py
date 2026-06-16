@@ -1599,3 +1599,92 @@ def test_apply_report_issue_actions_removes_related_visual_references(tmp_path):
     assert values[0]["field"]["Column"]["Expression"]["SourceRef"]["Entity"] == "Keep"
     assert payload["visual"]["query"]["sortDefinition"]["sort"] == []
     assert payload["visual"]["objects"]["labels"] == [{"selector": {"metadata": "Keep.Keep Field"}}]
+
+
+def _write_remove_fixture(report_path, entity="Old Table", prop="Old Field"):
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "query": {
+                        "queryState": {
+                            "Values": {
+                                "projections": [
+                                    {"field": {"Column": {
+                                        "Expression": {"SourceRef": {"Entity": entity}},
+                                        "Property": prop,
+                                    }}},
+                                ]
+                            }
+                        }
+                    },
+                    "objects": {
+                        "labels": [{"selector": {"metadata": f"{entity}.{prop}"}}]
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return visual_file
+
+
+def test_apply_report_issue_actions_dry_run_previews_without_writing(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_file = _write_remove_fixture(report_path)
+    before = visual_file.read_text(encoding="utf-8")
+
+    result = report_writer.apply_report_issue_actions(
+        entries=[
+            {
+                "action": "remove",
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                "source_path": "visual.query.queryState.Values.projections.[0].field.Column",
+                "table": "Old Table",
+                "name": "Old Field",
+            }
+        ],
+        dry_run=True,
+    )
+
+    assert result["ok"] is True
+    assert result["dry_run"] is True
+    # The preview reports what WOULD change, including the related sibling sweep...
+    assert result["updated_reference_count"] >= 1
+    # ...but nothing is written to disk.
+    assert visual_file.read_text(encoding="utf-8") == before
+
+
+def test_apply_report_issue_actions_aborts_without_writing_when_validation_fails(tmp_path, monkeypatch):
+    report_path = tmp_path / "Executive.Report"
+    visual_file = _write_remove_fixture(report_path)
+    before = visual_file.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(
+        report_writer,
+        "validate_pbir_json_file",
+        lambda *args, **kwargs: {"ok": False, "errors": [{"file": str(visual_file), "message": "boom"}]},
+    )
+
+    result = report_writer.apply_report_issue_actions(
+        entries=[
+            {
+                "action": "remove",
+                "report_path": str(report_path),
+                "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+                "source_path": "visual.query.queryState.Values.projections.[0].field.Column",
+                "table": "Old Table",
+                "name": "Old Field",
+            }
+        ],
+    )
+
+    assert result["ok"] is False
+    assert result.get("validation_errors")
+    # A failed validation must leave every report file byte-for-byte unchanged.
+    assert visual_file.read_text(encoding="utf-8") == before

@@ -1845,23 +1845,25 @@ def api_apply_report_issue_actions():
     try:
         data = request.get_json(silent=True) or {}
         entries = data.get("entries", [])
+        dry_run = bool(data.get("dry_run") or data.get("dryRun"))
         if not entries:
             return jsonify({"error": "No report issue actions provided"}), 400
 
         backup_paths = []
-        if data.get("create_backup", False):
+        if data.get("create_backup", False) and not dry_run:
             for report_path_str in sorted({str(entry.get("report_path", "") or "").strip() for entry in entries if entry.get("report_path")}):
                 report_path = Path(report_path_str)
                 if not report_path.exists():
                     return jsonify({"error": f"Report path not found: {report_path}"}), 400
                 backup_paths.append(str(report_writer.create_backup(report_path)))
 
-        result = report_writer.apply_report_issue_actions(entries=entries)
+        result = report_writer.apply_report_issue_actions(entries=entries, dry_run=dry_run)
         if not result.get("ok"):
             return jsonify(result), 400
 
         return jsonify({
             "result": result,
+            "dry_run": dry_run,
             "updated_reference_count": result.get("updated_reference_count", 0),
             "updated_file_count": result.get("updated_file_count", 0),
             "backup_paths": backup_paths or None,

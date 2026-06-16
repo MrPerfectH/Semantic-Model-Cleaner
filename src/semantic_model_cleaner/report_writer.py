@@ -1141,7 +1141,7 @@ def _remove_related_references(payload: dict, table: str, name: str, skip_paths:
     return len(removed), removed
 
 
-def apply_report_issue_actions(*, entries: list[dict]) -> dict:
+def apply_report_issue_actions(*, entries: list[dict], dry_run: bool = False) -> dict:
     if not entries:
         return {"ok": False, "error": "No report issue actions were provided"}
 
@@ -1160,6 +1160,7 @@ def apply_report_issue_actions(*, entries: list[dict]) -> dict:
     actions = []
     total_changed = 0
     warnings = []
+    pending_payloads: dict[Path, dict] = {}
     for target_file, file_entries in grouped.items():
         if not target_file.exists():
             return {"ok": False, "error": f"PBIR file not found: {target_file}"}
@@ -1216,13 +1217,43 @@ def apply_report_issue_actions(*, entries: list[dict]) -> dict:
                 warnings.append(f"Skipped unsupported report issue action: {action}")
 
         if file_changed:
-            target_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            validation = validate_pbir_json_file(target_file, payload)
+            if not validation["ok"]:
+                return {
+                    "ok": False,
+                    "error": "PBIR validation failed",
+                    "validation_errors": validation["errors"],
+                }
+            pending_payloads[target_file] = payload
             updated_files.append(str(target_file))
             total_changed += file_changed
+
+    if pending_payloads and not dry_run:
+        target_files = list(pending_payloads)
+        snapshot = file_transaction.snapshot_artifact_files(target_files, suffixes=(".json",))
+        try:
+            for target_file in target_files:
+                target_file.write_text(
+                    json.dumps(pending_payloads[target_file], indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
+        except OSError as exc:
+            rollback = file_transaction.restore_artifact_files(target_files, snapshot, suffixes=(".json",))
+            return {
+                "ok": False,
+                "error": f"PBIR write failed: {exc}",
+                "rolled_back": rollback["ok"],
+                "rollback": rollback,
+                "updated_files": updated_files,
+                "updated_reference_count": total_changed,
+                "actions": actions,
+                "warnings": warnings,
+            }
 
     return {
         "ok": True,
         "action": "apply_report_issue_actions",
+        "dry_run": dry_run,
         "updated_files": updated_files,
         "updated_file_count": len(updated_files),
         "updated_reference_count": total_changed,

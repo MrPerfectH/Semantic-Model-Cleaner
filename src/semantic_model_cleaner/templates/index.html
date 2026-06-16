@@ -4175,6 +4175,32 @@ async function applyReportIssueActions(entries, label) {
   }
 }
 
+async function confirmRemoveWithPreview(entries, label) {
+  if (!entries.length) return;
+  var preview;
+  try {
+    preview = await apiPost('/api/report/issues/apply', { entries: entries, dry_run: true });
+    if (preview.error) throw new Error(preview.error);
+  } catch (err) {
+    logEntry('Remove preview failed: ' + (err && err.message ? err.message : err), 'err');
+    alert('Remove preview failed: ' + (err && err.message ? err.message : err));
+    return;
+  }
+  var refCount = preview.updated_reference_count || 0;
+  var fileCount = preview.updated_file_count || 0;
+  if (!refCount) {
+    alert('Nothing to remove for the selected row(s).');
+    return;
+  }
+  // The server also sweeps sibling references to the same item in the same file,
+  // so the true deletion count can exceed the number of rows the user picked.
+  var extra = refCount > entries.length
+    ? '\n\nThis includes ' + (refCount - entries.length) + ' related reference(s) to the same item in the same file(s) that were not individually selected.'
+    : '';
+  if (!confirm('This will permanently remove ' + refCount + ' report reference(s) across ' + fileCount + ' file(s).' + extra + '\n\nContinue?')) return;
+  await applyReportIssueActions(entries, label);
+}
+
 async function applyReportIssueSuggestion(index) {
   var issue = allReportIssues[index];
   var suggestion = reportIssueSelectedSuggestion(issue);
@@ -4193,8 +4219,7 @@ async function removeReportIssueReference(index) {
     alert('Could not build remove action for this report issue.');
     return;
   }
-  if (!confirm('Remove ' + reportIssueRefText(issue) + ' from this exact PBIR location?')) return;
-  await applyReportIssueActions([entry], 'Removed report issue reference');
+  await confirmRemoveWithPreview([entry], 'Removed report issue reference');
 }
 
 async function applyVisibleReportSuggestions() {
@@ -4229,8 +4254,7 @@ async function removeVisibleReportIssues() {
     alert('Select one or more removable report issue rows first.');
     return;
   }
-  if (!confirm('Remove ' + entries.length + ' selected report issue reference(s) from PBIR?')) return;
-  await applyReportIssueActions(entries, 'Removed selected report issue references');
+  await confirmRemoveWithPreview(entries, 'Removed selected report issue references');
 }
 
 function renderRefsTable() {

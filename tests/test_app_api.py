@@ -1057,6 +1057,59 @@ def test_api_cleanup_stale_report_metadata_preview_matches_apply(tmp_path):
     assert labels == [{"selector": {"metadata": "Sales.Revenue"}}]
 
 
+def test_api_apply_report_issue_actions_preview_matches_apply(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+                "name": "Visual1",
+                "position": {"x": 0, "y": 0, "z": 0, "height": 100, "width": 100},
+                "visual": {
+                    "query": {"queryState": {"Values": {"projections": [
+                        {"field": {"Column": {
+                            "Expression": {"SourceRef": {"Entity": "Old Table"}},
+                            "Property": "Old Field",
+                        }}}
+                    ]}}},
+                    "objects": {"labels": [{"selector": {"metadata": "Old Table.Old Field"}}]},
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    before = visual_file.read_text(encoding="utf-8")
+    entries = [
+        {
+            "action": "remove",
+            "report_path": str(report_path),
+            "artifact_path": "definition/pages/Page1/visuals/Visual1/visual.json",
+            "source_path": "visual.query.queryState.Values.projections.[0].field.Column",
+            "table": "Old Table",
+            "name": "Old Field",
+        }
+    ]
+
+    client = web_app.app.test_client()
+    preview = client.post("/api/report/issues/apply", json={"dry_run": True, "entries": entries}).get_json()
+    # Preview must not touch the file on disk.
+    assert preview["dry_run"] is True
+    assert preview["result"]["dry_run"] is True
+    assert preview["updated_reference_count"] >= 1
+    assert visual_file.read_text(encoding="utf-8") == before
+
+    apply = client.post("/api/report/issues/apply", json={"entries": entries}).get_json()
+    assert apply["dry_run"] is False
+    # Same count of references the preview promised, now actually applied.
+    assert apply["updated_reference_count"] == preview["updated_reference_count"]
+    updated = json.loads(visual_file.read_text(encoding="utf-8"))
+    assert updated["visual"]["query"]["queryState"]["Values"]["projections"] == []
+
+
 def test_api_analyze_exposes_table_permission_rls_usage(tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
