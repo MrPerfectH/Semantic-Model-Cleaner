@@ -499,6 +499,130 @@ def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
     }
 
 
+# Root-cause grouping collapses the flat report-issue list into a handful of
+# cards keyed by the missing target (broken refs) or selector (stale refs), so a
+# single model-side rename that produced thousands of issues reads as one card.
+# Presentation-only: it never asserts a rename or applies an action — see
+# docs/adr/0001-report-issue-grouping-is-presentation-only.md.
+_ROOT_CAUSE_BROKEN_TYPES = {"missing_table", "missing_column", "missing_measure", "missing_report_measure"}
+_ROOT_CAUSE_STALE_TYPES = {"stale_visual_selector", "stale_bookmark_projection", "stale_formatting_rule"}
+
+
+def _report_issue_is_hidden(issue: dict) -> bool:
+    return bool(issue.get("visualHidden") or issue.get("pageHidden"))
+
+
+def _root_cause_group_for_issue(issue: dict) -> tuple[str, str] | None:
+    """Return (kind, targetLabel) for a groupable issue, or None to leave it out
+    of the cards (it is still counted in the impact totals)."""
+    issue_type = str(issue.get("issueType", "") or "")
+    if issue_type in _ROOT_CAUSE_BROKEN_TYPES:
+        table = str(issue.get("table", "") or "").strip()
+        return "broken", table or "(unknown table)"
+    if issue_type in _ROOT_CAUSE_STALE_TYPES:
+        selector = str(issue.get("selectorValue", "") or "").strip()
+        table = str(issue.get("table", "") or "").strip()
+        name = str(issue.get("name", "") or "").strip()
+        label = selector or (f"{table}[{name}]" if table else "") or "(stale reference)"
+        return "stale", label
+    return None
+
+
+def _build_report_root_cause_groups(report_issues: list[dict]) -> dict:
+    total = len(report_issues)
+    hidden_total = sum(1 for issue in report_issues if _report_issue_is_hidden(issue))
+
+    severity_rank = {"error": 0, "warning": 1, "info": 2}
+    groups: dict[str, dict] = {}
+    grouped_count = 0
+    for issue in report_issues:
+        target = _root_cause_group_for_issue(issue)
+        if target is None:
+            continue
+        grouped_count += 1
+        kind, label = target
+        group_key = f"{kind}:{label.casefold()}"
+        # Stamp the key onto the serialized issue so the frontend filters by it
+        # directly rather than recomputing the casing in JS — Python str.casefold()
+        # and JS toLowerCase() diverge on non-ASCII identifiers (ß, final sigma, …),
+        # which would otherwise make a card filter the table to an empty set.
+        issue["rootCauseGroupKey"] = group_key
+        group = groups.get(group_key)
+        if group is None:
+            group = {
+                "kind": kind,
+                "targetLabel": label,
+                "groupKey": group_key,
+                "totalCount": 0,
+                "visibleCount": 0,
+                "hiddenCount": 0,
+                "_reports": set(),
+                "_pages": set(),
+                "_issueTypes": set(),
+                "_severityRank": severity_rank["info"],
+                "sampleLocations": [],
+                "topHint": None,
+            }
+            groups[group_key] = group
+        hidden = _report_issue_is_hidden(issue)
+        group["totalCount"] += 1
+        group["hiddenCount" if hidden else "visibleCount"] += 1
+        if issue.get("report"):
+            group["_reports"].add(issue["report"])
+        if issue.get("page"):
+            group["_pages"].add(issue["page"])
+        if issue.get("issueType"):
+            group["_issueTypes"].add(issue["issueType"])
+        group["_severityRank"] = min(
+            group["_severityRank"], severity_rank.get(issue.get("severity", "warning"), severity_rank["info"])
+        )
+        if len(group["sampleLocations"]) < _REPORT_HEALTH_PREVIEW_LIMIT:
+            group["sampleLocations"].append({
+                "report": issue.get("report", ""),
+                "page": issue.get("page", ""),
+                "visualId": issue.get("visualId", ""),
+                "artifactPath": issue.get("artifactPath", ""),
+                "hidden": hidden,
+            })
+        if group["topHint"] is None:
+            for suggestion in issue.get("suggestions", []) or []:
+                if suggestion.get("action") == "suggest_replace" and suggestion.get("table") and suggestion.get("name"):
+                    group["topHint"] = {
+                        "table": suggestion["table"],
+                        "name": suggestion["name"],
+                        "confidence": suggestion.get("confidence", ""),
+                    }
+                    break
+
+    serialized_groups = [
+        {
+            "kind": group["kind"],
+            "targetLabel": group["targetLabel"],
+            "groupKey": group["groupKey"],
+            "totalCount": group["totalCount"],
+            "visibleCount": group["visibleCount"],
+            "hiddenCount": group["hiddenCount"],
+            "reportCount": len(group["_reports"]),
+            "pageCount": len(group["_pages"]),
+            "issueTypes": sorted(group["_issueTypes"]),
+            "severity": ("error", "warning", "info")[group["_severityRank"]],
+            "sampleLocations": group["sampleLocations"],
+            "topHint": group["topHint"],
+        }
+        for group in groups.values()
+    ]
+    # Visible-first: groups touching visible report surfaces sort ahead, then by size.
+    serialized_groups.sort(key=lambda g: (-g["visibleCount"], -g["totalCount"], g["targetLabel"].casefold()))
+
+    return {
+        "totalCount": total,
+        "visibleCount": total - hidden_total,
+        "hiddenCount": hidden_total,
+        "groupedCount": grouped_count,
+        "groups": serialized_groups,
+    }
+
+
 def _serialize_results(results: dict) -> dict:
     """Serialize analyzer results for JSON API responses."""
     def _issue_state(status: str, broken_refs: list[str] | None, stale_usage_count: int = 0) -> str:
@@ -915,6 +1039,7 @@ def _serialize_results(results: dict) -> dict:
         "warnings": results.get("warnings", []),
         "reportIssues": report_issues,
         "reportHealth": _build_report_health(report_issues, items),
+        "rootCauseGroups": _build_report_root_cause_groups(report_issues),
         "items": items,
         "references": references,
     }
