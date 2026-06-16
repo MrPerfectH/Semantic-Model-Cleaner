@@ -665,15 +665,55 @@ def _unsupported_metadata_review_trigger(
     )
 
 
+def _find_nameof_close_paren(text: str, start: int) -> int:
+    """Find the closing paren of a NAMEOF(...) argument, skipping parens that
+    appear inside 'quoted table names' or [bracketed object names]."""
+    depth = 1
+    i = start
+    while i < len(text):
+        ch = text[i]
+        if ch == "'":
+            parsed = read_single_quoted_name(text, i)
+            if parsed:
+                i = parsed[1]
+                continue
+        elif ch == "[":
+            bracketed = _read_dax_bracketed_name(text, i)
+            if bracketed:
+                i = bracketed[1]
+                continue
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
 def _extract_nameof_targets(text: str) -> list[tuple[str, str]]:
+    """Extract NAMEOF targets as (table, name) pairs.
+
+    Unqualified measure references like NAMEOF([Total]) yield ("", name);
+    the resolver matches those against measures model-wide.
+    """
     targets = []
     active_text, _ = _split_dax_comments(text)
     for match in re.finditer(r"NAMEOF\s*\(", active_text, flags=re.IGNORECASE):
-        close = active_text.find(")", match.end())
+        close = _find_nameof_close_paren(active_text, match.end())
         if close == -1:
             continue
-        for table, name, _, _ in _scan_dax_qualified_refs(active_text[match.end():close]):
-            targets.append((table, name))
+        argument = active_text[match.end():close]
+        qualified = _scan_dax_qualified_refs(argument)
+        if qualified:
+            for table, name, _, _ in qualified:
+                targets.append((table, name))
+            continue
+        bracket_start = _skip_dax_whitespace(argument, 0)
+        bracketed = _read_dax_bracketed_name(argument, bracket_start)
+        if bracketed:
+            targets.append(("", bracketed[0]))
     return targets
 
 
@@ -789,8 +829,11 @@ def resolve_field_parameter_targets(
     warnings: list[AnalyzerWarning],
 ) -> list[tuple[FieldParameterInfo, list[ModelItem]]]:
     item_index: dict[tuple[str, str], list[ModelItem]] = defaultdict(list)
+    measure_index: dict[str, list[ModelItem]] = defaultdict(list)
     for item in items:
         item_index[normalize_key(*item.key)].append(item)
+        if item.item_type == "Measure":
+            measure_index[item.name.casefold()].append(item)
 
     resolved = []
     for info in field_parameters:
@@ -799,7 +842,12 @@ def resolve_field_parameter_targets(
         unresolved_targets = set()
 
         for target_table, target_name in info.targets:
-            matches = item_index.get(normalize_key(target_table, target_name), [])
+            if target_table:
+                matches = item_index.get(normalize_key(target_table, target_name), [])
+            else:
+                # Unqualified NAMEOF([Name]) is a measure reference; measure
+                # names are unique model-wide in a valid model.
+                matches = measure_index.get(target_name.casefold(), [])
             if len(matches) == 1:
                 match = matches[0]
                 if match.key not in seen_keys:

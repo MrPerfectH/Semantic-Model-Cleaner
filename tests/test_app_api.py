@@ -592,6 +592,39 @@ def test_api_serialization_groups_report_health_workflow():
     assert unsupported_group["items"][0]["reviewTriggers"] == [unsupported_reason]
 
 
+def test_report_health_groups_truncate_previews_for_large_issue_sets():
+    issues = [
+        {"issueType": "missing_column", "severity": "error", "message": f"col {i}"}
+        for i in range(12)
+    ]
+    items = [
+        {
+            "type": "Column",
+            "table": "T",
+            "name": f"C{i}",
+            "staleUsageCount": 3,
+            "staleUsageDetails": [{"report": "R", "page": "P"}] * 3,
+            "brokenDaxRefs": [],
+            "reviewTriggers": [],
+        }
+        for i in range(9)
+    ]
+
+    health = web_app._build_report_health(issues, items)
+
+    metadata_group = next(g for g in health["groups"] if g["key"] == "report_metadata")
+    assert metadata_group["count"] == 12
+    assert metadata_group["issueCount"] == 12
+    assert len(metadata_group["issues"]) == 5
+
+    stale_group = next(g for g in health["groups"] if g["key"] == "stale_report_references")
+    assert stale_group["count"] == 27
+    assert stale_group["itemCount"] == 9
+    assert len(stale_group["items"]) == 5
+    assert "staleUsageDetails" not in stale_group["items"][0]
+    assert stale_group["action"]["entryCount"] == 27
+
+
 def test_api_analyze_rejects_multiple_models(monkeypatch, tmp_path):
     model_a = tmp_path / "Sales.SemanticModel"
     model_b = tmp_path / "Finance.SemanticModel"

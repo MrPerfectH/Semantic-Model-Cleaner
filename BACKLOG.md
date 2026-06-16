@@ -14,6 +14,7 @@ Last updated: 2026-06-11
 - Add a Protected Items list for items that should never be flagged or modified.
   Design: app-side store in the user dir keyed by resolved model path (`~/.semantic-model-cleaner/protected_items.json`); new `Protected` Cleanup Recommendation distinct from `Keep`; hard block on delete/rename/move/DAX-edit in `_validate_action`/`plan_actions`/`apply_actions` (incl. protected-table cascade); annotate analysis and plan exports; Protect/Unprotect toggle in Item Details.
 - Expand analyzer fixtures for metadata and report-definition edge cases.
+- Normalize the `/api/analyze` payload further: `references` rows repeat per-item verdict fields (~11 MB on PMRA-scale workspaces) and `reportIssues` rows carry full message strings. Needs a client-side join from `allItems`, so do it together with the front-end module split below.
 - Split the single-page web template into smaller front-end modules around cleanup planning, product-language helpers, and render helpers once the next product slices settle.
 
 ## Medium-term
