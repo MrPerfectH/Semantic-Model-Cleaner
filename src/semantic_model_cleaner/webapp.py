@@ -365,24 +365,54 @@ def _highest_severity(items: list[dict]) -> str:
     return severity
 
 
+# The Report Health banner only previews a few rows per group; the full issue
+# list ships separately in reportIssues. Keeping every issue inside each group
+# too made /api/analyze responses balloon to tens of MB on large workspaces.
+_REPORT_HEALTH_PREVIEW_LIMIT = 5
+
+
 def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
     groups: list[dict] = []
+
+    def _group(
+        key: str,
+        *,
+        label: str,
+        severity: str,
+        count: int,
+        description: str,
+        issues: list[dict] | None = None,
+        group_items: list[dict] | None = None,
+        action: dict | None = None,
+    ) -> dict:
+        issues = issues or []
+        group_items = group_items or []
+        return {
+            "key": key,
+            "label": label,
+            "severity": severity,
+            "count": count,
+            "description": description,
+            "issues": issues[:_REPORT_HEALTH_PREVIEW_LIMIT],
+            "issueCount": len(issues),
+            "items": group_items[:_REPORT_HEALTH_PREVIEW_LIMIT],
+            "itemCount": len(group_items),
+            "action": action,
+        }
 
     for key in ("invalid_pbir_json", "report_extension_metadata", "report_metadata"):
         issues = [issue for issue in report_issues if _report_health_issue_group_key(issue) == key]
         if not issues:
             continue
         meta = _REPORT_HEALTH_ISSUE_GROUPS[key]
-        groups.append({
-            "key": key,
-            "label": meta["label"],
-            "severity": _highest_severity(issues),
-            "count": len(issues),
-            "description": meta["description"],
-            "issues": issues,
-            "items": [],
-            "action": None,
-        })
+        groups.append(_group(
+            key,
+            label=meta["label"],
+            severity=_highest_severity(issues),
+            count=len(issues),
+            description=meta["description"],
+            issues=issues,
+        ))
 
     stale_items = [
         {
@@ -390,30 +420,28 @@ def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
             "table": item.get("table", ""),
             "name": item.get("name", ""),
             "staleUsageCount": item.get("staleUsageCount", 0),
-            "staleUsageDetails": item.get("staleUsageDetails", []),
         }
         for item in items
         if item.get("staleUsageCount", 0) > 0
     ]
     stale_count = sum(item["staleUsageCount"] for item in stale_items)
     if stale_count:
-        groups.append({
-            "key": "stale_report_references",
-            "label": "Stale Report References",
-            "severity": "warning",
-            "count": stale_count,
-            "description": (
+        groups.append(_group(
+            "stale_report_references",
+            label="Stale Report References",
+            severity="warning",
+            count=stale_count,
+            description=(
                 "Stale PBIR selectors no longer match live visual or bookmark query fields. "
                 "Preview cleanup before applying repairs."
             ),
-            "issues": [],
-            "items": stale_items,
-            "action": {
+            group_items=stale_items,
+            action={
                 "type": "cleanup_stale",
                 "label": "Preview stale cleanup",
                 "entryCount": stale_count,
             },
-        })
+        ))
 
     broken_items = [
         {
@@ -421,23 +449,20 @@ def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
             "table": item.get("table", ""),
             "name": item.get("name", ""),
             "brokenDaxRefs": item.get("brokenDaxRefs", []),
-            "brokenDaxRefDetails": item.get("brokenDaxRefDetails", []),
         }
         for item in items
         if item.get("brokenDaxRefs")
     ]
     broken_count = sum(len(item["brokenDaxRefs"]) for item in broken_items)
     if broken_count:
-        groups.append({
-            "key": "broken_model_references",
-            "label": "Broken Model References",
-            "severity": "error",
-            "count": broken_count,
-            "description": "Unresolved DAX references block confident cleanup until the broken model dependency is resolved.",
-            "issues": [],
-            "items": broken_items,
-            "action": None,
-        })
+        groups.append(_group(
+            "broken_model_references",
+            label="Broken Model References",
+            severity="error",
+            count=broken_count,
+            description="Unresolved DAX references block confident cleanup until the broken model dependency is resolved.",
+            group_items=broken_items,
+        ))
 
     unsupported_items = []
     unsupported_count = 0
@@ -456,19 +481,17 @@ def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
             "reviewTriggers": triggers,
         })
     if unsupported_count:
-        groups.append({
-            "key": "unsupported_metadata",
-            "label": "Unsupported Metadata",
-            "severity": "warning",
-            "count": unsupported_count,
-            "description": (
+        groups.append(_group(
+            "unsupported_metadata",
+            label="Unsupported Metadata",
+            severity="warning",
+            count=unsupported_count,
+            description=(
                 "Cleanup recommendations were downgraded to Review because documented metadata "
                 "can hide dependencies the app does not fully analyze yet."
             ),
-            "issues": [],
-            "items": unsupported_items,
-            "action": None,
-        })
+            group_items=unsupported_items,
+        ))
 
     return {
         "totalIssueCount": sum(group["count"] for group in groups),

@@ -3272,8 +3272,11 @@ function renderReportHealth() {
       if (itemName && item.name) itemName += ']';
       body.push('<div class="report-health-row">' + esc(item.type || 'Item') + ': ' + esc(itemName || item.name || item.table || 'Unknown item') + '</div>');
     });
-    if ((group.issues || []).length > 3 || (group.items || []).length > 3) {
-      body.push('<div class="report-health-row">+' + esc(String(((group.issues || []).length + (group.items || []).length) - 3)) + ' more</div>');
+    var totalRows = (group.issueCount != null ? group.issueCount : (group.issues || []).length)
+      + (group.itemCount != null ? group.itemCount : (group.items || []).length);
+    var shownRows = Math.min((group.issues || []).length, 3) + Math.min((group.items || []).length, 3);
+    if (totalRows > shownRows) {
+      body.push('<div class="report-health-row">+' + esc(String(totalRows - shownRows)) + ' more</div>');
     }
     var actionHtml = '';
     if (group.action && group.action.type === 'cleanup_stale') {
