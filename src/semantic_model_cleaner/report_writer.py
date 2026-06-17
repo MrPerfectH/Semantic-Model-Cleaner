@@ -744,11 +744,18 @@ def rewrite_model_reference_changes(
             pending_writes.append((json_file, payload))
 
     if not dry_run and pending_writes:
+        # Serialize every payload up front so a non-OSError (e.g. a non-serializable
+        # value) cannot fire mid-write and leave reports half-rewritten — the write
+        # loop below can then only fail with OSError, which the transaction handles.
+        serialized_writes = [
+            (json_file, json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+            for json_file, payload in pending_writes
+        ]
         roots = [report_path / "definition" for report_path in report_paths]
         snapshot = file_transaction.snapshot_artifact_files(roots, suffixes=(".json",))
         try:
-            for json_file, payload in pending_writes:
-                json_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            for json_file, text in serialized_writes:
+                json_file.write_text(text, encoding="utf-8")
         except OSError as exc:
             rollback = file_transaction.restore_artifact_files(roots, snapshot, suffixes=(".json",))
             return {

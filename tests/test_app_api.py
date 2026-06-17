@@ -1183,6 +1183,60 @@ def test_api_apply_report_issue_actions_preview_matches_apply(tmp_path):
     assert updated["visual"]["query"]["queryState"]["Values"]["projections"] == []
 
 
+def test_api_repair_references_previews_then_rewrites_report_only(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps({
+            "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+            "name": "Visual1",
+            "position": {"x": 0, "y": 0, "z": 0, "height": 100, "width": 100},
+            "visual": {
+                "query": {"queryState": {"Values": {"projections": [
+                    {"field": {"Column": {
+                        "Expression": {"SourceRef": {"Entity": "IW_49n"}},
+                        "Property": "work_order_id",
+                    }}, "queryRef": "IW_49n.work_order_id"}
+                ]}}},
+            },
+        }, indent=2),
+        encoding="utf-8",
+    )
+    before = visual_file.read_text(encoding="utf-8")
+    body = {
+        "report_paths": [str(report_path)],
+        "table_renames": [{"table": "IW_49n", "target_table": "Work Order Maintenance (IW_49n)"}],
+    }
+
+    client = web_app.app.test_client()
+    preview = client.post("/api/report/repair-references", json={**body, "dry_run": True}).get_json()
+    assert preview["dry_run"] is True
+    assert preview["updated_reference_count"] >= 1
+    # Preview writes nothing.
+    assert visual_file.read_text(encoding="utf-8") == before
+
+    apply = client.post("/api/report/repair-references", json=body).get_json()
+    assert apply["dry_run"] is False
+    assert apply["updated_reference_count"] == preview["updated_reference_count"]
+    rewritten = json.loads(visual_file.read_text(encoding="utf-8"))
+    field = rewritten["visual"]["query"]["queryState"]["Values"]["projections"][0]
+    assert field["field"]["Column"]["Expression"]["SourceRef"]["Entity"] == "Work Order Maintenance (IW_49n)"
+    assert field["queryRef"] == "Work Order Maintenance (IW_49n).work_order_id"
+
+
+def test_api_repair_references_requires_target(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    (report_path / "definition").mkdir(parents=True)
+    client = web_app.app.test_client()
+    resp = client.post("/api/report/repair-references", json={
+        "report_paths": [str(report_path)],
+        "table_renames": [{"table": "IW_49n", "target_table": ""}],
+    })
+    assert resp.status_code == 400
+
+
 def test_api_analyze_exposes_table_permission_rls_usage(tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"

@@ -1997,6 +1997,77 @@ def api_apply_report_issue_actions():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/report/repair-references", methods=["POST"])
+def api_repair_report_references():
+    """Repair report references that point at a renamed semantic-model table.
+
+    Report-only: this rewrites the selected PBIR reports to point at the
+    user-chosen replacement table and NEVER renames the model (the model is
+    already correct in the rename-fallout case). It routes through the
+    transactional rewrite engine (snapshot + validate + rollback) and supports
+    dry_run so the UI can preview the true reference count before writing.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        table_renames = data.get("table_renames") or []
+        report_path_values = data.get("report_paths") or _state["report_paths"]
+        dry_run = bool(data.get("dry_run") or data.get("dryRun"))
+
+        clean_renames = []
+        for rename in table_renames:
+            table = str((rename or {}).get("table", "") or "").strip()
+            target = str((rename or {}).get("target_table", "") or "").strip()
+            if not table or not target:
+                return jsonify({"error": "Each table rename needs a non-empty table and target_table"}), 400
+            clean_renames.append({"table": table, "target_table": target})
+        if not clean_renames:
+            return jsonify({"error": "No table renames provided"}), 400
+        if not report_path_values:
+            return jsonify({"error": "No selected reports provided"}), 400
+
+        report_paths = [Path(str(value)) for value in report_path_values]
+        for report_path in report_paths:
+            if not report_path.exists():
+                return jsonify({"error": f"Report path not found: {report_path}"}), 400
+
+        backup_paths = []
+        if data.get("create_backup", False) and not dry_run:
+            for report_path in report_paths:
+                backup_paths.append(str(report_writer.create_backup(report_path)))
+
+        result = report_writer.rewrite_model_reference_changes(
+            report_paths=report_paths,
+            table_renames=clean_renames,
+            dry_run=dry_run,
+        )
+        if not result.get("ok"):
+            return jsonify(result), 400
+
+        # Keep the response bounded: totals + a small sample of files, dropping
+        # the verbose per-reference update lists.
+        sample_files = [
+            {
+                "file": entry.get("file"),
+                "report": entry.get("report"),
+                "referenceCount": entry.get("reference_count", 0),
+            }
+            for entry in (result.get("updated_files") or [])[:_REPORT_HEALTH_PREVIEW_LIMIT]
+        ]
+        warnings = result.get("warnings", []) or []
+        return jsonify({
+            "ok": True,
+            "dry_run": dry_run,
+            "updated_reference_count": result.get("updated_reference_count", 0),
+            "updated_file_count": result.get("updated_file_count", 0),
+            "sample_files": sample_files,
+            "warnings": warnings[:_REPORT_HEALTH_PREVIEW_LIMIT],
+            "warning_count": len(warnings),
+            "backup_paths": backup_paths or None,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/backup", methods=["GET"])
 def api_backup_info():
     """Get current backup info."""

@@ -294,6 +294,7 @@ body.wrap-table-text .table-signals li { overflow: visible; text-overflow: clip;
 .root-cause-card-counts { font-size: 12px; color: var(--text-light); }
 .root-cause-hint { font-size: 11px; color: #9a3412; background: #fff7ed; border-radius: 6px; padding: 4px 6px; }
 .root-cause-note { font-size: 12px; color: var(--text-light); margin: 6px 0; }
+.root-cause-repair { margin: 8px 0; padding: 10px; border: 1px solid var(--primary); border-radius: 8px; background: #eff6ff; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
 .reports-table { min-width: 1700px; }
 .reports-table th.report-select-col { width: 42px; }
 .reports-table th[data-reportcol="severity"] { width: 180px; }
@@ -1248,6 +1249,9 @@ var reportIssuePageFilter = '__all__';
 var reportIssueRootCauseFilter = '__all__';
 var allRootCauseGroups = { totalCount: 0, visibleCount: 0, hiddenCount: 0, groupedCount: 0, groups: [] };
 var rootCauseHiddenExpanded = false;
+var repairOpen = false;
+var repairTargetTable = '';
+var repairPreview = null;
 var currentView = 'details';
 var chosenModels = (initialConfig.initialModels || []).slice();
 var chosenReports = (initialConfig.initialReports || []).slice();
@@ -3196,6 +3200,9 @@ function setResultsData(data, preserveActionState) {
   allWarnings = data.warnings || [];
   allReportHealth = data.reportHealth || { totalIssueCount: allReportIssues.length, groups: [] };
   allRootCauseGroups = data.rootCauseGroups || { totalCount: 0, visibleCount: 0, hiddenCount: 0, groupedCount: 0, groups: [] };
+  repairOpen = false;
+  repairTargetTable = '';
+  repairPreview = null;
   if (preserveActionState) {
     var valid = new Set(allItems.map(function(item) { return itemKey(item); }));
     var validTables = new Set(allTables.map(function(table) { return table.name; }));
@@ -3982,8 +3989,112 @@ function setReportCauseFilter(key) {
   // (broken/stale/not_visible/other) that would AND the table down to a subset
   // and contradict the card's count.
   if (reportIssueRootCauseFilter !== '__all__') reportIssueGroupFilter = 'all';
+  // Any change of the active group cancels an open repair form.
+  repairOpen = false;
+  repairTargetTable = '';
+  repairPreview = null;
   currentPageByView.reports = 1;
   applyReportIssueFilters();
+}
+
+function activeRootCauseGroup() {
+  var groups = (allRootCauseGroups && allRootCauseGroups.groups) || [];
+  return groups.filter(function(g) { return g.groupKey === reportIssueRootCauseFilter; })[0] || null;
+}
+
+function repairFormHtml(group) {
+  var tables = (allTables || []).map(function(t) { return t.name; }).filter(Boolean)
+    .sort(function(a, b) { return a.localeCompare(b); });
+  var opts = '<option value="">Choose replacement table…</option>' + tables.map(function(n) {
+    return '<option value="' + esc(n) + '"' + (n === repairTargetTable ? ' selected' : '') + '>' + esc(n) + '</option>';
+  }).join('');
+  var hintNote = group.topHint && group.topHint.table
+    ? '<div class="root-cause-note">Fuzzy guess (often wrong — verify before choosing): ' + esc(group.topHint.table) + '</div>'
+    : '';
+  var previewBlock = '';
+  if (repairPreview) {
+    previewBlock = '<div class="root-cause-note">Will rewrite <strong>' + esc(String(repairPreview.updated_reference_count || 0))
+      + '</strong> reference(s) across <strong>' + esc(String(repairPreview.updated_file_count || 0))
+      + '</strong> file(s) in the selected reports — report files only, the model is not changed.</div>'
+      + '<button type="button" class="btn btn-warning btn-sm" data-repair-apply="1">Apply repair</button>';
+  }
+  return '<div class="root-cause-repair">'
+    + '<div>Repair references to missing table <strong>' + esc(group.targetLabel) + '</strong> → '
+    + '<select class="report-health-select" id="repairTargetSelect" style="display:inline-block;width:auto;min-width:240px">' + opts + '</select> '
+    + '<button type="button" class="btn btn-secondary btn-sm" data-repair-preview="1">Preview</button> '
+    + '<button type="button" class="btn btn-secondary btn-sm" data-repair-cancel="1">Cancel</button></div>'
+    + '<div class="root-cause-note">Pick the table that now holds these fields. This repoints the table reference only (report files, not the model); if columns were also renamed, those references will still show as issues under the new table.</div>'
+    + hintNote + previewBlock
+    + '</div>';
+}
+
+async function repairReferencesRequest(group, dryRun) {
+  if (!repairTargetTable) { alert('Choose a replacement table first.'); return null; }
+  if (!chosenReports.length) { alert('No reports selected.'); return null; }
+  return await apiPost('/api/report/repair-references', {
+    report_paths: chosenReports.map(function(r) { return r.path; }),
+    table_renames: [{ table: group.targetLabel, target_table: repairTargetTable }],
+    dry_run: dryRun,
+    create_backup: $('applyBackupCheckbox').checked
+  });
+}
+
+function currentReportPathsKey() {
+  return chosenReports.map(function(r) { return r.path; }).sort().join('|||');
+}
+
+async function previewRepair() {
+  var group = activeRootCauseGroup();
+  if (!group) return;
+  try {
+    var data = await repairReferencesRequest(group, true);
+    if (!data) return;
+    if (data.error) throw new Error(data.error);
+    // Remember exactly which reports this preview covered, so Apply can detect
+    // if the selection changed underneath it.
+    data._reportPathsKey = currentReportPathsKey();
+    repairPreview = data;
+    renderRootCausePanel();
+  } catch (err) {
+    logEntry('Repair preview failed: ' + (err && err.message ? err.message : err), 'err');
+    alert('Repair preview failed: ' + (err && err.message ? err.message : err));
+  }
+}
+
+async function applyRepair() {
+  var group = activeRootCauseGroup();
+  if (!group) return;
+  if (!repairPreview) { alert('Preview the repair first.'); return; }
+  // The previewed count is only honest if the report selection hasn't changed.
+  if (repairPreview._reportPathsKey !== currentReportPathsKey()) {
+    repairPreview = null;
+    renderRootCausePanel();
+    alert('The selected reports changed since the preview. Preview again before applying.');
+    return;
+  }
+  var previewedRefs = repairPreview.updated_reference_count || 0;
+  if (!confirm('This will rewrite ' + previewedRefs + ' reference(s) across '
+    + (repairPreview.updated_file_count || 0) + ' file(s), pointing them at "' + repairTargetTable
+    + '". The model is not changed. Continue?')) return;
+  try {
+    var data = await repairReferencesRequest(group, false);
+    if (!data) return;
+    if (data.error) throw new Error(data.error);
+    if (data.backup_paths && data.backup_paths.length) {
+      $('backupBanner').classList.remove('hidden');
+      $('backupPath').textContent = data.backup_paths.join(' | ');
+    }
+    var appliedRefs = data.updated_reference_count || 0;
+    var note = appliedRefs === previewedRefs ? '' : ' (preview showed ' + previewedRefs + ')';
+    logEntry('Repaired ' + appliedRefs + ' report reference(s)' + note + ': '
+      + group.targetLabel + ' → ' + repairTargetTable, appliedRefs === previewedRefs ? 'ok' : 'warn');
+    repairOpen = false; repairPreview = null; repairTargetTable = '';
+    reportIssueRootCauseFilter = '__all__';
+    await reAnalyze({});
+  } catch (err) {
+    logEntry('Repair failed: ' + (err && err.message ? err.message : err), 'err');
+    alert('Repair failed: ' + (err && err.message ? err.message : err));
+  }
 }
 
 function renderRootCausePanel() {
@@ -4005,9 +4116,21 @@ function renderRootCausePanel() {
     + '</div>');
   if (reportIssueRootCauseFilter !== '__all__') {
     var activeGroup = groups.filter(function(g) { return g.groupKey === reportIssueRootCauseFilter; })[0];
+    // Offer table-reference repair for any broken (missing-target) group except
+    // the placeholder. We deliberately do NOT auto-decide whether repointing is
+    // appropriate — a same-named stub table can coexist with the real one, so
+    // "does the table exist" is ambiguous. The user picks the target and the
+    // dry-run preview + the note in the form are the safety mechanism.
+    var canRepair = activeGroup && activeGroup.kind === 'broken'
+      && activeGroup.targetLabel !== '(unknown table)';
     html.push('<div class="root-cause-active">Showing one group: <strong>'
       + esc(activeGroup ? activeGroup.targetLabel : reportIssueRootCauseFilter) + '</strong> '
-      + '<button type="button" class="btn btn-secondary btn-sm" data-root-cause-clear="1">Clear group filter</button></div>');
+      + '<button type="button" class="btn btn-secondary btn-sm" data-root-cause-clear="1">Clear group filter</button>'
+      + (canRepair && !repairOpen ? ' <button type="button" class="btn btn-secondary btn-sm" data-root-cause-repair="1">Repair references…</button>' : '')
+      + '</div>');
+    if (canRepair && repairOpen) {
+      html.push(repairFormHtml(activeGroup));
+    }
   }
   html.push('<div class="root-cause-cards">'
     + visibleTier.slice(0, CAP).map(function(g) { return rootCauseCardHtml(g, g.groupKey === reportIssueRootCauseFilter); }).join('')
@@ -4037,6 +4160,16 @@ function renderRootCausePanel() {
   if (clearBtn) clearBtn.onclick = function() { setReportCauseFilter('__all__'); };
   var toggleBtn = panel.querySelector('[data-root-cause-toggle-hidden]');
   if (toggleBtn) toggleBtn.onclick = function() { rootCauseHiddenExpanded = !rootCauseHiddenExpanded; renderRootCausePanel(); };
+  var repairBtn = panel.querySelector('[data-root-cause-repair]');
+  if (repairBtn) repairBtn.onclick = function() { repairOpen = true; repairPreview = null; repairTargetTable = ''; renderRootCausePanel(); };
+  var repairCancel = panel.querySelector('[data-repair-cancel]');
+  if (repairCancel) repairCancel.onclick = function() { repairOpen = false; repairPreview = null; repairTargetTable = ''; renderRootCausePanel(); };
+  var repairSelect = panel.querySelector('#repairTargetSelect');
+  if (repairSelect) repairSelect.onchange = function() { repairTargetTable = repairSelect.value; repairPreview = null; renderRootCausePanel(); };
+  var repairPreviewBtn = panel.querySelector('[data-repair-preview]');
+  if (repairPreviewBtn) repairPreviewBtn.onclick = function() { previewRepair(); };
+  var repairApplyBtn = panel.querySelector('[data-repair-apply]');
+  if (repairApplyBtn) repairApplyBtn.onclick = function() { applyRepair(); };
 }
 
 function renderReportsTable() {
