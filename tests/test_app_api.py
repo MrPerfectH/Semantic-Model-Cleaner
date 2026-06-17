@@ -1226,6 +1226,40 @@ def test_api_repair_references_previews_then_rewrites_report_only(tmp_path):
     assert field["queryRef"] == "Work Order Maintenance (IW_49n).work_order_id"
 
 
+def test_api_repair_references_renames_columns(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps({
+            "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+            "name": "Visual1",
+            "position": {"x": 0, "y": 0, "z": 0, "height": 100, "width": 100},
+            "visual": {"query": {"queryState": {"Values": {"projections": [
+                {"field": {"Column": {
+                    "Expression": {"SourceRef": {"Entity": "Work Orders"}},
+                    "Property": "work_order_number",
+                }}, "queryRef": "Work Orders.work_order_number"}
+            ]}}}},
+        }, indent=2),
+        encoding="utf-8",
+    )
+    body = {
+        "report_paths": [str(report_path)],
+        "column_renames": [{"table": "Work Orders", "name": "work_order_number", "target_name": "work_order_id"}],
+    }
+    client = web_app.app.test_client()
+    preview = client.post("/api/report/repair-references", json={**body, "dry_run": True}).get_json()
+    assert preview["dry_run"] is True
+    assert preview["updated_reference_count"] >= 1
+
+    apply = client.post("/api/report/repair-references", json=body).get_json()
+    assert apply["dry_run"] is False
+    col = json.loads(visual_file.read_text(encoding="utf-8"))["visual"]["query"]["queryState"]["Values"]["projections"][0]["field"]["Column"]
+    assert col["Property"] == "work_order_id"
+
+
 def test_api_repair_references_requires_target(tmp_path):
     report_path = tmp_path / "Executive.Report"
     (report_path / "definition").mkdir(parents=True)
@@ -1235,6 +1269,16 @@ def test_api_repair_references_requires_target(tmp_path):
         "table_renames": [{"table": "IW_49n", "target_table": ""}],
     })
     assert resp.status_code == 400
+
+
+def test_api_repair_references_rejects_malformed_renames(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    (report_path / "definition").mkdir(parents=True)
+    client = web_app.app.test_client()
+    # Type-mismatched payloads should be a clean 400, not a 500.
+    for bad in ({"column_renames": "abc"}, {"column_renames": [123]}, {"table_renames": "x"}):
+        resp = client.post("/api/report/repair-references", json={"report_paths": [str(report_path)], **bad})
+        assert resp.status_code == 400, bad
 
 
 def test_api_analyze_exposes_table_permission_rls_usage(tmp_path):
