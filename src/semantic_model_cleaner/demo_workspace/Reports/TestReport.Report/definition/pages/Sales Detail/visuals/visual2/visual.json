@@ -1,0 +1,52 @@
+{
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Property": "OrderID",
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Sales Orders"
+                    }
+                  }
+                }
+              },
+              "queryRef": "Sales Orders.OrderID"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Property": "Amount",
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Sales Orders"
+                    }
+                  }
+                }
+              },
+              "queryRef": "Sales Orders.Amount"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Property": "order_date",
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Sales Orders"
+                    }
+                  }
+                }
+              },
+              "queryRef": "Sales Orders.order_date"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

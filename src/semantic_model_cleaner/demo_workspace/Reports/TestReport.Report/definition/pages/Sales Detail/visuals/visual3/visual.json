@@ -1,0 +1,39 @@
+{
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Property": "OrderTotal",
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Orders"
+                    }
+                  }
+                }
+              },
+              "queryRef": "Orders.OrderTotal"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Property": "OrderQty",
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Orders"
+                    }
+                  }
+                }
+              },
+              "queryRef": "Orders.OrderQty"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -192,7 +192,31 @@ def test_public_demo_workspace_analyzes_cleanly():
     assert results["summary"]["reports"] == ["TestReport"]
     assert revenue["status"] == "USED (Field Parameter: Metric Parameter)"
     assert margin["status"] == "USED (Field Parameter: Metric Parameter)"
+    # The model analyzes without warnings even though the report carries an
+    # intentional rename-fallout scenario (those surface as report issues, below).
     assert results["warnings"] == []
+
+
+def test_public_demo_workspace_showcases_report_repair():
+    # The demo intentionally ships a rename-fallout so "Try the demo workspace"
+    # immediately shows the root-cause grouping and both repair flows.
+    results = analyzer.analyze(PUBLIC_DEMO_DIR.resolve())
+    issues = results["report_issues"]
+
+    # A renamed/missing table 'Sales Orders' -> exercises table-reference repair.
+    sales_orders = [issue for issue in issues if issue.get("table") == "Sales Orders"]
+    assert sales_orders, "demo should reference a missing table to showcase repair"
+    assert {issue.get("issueType") for issue in sales_orders} == {"missing_table"}
+
+    # Renamed columns on the existing 'Orders' table -> exercises column repair.
+    orders_cols = [
+        issue for issue in issues
+        if issue.get("table") == "Orders" and issue.get("issueType") == "missing_column"
+    ]
+    assert {issue.get("name") for issue in orders_cols} == {"OrderTotal", "OrderQty"}
+
+    # The replacement table really exists in the model (so repair targets resolve).
+    assert any(row["item"].table == "Orders" for row in results["items"])
 
 
 def test_product_qa_workspace_exercises_trust_workflows():

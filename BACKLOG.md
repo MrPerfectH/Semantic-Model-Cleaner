@@ -4,7 +4,7 @@ Last updated: 2026-06-11
 
 ## Highest priority
 
-- Cut release v0.2.0 (prerelease) so testers get the compare screen, interpretation guide, and dry-run preview work shipped since v0.1.1.
+- Cut prerelease v0.3.0 so testers get the report-issue root-cause grouping, the table + column reference repair, and the trust fixes (field-parameter NAMEOF, report-health payload, group-safe removal) shipped since v0.2.3.
 - Time-boxed UX paper-cut pass on the first-session path (analyze loading feedback, actionable path errors, label/legend clarity).
 
 ## Near-term
@@ -33,6 +33,9 @@ Last updated: 2026-06-11
 
 ## Completed recently
 
+- Made the bundled demo workspace showcase the new feature: "Try the demo workspace" now ships a rename-fallout (a missing `Sales Orders` table renamed to `Orders`, plus renamed `OrderTotal`/`OrderQty` columns) so the root-cause grouping and both table + column repair flows are visible on first click. The clean field-parameter demo and `warnings == []` are preserved.
+- Added column-rename repair: `rewrite_model_reference_changes` now rewrites `Column.Property` (and Entity on cross-table move) via `column_renames`; the column-mapping UI maps each missing column (exact-name matches pre-seeded, fuzzy shown as a verify-hint only). Aliased divergent column-moves are skipped with a warning to avoid corrupting siblings.
+- Added user-directed table-reference repair (report-only, transactional, dry-run preview); `/api/report/repair-references`.
 - Added report-issue root-cause grouping (presentation-only): an impact line (visible vs hidden) and target-keyed cards above the Reports table that collapse thousands of issues into a handful of groups; clicking a card drills the flat table to that group. See `docs/adr/0001-report-issue-grouping-is-presentation-only.md`.
 - Added user-directed table-reference repair: drill into a missing-table group, pick the replacement table from the live model, preview the true reference count, and apply via the transactional `rewrite_model_reference_changes` (report files only — the model is never changed). Table-only; columns renamed alongside still surface under the new table.
 - Made `apply_report_issue_actions` group-safe: `file_transaction` snapshot + `validate_pbir_json_file` gate + `dry_run` preview; the Reports-tab Remove now previews the true count (including the sibling sweep) before writing.
