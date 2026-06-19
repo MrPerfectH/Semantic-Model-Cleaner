@@ -4,7 +4,8 @@ Last updated: 2026-06-11
 
 ## Highest priority
 
-- Cut release v0.2.0 (prerelease) so testers get the compare screen, interpretation guide, and dry-run preview work shipped since v0.1.1.
+- Cut prerelease v0.3.0 so testers get the report-issue root-cause grouping, the table + column reference repair, and the trust fixes (field-parameter NAMEOF, report-health payload, group-safe removal) shipped since v0.2.3.
+- Make the bundled demo workspace showcase the new feature. "Try the demo workspace" currently loads a clean model with zero report issues, so a tester never sees the root-cause grouping or repair UI. Give the demo a small rename-fallout (a renamed table + a renamed column with stale report references) so the headline feature is visible on first click — without breaking the "analyzes cleanly" expectation (e.g. a separate "messy" sample, or relax `test_public_demo_workspace_analyzes_cleanly`). Product call: keep the reassuring clean demo vs. a feature-showcasing one.
 - Time-boxed UX paper-cut pass on the first-session path (analyze loading feedback, actionable path errors, label/legend clarity).
 
 ## Near-term
