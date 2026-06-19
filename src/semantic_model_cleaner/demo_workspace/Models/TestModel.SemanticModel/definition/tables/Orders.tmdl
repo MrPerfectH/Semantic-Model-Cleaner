@@ -1,0 +1,6 @@
+table Orders
+	column order_id
+	column order_amount
+	column order_qty
+	column order_date
+	measure 'Total Orders' = 3

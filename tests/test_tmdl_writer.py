@@ -680,7 +680,8 @@ def test_analyze_after_cleanup_on_fixture_copy(tmp_path):
     )
     after = analyzer.analyze(workspace, model_paths=[model_path], report_paths=[report_path])
 
-    assert before["summary"]["total_columns"] == 2
+    # 2 columns on 'Metric Parameter' + 4 on the 'Orders' showcase table.
+    assert before["summary"]["total_columns"] == 6
     assert delete_result[0]["ok"] is True
-    assert after["summary"]["total_columns"] == 1
+    assert after["summary"]["total_columns"] == 5
     assert all(row["item"].name != "Metric Fields" for row in after["items"])
