@@ -1688,3 +1688,114 @@ def test_apply_report_issue_actions_aborts_without_writing_when_validation_fails
     assert result.get("validation_errors")
     # A failed validation must leave every report file byte-for-byte unchanged.
     assert visual_file.read_text(encoding="utf-8") == before
+
+
+def test_rewrite_model_reference_changes_renames_columns(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps({
+            "visual": {
+                "query": {"queryState": {"Values": {"projections": [
+                    {"field": {"Column": {
+                        "Expression": {"SourceRef": {"Entity": "Work Orders"}},
+                        "Property": "work_order_number",
+                    }}, "queryRef": "Work Orders.work_order_number"}
+                ]}}},
+                "objects": {"labels": [{"selector": {"metadata": "Work Orders.work_order_number"}}]},
+            }
+        }, indent=2),
+        encoding="utf-8",
+    )
+
+    result = report_writer.rewrite_model_reference_changes(
+        report_paths=[report_path],
+        column_renames=[{
+            "table": "Work Orders", "name": "work_order_number",
+            "target_table": "Work Orders", "target_name": "work_order_id",
+        }],
+    )
+
+    assert result["ok"] is True
+    assert result["updated_reference_count"] >= 1
+    payload = json.loads(visual_file.read_text(encoding="utf-8"))
+    col = payload["visual"]["query"]["queryState"]["Values"]["projections"][0]
+    assert col["field"]["Column"]["Property"] == "work_order_id"
+    assert col["field"]["Column"]["Expression"]["SourceRef"]["Entity"] == "Work Orders"
+    assert col["queryRef"] == "Work Orders.work_order_id"
+    assert payload["visual"]["objects"]["labels"][0]["selector"]["metadata"] == "Work Orders.work_order_id"
+
+
+def test_rewrite_model_reference_changes_column_rename_can_move_tables(tmp_path):
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps({
+            "visual": {"query": {"queryState": {"Values": {"projections": [
+                {"field": {"Column": {
+                    "Expression": {"SourceRef": {"Entity": "IW_49n"}},
+                    "Property": "work_order_number",
+                }}}
+            ]}}}}
+        }, indent=2),
+        encoding="utf-8",
+    )
+
+    result = report_writer.rewrite_model_reference_changes(
+        report_paths=[report_path],
+        column_renames=[{
+            "table": "IW_49n", "name": "work_order_number",
+            "target_table": "Work Order Maintenance (IW_49n)", "target_name": "work_order_id",
+        }],
+    )
+
+    assert result["ok"] is True
+    col = json.loads(visual_file.read_text(encoding="utf-8"))["visual"]["query"]["queryState"]["Values"]["projections"][0]["field"]["Column"]
+    assert col["Expression"]["SourceRef"]["Entity"] == "Work Order Maintenance (IW_49n)"
+    assert col["Property"] == "work_order_id"
+
+
+def test_column_move_does_not_corrupt_shared_aliased_from(tmp_path):
+    # A From alias shared by a moving column and a non-moving sibling cannot
+    # host both at different tables. The repair must NOT flip-flop the shared
+    # From (which would leave the moved column resolving to a column that no
+    # longer exists on the old table) — it must skip that ref safely and warn.
+    report_path = tmp_path / "Executive.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps({
+            "visual": {"query": {"SemanticQueryDataShapeCommand": {"Query": {
+                "From": [{"Name": "i", "Entity": "IW_49n", "Type": 0}],
+                "Select": [
+                    {"Column": {"Expression": {"SourceRef": {"Source": "i"}}, "Property": "work_order_number"}},
+                    {"Column": {"Expression": {"SourceRef": {"Source": "i"}}, "Property": "status"}},
+                ],
+            }}}}
+        }, indent=2),
+        encoding="utf-8",
+    )
+
+    result = report_writer.rewrite_model_reference_changes(
+        report_paths=[report_path],
+        column_renames=[{
+            "table": "IW_49n", "name": "work_order_number",
+            "target_table": "Work Order Maintenance (IW_49n)", "target_name": "work_order_id",
+        }],
+    )
+
+    assert result["ok"] is True
+    query = json.loads(visual_file.read_text(encoding="utf-8"))["visual"]["query"]["SemanticQueryDataShapeCommand"]["Query"]
+    # Shared From is not flip-flopped; the non-moving 'status' column stays intact.
+    assert query["From"][0]["Entity"] == "IW_49n"
+    props = [c["Column"]["Property"] for c in query["Select"]]
+    assert "status" in props
+    # The moved column is safely skipped (not corrupted to work_order_id under IW_49n).
+    assert "work_order_number" in props
+    assert "work_order_id" not in props
+    assert any("aliased" in w.lower() or "shared query source" in w.lower() for w in result.get("warnings", []))

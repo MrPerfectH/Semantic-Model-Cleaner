@@ -376,9 +376,11 @@ def _reference_lookup(
     moves: list[dict] | None = None,
     table_renames: list[dict] | None = None,
     measure_renames: list[dict] | None = None,
-) -> tuple[dict[str, str], dict[tuple[str, str], tuple[str, str]]]:
+    column_renames: list[dict] | None = None,
+) -> tuple[dict[str, str], dict[tuple[str, str], tuple[str, str]], dict[tuple[str, str], tuple[str, str]]]:
     table_lookup: dict[str, str] = {}
     measure_lookup: dict[tuple[str, str], tuple[str, str]] = {}
+    column_lookup: dict[tuple[str, str], tuple[str, str]] = {}
 
     for rename in table_renames or []:
         table = str(rename.get("table", "") or "").strip()
@@ -401,7 +403,18 @@ def _reference_lookup(
             resolved_table = table_lookup.get(table.casefold(), table)
             measure_lookup[(table.casefold(), name.casefold())] = (resolved_table, target_name)
 
-    return table_lookup, measure_lookup
+    for rename in column_renames or []:
+        table = str(rename.get("table", "") or "").strip()
+        name = str(rename.get("name", "") or "").strip()
+        target_name = str(rename.get("target_name", "") or "").strip()
+        if not (table and name and target_name):
+            continue
+        # Target table defaults to the (possibly renamed) source table.
+        target_table = str(rename.get("target_table", "") or "").strip()
+        resolved_table = target_table or table_lookup.get(table.casefold(), table)
+        column_lookup[(table.casefold(), name.casefold())] = (resolved_table, target_name)
+
+    return table_lookup, measure_lookup, column_lookup
 
 
 def _rewrite_query_ref(
@@ -409,10 +422,12 @@ def _rewrite_query_ref(
     table_lookup: dict[str, str],
     measure_lookup: dict[tuple[str, str], tuple[str, str]],
     aliases: dict[str, dict],
+    column_lookup: dict[tuple[str, str], tuple[str, str]] | None = None,
 ) -> tuple[str, bool]:
+    column_lookup = column_lookup or {}
     wrapper = re.fullmatch(r"([A-Za-z][A-Za-z0-9_]*)\((.+)\)", value)
     if wrapper:
-        new_inner, changed = _rewrite_query_ref(wrapper.group(2), table_lookup, measure_lookup, aliases)
+        new_inner, changed = _rewrite_query_ref(wrapper.group(2), table_lookup, measure_lookup, aliases, column_lookup)
         if changed:
             return f"{wrapper.group(1)}({new_inner})", True
         return value, False
@@ -426,8 +441,11 @@ def _rewrite_query_ref(
     target_table = table_lookup.get(table.casefold(), table)
     target_name = name
     measure_target = measure_lookup.get((table.casefold(), name.casefold()))
+    column_target = column_lookup.get((table.casefold(), name.casefold()))
     if measure_target:
         target_table, target_name = measure_target
+    elif column_target:
+        target_table, target_name = column_target
     output_table = table_or_alias if alias else target_table
     if output_table == table_or_alias and target_name == name:
         return value, False
@@ -476,11 +494,17 @@ def _rewrite_model_refs_in_json(
     updates: list[dict],
     path_parts: list[str] | None = None,
     aliases: dict[str, dict] | None = None,
+    column_lookup: dict[tuple[str, str], tuple[str, str]] | None = None,
+    warnings: list[str] | None = None,
 ) -> None:
     if path_parts is None:
         path_parts = []
     if aliases is None:
         aliases = {}
+    if column_lookup is None:
+        column_lookup = {}
+    if warnings is None:
+        warnings = []
 
     if isinstance(obj, dict):
         local_aliases = dict(aliases)
@@ -565,6 +589,7 @@ def _rewrite_model_refs_in_json(
             if ref_type == "HierarchyLevel" and isinstance(expr, dict):
                 expr = expr.get("Hierarchy", {}).get("Expression", {})
             source_ref = expr.get("SourceRef", {}) if isinstance(expr, dict) else {}
+            prop = ref.get("Property")
             if isinstance(source_ref, dict):
                 entity = source_ref.get("Entity")
                 source_alias = source_ref.get("Source")
@@ -572,7 +597,32 @@ def _rewrite_model_refs_in_json(
                 resolved_entity = entity if isinstance(entity, str) else (
                     str(alias.get("original_entity", alias["entity"])) if alias else None
                 )
-                target_table = table_lookup.get(str(resolved_entity).casefold(), resolved_entity) if isinstance(resolved_entity, str) else None
+                table_move_target = table_lookup.get(str(resolved_entity).casefold(), resolved_entity) if isinstance(resolved_entity, str) else None
+                target_table = table_move_target
+                target_name = prop if isinstance(prop, str) else None
+                # A column rename can also move the column to a different table.
+                if isinstance(resolved_entity, str) and isinstance(prop, str):
+                    column_target = column_lookup.get((resolved_entity.casefold(), prop.casefold()))
+                    if column_target:
+                        target_table, target_name = column_target
+                # A From alias is shared by every column drawn from it, so we cannot
+                # move ONE column off it to a different table than its siblings —
+                # mutating the shared From would flip-flop and silently corrupt the
+                # other columns. Skip such refs and warn instead of corrupting.
+                if (
+                    alias is not None
+                    and not isinstance(entity, str)
+                    and target_table
+                    and str(target_table).casefold() != str(table_move_target).casefold()
+                ):
+                    message = (
+                        f"Skipped aliased reference to {resolved_entity}[{prop}] — a column drawn from a "
+                        "shared query source cannot be moved to a different table than its siblings. "
+                        "Edit this reference in Power BI, or remove it."
+                    )
+                    if message not in warnings:
+                        warnings.append(message)
+                    continue
                 if isinstance(entity, str) and target_table and target_table != entity:
                     source_ref["Entity"] = target_table
                     updates.append({
@@ -591,11 +641,19 @@ def _rewrite_model_refs_in_json(
                         "to": target_table,
                         "kind": "From.Entity",
                     })
+                if isinstance(prop, str) and isinstance(target_name, str) and target_name != prop:
+                    ref["Property"] = target_name
+                    updates.append({
+                        "path": ".".join(path_parts + [ref_type, "Property"]),
+                        "from": prop,
+                        "to": target_name,
+                        "kind": f"{ref_type}.Property",
+                    })
 
         for key in ("queryRef", "metadata"):
             value = obj.get(key)
             if isinstance(value, str):
-                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup, local_aliases)
+                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup, local_aliases, column_lookup)
                 if changed:
                     obj[key] = new_value
                     updates.append({
@@ -647,7 +705,7 @@ def _rewrite_model_refs_in_json(
             for idx, value in enumerate(query_refs):
                 if not isinstance(value, str):
                     continue
-                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup, local_aliases)
+                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup, local_aliases, column_lookup)
                 if changed:
                     query_refs[idx] = new_value
                     updates.append({
@@ -658,10 +716,10 @@ def _rewrite_model_refs_in_json(
                     })
 
         for key, value in obj.items():
-            _rewrite_model_refs_in_json(value, table_lookup, measure_lookup, updates, path_parts + [key], local_aliases)
+            _rewrite_model_refs_in_json(value, table_lookup, measure_lookup, updates, path_parts + [key], local_aliases, column_lookup, warnings)
     elif isinstance(obj, list):
         for idx, item in enumerate(obj):
-            _rewrite_model_refs_in_json(item, table_lookup, measure_lookup, updates, path_parts + [f"[{idx}]"], aliases)
+            _rewrite_model_refs_in_json(item, table_lookup, measure_lookup, updates, path_parts + [f"[{idx}]"], aliases, column_lookup, warnings)
 
 
 def rewrite_measure_table_references(
@@ -680,17 +738,19 @@ def rewrite_model_reference_changes(
     moves: list[dict] | None = None,
     table_renames: list[dict] | None = None,
     measure_renames: list[dict] | None = None,
+    column_renames: list[dict] | None = None,
     dry_run: bool = False,
 ) -> dict:
     """Rewrite selected PBIR report JSON references for model moves/renames."""
     if not report_paths:
         return {"ok": False, "error": "No selected report paths were provided"}
-    table_lookup, measure_lookup = _reference_lookup(
+    table_lookup, measure_lookup, column_lookup = _reference_lookup(
         moves=moves,
         table_renames=table_renames,
         measure_renames=measure_renames,
+        column_renames=column_renames,
     )
-    if not table_lookup and not measure_lookup:
+    if not table_lookup and not measure_lookup and not column_lookup:
         return {"ok": False, "error": "No valid model reference changes were provided"}
 
     updated_files = []
@@ -721,6 +781,8 @@ def rewrite_model_reference_changes(
                 measure_lookup,
                 updates,
                 aliases=_collect_source_aliases(payload),
+                column_lookup=column_lookup,
+                warnings=warnings,
             )
             if not updates:
                 continue

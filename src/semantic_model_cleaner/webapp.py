@@ -2010,18 +2010,37 @@ def api_repair_report_references():
     try:
         data = request.get_json(silent=True) or {}
         table_renames = data.get("table_renames") or []
+        column_renames = data.get("column_renames") or []
         report_path_values = data.get("report_paths") or _state["report_paths"]
         dry_run = bool(data.get("dry_run") or data.get("dryRun"))
 
-        clean_renames = []
+        for label, renames in (("table_renames", table_renames), ("column_renames", column_renames)):
+            if not isinstance(renames, list) or any(not isinstance(entry, dict) for entry in renames):
+                return jsonify({"error": f"{label} must be a list of objects"}), 400
+
+        clean_table_renames = []
         for rename in table_renames:
             table = str((rename or {}).get("table", "") or "").strip()
             target = str((rename or {}).get("target_table", "") or "").strip()
             if not table or not target:
                 return jsonify({"error": "Each table rename needs a non-empty table and target_table"}), 400
-            clean_renames.append({"table": table, "target_table": target})
-        if not clean_renames:
-            return jsonify({"error": "No table renames provided"}), 400
+            clean_table_renames.append({"table": table, "target_table": target})
+
+        clean_column_renames = []
+        for rename in column_renames:
+            table = str((rename or {}).get("table", "") or "").strip()
+            name = str((rename or {}).get("name", "") or "").strip()
+            target_name = str((rename or {}).get("target_name", "") or "").strip()
+            if not table or not name or not target_name:
+                return jsonify({"error": "Each column rename needs a non-empty table, name and target_name"}), 400
+            entry = {"table": table, "name": name, "target_name": target_name}
+            target_table = str((rename or {}).get("target_table", "") or "").strip()
+            if target_table:
+                entry["target_table"] = target_table
+            clean_column_renames.append(entry)
+
+        if not clean_table_renames and not clean_column_renames:
+            return jsonify({"error": "No table or column renames provided"}), 400
         if not report_path_values:
             return jsonify({"error": "No selected reports provided"}), 400
 
@@ -2037,7 +2056,8 @@ def api_repair_report_references():
 
         result = report_writer.rewrite_model_reference_changes(
             report_paths=report_paths,
-            table_renames=clean_renames,
+            table_renames=clean_table_renames or None,
+            column_renames=clean_column_renames or None,
             dry_run=dry_run,
         )
         if not result.get("ok"):
