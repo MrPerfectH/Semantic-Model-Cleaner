@@ -11,7 +11,6 @@ Last updated: 2026-07-31
 
 - v2 layout paper cuts found while verifying on PMRA: the scope drawer stays open over the results after Analyze finishes (decide whether it should auto-close), and the two layouts duplicate ~7k lines of template that now have to be kept in sync by hand.
 - Report-only MEASURE-reference repair. The engine already accepts `measure_renames` in `rewrite_model_reference_changes`, but `/api/report/repair-references` only validates `table_renames` and `column_renames` (webapp.py:2020-2038), so measure renames have no endpoint or UI path. Never trust a fuzzy High blindly (forced-High on exact name match regardless of table, analyzer.py:2153-2154) — keep it user-directed.
-- Make the other two transactional report writers pre-serialize before writing, matching `rewrite_model_reference_changes`. `apply_report_issue_actions` and `cleanup_stale_metadata_selectors` run `json.dumps` inside the write loop under `except OSError`, so a non-OSError mid-loop could leave a partial, un-rolled-back write. Pre-build the `(path, text)` list before the snapshot/write loop.
 - Narrow the `windows-exe` workflow trigger: `gh release create --prerelease` fires both `published` and `prereleased`, so every release builds the Windows zip twice (harmless duplicate, wasted minutes).
 - Replace the `allReportIssues.indexOf` lookup per row in `renderReportsTable` (O(rows × issues)) with a precomputed index — it is pre-existing, but it bites hardest on the PMRA-scale workspaces the grouping feature was built for.
 - Export Cleanup Action plans as JSON or Markdown for review before edits are applied.
@@ -36,6 +35,8 @@ Last updated: 2026-07-31
 
 ## Completed recently
 
+- Made `apply_report_issue_actions` and `cleanup_stale_metadata_selectors` pre-serialize before the snapshot, matching `rewrite_model_reference_changes`. A `json.dumps` failure mid-loop escaped `except OSError`, leaving earlier reports rewritten with no rollback; both writers now build the `(path, text)` list before touching disk, with a regression test each.
+- Added the opt-in v2 layout behind `?ui=v2` (cookie-remembered, classic stays default): persistent left nav, topbar scope chip and drawer. Verified on the real PMRA workspace with the v0.3.0 root-cause grouping intact.
 - Cut prerelease v0.3.0 (2026-06-19, PRs #63–#68): testers get the report-issue root-cause grouping, table + column reference repair, and the trust fixes (field-parameter NAMEOF, report-health payload, group-safe removal). Windows zip attached to the GitHub prerelease.
 - Made the bundled demo workspace showcase the new feature: "Try the demo workspace" now ships a rename-fallout (a missing `Sales Orders` table renamed to `Orders`, plus renamed `OrderTotal`/`OrderQty` columns) so the root-cause grouping and both table + column repair flows are visible on first click. The clean field-parameter demo and `warnings == []` are preserved.
 - Added column-rename repair: `rewrite_model_reference_changes` now rewrites `Column.Property` (and Entity on cross-table move) via `column_renames`; the column-mapping UI maps each missing column (exact-name matches pre-seeded, fuzzy shown as a verify-hint only). Aliased divergent column-moves are skipped with a warning to avoid corrupting siblings.
