@@ -1084,14 +1084,22 @@ def index():
     models, reports = _discover_initial_artifacts()
     selected_models = _default_model_selection(models)
     selected_reports = reports
-    return render_template(
-        "index.html",
+    # Layout preview toggle: ?ui=v2 opts into the new layout, ?ui=classic opts
+    # back out; the choice sticks via cookie until changed. Default: classic.
+    requested_ui = request.args.get("ui", "").strip().lower()
+    if requested_ui not in ("v2", "classic"):
+        requested_ui = request.cookies.get("smc_ui", "classic")
+    template = "index_v2.html" if requested_ui == "v2" else "index.html"
+    response = app.make_response(render_template(
+        template,
         build_stamp=_build_stamp(),
         default_root=_state.get("workspace") or str(_default_workspace_root()),
         runtime=_state.get("runtime") or experiments.runtime_config(),
         initial_models=[{"path": str(m), "name": m.name.replace(".SemanticModel", "")} for m in selected_models],
         initial_reports=[{"path": str(r), "name": analyzer.report_display_name(r)} for r in selected_reports],
-    )
+    ))
+    response.set_cookie("smc_ui", "v2" if template == "index_v2.html" else "classic", max_age=60 * 60 * 24 * 365)
+    return response
 
 
 @app.route("/api/browse", methods=["GET"])

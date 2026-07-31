@@ -1,16 +1,19 @@
 # Backlog
 
-Last updated: 2026-06-11
+Last updated: 2026-07-31
 
 ## Highest priority
 
-- Cut prerelease v0.3.0 so testers get the report-issue root-cause grouping, the table + column reference repair, and the trust fixes (field-parameter NAMEOF, report-health payload, group-safe removal) shipped since v0.2.3.
+- Finish the v2 layout and decide when it becomes the default. It ships behind `?ui=v2` (cookie-remembered, classic stays default) so testers can compare; open questions are the remaining paper cuts below, whether the classic template is retired or kept, and what tester feedback says before flipping the default.
 - Time-boxed UX paper-cut pass on the first-session path (analyze loading feedback, actionable path errors, label/legend clarity).
 
 ## Near-term
 
-- Report-only COLUMN/measure rename repair (extends the shipped table repair). `rewrite_model_reference_changes` rewrites `SourceRef.Entity` but never `Column.Property` (report_writer.py:560-593), so renamed columns (e.g. PMRA `Cost_Center` → `'Cost Center'`, and the residual IW_49n columns after a table repair) are not repairable yet. Add column/measure-name rewriting to the engine and a column-level repair affordance. Never trust a fuzzy High blindly (forced-High on exact name match regardless of table, analyzer.py:2153-2154) — keep it user-directed.
+- v2 layout paper cuts found while verifying on PMRA: the scope drawer stays open over the results after Analyze finishes (decide whether it should auto-close), and the two layouts duplicate ~7k lines of template that now have to be kept in sync by hand.
+- Report-only MEASURE-reference repair. The engine already accepts `measure_renames` in `rewrite_model_reference_changes`, but `/api/report/repair-references` only validates `table_renames` and `column_renames` (webapp.py:2020-2038), so measure renames have no endpoint or UI path. Never trust a fuzzy High blindly (forced-High on exact name match regardless of table, analyzer.py:2153-2154) — keep it user-directed.
 - Make the other two transactional report writers pre-serialize before writing, matching `rewrite_model_reference_changes`. `apply_report_issue_actions` and `cleanup_stale_metadata_selectors` run `json.dumps` inside the write loop under `except OSError`, so a non-OSError mid-loop could leave a partial, un-rolled-back write. Pre-build the `(path, text)` list before the snapshot/write loop.
+- Narrow the `windows-exe` workflow trigger: `gh release create --prerelease` fires both `published` and `prereleased`, so every release builds the Windows zip twice (harmless duplicate, wasted minutes).
+- Replace the `allReportIssues.indexOf` lookup per row in `renderReportsTable` (O(rows × issues)) with a precomputed index — it is pre-existing, but it bites hardest on the PMRA-scale workspaces the grouping feature was built for.
 - Export Cleanup Action plans as JSON or Markdown for review before edits are applied.
   Design: reuse `tmdl_writer.plan_actions()` output and the `model_compare` formatter patterns; store the last plan in `_state`; add `GET /api/action/plan/export`; export buttons in the action plan preview panel.
 - Add a Protected Items list for items that should never be flagged or modified.
@@ -33,6 +36,7 @@ Last updated: 2026-06-11
 
 ## Completed recently
 
+- Cut prerelease v0.3.0 (2026-06-19, PRs #63–#68): testers get the report-issue root-cause grouping, table + column reference repair, and the trust fixes (field-parameter NAMEOF, report-health payload, group-safe removal). Windows zip attached to the GitHub prerelease.
 - Made the bundled demo workspace showcase the new feature: "Try the demo workspace" now ships a rename-fallout (a missing `Sales Orders` table renamed to `Orders`, plus renamed `OrderTotal`/`OrderQty` columns) so the root-cause grouping and both table + column repair flows are visible on first click. The clean field-parameter demo and `warnings == []` are preserved.
 - Added column-rename repair: `rewrite_model_reference_changes` now rewrites `Column.Property` (and Entity on cross-table move) via `column_renames`; the column-mapping UI maps each missing column (exact-name matches pre-seeded, fuzzy shown as a verify-hint only). Aliased divergent column-moves are skipped with a warning to avoid corrupting siblings.
 - Added user-directed table-reference repair (report-only, transactional, dry-run preview); `/api/report/repair-references`.
