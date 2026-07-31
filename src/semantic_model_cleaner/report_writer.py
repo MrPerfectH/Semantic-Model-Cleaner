@@ -1299,13 +1299,17 @@ def apply_report_issue_actions(*, entries: list[dict], dry_run: bool = False) ->
 
     if pending_payloads and not dry_run:
         target_files = list(pending_payloads)
+        # Serialize every payload up front so a non-OSError (e.g. a non-serializable
+        # value) cannot fire mid-write and leave reports half-rewritten — the write
+        # loop below can then only fail with OSError, which the transaction handles.
+        serialized_writes = [
+            (target_file, json.dumps(pending_payloads[target_file], indent=2, ensure_ascii=False) + "\n")
+            for target_file in target_files
+        ]
         snapshot = file_transaction.snapshot_artifact_files(target_files, suffixes=(".json",))
         try:
-            for target_file in target_files:
-                target_file.write_text(
-                    json.dumps(pending_payloads[target_file], indent=2, ensure_ascii=False) + "\n",
-                    encoding="utf-8",
-                )
+            for target_file, text in serialized_writes:
+                target_file.write_text(text, encoding="utf-8")
         except OSError as exc:
             rollback = file_transaction.restore_artifact_files(target_files, snapshot, suffixes=(".json",))
             return {
@@ -1617,13 +1621,17 @@ def cleanup_stale_metadata_selectors(*, entries: list[dict], dry_run: bool = Fal
 
     if changed_files and not dry_run:
         target_files = list(changed_files)
+        # Serialize every payload up front so a non-OSError (e.g. a non-serializable
+        # value) cannot fire mid-write and leave reports half-rewritten — the write
+        # loop below can then only fail with OSError, which the transaction handles.
+        serialized_writes = [
+            (target_file, json.dumps(pending_payloads[target_file], indent=2, ensure_ascii=False) + "\n")
+            for target_file in target_files
+        ]
         snapshot = file_transaction.snapshot_artifact_files(target_files, suffixes=(".json",))
         try:
-            for target_file in target_files:
-                target_file.write_text(
-                    json.dumps(pending_payloads[target_file], indent=2, ensure_ascii=False) + "\n",
-                    encoding="utf-8",
-                )
+            for target_file, text in serialized_writes:
+                target_file.write_text(text, encoding="utf-8")
         except OSError as exc:
             rollback = file_transaction.restore_artifact_files(target_files, snapshot, suffixes=(".json",))
             return {
