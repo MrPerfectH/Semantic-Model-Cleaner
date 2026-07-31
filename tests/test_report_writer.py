@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from semantic_model_cleaner import report_writer
 
 
@@ -807,6 +809,80 @@ def test_cleanup_stale_metadata_selectors_rejects_invalid_file_before_writing(tm
     assert result["ok"] is False
     assert "Invalid JSON" in result["error"]
     assert first_visual.read_text(encoding="utf-8") == original_first
+
+
+def _fail_second_serialization(monkeypatch):
+    """Make the second json.dumps call blow up with a non-OSError.
+
+    The write loops only catch OSError, so a serialization failure part-way
+    through a multi-file write is the one failure the file transaction cannot
+    roll back. Payloads are pre-serialized before the snapshot precisely so
+    this can never reach the write loop.
+    """
+    real_dumps = json.dumps
+    calls = {"count": 0}
+
+    def fake_dumps(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise TypeError("Object of type set is not JSON serializable")
+        return real_dumps(*args, **kwargs)
+
+    monkeypatch.setattr(report_writer.json, "dumps", fake_dumps)
+
+
+def _write_stale_selector_visual(visual_dir):
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    visual_file.write_text(
+        json.dumps(
+            {
+                "visual": {
+                    "query": {"queryState": {"Y": {"projections": []}}},
+                    "objects": {
+                        "labels": [
+                            {
+                                "properties": {"show": {"expr": {"Literal": {"Value": "true"}}}},
+                                "selector": {"metadata": "_Measures.Stale"},
+                            }
+                        ]
+                    },
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return visual_file
+
+
+def test_cleanup_stale_metadata_selectors_writes_nothing_when_serialization_fails(tmp_path, monkeypatch):
+    report_path = tmp_path / "Executive.Report"
+    visuals = report_path / "definition" / "pages" / "Page1" / "visuals"
+    first_visual = _write_stale_selector_visual(visuals / "Visual1")
+    second_visual = _write_stale_selector_visual(visuals / "Visual2")
+    before = {
+        first_visual: first_visual.read_text(encoding="utf-8"),
+        second_visual: second_visual.read_text(encoding="utf-8"),
+    }
+
+    _fail_second_serialization(monkeypatch)
+
+    with pytest.raises(TypeError):
+        report_writer.cleanup_stale_metadata_selectors(
+            entries=[
+                {
+                    "report_path": str(report_path),
+                    "artifact_path": f"definition/pages/Page1/visuals/{name}/visual.json",
+                    "selector_value": "_Measures.Stale",
+                }
+                for name in ("Visual1", "Visual2")
+            ]
+        )
+
+    # The first file must not have been written before the second one failed.
+    for visual_file, original in before.items():
+        assert visual_file.read_text(encoding="utf-8") == original
 
 
 def test_cleanup_stale_bookmark_projection_entries_removes_exact_projection_row(tmp_path):
@@ -1688,6 +1764,41 @@ def test_apply_report_issue_actions_aborts_without_writing_when_validation_fails
     assert result.get("validation_errors")
     # A failed validation must leave every report file byte-for-byte unchanged.
     assert visual_file.read_text(encoding="utf-8") == before
+
+
+def test_apply_report_issue_actions_writes_nothing_when_serialization_fails(tmp_path, monkeypatch):
+    report_path = tmp_path / "Executive.Report"
+    visuals = report_path / "definition" / "pages" / "Page1" / "visuals"
+    first_visual = _write_remove_fixture(report_path)
+    second_dir = visuals / "Visual2"
+    second_dir.mkdir(parents=True)
+    second_visual = second_dir / "visual.json"
+    second_visual.write_text(first_visual.read_text(encoding="utf-8"), encoding="utf-8")
+    before = {
+        first_visual: first_visual.read_text(encoding="utf-8"),
+        second_visual: second_visual.read_text(encoding="utf-8"),
+    }
+
+    _fail_second_serialization(monkeypatch)
+
+    with pytest.raises(TypeError):
+        report_writer.apply_report_issue_actions(
+            entries=[
+                {
+                    "action": "remove",
+                    "report_path": str(report_path),
+                    "artifact_path": f"definition/pages/Page1/visuals/{name}/visual.json",
+                    "source_path": "visual.query.queryState.Values.projections.[0].field.Column",
+                    "table": "Old Table",
+                    "name": "Old Field",
+                }
+                for name in ("Visual1", "Visual2")
+            ]
+        )
+
+    # The first file must not have been written before the second one failed.
+    for visual_file, original in before.items():
+        assert visual_file.read_text(encoding="utf-8") == original
 
 
 def test_rewrite_model_reference_changes_renames_columns(tmp_path):
