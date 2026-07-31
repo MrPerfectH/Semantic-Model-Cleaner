@@ -181,6 +181,59 @@ def test_index_shows_beta_banner_when_runtime_enabled():
     assert b"UI build identifier" in response.data
 
 
+def _layout_cookie(response):
+    for header in response.headers.getlist("Set-Cookie"):
+        if header.startswith("smc_ui="):
+            return header.split(";", 1)[0].split("=", 1)[1]
+    return None
+
+
+def test_index_defaults_to_classic_layout():
+    web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="stable")
+    client = web_app.app.test_client()
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b'href="/?ui=v2"' in response.data
+    assert b"scopeChip" not in response.data
+    assert _layout_cookie(response) == "classic"
+
+
+def test_index_renders_new_layout_when_requested():
+    web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="stable")
+    client = web_app.app.test_client()
+    response = client.get("/?ui=v2")
+
+    assert response.status_code == 200
+    assert b"scopeChip" in response.data
+    assert b'href="/?ui=classic"' in response.data
+    assert _layout_cookie(response) == "v2"
+
+
+def test_index_remembers_layout_choice_across_requests():
+    web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="stable")
+    client = web_app.app.test_client()
+    client.get("/?ui=v2")
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"scopeChip" in response.data
+
+    back = client.get("/?ui=classic")
+    assert b"scopeChip" not in back.data
+    assert _layout_cookie(back) == "classic"
+    assert b"scopeChip" not in client.get("/").data
+
+
+def test_index_ignores_unknown_layout_value():
+    web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="stable")
+    client = web_app.app.test_client()
+    assert b"scopeChip" not in client.get("/?ui=nonsense").data
+
+    client.get("/?ui=v2")
+    assert b"scopeChip" in client.get("/?ui=nonsense").data
+
+
 def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
