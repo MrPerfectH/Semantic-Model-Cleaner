@@ -13,7 +13,10 @@ on:
       - "src/semantic_model_cleaner/**"
       - "tests/**"
   release:
-    types: [published, prereleased]
+    # `published` already covers prereleases, so listing `prereleased` as well
+    # ran the whole build twice for every release and raced two `gh release
+    # upload --clobber` calls at the same asset.
+    types: [published]
 
 jobs:
   build-windows:
