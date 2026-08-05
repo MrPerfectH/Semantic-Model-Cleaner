@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "semantic-model-cleaner"
-version = "0.3.0"
+version = "0.3.1"
 description = "Analyze Power BI PBIR + TMDL projects and apply semantic model cleanup actions locally."
 readme = "README.md"
 license = "MIT"

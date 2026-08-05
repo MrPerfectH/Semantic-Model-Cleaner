@@ -1,10 +1,10 @@
 # Backlog
 
-Last updated: 2026-07-31
+Last updated: 2026-08-05
 
 ## Highest priority
 
-- Finish the v2 layout and decide when it becomes the default. It ships behind `?ui=v2` (cookie-remembered, classic stays default) so testers can compare; open questions are the remaining paper cuts below, whether the classic template is retired or kept, and what tester feedback says before flipping the default.
+- Decide whether the v2 layout becomes the default, on tester feedback from v0.3.1. It ships behind `?ui=v2` (cookie-remembered, classic stays default), with a link between the two layouts in both directions; the open questions are whether classic is retired or kept and how much of the duplication below that resolves.
 - Time-boxed UX paper-cut pass on the first-session path (analyze loading feedback, actionable path errors, label/legend clarity).
 
 ## Near-term
