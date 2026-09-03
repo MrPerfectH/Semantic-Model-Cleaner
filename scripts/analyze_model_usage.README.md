@@ -55,6 +55,8 @@ python3 scripts/analyze_model_usage.py clean-stale . --apply                    
 python3 scripts/analyze_model_usage.py clean-stale . --apply --no-backup          # write, no backup
 ```
 
+By default only reports whose `definition.pbir` binds them to the selected semantic model are analyzed (by path, or by published name for live connections), matching the web UI; `--all-reports` disables that filter and `--report` composes on top of the bound set.
+
 The positional argument is `project_path` — the Power BI Project folder that holds one `.SemanticModel` and its `.Report` folders (default `.`). Accepts the same selection flags as the analyzer (`--models-path`, `--reports-path`, `--model`, `--report`).
 
 Dry run is the default and writes nothing; it prints per-report and per-kind counts plus the full candidate list (report, PBIR file, selector value). Exit codes: `0` nothing to clean or applied OK, `2` dry run found candidates, `1` engine/validation error (the engine is transactional, so nothing was written).

@@ -31,6 +31,7 @@ def _write_workspace(tmp_path: Path) -> Path:
     (page_dir / "page.json").write_text(
         json.dumps({"displayName": "Overview"}, indent=2), encoding="utf-8"
     )
+    _write_definition_pbir(report, {"byPath": {"path": "../../Models/Sales.SemanticModel"}})
     (visual_dir / "visual.json").write_text(
         json.dumps(
             {
@@ -188,6 +189,38 @@ def _write_workspace(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return workspace
+
+
+def _write_definition_pbir(report: Path, dataset_reference: dict) -> None:
+    (report / "definition.pbir").write_text(
+        json.dumps({"version": "1.0", "datasetReference": dataset_reference}, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _write_stub_report(workspace: Path, name: str, dataset_reference: dict) -> Path:
+    report = workspace / "Reports" / f"{name}.Report"
+    page_dir = report / "definition" / "pages" / "Page1"
+    page_dir.mkdir(parents=True)
+    (page_dir / "page.json").write_text(
+        json.dumps({"displayName": "Blank"}, indent=2), encoding="utf-8"
+    )
+    _write_definition_pbir(report, dataset_reference)
+    return report
+
+
+def _add_binding_variants(workspace: Path) -> None:
+    """One report live-connected by published name, one bound to another model."""
+    _write_stub_report(
+        workspace,
+        "LiveConnected",
+        {"byConnection": {"connectionString": "Data Source=powerbi://api.powerbi.com/v1.0/my/ws;Initial Catalog=Sales;"}},
+    )
+    _write_stub_report(
+        workspace,
+        "Unbound",
+        {"byPath": {"path": "../../Models/Other.SemanticModel"}},
+    )
 
 
 def _snapshot(workspace: Path) -> dict[str, bytes]:
@@ -380,3 +413,98 @@ def test_clean_stale_positional_is_project_path():
     assert positionals == ["project_path"]
     assert "Power BI Project folder" in parser.format_help()
     assert parser.parse_args([]).project_path == "."
+
+
+def test_bound_filter_keeps_bypath_and_byconnection_reports(tmp_path, capsys):
+    workspace = _write_workspace(tmp_path)
+    _add_binding_variants(workspace)
+
+    _run_cli(["clean-stale", str(workspace), "--format", "json"])
+    payload = _json_output(capsys)
+
+    assert payload["allReports"] is False
+    assert payload["model"] == "Sales"
+    assert sorted(payload["boundReports"]) == ["Executive", "LiveConnected"]
+    assert payload["skippedReports"] == [
+        {
+            "name": "Unbound",
+            "status": "not_connected",
+            "message": "definition.pbir references a different local Semantic Model.",
+        }
+    ]
+
+
+def test_bound_filter_summary_line_in_text_output(tmp_path, capsys):
+    workspace = _write_workspace(tmp_path)
+    _add_binding_variants(workspace)
+
+    _run_cli(["clean-stale", str(workspace)])
+    out = capsys.readouterr().out
+
+    assert "Reports bound to Sales: 2 (1 skipped, not bound; use --all-reports to include)" in out
+
+
+def test_all_reports_flag_restores_unbound_reports(tmp_path, capsys):
+    workspace = _write_workspace(tmp_path)
+    _add_binding_variants(workspace)
+
+    _run_cli(["clean-stale", str(workspace), "--all-reports", "--format", "json"])
+    payload = _json_output(capsys)
+
+    assert payload["allReports"] is True
+    assert sorted(payload["boundReports"]) == ["Executive", "LiveConnected", "Unbound"]
+    assert payload["skippedReports"] == []
+
+
+def test_report_filter_composes_with_the_bound_set(tmp_path, capsys):
+    workspace = _write_workspace(tmp_path)
+    _add_binding_variants(workspace)
+
+    # A bound report that holds no stale metadata still analyzes cleanly...
+    exit_code = _run_cli(["clean-stale", str(workspace), "--report", "LiveConnected", "--format", "json"])
+    payload = _json_output(capsys)
+    assert exit_code == 0
+    assert payload["candidate_count"] == 0
+
+    # ...while an unbound report is filtered out before --report is applied.
+    with pytest.raises(SystemExit) as excinfo:
+        analyzer.main(["clean-stale", str(workspace), "--report", "Unbound", "--format", "json"])
+    assert int(excinfo.value.code or 0) == 1
+    assert "No matching *.Report found" in capsys.readouterr().err
+
+
+def test_no_bound_report_exits_one_with_a_pointer_to_all_reports(tmp_path, capsys):
+    workspace = _write_workspace(tmp_path)
+    (workspace / "Reports" / "Executive.Report" / "definition.pbir").unlink()
+
+    exit_code = _run_cli(["clean-stale", str(workspace), "--format", "json"])
+    err = capsys.readouterr().err
+
+    assert exit_code == 1
+    assert "no report is bound to 'Sales'" in err
+    assert "--all-reports" in err
+
+
+def test_report_binding_status_classifies_each_definition_shape(tmp_path):
+    workspace = _write_workspace(tmp_path)
+    _add_binding_variants(workspace)
+    model = workspace / "Models" / "Sales.SemanticModel"
+    reports = workspace / "Reports"
+    missing = _write_stub_report(workspace, "NoDefinition", {"byPath": {"path": "x"}})
+    (missing / "definition.pbir").unlink()
+
+    statuses = {
+        path.name: analyzer.report_binding_status(path, model)["status"]
+        for path in sorted(reports.iterdir())
+    }
+
+    assert statuses == {
+        "Executive.Report": "connected",
+        "LiveConnected.Report": "connected_by_name",
+        "NoDefinition.Report": "missing_definition",
+        "Unbound.Report": "not_connected",
+    }
+    assert analyzer.filter_reports_bound_to_model(sorted(reports.iterdir()), model) == [
+        reports / "Executive.Report",
+        reports / "LiveConnected.Report",
+    ]

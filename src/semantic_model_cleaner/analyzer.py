@@ -18,6 +18,7 @@ The analyzer expects exactly one semantic model and one or more reports.
 
 import argparse
 import json
+import os
 import re
 import sys
 import tempfile
@@ -257,6 +258,193 @@ def discover_reports(search_roots: list[Path]) -> list[Path]:
 
 def report_display_name(report_path: Path) -> str:
     return report_path.name.replace(".Report", "")
+
+
+# ── Report ↔ Model Binding ────────────────────────────────────────────────────
+
+# A report counts as bound to the selected model when definition.pbir points at
+# it by path, or live-connects to a published model with a matching name.
+BOUND_REPORT_STATUSES = ("connected", "connected_by_name")
+
+
+def paths_match(a: Path, b: Path) -> bool:
+    """Compare two resolved paths, tolerating case-insensitive filesystems."""
+    if a == b:
+        return True
+    try:
+        return a.samefile(b)
+    except OSError:
+        return os.path.normcase(str(a)) == os.path.normcase(str(b))
+
+
+def platform_display_name(artifact_path: Path) -> str:
+    """Read the Fabric display name from an artifact's .platform file, if present.
+
+    The folder name (e.g. PMRA_POC.SemanticModel) is only a local convention;
+    the .platform metadata.displayName is the name the artifact is published
+    under, so it is what live report connections refer to.
+    """
+    platform_file = artifact_path / ".platform"
+    if not platform_file.is_file():
+        return ""
+    try:
+        payload = json.loads(platform_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    metadata = payload.get("metadata") if isinstance(payload, dict) else None
+    display_name = metadata.get("displayName") if isinstance(metadata, dict) else None
+    return display_name.strip() if isinstance(display_name, str) else ""
+
+
+def model_name_candidates(model_path: Path) -> set[str]:
+    """Casefolded names a live connection may use for this semantic model."""
+    folder_name = Path(model_path).name.replace(".SemanticModel", "")
+    return {
+        candidate.casefold()
+        for candidate in (platform_display_name(Path(model_path)), folder_name)
+        if candidate
+    }
+
+
+def model_label(model_path: Path) -> str:
+    """Published display name of a semantic model, falling back to the folder name."""
+    return platform_display_name(Path(model_path)) or Path(model_path).name.replace(".SemanticModel", "")
+
+
+def report_binding_status(
+    report_path: Path,
+    model_path: Path,
+    *,
+    names: Optional[set[str]] = None,
+    label: str = "",
+) -> dict:
+    """Classify how one PBIR report's definition.pbir is bound to a model.
+
+    Returns the status row the web app's /api/reports/find-connected surfaces
+    (`path`, `name`, `definitionFile`, `status`, `message`, plus
+    `publishedModelName` / `resolvedModelPath` where they apply), extended with
+    `scanned` (definition.pbir was opened) and `warning` (the message the UI
+    adds to its warning list, or None).
+
+    Statuses: `connected`, `connected_by_name`, `remote`, `not_connected`,
+    `missing_definition`, `invalid_definition`, `missing_dataset_reference`,
+    and `unreadable` (definition.pbir could not be read at all; the UI reports
+    that as a warning without a status row).
+    """
+    report_root = Path(report_path).resolve()
+    model_root = Path(model_path).resolve()
+    candidates = names if names is not None else model_name_candidates(model_root)
+    selected_model_label = label or model_label(model_root)
+    definition_file = report_root / "definition.pbir"
+
+    status = {
+        "path": str(report_root),
+        "name": report_display_name(report_root),
+        "definitionFile": str(definition_file.resolve()),
+        "status": "not_connected",
+        "message": "definition.pbir references a different local Semantic Model.",
+        "scanned": False,
+        "warning": None,
+    }
+
+    def fail(state: str, message: str) -> dict:
+        status["status"] = state
+        status["message"] = message
+        status["warning"] = f"{report_root.name}: {message}"
+        return status
+
+    if not definition_file.is_file():
+        return fail("missing_definition", "Missing definition.pbir.")
+
+    status["scanned"] = True
+    try:
+        definition = json.loads(definition_file.read_text(encoding="utf-8"))
+    except OSError as exc:
+        status["status"] = "unreadable"
+        status["message"] = f"Could not read definition.pbir: {exc}"
+        status["warning"] = f"Skipped {definition_file}: {exc}"
+        return status
+    except json.JSONDecodeError as exc:
+        return fail("invalid_definition", f"Invalid definition.pbir JSON: {exc.msg}")
+    if not isinstance(definition, dict):
+        return fail("invalid_definition", "Invalid definition.pbir JSON: expected a JSON object.")
+
+    dataset_reference = definition.get("datasetReference", {})
+    if isinstance(dataset_reference, dict) and "byConnection" in dataset_reference:
+        connection = dataset_reference.get("byConnection")
+        published_name = ""
+        if isinstance(connection, dict):
+            connection_string = connection.get("connectionString")
+            if isinstance(connection_string, str):
+                catalog_match = re.search(
+                    r"initial catalog\s*=\s*([^;]+)", connection_string, re.IGNORECASE
+                )
+                if catalog_match:
+                    published_name = catalog_match.group(1).strip()
+        if published_name:
+            status["publishedModelName"] = published_name
+        if published_name and published_name.casefold() in candidates:
+            status["status"] = "connected_by_name"
+            status["message"] = (
+                f"Live connection to a published semantic model named '{published_name}', "
+                "which matches the selected Semantic Model. Matched by name, not by folder path."
+            )
+            return status
+        if published_name:
+            return fail(
+                "remote",
+                f"Live connection to a published semantic model named '{published_name}', "
+                f"which does not match the selected model '{selected_model_label}'.",
+            )
+        return fail(
+            "remote",
+            "Live connection to a published semantic model in the Power BI service; "
+            "no model name could be read from the connection string.",
+        )
+
+    by_path = dataset_reference.get("byPath", {}) if isinstance(dataset_reference, dict) else {}
+    referenced_path = by_path.get("path") if isinstance(by_path, dict) else None
+    if not isinstance(referenced_path, str) or not referenced_path.strip():
+        return fail(
+            "missing_dataset_reference",
+            "definition.pbir does not include datasetReference.byPath.path.",
+        )
+
+    resolved_reference = (definition_file.parent / referenced_path).resolve()
+    status["resolvedModelPath"] = str(resolved_reference)
+    if not paths_match(resolved_reference, model_root):
+        return status
+
+    status["status"] = "connected"
+    status["message"] = "definition.pbir references the selected local Semantic Model."
+    return status
+
+
+def partition_reports_by_binding(
+    reports: list[Path],
+    model_path: Path,
+) -> tuple[list[Path], list[dict]]:
+    """Split reports into (bound to model, skipped) with a status row per skip."""
+    candidates = model_name_candidates(model_path)
+    label = model_label(model_path)
+    bound: list[Path] = []
+    skipped: list[dict] = []
+    for report in reports:
+        binding = report_binding_status(report, model_path, names=candidates, label=label)
+        if binding["status"] in BOUND_REPORT_STATUSES:
+            bound.append(Path(report))
+        else:
+            skipped.append({
+                "name": binding["name"],
+                "status": binding["status"],
+                "message": binding["message"],
+            })
+    return bound, skipped
+
+
+def filter_reports_bound_to_model(reports: list[Path], model_path: Path) -> list[Path]:
+    """Keep only the reports whose definition.pbir binds them to this model."""
+    return partition_reports_by_binding(reports, model_path)[0]
 
 
 def filter_models(models: list[Path], model_filters: Optional[list[str]]) -> list[Path]:
@@ -4621,6 +4809,7 @@ def run_stale_cleanup(
     results: dict,
     reports: list[Path],
     workspace: Path,
+    binding_summary: Optional[dict] = None,
     kinds: Optional[list[str]] = None,
     apply_changes: bool = False,
     create_backups: bool = True,
@@ -4647,6 +4836,10 @@ def run_stale_cleanup(
         "ok": True,
         "projectPath": str(workspace),
         "kinds": list(kinds) if kinds else list(STALE_CLEANUP_KIND_CHOICES),
+        "model": (binding_summary or {}).get("model", ""),
+        "allReports": bool((binding_summary or {}).get("allReports", True)),
+        "boundReports": list((binding_summary or {}).get("boundReports", [])),
+        "skippedReports": list((binding_summary or {}).get("skippedReports", [])),
         "applied": False,
         "dry_run": not apply_changes,
         "candidate_count": len(candidates),
@@ -4711,6 +4904,17 @@ def _print_stale_cleanup(payload: dict, output_format: str) -> None:
 def _format_stale_cleanup_text(payload: dict) -> list[str]:
     lines = [f"Project path: {payload['projectPath']}"]
     lines.append(f"Kinds: {', '.join(payload['kinds'])}")
+    bound_count = len(payload.get("boundReports", []))
+    skipped_count = len(payload.get("skippedReports", []))
+    if payload.get("allReports"):
+        lines.append(f"Reports analyzed: {bound_count} (--all-reports: binding filter disabled)")
+    else:
+        suffix = (
+            f" ({skipped_count} skipped, not bound; use --all-reports to include)"
+            if skipped_count
+            else ""
+        )
+        lines.append(f"Reports bound to {payload.get('model', '')}: {bound_count}{suffix}")
     lines.append(f"Stale cleanup candidates: {payload['candidate_count']}")
 
     if payload["candidate_count"]:
@@ -4851,6 +5055,14 @@ def _build_clean_stale_parser() -> argparse.ArgumentParser:
         help="Limit cleanup to these stale kinds (default: all three). Repeatable.",
     )
     parser.add_argument(
+        "--all-reports",
+        action="store_true",
+        help=(
+            "Analyze every discovered report, not just the ones whose definition.pbir "
+            "binds them to the selected semantic model"
+        ),
+    )
+    parser.add_argument(
         "--apply",
         action="store_true",
         help="Write the removals (default is a dry run that writes nothing)",
@@ -4877,8 +5089,35 @@ def clean_stale_command(argv: list[str]) -> int:
         args.project_path, args.models_path, args.reports_path
     )
     models = filter_models(discover_models(model_roots), args.model)
-    reports = filter_reports(discover_reports(report_roots), args.report)
+    discovered_reports = discover_reports(report_roots)
     _require_single_model(models)
+
+    # Default to the web UI's invariant: only reports whose definition.pbir binds
+    # them to the selected model. --report filters compose on top of that set.
+    if args.all_reports:
+        reports = filter_reports(discovered_reports, args.report)
+        binding_summary = {
+            "allReports": True,
+            "model": model_label(models[0]),
+            "boundReports": [report_display_name(r) for r in reports],
+            "skippedReports": [],
+        }
+    else:
+        bound, skipped = partition_reports_by_binding(discovered_reports, models[0])
+        reports = filter_reports(bound, args.report)
+        binding_summary = {
+            "allReports": False,
+            "model": model_label(models[0]),
+            "boundReports": [report_display_name(r) for r in bound],
+            "skippedReports": skipped,
+        }
+        if not bound:
+            print(
+                f"Error: no report is bound to '{binding_summary['model']}'. "
+                "Pass --all-reports to analyze every discovered report anyway.",
+                file=sys.stderr,
+            )
+            return 1
 
     try:
         results = analyze(
@@ -4896,6 +5135,7 @@ def clean_stale_command(argv: list[str]) -> int:
         results=results,
         reports=reports,
         workspace=workspace,
+        binding_summary=binding_summary,
         kinds=args.kind,
         apply_changes=args.apply,
         create_backups=not args.no_backup,

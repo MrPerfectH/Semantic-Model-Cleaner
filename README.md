@@ -118,6 +118,8 @@ smc clean-stale . --apply                           # write, with a backup per r
 smc clean-stale . --apply --no-backup               # write without backups
 ```
 
+By default it analyzes only the reports whose `definition.pbir` binds them to the selected semantic model (by path, or by published name for live connections) — the same invariant the web UI's report finder applies; pass `--all-reports` to analyze every discovered report, and note that `--report` filters compose on top of the bound set.
+
 The positional argument is `project_path` — the Power BI Project folder that holds one `.SemanticModel` and its `.Report` folders (default `.`). It takes the same selection flags as the analyzer (`--models-path`, `--reports-path`, `--model`, `--report`).
 
 Exit codes (so CI can gate on a dry run):
