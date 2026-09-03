@@ -10,6 +10,7 @@ Usage:
     semantic-model-cleaner --models-path <path> [<path> ...] --reports-path <path> [<path> ...]
     semantic-model-cleaner [search_path] --interactive
     semantic-model-cleaner --format xlsx -o report.xlsx
+    semantic-model-cleaner clean-stale [search_path] [--kind ...] [--apply]
 
 Output: Markdown report, JSON, or Excel (.xlsx) showing all measures/columns and their usage status.
 The analyzer expects exactly one semantic model and one or more reports.
@@ -4496,12 +4497,425 @@ def create_xlsx_bytes(results: dict) -> bytes:
         return output_path.read_bytes()
 
 
+
+# ── Stale Metadata Cleanup ────────────────────────────────────────────────────
+
+# issueType -> CLI kind name. Only these three warning families are ever removed
+# in bulk: the analyzer emits them with a `clean_stale` suggestion because the
+# reference is not part of the live visual query. `missing_table`/`missing_column`/
+# `missing_measure`/`missing_report_measure` (severity `error`, i.e. rename
+# fallout) and `inactive_visual_filter_reference` are deliberately excluded --
+# removing those would strip live fields from visuals.
+STALE_CLEANUP_ISSUE_KINDS: dict[str, str] = {
+    "stale_visual_selector": "selector",
+    "stale_bookmark_projection": "bookmark",
+    "stale_formatting_rule": "formatting",
+}
+
+STALE_CLEANUP_KIND_CHOICES: list[str] = ["selector", "bookmark", "formatting"]
+
+
+def stale_cleanup_kind(issue: dict) -> Optional[str]:
+    """Return the cleanup kind for an issue eligible for bulk stale removal."""
+    if issue.get("severity") != "warning":
+        return None
+    return STALE_CLEANUP_ISSUE_KINDS.get(str(issue.get("issueType") or ""))
+
+
+def eligible_stale_issues(results: dict, kinds: Optional[list[str]] = None) -> list[dict]:
+    """Serialized report issues that bulk stale cleanup is allowed to remove."""
+    wanted = set(kinds) if kinds else None
+    eligible = []
+    for issue in results.get("report_issues", []):
+        kind = stale_cleanup_kind(issue)
+        if kind is None or (wanted is not None and kind not in wanted):
+            continue
+        eligible.append(issue)
+    return eligible
+
+
+def report_path_index(report_paths: Optional[list[Path]]) -> dict[str, str]:
+    """Map report display name -> report folder path, dropping ambiguous names."""
+    index: dict[str, str] = {}
+    ambiguous: set[str] = set()
+    for path in report_paths or []:
+        name = report_display_name(Path(path))
+        if name in index and index[name] != str(path):
+            ambiguous.add(name)
+        index[name] = str(path)
+    for name in ambiguous:
+        index.pop(name, None)
+    return index
+
+
+def stale_cleanup_entry(issue: dict, report_index: dict[str, str]) -> Optional[dict]:
+    """Build one `cleanup_stale_metadata_selectors` entry from a report issue.
+
+    Mirrors `reportIssueCleanupEntry()` in the web templates exactly, so the CLI
+    and the UI hand the engine identical payloads.
+    """
+    report_path = report_index.get(str(issue.get("report") or ""))
+    if not report_path or not issue.get("artifactPath") or not issue.get("sourcePath"):
+        return None
+    return {
+        "report_path": report_path,
+        "artifact_path": issue.get("artifactPath"),
+        "selector_value": issue.get("selectorValue") or "",
+        "source_path": issue.get("sourcePath") or "",
+        "stale_kind": issue.get("staleKind") or "",
+    }
+
+
+def build_stale_cleanup_entries(
+    results: dict,
+    report_paths: Optional[list[Path]] = None,
+    kinds: Optional[list[str]] = None,
+) -> list[dict]:
+    """Convert eligible stale report issues into engine cleanup entries."""
+    report_index = report_path_index(report_paths)
+    entries = []
+    for issue in eligible_stale_issues(results, kinds):
+        entry = stale_cleanup_entry(issue, report_index)
+        if entry is not None:
+            entries.append(entry)
+    return entries
+
+
+def collect_stale_cleanup_candidates(
+    results: dict,
+    report_paths: Optional[list[Path]] = None,
+    kinds: Optional[list[str]] = None,
+) -> tuple[list[dict], list[dict]]:
+    """Return (candidates, unresolved) for bulk stale cleanup.
+
+    Each candidate carries the engine `entry` plus the issue fields the CLI
+    prints. `unresolved` holds eligible issues whose report folder or PBIR path
+    could not be resolved; they are reported but never cleaned.
+    """
+    report_index = report_path_index(report_paths)
+    candidates: list[dict] = []
+    unresolved: list[dict] = []
+    for issue in eligible_stale_issues(results, kinds):
+        entry = stale_cleanup_entry(issue, report_index)
+        if entry is None:
+            unresolved.append(issue)
+            continue
+        candidates.append({
+            "kind": stale_cleanup_kind(issue),
+            "issueType": issue.get("issueType"),
+            "report": issue.get("report"),
+            "reportPath": entry["report_path"],
+            "page": issue.get("page"),
+            "visualId": issue.get("visualId"),
+            "staleKind": entry["stale_kind"],
+            "selectorValue": entry["selector_value"],
+            "artifactPath": entry["artifact_path"],
+            "sourcePath": entry["source_path"],
+            "entry": entry,
+        })
+    return candidates, unresolved
+
+
+def run_stale_cleanup(
+    *,
+    results: dict,
+    reports: list[Path],
+    workspace: Path,
+    kinds: Optional[list[str]] = None,
+    apply_changes: bool = False,
+    create_backups: bool = True,
+    output_format: str = "text",
+) -> tuple[int, dict]:
+    """Preview or apply stale PBIR metadata cleanup. Returns (exit_code, payload).
+
+    Exit codes follow the CI convention: 0 = nothing to clean / applied OK,
+    2 = dry run found candidates, 1 = engine or validation failure (in which
+    case the transactional engine wrote nothing).
+    """
+    from semantic_model_cleaner import report_writer
+
+    candidates, unresolved = collect_stale_cleanup_candidates(results, reports, kinds)
+    entries = [candidate["entry"] for candidate in candidates]
+
+    counts_by_kind = {kind: 0 for kind in STALE_CLEANUP_KIND_CHOICES}
+    counts_by_report: dict[str, int] = defaultdict(int)
+    for candidate in candidates:
+        counts_by_kind[candidate["kind"]] += 1
+        counts_by_report[candidate["report"] or ""] += 1
+
+    payload = {
+        "ok": True,
+        "workspace": str(workspace),
+        "kinds": list(kinds) if kinds else list(STALE_CLEANUP_KIND_CHOICES),
+        "applied": False,
+        "dry_run": not apply_changes,
+        "candidate_count": len(candidates),
+        "counts_by_kind": counts_by_kind,
+        "counts_by_report": dict(sorted(counts_by_report.items())),
+        "unresolved_count": len(unresolved),
+        "candidates": [
+            {key: value for key, value in candidate.items() if key != "entry"}
+            for candidate in candidates
+        ],
+        "backup_paths": [],
+        "removed_count": 0,
+        "updated_files": [],
+        "error": None,
+    }
+
+    if not apply_changes or not entries:
+        if apply_changes:
+            payload["applied"] = True
+            payload["dry_run"] = False
+        exit_code = 2 if (not apply_changes and candidates) else 0
+        _print_stale_cleanup(payload, output_format)
+        return exit_code, payload
+
+    try:
+        if create_backups:
+            for report_path_str in sorted({candidate["reportPath"] for candidate in candidates}):
+                report_path = Path(report_path_str)
+                if not report_path.exists():
+                    raise FileNotFoundError(f"Report path not found: {report_path}")
+                payload["backup_paths"].append(str(report_writer.create_backup(report_path)))
+        result = report_writer.cleanup_stale_metadata_selectors(entries=entries, dry_run=False)
+    except Exception as exc:  # noqa: BLE001 - surfaced to the user as exit code 1
+        payload["ok"] = False
+        payload["error"] = str(exc)
+        _print_stale_cleanup(payload, output_format)
+        return 1, payload
+
+    if not result.get("ok"):
+        payload["ok"] = False
+        payload["error"] = result.get("error") or "Stale cleanup failed"
+        payload["validation_errors"] = result.get("validation_errors") or []
+        _print_stale_cleanup(payload, output_format)
+        return 1, payload
+
+    payload["applied"] = True
+    payload["dry_run"] = False
+    payload["removed_count"] = result.get("removed_count", 0)
+    payload["updated_files"] = result.get("updated_files", [])
+    _print_stale_cleanup(payload, output_format)
+    return 0, payload
+
+
+def _print_stale_cleanup(payload: dict, output_format: str) -> None:
+    if output_format == "json":
+        print(json.dumps(payload, indent=2))
+        return
+    for line in _format_stale_cleanup_text(payload):
+        print(line)
+
+
+def _format_stale_cleanup_text(payload: dict) -> list[str]:
+    lines = [f"Workspace: {payload['workspace']}"]
+    lines.append(f"Kinds: {', '.join(payload['kinds'])}")
+    lines.append(f"Stale cleanup candidates: {payload['candidate_count']}")
+
+    if payload["candidate_count"]:
+        lines.append("")
+        lines.append("By kind:")
+        for kind, count in payload["counts_by_kind"].items():
+            lines.append(f"  {kind:<12} {count}")
+        lines.append("")
+        lines.append("By report:")
+        for report, count in payload["counts_by_report"].items():
+            lines.append(f"  {report:<40} {count}")
+        lines.append("")
+        lines.append("Candidates:")
+        for candidate in payload["candidates"]:
+            selector = candidate["selectorValue"] or candidate["sourcePath"]
+            lines.append(
+                f"  [{candidate['kind']}] {candidate['report']} | "
+                f"{candidate['artifactPath']} | {selector}"
+            )
+
+    if payload["unresolved_count"]:
+        lines.append("")
+        lines.append(
+            f"Skipped {payload['unresolved_count']} eligible issue(s): "
+            "the report folder or PBIR path could not be resolved."
+        )
+
+    lines.append("")
+    if not payload["ok"]:
+        lines.append(f"Error: {payload['error']}")
+        for validation_error in payload.get("validation_errors", []):
+            lines.append(f"  - {validation_error}")
+        lines.append("Nothing was written: the cleanup is transactional.")
+        return lines
+
+    if payload["applied"]:
+        lines.append(f"Removed {payload['removed_count']} stale entry/entries.")
+        if payload["updated_files"]:
+            lines.append("Updated files:")
+            for updated in payload["updated_files"]:
+                lines.append(f"  {updated}")
+        if payload["backup_paths"]:
+            lines.append("Backups:")
+            for backup in payload["backup_paths"]:
+                lines.append(f"  {backup}")
+        else:
+            lines.append("No backup was created (--no-backup).")
+        return lines
+
+    if payload["candidate_count"]:
+        lines.append("Dry run: nothing was written. Re-run with --apply to remove them.")
+    else:
+        lines.append("Nothing to clean.")
+    return lines
+
 # ── Entry Point ───────────────────────────────────────────────────────────────
 
 
-def main():
+def _resolve_search_roots(
+    workspace_arg: str,
+    models_path: Optional[list[str]],
+    reports_path: Optional[list[str]],
+) -> tuple[Path, list[Path], list[Path]]:
+    """Resolve the workspace and the model/report search roots, or exit(1)."""
+    workspace = Path(workspace_arg).resolve()
+    if not workspace.exists() and not models_path and not reports_path:
+        print(f"Error: workspace path does not exist: {workspace}", file=sys.stderr)
+        sys.exit(1)
+
+    model_roots = [Path(p).resolve() for p in models_path] if models_path else [workspace]
+    report_roots = [Path(p).resolve() for p in reports_path] if reports_path else [workspace]
+
+    for path in model_roots + report_roots:
+        if not path.exists():
+            print(f"Error: search path does not exist: {path}", file=sys.stderr)
+            sys.exit(1)
+
+    return workspace, model_roots, report_roots
+
+
+def _require_single_model(models: list[Path]) -> None:
+    if len(models) == 1:
+        return
+    if not models:
+        print("Error: No matching semantic model found.", file=sys.stderr)
+    else:
+        found = ", ".join(str(m) for m in models)
+        print(
+            "Error: exactly one semantic model must be selected. "
+            f"Found {len(models)}: {found}",
+            file=sys.stderr,
+        )
+    sys.exit(1)
+
+
+def _build_clean_stale_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="smc clean-stale",
+        description=(
+            "Remove stale PBIR metadata (dead visual selectors, bookmark projections "
+            "and formatting rules) in bulk. Dry-run by default."
+        ),
+    )
+    parser.add_argument(
+        "workspace",
+        nargs="?",
+        default=".",
+        help="Base search path (default: .)",
+    )
+    parser.add_argument(
+        "--models-path",
+        nargs="+",
+        help="One or more paths to search for the single .SemanticModel folder",
+    )
+    parser.add_argument(
+        "--reports-path",
+        nargs="+",
+        help="One or more paths to search for .Report folders (or direct .Report paths)",
+    )
+    parser.add_argument(
+        "--model",
+        nargs="+",
+        help="Filter semantic models by name (substring match, case-insensitive)",
+    )
+    parser.add_argument(
+        "--report",
+        nargs="+",
+        help="Filter reports by name (substring match, case-insensitive)",
+    )
+    parser.add_argument(
+        "--kind",
+        nargs="+",
+        action="extend",
+        choices=STALE_CLEANUP_KIND_CHOICES,
+        help="Limit cleanup to these stale kinds (default: all three). Repeatable.",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Write the removals (default is a dry run that writes nothing)",
+    )
+    parser.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Skip the per-report backup that --apply creates by default",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+    return parser
+
+
+def clean_stale_command(argv: list[str]) -> int:
+    """`smc clean-stale` subcommand. Returns the process exit code."""
+    args = _build_clean_stale_parser().parse_args(argv)
+
+    workspace, model_roots, report_roots = _resolve_search_roots(
+        args.workspace, args.models_path, args.reports_path
+    )
+    models = filter_models(discover_models(model_roots), args.model)
+    reports = filter_reports(discover_reports(report_roots), args.report)
+    _require_single_model(models)
+
+    try:
+        results = analyze(
+            workspace,
+            model_paths=models,
+            report_paths=reports,
+            model_search_roots=model_roots,
+            report_search_roots=report_roots,
+        )
+    except UnsupportedSemanticModelError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    exit_code, _payload = run_stale_cleanup(
+        results=results,
+        reports=reports,
+        workspace=workspace,
+        kinds=args.kind,
+        apply_changes=args.apply,
+        create_backups=not args.no_backup,
+        output_format=args.format,
+    )
+    return exit_code
+
+
+def main(argv: Optional[list[str]] = None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+
+    # Subcommand dispatch is done by hand (rather than with argparse subparsers)
+    # so the historical no-subcommand invocation -- `smc . --format unused` --
+    # keeps parsing exactly as before.
+    if argv and argv[0] == "clean-stale":
+        sys.exit(clean_stale_command(argv[1:]))
+
     parser = argparse.ArgumentParser(
         description="Analyze one TMDL semantic model against one or more PBIR reports",
+        epilog=(
+            "Subcommand: smc clean-stale <workspace> [--kind ...] [--apply] "
+            "-- remove stale PBIR metadata in bulk (see `smc clean-stale --help`)."
+        ),
     )
     parser.add_argument(
         "workspace",
@@ -4544,20 +4958,11 @@ def main():
         action="store_true",
         help="Interactive selector for models and reports",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    workspace = Path(args.workspace).resolve()
-    if not workspace.exists() and not args.models_path and not args.reports_path:
-        print(f"Error: workspace path does not exist: {workspace}", file=sys.stderr)
-        sys.exit(1)
-
-    model_roots = [Path(p).resolve() for p in args.models_path] if args.models_path else [workspace]
-    report_roots = [Path(p).resolve() for p in args.reports_path] if args.reports_path else [workspace]
-
-    for p in model_roots + report_roots:
-        if not p.exists():
-            print(f"Error: search path does not exist: {p}", file=sys.stderr)
-            sys.exit(1)
+    workspace, model_roots, report_roots = _resolve_search_roots(
+        args.workspace, args.models_path, args.reports_path
+    )
 
     models = filter_models(discover_models(model_roots), args.model)
     reports = filter_reports(discover_reports(report_roots), args.report)
@@ -4577,17 +4982,7 @@ def main():
             lambda p: f"{report_display_name(p)} ({p})",
         )
 
-    if len(models) != 1:
-        if not models:
-            print("Error: No matching semantic model found.", file=sys.stderr)
-        else:
-            found = ", ".join(str(m) for m in models)
-            print(
-                "Error: exactly one semantic model must be selected. "
-                f"Found {len(models)}: {found}",
-                file=sys.stderr,
-            )
-        sys.exit(1)
+    _require_single_model(models)
 
     try:
         results = analyze(

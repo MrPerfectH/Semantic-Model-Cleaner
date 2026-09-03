@@ -43,6 +43,24 @@ Filter by model and report name:
 python3 scripts/analyze_model_usage.py . --model Sales Finance --report Executive Regional --format unused
 ```
 
+## clean-stale subcommand
+
+Bulk-removes dead PBIR metadata: stale visual selectors, stale bookmark projections and stale formatting rules — the `warning` issues the analyzer emits with a `clean_stale` suggestion because the reference is not part of the live visual query. Broken `missing_table` / `missing_column` / `missing_measure` references (severity `error`) are never removed.
+
+```bash
+python3 scripts/analyze_model_usage.py clean-stale .                              # dry run
+python3 scripts/analyze_model_usage.py clean-stale . --kind selector bookmark     # limit kinds
+python3 scripts/analyze_model_usage.py clean-stale . --format json                # machine-readable
+python3 scripts/analyze_model_usage.py clean-stale . --apply                      # write + backup per report
+python3 scripts/analyze_model_usage.py clean-stale . --apply --no-backup          # write, no backup
+```
+
+Accepts the same selection flags as the analyzer (`--models-path`, `--reports-path`, `--model`, `--report`).
+
+Dry run is the default and writes nothing; it prints per-report and per-kind counts plus the full candidate list (report, PBIR file, selector value). Exit codes: `0` nothing to clean or applied OK, `2` dry run found candidates, `1` engine/validation error (the engine is transactional, so nothing was written).
+
+Passing no subcommand keeps the historical behaviour: `analyze_model_usage.py . --format unused` still runs the analyzer.
+
 ## What it scans
 
 1. Model items

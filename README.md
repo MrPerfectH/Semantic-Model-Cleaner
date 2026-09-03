@@ -106,6 +106,30 @@ Module entrypoint:
 python3 -m semantic_model_cleaner . --format full
 ```
 
+### CLI: clean-stale
+
+`clean-stale` removes dead PBIR metadata in bulk: stale visual selectors, stale bookmark projections and stale formatting rules. These are the `warning` issues the analyzer already marks with a high-confidence `clean_stale` suggestion, because the reference is not part of the live visual query. Broken references (`missing_table`, `missing_column`, `missing_measure` — severity `error`, i.e. rename fallout) are never touched.
+
+```bash
+smc clean-stale .                                   # dry run: counts + full candidate list
+smc clean-stale . --kind formatting selector        # limit to some kinds
+smc clean-stale . --format json                     # machine-readable
+smc clean-stale . --apply                           # write, with a backup per report
+smc clean-stale . --apply --no-backup               # write without backups
+```
+
+It takes the same selection flags as the analyzer (`--models-path`, `--reports-path`, `--model`, `--report`).
+
+Exit codes (so CI can gate on a dry run):
+
+| Code | Meaning |
+|------|---------|
+| 0 | Nothing to clean, or `--apply` succeeded |
+| 2 | Dry run found candidates (nothing was written) |
+| 1 | Engine or validation error — the cleanup is transactional, so nothing was written |
+
+Dry run is the default: it writes nothing. With `--apply`, each affected `.Report` folder is copied to a timestamped backup first unless `--no-backup` is passed.
+
 ### Local Web UI
 
 Start the web app:
