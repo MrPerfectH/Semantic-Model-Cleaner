@@ -4645,7 +4645,7 @@ def run_stale_cleanup(
 
     payload = {
         "ok": True,
-        "workspace": str(workspace),
+        "projectPath": str(workspace),
         "kinds": list(kinds) if kinds else list(STALE_CLEANUP_KIND_CHOICES),
         "applied": False,
         "dry_run": not apply_changes,
@@ -4709,7 +4709,7 @@ def _print_stale_cleanup(payload: dict, output_format: str) -> None:
 
 
 def _format_stale_cleanup_text(payload: dict) -> list[str]:
-    lines = [f"Workspace: {payload['workspace']}"]
+    lines = [f"Project path: {payload['projectPath']}"]
     lines.append(f"Kinds: {', '.join(payload['kinds'])}")
     lines.append(f"Stale cleanup candidates: {payload['candidate_count']}")
 

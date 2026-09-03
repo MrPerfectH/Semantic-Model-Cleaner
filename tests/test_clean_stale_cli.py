@@ -264,6 +264,8 @@ def test_dry_run_lists_candidates_and_leaves_files_untouched(tmp_path, capsys):
     payload = _json_output(capsys)
 
     assert exit_code == 2
+    assert payload["projectPath"] == str(workspace)
+    assert "workspace" not in payload
     assert payload["dry_run"] is True
     assert payload["applied"] is False
     assert payload["candidate_count"] == len(payload["candidates"]) > 0
@@ -280,6 +282,7 @@ def test_dry_run_text_output_lists_candidate_details(tmp_path, capsys):
     out = capsys.readouterr().out
 
     assert exit_code == 2
+    assert f"Project path: {workspace}" in out
     assert "Stale cleanup candidates:" in out
     assert "[formatting] Executive" in out
     assert "Dry run: nothing was written" in out
