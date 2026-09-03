@@ -367,3 +367,13 @@ def test_no_subcommand_json_invocation_still_works(tmp_path, capsys):
 
     assert "items" in payload
     assert "reportIssues" in payload
+
+
+def test_clean_stale_positional_is_project_path():
+    parser = analyzer._build_clean_stale_parser()
+
+    positionals = [action.dest for action in parser._actions if not action.option_strings]
+
+    assert positionals == ["project_path"]
+    assert "Power BI Project folder" in parser.format_help()
+    assert parser.parse_args([]).project_path == "."

@@ -10,7 +10,7 @@ Usage:
     semantic-model-cleaner --models-path <path> [<path> ...] --reports-path <path> [<path> ...]
     semantic-model-cleaner [search_path] --interactive
     semantic-model-cleaner --format xlsx -o report.xlsx
-    semantic-model-cleaner clean-stale [search_path] [--kind ...] [--apply]
+    semantic-model-cleaner clean-stale [project_path] [--kind ...] [--apply]
 
 Output: Markdown report, JSON, or Excel (.xlsx) showing all measures/columns and their usage status.
 The analyzer expects exactly one semantic model and one or more reports.
@@ -4815,10 +4815,13 @@ def _build_clean_stale_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "workspace",
+        "project_path",
         nargs="?",
         default=".",
-        help="Base search path (default: .)",
+        help=(
+            "Path to the Power BI Project folder that holds one .SemanticModel "
+            "and its .Report folders"
+        ),
     )
     parser.add_argument(
         "--models-path",
@@ -4871,7 +4874,7 @@ def clean_stale_command(argv: list[str]) -> int:
     args = _build_clean_stale_parser().parse_args(argv)
 
     workspace, model_roots, report_roots = _resolve_search_roots(
-        args.workspace, args.models_path, args.reports_path
+        args.project_path, args.models_path, args.reports_path
     )
     models = filter_models(discover_models(model_roots), args.model)
     reports = filter_reports(discover_reports(report_roots), args.report)
@@ -4913,7 +4916,7 @@ def main(argv: Optional[list[str]] = None):
     parser = argparse.ArgumentParser(
         description="Analyze one TMDL semantic model against one or more PBIR reports",
         epilog=(
-            "Subcommand: smc clean-stale <workspace> [--kind ...] [--apply] "
+            "Subcommand: smc clean-stale <project_path> [--kind ...] [--apply] "
             "-- remove stale PBIR metadata in bulk (see `smc clean-stale --help`)."
         ),
     )

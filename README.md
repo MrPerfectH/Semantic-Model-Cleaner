@@ -118,7 +118,7 @@ smc clean-stale . --apply                           # write, with a backup per r
 smc clean-stale . --apply --no-backup               # write without backups
 ```
 
-It takes the same selection flags as the analyzer (`--models-path`, `--reports-path`, `--model`, `--report`).
+The positional argument is `project_path` — the Power BI Project folder that holds one `.SemanticModel` and its `.Report` folders (default `.`). It takes the same selection flags as the analyzer (`--models-path`, `--reports-path`, `--model`, `--report`).
 
 Exit codes (so CI can gate on a dry run):
 
