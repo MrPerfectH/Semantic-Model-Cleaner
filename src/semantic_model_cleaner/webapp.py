@@ -124,35 +124,6 @@ def _default_workspace_root() -> Path:
     return Path.cwd().resolve()
 
 
-def _paths_match(a: Path, b: Path) -> bool:
-    """Compare two resolved paths, tolerating case differences on case-insensitive filesystems."""
-    if a == b:
-        return True
-    try:
-        return a.samefile(b)
-    except OSError:
-        return os.path.normcase(str(a)) == os.path.normcase(str(b))
-
-
-def _platform_display_name(artifact_path: Path) -> str:
-    """Read the Fabric display name from an artifact's .platform file, if present.
-
-    The folder name (e.g. PMRA_POC.SemanticModel) is only a local convention;
-    the .platform metadata.displayName is the name the artifact is published
-    under, so it is what live report connections refer to.
-    """
-    platform_file = artifact_path / ".platform"
-    if not platform_file.is_file():
-        return ""
-    try:
-        payload = json.loads(platform_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return ""
-    metadata = payload.get("metadata") if isinstance(payload, dict) else None
-    display_name = metadata.get("displayName") if isinstance(metadata, dict) else None
-    return display_name.strip() if isinstance(display_name, str) else ""
-
-
 def _user_data_dir() -> Path:
     return Path(os.environ.get("SMC_USER_DIR") or Path.home() / ".semantic-model-cleaner")
 
@@ -1194,15 +1165,11 @@ def api_find_connected_reports():
 
         model_path = model_path.resolve()
         model_name = model_path.name.replace(".SemanticModel", "")
-        model_display_name = _platform_display_name(model_path)
+        model_display_name = analyzer.platform_display_name(model_path)
         # Live report connections refer to the published (display) name; the folder
         # name is only a fallback for workspaces without a .platform file.
-        model_name_candidates = {
-            candidate.casefold()
-            for candidate in (model_display_name, model_name)
-            if candidate
-        }
-        selected_model_label = model_display_name or model_name
+        model_name_candidates = analyzer.model_name_candidates(model_path)
+        selected_model_label = analyzer.model_label(model_path)
         reports_by_path: dict[Path, dict] = {}
         report_statuses = []
         scanned_files = 0
@@ -1210,108 +1177,34 @@ def api_find_connected_reports():
 
         for report_root in analyzer.discover_reports([search_root]):
             report_root = report_root.resolve()
-            definition_file = report_root / "definition.pbir"
-            status = {
-                "path": str(report_root),
-                "name": analyzer.report_display_name(report_root),
-                "definitionFile": str(definition_file.resolve()),
-                "status": "not_connected",
-                "message": "definition.pbir references a different local Semantic Model.",
-            }
-            if not definition_file.is_file():
-                status["status"] = "missing_definition"
-                status["message"] = "Missing definition.pbir."
-                report_statuses.append(status)
-                warnings.append(f"{report_root.name}: {status['message']}")
+            binding = analyzer.report_binding_status(
+                report_root,
+                model_path,
+                names=model_name_candidates,
+                label=selected_model_label,
+            )
+            if binding["scanned"]:
+                scanned_files += 1
+            warning = binding.pop("warning", None)
+            binding.pop("scanned", None)
+            if binding["status"] == "unreadable":
+                if warning:
+                    warnings.append(warning)
                 continue
 
-            scanned_files += 1
-            try:
-                definition = json.loads(definition_file.read_text(encoding="utf-8"))
-            except OSError as exc:
-                warnings.append(f"Skipped {definition_file}: {exc}")
-                continue
-            except json.JSONDecodeError as exc:
-                status["status"] = "invalid_definition"
-                status["message"] = f"Invalid definition.pbir JSON: {exc.msg}"
-                report_statuses.append(status)
-                warnings.append(f"{report_root.name}: {status['message']}")
-                continue
-            if not isinstance(definition, dict):
-                status["status"] = "invalid_definition"
-                status["message"] = "Invalid definition.pbir JSON: expected a JSON object."
-                report_statuses.append(status)
-                warnings.append(f"{report_root.name}: {status['message']}")
+            report_statuses.append(binding)
+            if warning:
+                warnings.append(warning)
+            if binding["status"] not in analyzer.BOUND_REPORT_STATUSES:
                 continue
 
-            dataset_reference = definition.get("datasetReference", {})
-            if isinstance(dataset_reference, dict) and "byConnection" in dataset_reference:
-                connection = dataset_reference.get("byConnection")
-                published_name = ""
-                if isinstance(connection, dict):
-                    connection_string = connection.get("connectionString")
-                    if isinstance(connection_string, str):
-                        catalog_match = re.search(
-                            r"initial catalog\s*=\s*([^;]+)", connection_string, re.IGNORECASE
-                        )
-                        if catalog_match:
-                            published_name = catalog_match.group(1).strip()
-                if published_name:
-                    status["publishedModelName"] = published_name
-                if published_name and published_name.casefold() in model_name_candidates:
-                    status["status"] = "connected_by_name"
-                    status["message"] = (
-                        f"Live connection to a published semantic model named '{published_name}', "
-                        "which matches the selected Semantic Model. Matched by name, not by folder path."
-                    )
-                    report_statuses.append(status)
-                    reports_by_path.setdefault(report_root, {
-                        "path": str(report_root),
-                        "name": analyzer.report_display_name(report_root),
-                        "status": "connected_by_name",
-                        "definitionFiles": [],
-                    })
-                    reports_by_path[report_root]["definitionFiles"].append(str(definition_file.resolve()))
-                    continue
-                status["status"] = "remote"
-                if published_name:
-                    status["message"] = (
-                        f"Live connection to a published semantic model named '{published_name}', "
-                        f"which does not match the selected model '{selected_model_label}'."
-                    )
-                else:
-                    status["message"] = (
-                        "Live connection to a published semantic model in the Power BI service; "
-                        "no model name could be read from the connection string."
-                    )
-                report_statuses.append(status)
-                warnings.append(f"{report_root.name}: {status['message']}")
-                continue
-
-            by_path = dataset_reference.get("byPath", {}) if isinstance(dataset_reference, dict) else {}
-            referenced_path = by_path.get("path") if isinstance(by_path, dict) else None
-            if not isinstance(referenced_path, str) or not referenced_path.strip():
-                status["status"] = "missing_dataset_reference"
-                status["message"] = "definition.pbir does not include datasetReference.byPath.path."
-                report_statuses.append(status)
-                warnings.append(f"{report_root.name}: {status['message']}")
-                continue
-            resolved_reference = (definition_file.parent / referenced_path).resolve()
-            status["resolvedModelPath"] = str(resolved_reference)
-            if not _paths_match(resolved_reference, model_path):
-                report_statuses.append(status)
-                continue
-
-            status["status"] = "connected"
-            status["message"] = "definition.pbir references the selected local Semantic Model."
-            report_statuses.append(status)
             reports_by_path.setdefault(report_root, {
                 "path": str(report_root),
                 "name": analyzer.report_display_name(report_root),
-                "status": "connected",
+                "status": binding["status"],
                 "definitionFiles": [],
             })
-            reports_by_path[report_root]["definitionFiles"].append(str(definition_file.resolve()))
+            reports_by_path[report_root]["definitionFiles"].append(binding["definitionFile"])
 
         reports = sorted(reports_by_path.values(), key=lambda item: item["name"].casefold())
         return jsonify({

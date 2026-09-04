@@ -10,6 +10,7 @@ Usage:
     semantic-model-cleaner --models-path <path> [<path> ...] --reports-path <path> [<path> ...]
     semantic-model-cleaner [search_path] --interactive
     semantic-model-cleaner --format xlsx -o report.xlsx
+    semantic-model-cleaner clean-stale [project_path] [--kind ...] [--apply]
 
 Output: Markdown report, JSON, or Excel (.xlsx) showing all measures/columns and their usage status.
 The analyzer expects exactly one semantic model and one or more reports.
@@ -17,6 +18,7 @@ The analyzer expects exactly one semantic model and one or more reports.
 
 import argparse
 import json
+import os
 import re
 import sys
 import tempfile
@@ -256,6 +258,193 @@ def discover_reports(search_roots: list[Path]) -> list[Path]:
 
 def report_display_name(report_path: Path) -> str:
     return report_path.name.replace(".Report", "")
+
+
+# ── Report ↔ Model Binding ────────────────────────────────────────────────────
+
+# A report counts as bound to the selected model when definition.pbir points at
+# it by path, or live-connects to a published model with a matching name.
+BOUND_REPORT_STATUSES = ("connected", "connected_by_name")
+
+
+def paths_match(a: Path, b: Path) -> bool:
+    """Compare two resolved paths, tolerating case-insensitive filesystems."""
+    if a == b:
+        return True
+    try:
+        return a.samefile(b)
+    except OSError:
+        return os.path.normcase(str(a)) == os.path.normcase(str(b))
+
+
+def platform_display_name(artifact_path: Path) -> str:
+    """Read the Fabric display name from an artifact's .platform file, if present.
+
+    The folder name (e.g. PMRA_POC.SemanticModel) is only a local convention;
+    the .platform metadata.displayName is the name the artifact is published
+    under, so it is what live report connections refer to.
+    """
+    platform_file = artifact_path / ".platform"
+    if not platform_file.is_file():
+        return ""
+    try:
+        payload = json.loads(platform_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    metadata = payload.get("metadata") if isinstance(payload, dict) else None
+    display_name = metadata.get("displayName") if isinstance(metadata, dict) else None
+    return display_name.strip() if isinstance(display_name, str) else ""
+
+
+def model_name_candidates(model_path: Path) -> set[str]:
+    """Casefolded names a live connection may use for this semantic model."""
+    folder_name = Path(model_path).name.replace(".SemanticModel", "")
+    return {
+        candidate.casefold()
+        for candidate in (platform_display_name(Path(model_path)), folder_name)
+        if candidate
+    }
+
+
+def model_label(model_path: Path) -> str:
+    """Published display name of a semantic model, falling back to the folder name."""
+    return platform_display_name(Path(model_path)) or Path(model_path).name.replace(".SemanticModel", "")
+
+
+def report_binding_status(
+    report_path: Path,
+    model_path: Path,
+    *,
+    names: Optional[set[str]] = None,
+    label: str = "",
+) -> dict:
+    """Classify how one PBIR report's definition.pbir is bound to a model.
+
+    Returns the status row the web app's /api/reports/find-connected surfaces
+    (`path`, `name`, `definitionFile`, `status`, `message`, plus
+    `publishedModelName` / `resolvedModelPath` where they apply), extended with
+    `scanned` (definition.pbir was opened) and `warning` (the message the UI
+    adds to its warning list, or None).
+
+    Statuses: `connected`, `connected_by_name`, `remote`, `not_connected`,
+    `missing_definition`, `invalid_definition`, `missing_dataset_reference`,
+    and `unreadable` (definition.pbir could not be read at all; the UI reports
+    that as a warning without a status row).
+    """
+    report_root = Path(report_path).resolve()
+    model_root = Path(model_path).resolve()
+    candidates = names if names is not None else model_name_candidates(model_root)
+    selected_model_label = label or model_label(model_root)
+    definition_file = report_root / "definition.pbir"
+
+    status = {
+        "path": str(report_root),
+        "name": report_display_name(report_root),
+        "definitionFile": str(definition_file.resolve()),
+        "status": "not_connected",
+        "message": "definition.pbir references a different local Semantic Model.",
+        "scanned": False,
+        "warning": None,
+    }
+
+    def fail(state: str, message: str) -> dict:
+        status["status"] = state
+        status["message"] = message
+        status["warning"] = f"{report_root.name}: {message}"
+        return status
+
+    if not definition_file.is_file():
+        return fail("missing_definition", "Missing definition.pbir.")
+
+    status["scanned"] = True
+    try:
+        definition = json.loads(definition_file.read_text(encoding="utf-8"))
+    except OSError as exc:
+        status["status"] = "unreadable"
+        status["message"] = f"Could not read definition.pbir: {exc}"
+        status["warning"] = f"Skipped {definition_file}: {exc}"
+        return status
+    except json.JSONDecodeError as exc:
+        return fail("invalid_definition", f"Invalid definition.pbir JSON: {exc.msg}")
+    if not isinstance(definition, dict):
+        return fail("invalid_definition", "Invalid definition.pbir JSON: expected a JSON object.")
+
+    dataset_reference = definition.get("datasetReference", {})
+    if isinstance(dataset_reference, dict) and "byConnection" in dataset_reference:
+        connection = dataset_reference.get("byConnection")
+        published_name = ""
+        if isinstance(connection, dict):
+            connection_string = connection.get("connectionString")
+            if isinstance(connection_string, str):
+                catalog_match = re.search(
+                    r"initial catalog\s*=\s*([^;]+)", connection_string, re.IGNORECASE
+                )
+                if catalog_match:
+                    published_name = catalog_match.group(1).strip()
+        if published_name:
+            status["publishedModelName"] = published_name
+        if published_name and published_name.casefold() in candidates:
+            status["status"] = "connected_by_name"
+            status["message"] = (
+                f"Live connection to a published semantic model named '{published_name}', "
+                "which matches the selected Semantic Model. Matched by name, not by folder path."
+            )
+            return status
+        if published_name:
+            return fail(
+                "remote",
+                f"Live connection to a published semantic model named '{published_name}', "
+                f"which does not match the selected model '{selected_model_label}'.",
+            )
+        return fail(
+            "remote",
+            "Live connection to a published semantic model in the Power BI service; "
+            "no model name could be read from the connection string.",
+        )
+
+    by_path = dataset_reference.get("byPath", {}) if isinstance(dataset_reference, dict) else {}
+    referenced_path = by_path.get("path") if isinstance(by_path, dict) else None
+    if not isinstance(referenced_path, str) or not referenced_path.strip():
+        return fail(
+            "missing_dataset_reference",
+            "definition.pbir does not include datasetReference.byPath.path.",
+        )
+
+    resolved_reference = (definition_file.parent / referenced_path).resolve()
+    status["resolvedModelPath"] = str(resolved_reference)
+    if not paths_match(resolved_reference, model_root):
+        return status
+
+    status["status"] = "connected"
+    status["message"] = "definition.pbir references the selected local Semantic Model."
+    return status
+
+
+def partition_reports_by_binding(
+    reports: list[Path],
+    model_path: Path,
+) -> tuple[list[Path], list[dict]]:
+    """Split reports into (bound to model, skipped) with a status row per skip."""
+    candidates = model_name_candidates(model_path)
+    label = model_label(model_path)
+    bound: list[Path] = []
+    skipped: list[dict] = []
+    for report in reports:
+        binding = report_binding_status(report, model_path, names=candidates, label=label)
+        if binding["status"] in BOUND_REPORT_STATUSES:
+            bound.append(Path(report))
+        else:
+            skipped.append({
+                "name": binding["name"],
+                "status": binding["status"],
+                "message": binding["message"],
+            })
+    return bound, skipped
+
+
+def filter_reports_bound_to_model(reports: list[Path], model_path: Path) -> list[Path]:
+    """Keep only the reports whose definition.pbir binds them to this model."""
+    return partition_reports_by_binding(reports, model_path)[0]
 
 
 def filter_models(models: list[Path], model_filters: Optional[list[str]]) -> list[Path]:
@@ -4496,12 +4685,480 @@ def create_xlsx_bytes(results: dict) -> bytes:
         return output_path.read_bytes()
 
 
+
+# ── Stale Metadata Cleanup ────────────────────────────────────────────────────
+
+# issueType -> CLI kind name. Only these three warning families are ever removed
+# in bulk: the analyzer emits them with a `clean_stale` suggestion because the
+# reference is not part of the live visual query. `missing_table`/`missing_column`/
+# `missing_measure`/`missing_report_measure` (severity `error`, i.e. rename
+# fallout) and `inactive_visual_filter_reference` are deliberately excluded --
+# removing those would strip live fields from visuals.
+STALE_CLEANUP_ISSUE_KINDS: dict[str, str] = {
+    "stale_visual_selector": "selector",
+    "stale_bookmark_projection": "bookmark",
+    "stale_formatting_rule": "formatting",
+}
+
+STALE_CLEANUP_KIND_CHOICES: list[str] = ["selector", "bookmark", "formatting"]
+
+
+def stale_cleanup_kind(issue: dict) -> Optional[str]:
+    """Return the cleanup kind for an issue eligible for bulk stale removal."""
+    if issue.get("severity") != "warning":
+        return None
+    return STALE_CLEANUP_ISSUE_KINDS.get(str(issue.get("issueType") or ""))
+
+
+def eligible_stale_issues(results: dict, kinds: Optional[list[str]] = None) -> list[dict]:
+    """Serialized report issues that bulk stale cleanup is allowed to remove."""
+    wanted = set(kinds) if kinds else None
+    eligible = []
+    for issue in results.get("report_issues", []):
+        kind = stale_cleanup_kind(issue)
+        if kind is None or (wanted is not None and kind not in wanted):
+            continue
+        eligible.append(issue)
+    return eligible
+
+
+def report_path_index(report_paths: Optional[list[Path]]) -> dict[str, str]:
+    """Map report display name -> report folder path, dropping ambiguous names."""
+    index: dict[str, str] = {}
+    ambiguous: set[str] = set()
+    for path in report_paths or []:
+        name = report_display_name(Path(path))
+        if name in index and index[name] != str(path):
+            ambiguous.add(name)
+        index[name] = str(path)
+    for name in ambiguous:
+        index.pop(name, None)
+    return index
+
+
+def stale_cleanup_entry(issue: dict, report_index: dict[str, str]) -> Optional[dict]:
+    """Build one `cleanup_stale_metadata_selectors` entry from a report issue.
+
+    Mirrors `reportIssueCleanupEntry()` in the web templates exactly, so the CLI
+    and the UI hand the engine identical payloads.
+    """
+    report_path = report_index.get(str(issue.get("report") or ""))
+    if not report_path or not issue.get("artifactPath") or not issue.get("sourcePath"):
+        return None
+    return {
+        "report_path": report_path,
+        "artifact_path": issue.get("artifactPath"),
+        "selector_value": issue.get("selectorValue") or "",
+        "source_path": issue.get("sourcePath") or "",
+        "stale_kind": issue.get("staleKind") or "",
+    }
+
+
+def build_stale_cleanup_entries(
+    results: dict,
+    report_paths: Optional[list[Path]] = None,
+    kinds: Optional[list[str]] = None,
+) -> list[dict]:
+    """Convert eligible stale report issues into engine cleanup entries."""
+    report_index = report_path_index(report_paths)
+    entries = []
+    for issue in eligible_stale_issues(results, kinds):
+        entry = stale_cleanup_entry(issue, report_index)
+        if entry is not None:
+            entries.append(entry)
+    return entries
+
+
+def collect_stale_cleanup_candidates(
+    results: dict,
+    report_paths: Optional[list[Path]] = None,
+    kinds: Optional[list[str]] = None,
+) -> tuple[list[dict], list[dict]]:
+    """Return (candidates, unresolved) for bulk stale cleanup.
+
+    Each candidate carries the engine `entry` plus the issue fields the CLI
+    prints. `unresolved` holds eligible issues whose report folder or PBIR path
+    could not be resolved; they are reported but never cleaned.
+    """
+    report_index = report_path_index(report_paths)
+    candidates: list[dict] = []
+    unresolved: list[dict] = []
+    for issue in eligible_stale_issues(results, kinds):
+        entry = stale_cleanup_entry(issue, report_index)
+        if entry is None:
+            unresolved.append(issue)
+            continue
+        candidates.append({
+            "kind": stale_cleanup_kind(issue),
+            "issueType": issue.get("issueType"),
+            "report": issue.get("report"),
+            "reportPath": entry["report_path"],
+            "page": issue.get("page"),
+            "visualId": issue.get("visualId"),
+            "staleKind": entry["stale_kind"],
+            "selectorValue": entry["selector_value"],
+            "artifactPath": entry["artifact_path"],
+            "sourcePath": entry["source_path"],
+            "entry": entry,
+        })
+    return candidates, unresolved
+
+
+def run_stale_cleanup(
+    *,
+    results: dict,
+    reports: list[Path],
+    workspace: Path,
+    binding_summary: Optional[dict] = None,
+    kinds: Optional[list[str]] = None,
+    apply_changes: bool = False,
+    create_backups: bool = True,
+    output_format: str = "text",
+) -> tuple[int, dict]:
+    """Preview or apply stale PBIR metadata cleanup. Returns (exit_code, payload).
+
+    Exit codes follow the CI convention: 0 = nothing to clean / applied OK,
+    2 = dry run found candidates, 1 = engine or validation failure (in which
+    case the transactional engine wrote nothing).
+    """
+    from semantic_model_cleaner import report_writer
+
+    candidates, unresolved = collect_stale_cleanup_candidates(results, reports, kinds)
+    entries = [candidate["entry"] for candidate in candidates]
+
+    counts_by_kind = {kind: 0 for kind in STALE_CLEANUP_KIND_CHOICES}
+    counts_by_report: dict[str, int] = defaultdict(int)
+    for candidate in candidates:
+        counts_by_kind[candidate["kind"]] += 1
+        counts_by_report[candidate["report"] or ""] += 1
+
+    payload = {
+        "ok": True,
+        "projectPath": str(workspace),
+        "kinds": list(kinds) if kinds else list(STALE_CLEANUP_KIND_CHOICES),
+        "model": (binding_summary or {}).get("model", ""),
+        "allReports": bool((binding_summary or {}).get("allReports", True)),
+        "boundReports": list((binding_summary or {}).get("boundReports", [])),
+        "skippedReports": list((binding_summary or {}).get("skippedReports", [])),
+        "applied": False,
+        "dry_run": not apply_changes,
+        "candidate_count": len(candidates),
+        "counts_by_kind": counts_by_kind,
+        "counts_by_report": dict(sorted(counts_by_report.items())),
+        "unresolved_count": len(unresolved),
+        "candidates": [
+            {key: value for key, value in candidate.items() if key != "entry"}
+            for candidate in candidates
+        ],
+        "backup_paths": [],
+        "removed_count": 0,
+        "updated_files": [],
+        "error": None,
+    }
+
+    if not apply_changes or not entries:
+        if apply_changes:
+            payload["applied"] = True
+            payload["dry_run"] = False
+        exit_code = 2 if (not apply_changes and candidates) else 0
+        _print_stale_cleanup(payload, output_format)
+        return exit_code, payload
+
+    try:
+        if create_backups:
+            for report_path_str in sorted({candidate["reportPath"] for candidate in candidates}):
+                report_path = Path(report_path_str)
+                if not report_path.exists():
+                    raise FileNotFoundError(f"Report path not found: {report_path}")
+                payload["backup_paths"].append(str(report_writer.create_backup(report_path)))
+        result = report_writer.cleanup_stale_metadata_selectors(entries=entries, dry_run=False)
+    except Exception as exc:  # noqa: BLE001 - surfaced to the user as exit code 1
+        payload["ok"] = False
+        payload["error"] = str(exc)
+        _print_stale_cleanup(payload, output_format)
+        return 1, payload
+
+    if not result.get("ok"):
+        payload["ok"] = False
+        payload["error"] = result.get("error") or "Stale cleanup failed"
+        payload["validation_errors"] = result.get("validation_errors") or []
+        _print_stale_cleanup(payload, output_format)
+        return 1, payload
+
+    payload["applied"] = True
+    payload["dry_run"] = False
+    payload["removed_count"] = result.get("removed_count", 0)
+    payload["updated_files"] = result.get("updated_files", [])
+    _print_stale_cleanup(payload, output_format)
+    return 0, payload
+
+
+def _print_stale_cleanup(payload: dict, output_format: str) -> None:
+    if output_format == "json":
+        print(json.dumps(payload, indent=2))
+        return
+    for line in _format_stale_cleanup_text(payload):
+        print(line)
+
+
+def _format_stale_cleanup_text(payload: dict) -> list[str]:
+    lines = [f"Project path: {payload['projectPath']}"]
+    lines.append(f"Kinds: {', '.join(payload['kinds'])}")
+    bound_count = len(payload.get("boundReports", []))
+    skipped_count = len(payload.get("skippedReports", []))
+    if payload.get("allReports"):
+        lines.append(f"Reports analyzed: {bound_count} (--all-reports: binding filter disabled)")
+    else:
+        suffix = (
+            f" ({skipped_count} skipped, not bound; use --all-reports to include)"
+            if skipped_count
+            else ""
+        )
+        lines.append(f"Reports bound to {payload.get('model', '')}: {bound_count}{suffix}")
+    lines.append(f"Stale cleanup candidates: {payload['candidate_count']}")
+
+    if payload["candidate_count"]:
+        lines.append("")
+        lines.append("By kind:")
+        for kind, count in payload["counts_by_kind"].items():
+            lines.append(f"  {kind:<12} {count}")
+        lines.append("")
+        lines.append("By report:")
+        for report, count in payload["counts_by_report"].items():
+            lines.append(f"  {report:<40} {count}")
+        lines.append("")
+        lines.append("Candidates:")
+        for candidate in payload["candidates"]:
+            selector = candidate["selectorValue"] or candidate["sourcePath"]
+            lines.append(
+                f"  [{candidate['kind']}] {candidate['report']} | "
+                f"{candidate['artifactPath']} | {selector}"
+            )
+
+    if payload["unresolved_count"]:
+        lines.append("")
+        lines.append(
+            f"Skipped {payload['unresolved_count']} eligible issue(s): "
+            "the report folder or PBIR path could not be resolved."
+        )
+
+    lines.append("")
+    if not payload["ok"]:
+        lines.append(f"Error: {payload['error']}")
+        for validation_error in payload.get("validation_errors", []):
+            lines.append(f"  - {validation_error}")
+        lines.append("Nothing was written: the cleanup is transactional.")
+        return lines
+
+    if payload["applied"]:
+        lines.append(f"Removed {payload['removed_count']} stale entry/entries.")
+        if payload["updated_files"]:
+            lines.append("Updated files:")
+            for updated in payload["updated_files"]:
+                lines.append(f"  {updated}")
+        if payload["backup_paths"]:
+            lines.append("Backups:")
+            for backup in payload["backup_paths"]:
+                lines.append(f"  {backup}")
+        else:
+            lines.append("No backup was created (--no-backup).")
+        return lines
+
+    if payload["candidate_count"]:
+        lines.append("Dry run: nothing was written. Re-run with --apply to remove them.")
+    else:
+        lines.append("Nothing to clean.")
+    return lines
+
 # ── Entry Point ───────────────────────────────────────────────────────────────
 
 
-def main():
+def _resolve_search_roots(
+    workspace_arg: str,
+    models_path: Optional[list[str]],
+    reports_path: Optional[list[str]],
+) -> tuple[Path, list[Path], list[Path]]:
+    """Resolve the workspace and the model/report search roots, or exit(1)."""
+    workspace = Path(workspace_arg).resolve()
+    if not workspace.exists() and not models_path and not reports_path:
+        print(f"Error: workspace path does not exist: {workspace}", file=sys.stderr)
+        sys.exit(1)
+
+    model_roots = [Path(p).resolve() for p in models_path] if models_path else [workspace]
+    report_roots = [Path(p).resolve() for p in reports_path] if reports_path else [workspace]
+
+    for path in model_roots + report_roots:
+        if not path.exists():
+            print(f"Error: search path does not exist: {path}", file=sys.stderr)
+            sys.exit(1)
+
+    return workspace, model_roots, report_roots
+
+
+def _require_single_model(models: list[Path]) -> None:
+    if len(models) == 1:
+        return
+    if not models:
+        print("Error: No matching semantic model found.", file=sys.stderr)
+    else:
+        found = ", ".join(str(m) for m in models)
+        print(
+            "Error: exactly one semantic model must be selected. "
+            f"Found {len(models)}: {found}",
+            file=sys.stderr,
+        )
+    sys.exit(1)
+
+
+def _build_clean_stale_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="smc clean-stale",
+        description=(
+            "Remove stale PBIR metadata (dead visual selectors, bookmark projections "
+            "and formatting rules) in bulk. Dry-run by default."
+        ),
+    )
+    parser.add_argument(
+        "project_path",
+        nargs="?",
+        default=".",
+        help=(
+            "Path to the Power BI Project folder that holds one .SemanticModel "
+            "and its .Report folders"
+        ),
+    )
+    parser.add_argument(
+        "--models-path",
+        nargs="+",
+        help="One or more paths to search for the single .SemanticModel folder",
+    )
+    parser.add_argument(
+        "--reports-path",
+        nargs="+",
+        help="One or more paths to search for .Report folders (or direct .Report paths)",
+    )
+    parser.add_argument(
+        "--model",
+        nargs="+",
+        help="Filter semantic models by name (substring match, case-insensitive)",
+    )
+    parser.add_argument(
+        "--report",
+        nargs="+",
+        help="Filter reports by name (substring match, case-insensitive)",
+    )
+    parser.add_argument(
+        "--kind",
+        nargs="+",
+        action="extend",
+        choices=STALE_CLEANUP_KIND_CHOICES,
+        help="Limit cleanup to these stale kinds (default: all three). Repeatable.",
+    )
+    parser.add_argument(
+        "--all-reports",
+        action="store_true",
+        help=(
+            "Analyze every discovered report, not just the ones whose definition.pbir "
+            "binds them to the selected semantic model"
+        ),
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Write the removals (default is a dry run that writes nothing)",
+    )
+    parser.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Skip the per-report backup that --apply creates by default",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+    return parser
+
+
+def clean_stale_command(argv: list[str]) -> int:
+    """`smc clean-stale` subcommand. Returns the process exit code."""
+    args = _build_clean_stale_parser().parse_args(argv)
+
+    workspace, model_roots, report_roots = _resolve_search_roots(
+        args.project_path, args.models_path, args.reports_path
+    )
+    models = filter_models(discover_models(model_roots), args.model)
+    discovered_reports = discover_reports(report_roots)
+    _require_single_model(models)
+
+    # Default to the web UI's invariant: only reports whose definition.pbir binds
+    # them to the selected model. --report filters compose on top of that set.
+    if args.all_reports:
+        reports = filter_reports(discovered_reports, args.report)
+        binding_summary = {
+            "allReports": True,
+            "model": model_label(models[0]),
+            "boundReports": [report_display_name(r) for r in reports],
+            "skippedReports": [],
+        }
+    else:
+        bound, skipped = partition_reports_by_binding(discovered_reports, models[0])
+        reports = filter_reports(bound, args.report)
+        binding_summary = {
+            "allReports": False,
+            "model": model_label(models[0]),
+            "boundReports": [report_display_name(r) for r in bound],
+            "skippedReports": skipped,
+        }
+        if not bound:
+            print(
+                f"Error: no report is bound to '{binding_summary['model']}'. "
+                "Pass --all-reports to analyze every discovered report anyway.",
+                file=sys.stderr,
+            )
+            return 1
+
+    try:
+        results = analyze(
+            workspace,
+            model_paths=models,
+            report_paths=reports,
+            model_search_roots=model_roots,
+            report_search_roots=report_roots,
+        )
+    except UnsupportedSemanticModelError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    exit_code, _payload = run_stale_cleanup(
+        results=results,
+        reports=reports,
+        workspace=workspace,
+        binding_summary=binding_summary,
+        kinds=args.kind,
+        apply_changes=args.apply,
+        create_backups=not args.no_backup,
+        output_format=args.format,
+    )
+    return exit_code
+
+
+def main(argv: Optional[list[str]] = None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+
+    # Subcommand dispatch is done by hand (rather than with argparse subparsers)
+    # so the historical no-subcommand invocation -- `smc . --format unused` --
+    # keeps parsing exactly as before.
+    if argv and argv[0] == "clean-stale":
+        sys.exit(clean_stale_command(argv[1:]))
+
     parser = argparse.ArgumentParser(
         description="Analyze one TMDL semantic model against one or more PBIR reports",
+        epilog=(
+            "Subcommand: smc clean-stale <project_path> [--kind ...] [--apply] "
+            "-- remove stale PBIR metadata in bulk (see `smc clean-stale --help`)."
+        ),
     )
     parser.add_argument(
         "workspace",
@@ -4544,20 +5201,11 @@ def main():
         action="store_true",
         help="Interactive selector for models and reports",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    workspace = Path(args.workspace).resolve()
-    if not workspace.exists() and not args.models_path and not args.reports_path:
-        print(f"Error: workspace path does not exist: {workspace}", file=sys.stderr)
-        sys.exit(1)
-
-    model_roots = [Path(p).resolve() for p in args.models_path] if args.models_path else [workspace]
-    report_roots = [Path(p).resolve() for p in args.reports_path] if args.reports_path else [workspace]
-
-    for p in model_roots + report_roots:
-        if not p.exists():
-            print(f"Error: search path does not exist: {p}", file=sys.stderr)
-            sys.exit(1)
+    workspace, model_roots, report_roots = _resolve_search_roots(
+        args.workspace, args.models_path, args.reports_path
+    )
 
     models = filter_models(discover_models(model_roots), args.model)
     reports = filter_reports(discover_reports(report_roots), args.report)
@@ -4577,17 +5225,7 @@ def main():
             lambda p: f"{report_display_name(p)} ({p})",
         )
 
-    if len(models) != 1:
-        if not models:
-            print("Error: No matching semantic model found.", file=sys.stderr)
-        else:
-            found = ", ".join(str(m) for m in models)
-            print(
-                "Error: exactly one semantic model must be selected. "
-                f"Found {len(models)}: {found}",
-                file=sys.stderr,
-            )
-        sys.exit(1)
+    _require_single_model(models)
 
     try:
         results = analyze(
