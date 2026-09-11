@@ -655,16 +655,66 @@ def parse_model_items(model_path: Path) -> list[ModelItem]:
 
 
 def _unsupported_semantic_model_error(model_path: Path) -> str | None:
-    if (model_path / "definition" / "tables").exists():
-        return None
-
-    if (model_path / "model.bim").exists() or (model_path / "definition" / "model.bim").exists():
+    tables = model_path / "definition" / "tables"
+    model_file = model_path / "definition" / "model.tmdl"
+    if not tables.is_dir() and not model_file.is_file() and (
+        (model_path / "model.bim").is_file() or (model_path / "definition" / "model.bim").is_file()
+    ):
         return (
             "This Semantic Model is saved as TMSL/model.bim. "
             "Convert the Semantic Model to TMDL before analyzing with Semantic Model Cleaner: "
             f"{model_path}"
         )
 
+    invalid = (
+        "No readable TMDL model or table declaration was found in the selected folder. "
+        "Choose the .SemanticModel folder containing definition/model.tmdl or "
+        f"definition/tables/*.tmdl: {model_path}"
+    )
+    if not model_path.is_dir() or (tables.exists() and not tables.is_dir()):
+        return invalid
+    candidates = [(model_file, "model")] if model_file.is_file() else []
+    if tables.is_dir():
+        candidates.extend((path, "table") for path in sorted(tables.glob("*.tmdl")) if path.is_file())
+    # Read every metadata file before accepting a declaration. A valid model
+    # header cannot hide an unreadable later table, role or perspective.
+    texts = {}
+    for path in sorted((model_path / "definition").rglob("*.tmdl")):
+        if not path.is_file():
+            continue
+        try:
+            texts[path] = path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeError):
+            return f"Cannot read TMDL metadata: {path}"
+    if not candidates:
+        return invalid
+    for path, keyword in candidates:
+        header = ""
+        in_comment = False
+        for line in texts[path].splitlines():
+            stripped = line.strip()
+            if in_comment:
+                if "*/" in stripped:
+                    in_comment = False
+                continue
+            if stripped.startswith("/*"):
+                in_comment = "*/" not in stripped[2:]
+                continue
+            if not stripped or stripped.startswith("//"):
+                continue
+            header = line
+            break
+        prefix = keyword + " "
+        if not header.startswith(prefix):
+            return invalid
+        raw_name = header[len(prefix):].strip()
+        if raw_name.startswith("'"):
+            parsed = read_single_quoted_name(raw_name)
+            if not parsed or not parsed[0] or raw_name[parsed[1]:].strip():
+                return invalid
+        elif not raw_name or any(char.isspace() or char in "'=:\"" for char in raw_name):
+            return invalid
+    # A valid empty model/table is supported. Item count is not validity.
     return None
 
 
@@ -822,7 +872,7 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
             measure_names[item.name.casefold()].add(item.key)
 
     for filepath in sorted(tables_dir.glob("*.tmdl")):
-        text = filepath.read_text(encoding="utf-8")
+        text = filepath.read_text(encoding="utf-8-sig")
         for area, markers in marker_areas:
             metadata_blocks = _extract_tmdl_metadata_blocks(text, markers)
             if not metadata_blocks:
@@ -858,7 +908,7 @@ def _parse_culture_translation_refs(model_path: Path) -> list[UnsupportedMetadat
                 continue
             ref = _unsupported_ref(
                 "Cultures/translations",
-                _extract_item_keys_from_metadata_text(filepath.read_text(encoding="utf-8")),
+                _extract_item_keys_from_metadata_text(filepath.read_text(encoding="utf-8-sig")),
                 filepath,
                 model_path,
             )
@@ -880,7 +930,7 @@ def parse_hierarchies(model_path: Path) -> list[HierarchyInfo]:
 
 
 def _parse_perspective_item_refs(filepath: Path) -> set[tuple[str, str]]:
-    lines = filepath.read_text(encoding="utf-8").splitlines()
+    lines = filepath.read_text(encoding="utf-8-sig").splitlines()
     item_keys: set[tuple[str, str]] = set()
     current_table = ""
 
@@ -1017,7 +1067,7 @@ def parse_field_parameters(
     model_name = model_path.name
 
     for filepath in sorted(tables_dir.glob("*.tmdl")):
-        text = filepath.read_text(encoding="utf-8")
+        text = filepath.read_text(encoding="utf-8-sig")
         if not _nameof_argument_starts(text):
             continue
 
@@ -1190,7 +1240,7 @@ def promote_field_parameter_usages(
 
 
 def _parse_tmdl_hierarchies(filepath: Path) -> list[HierarchyInfo]:
-    lines = filepath.read_text(encoding="utf-8").splitlines()
+    lines = filepath.read_text(encoding="utf-8-sig").splitlines()
     hierarchies = []
     current_table = None
     i = 0
@@ -1257,7 +1307,7 @@ def _parse_tmdl_hierarchies(filepath: Path) -> list[HierarchyInfo]:
 
 
 def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
-    lines = filepath.read_text(encoding="utf-8").splitlines()
+    lines = filepath.read_text(encoding="utf-8-sig").splitlines()
     items = []
     current_table = None
     i = 0
@@ -1787,7 +1837,7 @@ def parse_relationship_details(model_path: Path) -> list[RelationshipInfo]:
     if not rel_file.exists():
         return []
 
-    lines = rel_file.read_text(encoding="utf-8").splitlines()
+    lines = rel_file.read_text(encoding="utf-8-sig").splitlines()
     relationships: list[RelationshipInfo] = []
 
     for name, block_lines in _iter_relationship_blocks(lines):
@@ -1863,7 +1913,7 @@ def parse_rls_roles(model_path: Path) -> list[tuple[str, str, str]]:
         files_to_check.extend(roles_dir.glob("*.tmdl"))
 
     for f in files_to_check:
-        lines = f.read_text(encoding="utf-8").splitlines()
+        lines = f.read_text(encoding="utf-8-sig").splitlines()
         current_role = None
         i = 0
 
@@ -5578,7 +5628,7 @@ def main(argv: Optional[list[str]] = None):
         )
     except UnsupportedSemanticModelError as exc:
         print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(2)
 
     if args.format == "xlsx":
         output_path = args.output

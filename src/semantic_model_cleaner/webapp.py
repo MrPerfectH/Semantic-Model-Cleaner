@@ -322,6 +322,18 @@ def _default_model_selection(models: list[Path]) -> list[Path]:
     return [models[0]]
 
 
+def _valid_model_scope(models: list[Path]) -> tuple[list[Path], list[dict]]:
+    selected, excluded = [], []
+    for model in models:
+        error = analyzer._unsupported_semantic_model_error(model)
+        if error:
+            excluded.append({"path": str(model), "name": model.name, "message": error,
+                             "code": "INVALID_MODEL_FOLDER", "severity": "warning"})
+        else:
+            selected.append(model)
+    return selected, excluded
+
+
 def _report_binding_scope(model_path, report_paths) -> dict:
     """Use the same binding evidence for initial selection and every web analysis."""
     scope = {"selected": [], "excluded": []}
@@ -1208,6 +1220,7 @@ def _build_stamp() -> str:
 @app.route("/")
 def index():
     models, reports = _discover_initial_artifacts()
+    models, model_exclusions = _valid_model_scope(models)
     selected_models = _default_model_selection(models)
     report_binding = (_report_binding_scope(selected_models[0], reports) if selected_models
                       else {"selected": [], "excluded": []})
@@ -1226,6 +1239,7 @@ def index():
         initial_models=[{"path": str(m), "name": m.name.replace(".SemanticModel", "")} for m in selected_models],
         initial_reports=[{"path": str(r), "name": analyzer.report_display_name(r)} for r in selected_reports],
         initial_report_binding=report_binding,
+        initial_model_exclusions=model_exclusions,
     ))
     response.set_cookie("smc_ui", "v2" if template == "index_v2.html" else "classic", max_age=60 * 60 * 24 * 365)
     return response
@@ -1291,6 +1305,7 @@ def api_discover():
 
         models = analyzer.discover_models([Path(r) for r in model_roots])
         reports = analyzer.discover_reports([Path(r) for r in report_roots])
+        models, model_exclusions = _valid_model_scope(models)
 
         _state["model_paths"] = [str(m) for m in models]
         _state["report_paths"] = [str(r) for r in reports]
@@ -1298,6 +1313,7 @@ def api_discover():
         return jsonify({
             "models": [{"path": str(m), "name": m.name.replace(".SemanticModel", "")} for m in models],
             "reports": [{"path": str(r), "name": analyzer.report_display_name(r)} for r in reports],
+            "modelExclusions": model_exclusions,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1436,6 +1452,9 @@ def api_analyze():
                 + ", ".join(str(p) for p in missing)
                 + ". Check that the paths still exist and try again.",
             }), 400
+        model_error = analyzer._unsupported_semantic_model_error(Path(model_paths[0]))
+        if model_error:
+            return jsonify({"error": model_error}), 400
         scope = _report_binding_scope(model_paths[0], report_paths)
         report_paths = [row["path"] for row in scope["selected"]]
         if not report_paths:
@@ -1469,6 +1488,9 @@ def api_start_analysis_job():
     try:
         if any(not isinstance(p, str) or not Path(p).is_dir() for p in models + reports):
             raise ValueError("Selected model/report folders were not found.")
+        model_error = analyzer._unsupported_semantic_model_error(Path(models[0]))
+        if model_error:
+            return jsonify({"error": model_error}), 400
         requested_reports = reports
         scope = _report_binding_scope(models[0], requested_reports)
         reports = [row["path"] for row in scope["selected"]]

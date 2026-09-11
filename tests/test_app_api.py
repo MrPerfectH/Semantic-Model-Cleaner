@@ -241,7 +241,8 @@ def test_index_ignores_unknown_layout_value():
 def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
-    model_path.mkdir()
+    (model_path / "definition").mkdir(parents=True)
+    (model_path / "definition/model.tmdl").write_text("model Model\n")
     report_path.mkdir()
 
     monkeypatch.setattr(web_app.analyzer, "analyze", lambda **_: _fake_results())
@@ -788,7 +789,8 @@ def test_api_analyze_rejects_multiple_models(monkeypatch, tmp_path):
 def test_api_analyze_includes_review_triggers(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
-    model_path.mkdir()
+    (model_path / "definition").mkdir(parents=True)
+    (model_path / "definition/model.tmdl").write_text("model Model\n")
     report_path.mkdir()
 
     monkeypatch.setattr(web_app.analyzer, "analyze", lambda **_: _fake_review_results())

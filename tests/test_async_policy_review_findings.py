@@ -28,7 +28,8 @@ def isolated_app(monkeypatch, tmp_path):
     jobs = AnalysisJobs()
     monkeypatch.setattr(webapp, '_analysis_jobs', jobs)
     model, report = tmp_path / 'Demo.SemanticModel', tmp_path / 'Demo.Report'
-    model.mkdir()
+    (model / "definition").mkdir(parents=True)
+    (model / "definition/model.tmdl").write_text("model Model\n")
     report.mkdir()
     (report / "definition.pbir").write_text(
         '{"datasetReference":{"byPath":{"path":"../Demo.SemanticModel"}}}')
@@ -84,6 +85,8 @@ def test_analysis_does_not_overwrite_a_newer_selected_scope(isolated_app, monkey
     identity = response.json['job']['id']
     newer_model = str(tmp_path / 'New.SemanticModel')
     newer_report = str(tmp_path / 'New.Report')
+    (tmp_path / 'New.SemanticModel/definition').mkdir(parents=True)
+    (tmp_path / 'New.SemanticModel/definition/model.tmdl').write_text('model New\n')
     try:
         assert read.wait(3)
         monkeypatch.setattr(webapp.analyzer, 'discover_models', lambda roots: [tmp_path / 'New.SemanticModel'])

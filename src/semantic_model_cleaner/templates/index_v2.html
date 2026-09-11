@@ -1321,7 +1321,8 @@ var initialConfig = {
   runtime: {{ runtime|tojson }},
   initialModels: {{ initial_models|tojson }},
   initialReports: {{ initial_reports|tojson }},
-  initialReportBinding: {{ initial_report_binding|default(none)|tojson }}
+  initialReportBinding: {{ initial_report_binding|default(none)|tojson }},
+  initialModelExclusions: {{ initial_model_exclusions|default([])|tojson }}
 };
 var selectedKeys = new Set();
 var selectedReportIssueKeys = new Set();
@@ -7132,6 +7133,10 @@ setActionLogVisible(readShowActionLogPreference());
 updateColumnActionButtons();
 renderPills();
 showReportBinding(initialConfig.initialReportBinding);
+if (initialConfig.initialModelExclusions.length) {
+  allWarnings = initialConfig.initialModelExclusions;
+  renderWarnings();
+}
 renderCompareSelection();
 setAppFlow('cleanup');
 </script>
