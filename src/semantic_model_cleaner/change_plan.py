@@ -88,6 +88,15 @@ def _hashes(inventory):
     return {k: _digest(v) for k, v in sorted(inventory.items())}
 
 
+def _require_supported_write_encoding(inventory):
+    unsupported = [key for key, content in inventory.items()
+                   if key.startswith('model/') and key.lower().endswith('.tmdl')
+                   and content.startswith(b'\xef\xbb\xbf')]
+    if unsupported:
+        raise PlanError('Changes are withheld for model scopes containing UTF-8 BOM TMDL files in this beta. '
+                        'Read-only analysis remains available. Files: ' + ', '.join(unsupported))
+
+
 def _result(result):
     if isinstance(result, list):
         if not all(r.get('ok') for r in result):
@@ -260,6 +269,7 @@ def create_plan(model_path, report_paths, operations):
         raise PlanError('operations must be a nonempty list of objects.')
     originals = _roots(model_path, report_paths)
     before = _inventory(originals)
+    _require_supported_write_encoding(before)
     # Destructive/refactoring plans cannot claim complete propagation while a
     # selected document is unreadable. Non-reference metadata edits can proceed.
     strict = any(o.get('kind') in {'rename', 'move', 'promote', 'report_repair', 'dax'} or
@@ -428,6 +438,8 @@ def _receipt(plan, status, **extra):
 
 def apply_plan(plan, directory):
     roots = _check(plan)
+    # Older saved previews must not bypass a newly withheld write capability.
+    _require_supported_write_encoding(_inventory(roots))
     journal = Path(directory) / f'{plan["id"]}.receipt.json'
     with _lock(roots, directory):
         if journal.exists():
