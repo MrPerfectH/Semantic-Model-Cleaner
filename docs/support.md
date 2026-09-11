@@ -6,7 +6,8 @@ Semantic Model Cleaner is a free, MIT-licensed tool that works on local project 
 
 | Input | Support |
 | --- | --- |
-| TMDL `.SemanticModel` plus PBIR `.Report` folders | Primary workflow: one selected model and one or more selected reports |
+| TMDL `.SemanticModel` plus PBIR `.Report` folders | Primary workflow: one selected model and one or more selected reports. Invalid folders and unreadable TMDL are rejected before analysis. Valid empty model/table declarations are supported. |
+| UTF-8 BOM-prefixed TMDL | Read-only analysis is supported. All saved changes in a model scope containing a BOM-prefixed TMDL file are withheld in this beta because writer handling is incomplete; older saved previews are also refused. |
 | Different model/report directory roots | Supported through explicit path selection |
 | Report extension measures | Analyzed separately from semantic model measures; promotion is an explicit workflow |
 | PBIX binaries | Not an input format; save the project in the supported text formats first |

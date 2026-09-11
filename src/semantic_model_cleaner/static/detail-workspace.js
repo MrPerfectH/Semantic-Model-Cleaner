@@ -71,8 +71,11 @@
   function roles(item) {
     var out = [];
     [['isKey', 'Key column'], ['isRelationship', 'Relationship endpoint'], ['isSortColumn', 'Sort-by target'], ['isHierarchy', 'Hierarchy level'], ['isRls', 'Row-level security'], ['isFieldParameter', 'Field parameter']].forEach(function (entry) { if (item[entry[0]]) out.push(entry[1]); });
+    var roleLabels = {Sort: 'Sort-by target', Hierarchy: 'Hierarchy level', Key: 'Key column', RLS: 'Row-level security', 'Field param': 'Field parameter'};
+    (item.otherModelUses || []).forEach(function (role) { out.push(roleLabels[role] || role); });
+    if (item.relationshipRefCount) out.push('Relationship endpoint');
     if (item.sortByColumn) out.push('Sorted by ' + item.sortByColumn);
-    return out;
+    return Array.from(new Set(out));
   }
   renderDetailLayoutContent = function (item) {
     if (!$('objectItemPrimary')) return;
@@ -87,8 +90,8 @@
     var source = item.type === 'Measure' || item.type === 'Calculated Column'
       ? '<section class="detail-card"><div class="object-card-head"><h4>DAX expression</h4><div><button type="button" class="btn btn-secondary btn-sm" data-object-action="copy">Copy</button> <button type="button" class="btn btn-secondary btn-sm" data-object-action="definition">' + (isReportItem(item) ? 'View definition' : 'Edit DAX') + '</button></div></div>' + formatCodeBlock(item.daxExpression, 'Expression unavailable in this analysis.') + '</section>'
       : card('Column source and roles', properties([['Source column', item.sourceColumn || 'Not recorded'], ['Data type', item.dataType || 'Not recorded'], ['Structural roles', roles(item).join(' · ') || 'See model dependencies below']]) + '<p class="object-note">' + esc(usageHelpText(item)) + '</p><button type="button" class="object-link" data-object-action="definition">Inspect table source</button>');
-    var consumers = '<div class="object-impact"><div><strong>' + counts.reports + '</strong><span>Selected reports</span></div><div><strong>' + counts.directRefs + '</strong><span>Direct references</span></div><div><strong>' + counts.dependents + '</strong><span>Model consumers</span></div></div>';
-    consumers += counts.directRefs ? '<button type="button" class="object-link" data-object-action="references">Inspect report references</button>' : '<p class="object-note">No direct report references. ' + esc(counts.dependents ? 'Other model items depend on this item.' : 'No downstream consumers were found in the selected scope.') + '</p>';
+    var consumers = '<div class="object-impact"><div><strong>' + counts.reports + '</strong><span>Selected reports</span></div><div><strong>' + counts.directRefs + '</strong><span>Direct references</span></div><div><strong>' + counts.dependents + '</strong><span>DAX consumers</span></div></div>';
+    consumers += counts.directRefs ? '<button type="button" class="object-link" data-object-action="references">Inspect report references</button>' : '<p class="object-note">No direct report references. ' + esc(counts.dependents ? 'Other model items depend on this item.' : (item.otherModelUseCount || item.relationshipRefCount) ? 'Retained structural metadata uses this item.' : 'No downstream consumers were found in the selected scope.') + '</p>';
     consumers += formatDetailList(item.dependentItems || item.usedByItems || [], { linkItems: true });
     if ((item.indirectVia || []).length) consumers += '<h4>Required through</h4>' + formatDetailList(item.indirectVia, { linkItems: true });
     consumers += '<button type="button" class="object-link" data-object-action="dependencies">Inspect all dependencies</button>';
