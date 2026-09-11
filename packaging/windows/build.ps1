@@ -10,6 +10,11 @@ $version = "$($identity.version)".Trim()
 $channel = "$($identity.channel)".Trim()
 if ($channel -ne "beta") { throw "Windows public-beta package must use the beta release channel" }
 
+$schemaBundleJson = python -c "import json; from semantic_model_cleaner.metadata_validation import bundle_info; print(json.dumps(bundle_info()))"
+if ($LASTEXITCODE -ne 0) { throw "Bundled schema integrity check failed" }
+$schemaBundle = $schemaBundleJson | ConvertFrom-Json
+Write-Host "Verified $($schemaBundle.schema_count) pinned Microsoft report schemas"
+
 python -m PyInstaller `
   --noconfirm `
   --clean `

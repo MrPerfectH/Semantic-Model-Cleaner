@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -44,3 +45,27 @@ def test_checksum_sidecar_round_trip_and_tamper_detection(tmp_path):
     artifact.write_bytes(b"tampered")
     with pytest.raises(ValueError, match="Checksum mismatch"):
         checksums.verify(sidecar)
+
+
+def test_schema_bundle_checkout_preserves_manifest_bytes_on_windows(tmp_path):
+    relative = Path(
+        "src/semantic_model_cleaner/schemas/microsoft-report/"
+        "fabric/item/report/definition/bookmark/1.0.0/schema.json"
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "core.autocrlf=true",
+            "checkout-index",
+            f"--prefix={tmp_path}/",
+            "--",
+            relative.as_posix(),
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+    checked_out = (tmp_path / relative).read_bytes()
+    source = (ROOT / relative).read_bytes()
+    assert checked_out == source
+    assert b"\r\n" not in checked_out
