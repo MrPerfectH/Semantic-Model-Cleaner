@@ -262,7 +262,7 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
             raise RuntimeError("Verification PATH unexpectedly exposes Python")
 
         occupied = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        occupied.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        occupied.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         occupied.bind(("127.0.0.1", 5001))
         occupied.listen(1)
         with log_path.open("w", encoding="utf-8") as log:
