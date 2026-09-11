@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from semantic_model_cleaner import analyzer
+from semantic_model_cleaner import analyzer, cli
 
 
 def _write_workspace(tmp_path: Path) -> Path:
@@ -233,7 +233,7 @@ def _snapshot(workspace: Path) -> dict[str, bytes]:
 
 def _run_cli(argv: list[str]) -> int:
     with pytest.raises(SystemExit) as excinfo:
-        analyzer.main(argv)
+        cli.main(argv)
     return int(excinfo.value.code or 0)
 
 
@@ -296,7 +296,7 @@ def test_dry_run_lists_candidates_and_leaves_files_untouched(tmp_path, capsys):
     exit_code = _run_cli(["clean-stale", str(workspace), "--format", "json"])
     payload = _json_output(capsys)
 
-    assert exit_code == 2
+    assert exit_code == 1
     assert payload["projectPath"] == str(workspace)
     assert "workspace" not in payload
     assert payload["dry_run"] is True
@@ -314,11 +314,14 @@ def test_dry_run_text_output_lists_candidate_details(tmp_path, capsys):
     exit_code = _run_cli(["clean-stale", str(workspace)])
     out = capsys.readouterr().out
 
-    assert exit_code == 2
+    assert exit_code == 1
     assert f"Project path: {workspace}" in out
     assert "Stale cleanup candidates:" in out
     assert "[formatting] Executive" in out
     assert "Dry run: nothing was written" in out
+
+    assert "smc plan" in out
+    assert "Re-run with --apply" not in out
 
 
 def test_kind_filter_limits_candidates(tmp_path, capsys):
@@ -334,56 +337,48 @@ def test_kind_filter_limits_candidates(tmp_path, capsys):
     assert payload["counts_by_kind"]["bookmark"] == 0
 
 
-def test_apply_removes_stale_issues_and_keeps_error_issues(tmp_path, capsys):
+def test_apply_is_withheld_and_keeps_all_stale_and_error_issues(tmp_path, capsys):
     workspace = _write_workspace(tmp_path)
-    before = analyzer.analyze(workspace.resolve())
-    errors_before = _error_issue_count(before)
-
+    before = _snapshot(workspace)
     exit_code = _run_cli(["clean-stale", str(workspace), "--apply", "--no-backup", "--format", "json"])
     payload = _json_output(capsys)
-
-    assert exit_code == 0
-    assert payload["ok"] is True
-    assert payload["applied"] is True
-    assert payload["removed_count"] > 0
-    assert payload["updated_files"]
-    assert payload["backup_paths"] == []
-
-    after = analyzer.analyze(workspace.resolve())
-    assert analyzer.eligible_stale_issues(after) == []
-    assert _error_issue_count(after) == errors_before
-
+    assert exit_code == 2
+    assert payload["ok"] is False
+    assert payload["applied"] is False
+    assert payload["dry_run"] is True
+    assert payload["candidate_count"] > 0
+    assert payload["removed_count"] == 0
+    assert payload["updated_files"] == payload["backup_paths"] == []
+    assert payload["errors"] == [payload["error"]]
+    assert "smc plan" in payload["error"]
+    assert _snapshot(workspace) == before
     second_exit = _run_cli(["clean-stale", str(workspace), "--format", "json"])
-    assert second_exit == 0
-    assert _json_output(capsys)["candidate_count"] == 0
+    assert second_exit == 1
+    assert _json_output(capsys)["candidate_count"] == payload["candidate_count"]
 
 
-def test_apply_creates_a_backup_per_report_by_default(tmp_path, capsys):
+def test_withheld_apply_does_not_create_backups(tmp_path, capsys):
     workspace = _write_workspace(tmp_path)
-    report = workspace / "Reports" / "Executive.Report"
-    before = _snapshot(report)
-
+    before = _snapshot(tmp_path)
     exit_code = _run_cli(["clean-stale", str(workspace), "--apply", "--format", "json"])
     payload = _json_output(capsys)
-
-    assert exit_code == 0
-    assert len(payload["backup_paths"]) == 1
-    backup = Path(payload["backup_paths"][0])
-    assert backup.is_dir()
-    assert _snapshot(backup) == before
+    assert exit_code == 2
+    assert payload["backup_paths"] == []
+    assert _snapshot(tmp_path) == before
 
 
-def test_apply_with_no_candidates_exits_zero(tmp_path, capsys):
+def test_apply_with_no_candidates_is_still_withheld(tmp_path, capsys):
     workspace = _write_workspace(tmp_path)
-    _run_cli(["clean-stale", str(workspace), "--apply", "--no-backup", "--format", "json"])
-    capsys.readouterr()
-
-    exit_code = _run_cli(["clean-stale", str(workspace), "--apply", "--no-backup", "--format", "json"])
+    _add_binding_variants(workspace)
+    before = _snapshot(workspace)
+    exit_code = _run_cli(["clean-stale", str(workspace), "--report", "LiveConnected", "--apply", "--format", "json"])
     payload = _json_output(capsys)
-
-    assert exit_code == 0
+    assert exit_code == 2
+    assert payload["ok"] is False
     assert payload["candidate_count"] == 0
     assert payload["removed_count"] == 0
+    assert payload["applied"] is False
+    assert _snapshot(workspace) == before
 
 
 def test_no_subcommand_invocation_still_works(tmp_path, capsys):
@@ -468,19 +463,19 @@ def test_report_filter_composes_with_the_bound_set(tmp_path, capsys):
 
     # ...while an unbound report is filtered out before --report is applied.
     with pytest.raises(SystemExit) as excinfo:
-        analyzer.main(["clean-stale", str(workspace), "--report", "Unbound", "--format", "json"])
-    assert int(excinfo.value.code or 0) == 1
+        cli.main(["clean-stale", str(workspace), "--report", "Unbound", "--format", "json"])
+    assert int(excinfo.value.code or 0) == 2
     assert "No matching *.Report found" in capsys.readouterr().err
 
 
-def test_no_bound_report_exits_one_with_a_pointer_to_all_reports(tmp_path, capsys):
+def test_no_bound_report_exits_two_with_a_pointer_to_all_reports(tmp_path, capsys):
     workspace = _write_workspace(tmp_path)
     (workspace / "Reports" / "Executive.Report" / "definition.pbir").unlink()
 
     exit_code = _run_cli(["clean-stale", str(workspace), "--format", "json"])
     err = capsys.readouterr().err
 
-    assert exit_code == 1
+    assert exit_code == 2
     assert "no report is bound to 'Sales'" in err
     assert "--all-reports" in err
 

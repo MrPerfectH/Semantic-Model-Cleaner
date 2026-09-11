@@ -10,7 +10,7 @@ Usage:
     semantic-model-cleaner --models-path <path> [<path> ...] --reports-path <path> [<path> ...]
     semantic-model-cleaner [search_path] --interactive
     semantic-model-cleaner --format xlsx -o report.xlsx
-    semantic-model-cleaner clean-stale [project_path] [--kind ...] [--apply]
+    semantic-model-cleaner clean-stale [project_path] [--kind ...]
 
 Output: Markdown report, JSON, or Excel (.xlsx) showing all measures/columns and their usage status.
 The analyzer expects exactly one semantic model and one or more reports.
@@ -5173,17 +5173,15 @@ def run_stale_cleanup(
     apply_changes: bool = False,
     create_backups: bool = True,
     output_format: str = "text",
+    analysis_error: Optional[str] = None,
 ) -> tuple[int, dict]:
-    """Preview or apply stale PBIR metadata cleanup. Returns (exit_code, payload).
+    """Read-only stale PBIR preview; direct apply requests are withheld.
 
-    Exit codes follow the CI convention: 0 = nothing to clean / applied OK,
-    2 = dry run found candidates, 1 = engine or validation failure (in which
-    case the transactional engine wrote nothing).
+    Exit codes: 0 = no candidates, 1 = candidates, 2 = input/analysis failure
+    or a withheld write. create_backups remains accepted for compatibility;
+    this entrypoint never creates backups or mutates report artifacts.
     """
-    from semantic_model_cleaner import report_writer
-
     candidates, unresolved = collect_stale_cleanup_candidates(results, reports, kinds)
-    entries = [candidate["entry"] for candidate in candidates]
 
     counts_by_kind = {kind: 0 for kind in STALE_CLEANUP_KIND_CHOICES}
     counts_by_report: dict[str, int] = defaultdict(int)
@@ -5200,7 +5198,7 @@ def run_stale_cleanup(
         "boundReports": list((binding_summary or {}).get("boundReports", [])),
         "skippedReports": list((binding_summary or {}).get("skippedReports", [])),
         "applied": False,
-        "dry_run": not apply_changes,
+        "dry_run": True,
         "candidate_count": len(candidates),
         "counts_by_kind": counts_by_kind,
         "counts_by_report": dict(sorted(counts_by_report.items())),
@@ -5213,43 +5211,32 @@ def run_stale_cleanup(
         "removed_count": 0,
         "updated_files": [],
         "error": None,
+        "errors": [],
     }
 
-    if not apply_changes or not entries:
-        if apply_changes:
-            payload["applied"] = True
-            payload["dry_run"] = False
-        exit_code = 2 if (not apply_changes and candidates) else 0
-        _print_stale_cleanup(payload, output_format)
-        return exit_code, payload
-
-    try:
-        if create_backups:
-            for report_path_str in sorted({candidate["reportPath"] for candidate in candidates}):
-                report_path = Path(report_path_str)
-                if not report_path.exists():
-                    raise FileNotFoundError(f"Report path not found: {report_path}")
-                payload["backup_paths"].append(str(report_writer.create_backup(report_path)))
-        result = report_writer.cleanup_stale_metadata_selectors(entries=entries, dry_run=False)
-    except Exception as exc:  # noqa: BLE001 - surfaced to the user as exit code 1
+    error = analysis_error
+    if not error and results.get("coverage", {}).get("complete") is False:
+        details = "; ".join(
+            entry.get("message", "") for entry in results["coverage"].get("limitations", [])
+            if entry.get("message")
+        )
+        error = "Analysis coverage is incomplete." + (f" {details}" if details else "")
+    if not error and unresolved:
+        error = "Stale cleanup preview is incomplete: some report paths could not be resolved."
+    if apply_changes:
+        error = (
+            "Direct clean-stale --apply writes are disabled. Use smc plan to save and "
+            "review a clean_stale operation, then smc apply, smc verify and smc restore."
+        )
+    if error:
         payload["ok"] = False
-        payload["error"] = str(exc)
-        _print_stale_cleanup(payload, output_format)
-        return 1, payload
-
-    if not result.get("ok"):
-        payload["ok"] = False
-        payload["error"] = result.get("error") or "Stale cleanup failed"
-        payload["validation_errors"] = result.get("validation_errors") or []
-        _print_stale_cleanup(payload, output_format)
-        return 1, payload
-
-    payload["applied"] = True
-    payload["dry_run"] = False
-    payload["removed_count"] = result.get("removed_count", 0)
-    payload["updated_files"] = result.get("updated_files", [])
+        payload["error"] = error
+        payload["errors"] = [error]
+        exit_code = 2
+    else:
+        exit_code = 1 if candidates else 0
     _print_stale_cleanup(payload, output_format)
-    return 0, payload
+    return exit_code, payload
 
 
 def _print_stale_cleanup(payload: dict, output_format: str) -> None:
@@ -5306,25 +5293,11 @@ def _format_stale_cleanup_text(payload: dict) -> list[str]:
         lines.append(f"Error: {payload['error']}")
         for validation_error in payload.get("validation_errors", []):
             lines.append(f"  - {validation_error}")
-        lines.append("Nothing was written: the cleanup is transactional.")
-        return lines
-
-    if payload["applied"]:
-        lines.append(f"Removed {payload['removed_count']} stale entry/entries.")
-        if payload["updated_files"]:
-            lines.append("Updated files:")
-            for updated in payload["updated_files"]:
-                lines.append(f"  {updated}")
-        if payload["backup_paths"]:
-            lines.append("Backups:")
-            for backup in payload["backup_paths"]:
-                lines.append(f"  {backup}")
-        else:
-            lines.append("No backup was created (--no-backup).")
+        lines.append("Nothing was written.")
         return lines
 
     if payload["candidate_count"]:
-        lines.append("Dry run: nothing was written. Re-run with --apply to remove them.")
+        lines.append("Dry run: nothing was written. Use smc plan to save and review cleanup, then smc apply.")
     else:
         lines.append("Nothing to clean.")
     return lines
@@ -5373,8 +5346,9 @@ def _build_clean_stale_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="smc clean-stale",
         description=(
-            "Remove stale PBIR metadata (dead visual selectors, bookmark projections "
-            "and formatting rules) in bulk. Dry-run by default."
+            "Preview stale PBIR metadata (dead visual selectors, bookmark projections "
+            "and formatting rules). Read-only; writes require a saved smc plan. "
+            "Exit codes: 0 clean, 1 candidates, 2 input/analysis error or withheld apply."
         ),
     )
     parser.add_argument(
@@ -5424,12 +5398,12 @@ def _build_clean_stale_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--apply",
         action="store_true",
-        help="Write the removals (default is a dry run that writes nothing)",
+        help="Withheld in beta: use smc plan, review its diffs, then smc apply",
     )
     parser.add_argument(
         "--no-backup",
         action="store_true",
-        help="Skip the per-report backup that --apply creates by default",
+        help="Deprecated compatibility flag; does not enable writes or skip plan receipts",
     )
     parser.add_argument(
         "--format",
@@ -5441,64 +5415,56 @@ def _build_clean_stale_parser() -> argparse.ArgumentParser:
 
 
 def clean_stale_command(argv: list[str]) -> int:
-    """`smc clean-stale` subcommand. Returns the process exit code."""
+    """`smc clean-stale` read-only preview with the public 0/1/2 exit contract."""
     args = _build_clean_stale_parser().parse_args(argv)
-
-    workspace, model_roots, report_roots = _resolve_search_roots(
-        args.project_path, args.models_path, args.reports_path
-    )
-    models = filter_models(discover_models(model_roots), args.model)
-    discovered_reports = discover_reports(report_roots)
-    _require_single_model(models)
-
-    # Default to the web UI's invariant: only reports whose definition.pbir binds
-    # them to the selected model. --report filters compose on top of that set.
-    if args.all_reports:
-        reports = filter_reports(discovered_reports, args.report)
-        binding_summary = {
-            "allReports": True,
-            "model": model_label(models[0]),
-            "boundReports": [report_display_name(r) for r in reports],
-            "skippedReports": [],
-        }
-    else:
-        bound, skipped = partition_reports_by_binding(discovered_reports, models[0])
+    workspace = Path(args.project_path).resolve()
+    reports = []
+    binding_summary = None
+    results = {}
+    error = None
+    try:
+        if not workspace.is_dir() and not args.models_path and not args.reports_path:
+            raise ValueError(f"workspace path does not exist: {workspace}")
+        model_roots = [Path(p).resolve() for p in args.models_path] if args.models_path else [workspace]
+        report_roots = [Path(p).resolve() for p in args.reports_path] if args.reports_path else [workspace]
+        for path in model_roots + report_roots:
+            if not path.is_dir():
+                raise ValueError(f"search path does not exist: {path}")
+        models = filter_models(discover_models(model_roots), args.model)
+        if len(models) != 1:
+            raise ValueError(f"Exactly one semantic model must be selected; found {len(models)}.")
+        discovered_reports = discover_reports(report_roots)
+        if args.all_reports:
+            bound, skipped = discovered_reports, []
+        else:
+            bound, skipped = partition_reports_by_binding(discovered_reports, models[0])
         reports = filter_reports(bound, args.report)
         binding_summary = {
-            "allReports": False,
+            "allReports": args.all_reports,
             "model": model_label(models[0]),
             "boundReports": [report_display_name(r) for r in bound],
             "skippedReports": skipped,
         }
-        if not bound:
-            print(
-                f"Error: no report is bound to '{binding_summary['model']}'. "
-                "Pass --all-reports to analyze every discovered report anyway.",
-                file=sys.stderr,
+        if not bound and not args.all_reports:
+            raise ValueError(
+                f"no report is bound to '{binding_summary['model']}'. "
+                "Pass --all-reports to analyze every discovered report anyway."
             )
-            return 1
-
-    try:
+        if not reports:
+            raise ValueError("No matching *.Report found in the selected scope.")
         results = analyze(
-            workspace,
-            model_paths=models,
-            report_paths=reports,
-            model_search_roots=model_roots,
-            report_search_roots=report_roots,
+            workspace, model_paths=models, report_paths=reports,
+            model_search_roots=model_roots, report_search_roots=report_roots,
         )
-    except UnsupportedSemanticModelError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
+    except (Exception, SystemExit) as exc:
+        error = f"Analysis failed (exit {exc.code})." if isinstance(exc, SystemExit) else str(exc)
+        print(f"Error: {error}", file=sys.stderr)
 
     exit_code, _payload = run_stale_cleanup(
-        results=results,
-        reports=reports,
-        workspace=workspace,
-        binding_summary=binding_summary,
-        kinds=args.kind,
-        apply_changes=args.apply,
-        create_backups=not args.no_backup,
-        output_format=args.format,
+        results=results, reports=reports, workspace=workspace,
+        binding_summary=binding_summary, kinds=args.kind,
+        apply_changes=args.apply, create_backups=not args.no_backup,
+        output_format=args.format, analysis_error=error,
     )
     return exit_code
 
@@ -5515,8 +5481,9 @@ def main(argv: Optional[list[str]] = None):
     parser = argparse.ArgumentParser(
         description="Analyze one TMDL semantic model against one or more PBIR reports",
         epilog=(
-            "Subcommand: smc clean-stale <project_path> [--kind ...] [--apply] "
-            "-- remove stale PBIR metadata in bulk (see `smc clean-stale --help`)."
+            "Subcommand: smc clean-stale <project_path> [--kind ...] "
+            "-- preview stale PBIR metadata; use smc plan for reviewed changes "
+            "(see `smc clean-stale --help`)."
         ),
     )
     parser.add_argument(

@@ -24,7 +24,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
 
-from . import __version__, analyzer, experiments, file_transaction, model_compare, report_writer, tmdl_writer
+from . import __version__, analyzer, experiments, model_compare, report_writer, tmdl_writer
 from . import change_plan, cleanup_policy
 from .analysis_jobs import AnalysisJobs
 
@@ -38,6 +38,31 @@ def _invalidates_analysis(fn):
             _state["last_results"] = None
             return fn(*args, **kwargs)
     return guarded
+
+
+def _reviewed_plan_required(kind):
+    message = (
+        "Direct writes are disabled. Create a saved plan with POST /api/plans, "
+        "review its validation and file diffs, then apply that plan with "
+        "POST /api/plans/<plan_id>/apply. CLI: use smc plan, smc apply, "
+        "smc verify and smc restore."
+    )
+    return jsonify({"ok": False, "code": "REVIEWED_PLAN_REQUIRED", "error": message,
+                    "errors": [message], "written": False, "plan_endpoint": "/api/plans",
+                    "operation_kind": kind}), 409
+
+
+def _legacy_preview_only(kind, aliases=("dry_run",)):
+    """Retain read-only compatibility; no request flag can enable direct writes."""
+    def decorate(fn):
+        @wraps(fn)
+        def preview(*args, **kwargs):
+            data = request.get_json(silent=True)
+            if not isinstance(data, dict) or not any(data.get(key) is True for key in aliases):
+                return _reviewed_plan_required(kind)
+            return fn(*args, **kwargs)
+        return preview
+    return decorate
 
 
 def _analysis_source_fingerprint(roots, progress=None):
@@ -94,18 +119,6 @@ _state = {
 _WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:(?![\\/])")
 
 
-def _cleanup_transaction_roots(model_path: Path | None = None, report_paths: list[Path] | None = None) -> list[Path]:
-    roots: list[Path] = []
-    if model_path is not None:
-        roots.append(model_path / "definition")
-    roots.extend(report_path / "definition" for report_path in report_paths or [])
-    return roots
-
-
-def _restore_cleanup_transaction(roots: list[Path], snapshot: dict[Path, str]) -> dict:
-    return file_transaction.restore_artifact_files(roots, snapshot)
-
-
 def _cleanup_action_model_path(data: dict) -> tuple[Path | None, tuple[dict, int] | None]:
     model_path_str = data.get("model_path")
     if not model_path_str:
@@ -146,20 +159,6 @@ def _cleanup_action_plan_response(
     if auto_refresh is not None:
         plan["auto_refresh"] = auto_refresh
     return plan
-
-
-def _cleanup_action_invalid_results(plan: dict) -> list[dict]:
-    return [
-        {
-            **entry,
-            "ok": False,
-            "validated": False,
-            "written": False,
-            "skipped": bool(entry.get("ok")),
-            "error": entry.get("error") or "Skipped because another action in the batch is invalid.",
-        }
-        for entry in plan.get("actions", [])
-    ]
 
 
 def _normalize_browse_path(raw: str) -> str:
@@ -1621,60 +1620,9 @@ def api_export():
 
 
 @app.route("/api/action", methods=["POST"])
-@_invalidates_analysis
 def api_action():
-    """Apply actions (move_to_folder, move_to_table_group, hide, unhide, delete)."""
-    try:
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({"error": "No JSON body"}), 400
-
-        actions = data.get("actions", [])
-        if not actions:
-            return jsonify({"error": "No actions specified"}), 400
-
-        model_path, error = _cleanup_action_model_path(data)
-        if error:
-            payload, status = error
-            return jsonify(payload), status
-
-        create_backup = bool(data.get("create_backup", False))
-        plan = _cleanup_action_plan_response(
-            model_path,
-            actions,
-            create_backup=create_backup,
-            auto_refresh=data.get("auto_refresh"),
-        )
-        git_warning = tmdl_writer.check_git_dirty(model_path)
-        if not plan["ok"]:
-            results = _cleanup_action_invalid_results(plan)
-            return jsonify({
-                "ok": False,
-                "results": results,
-                "errors": [result.get("error") for result in results if result.get("error")],
-                "plan": plan,
-                "backup_path": None,
-                "git_warning": git_warning,
-            })
-
-        backup_path = None
-        if create_backup:
-            backup_path = str(tmdl_writer.create_backup(model_path))
-            _state["backup_path"] = backup_path
-
-        results = tmdl_writer.apply_actions(model_path, actions)
-        ok = all(result.get("ok") for result in results)
-
-        return jsonify({
-            "ok": ok,
-            "results": results,
-            "errors": [result.get("error") for result in results if result.get("error")],
-            "plan": plan,
-            "backup_path": backup_path,
-            "git_warning": git_warning,
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    """Artifact writes require a saved, reviewed plan."""
+    return _reviewed_plan_required("actions")
 
 
 @app.route("/api/action/preview", methods=["POST"])
@@ -1711,59 +1659,15 @@ def api_action_preview():
 
 
 @app.route("/api/dax", methods=["POST"])
-@_invalidates_analysis
 def api_dax():
-    """Update DAX for a measure or calculated column."""
-    try:
-        data = request.get_json(silent=True) or {}
-        model_path_str = data.get("model_path") or (_state["model_paths"][0] if _state["model_paths"] else None)
-        table = (data.get("table") or "").strip()
-        name = (data.get("name") or "").strip()
-        item_type = (data.get("item_type") or "").strip()
-        dax_expression = data.get("dax_expression")
-
-        if not model_path_str:
-            return jsonify({"error": "No model path specified"}), 400
-        if not table or not name or not item_type:
-            return jsonify({"error": "Missing required fields: table, name, item_type"}), 400
-        if item_type not in ("Measure", "Calculated Column"):
-            return jsonify({"error": "DAX editing is only supported for Measure and Calculated Column"}), 400
-        if dax_expression is None:
-            return jsonify({"error": "Missing required field: dax_expression"}), 400
-
-        model_path = Path(model_path_str)
-        if not model_path.exists():
-            return jsonify({"error": f"Model path not found: {model_path}"}), 400
-
-        if data.get("create_backup", False):
-            _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
-
-        git_warning = tmdl_writer.check_git_dirty(model_path)
-        result = tmdl_writer.set_dax_expression(
-            model_path=model_path,
-            table=table,
-            name=name,
-            item_type=item_type,
-            dax_expression=str(dax_expression),
-            source_file=data.get("source_file") or data.get("sourceFile"),
-        )
-
-        if not result.get("ok"):
-            return jsonify(result), 400
-
-        return jsonify({
-            "result": result,
-            "backup_path": _state["backup_path"],
-            "git_warning": git_warning,
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    """Artifact writes require a saved, reviewed plan."""
+    return _reviewed_plan_required("dax")
 
 
 @app.route("/api/report-measure/migrate", methods=["POST"])
-@_invalidates_analysis
+@_legacy_preview_only("promote")
 def api_migrate_report_measure():
-    """Promote a report-level measure into the semantic model."""
+    """Preview promotion of a report-level measure into the semantic model."""
     try:
         data = request.get_json(silent=True) or {}
         model_path_str = data.get("model_path") or (_state["model_paths"][0] if _state["model_paths"] else None)
@@ -1791,66 +1695,20 @@ def api_migrate_report_measure():
             model_path=model_path, report_path=report_path, entity_name=table,
             measure_name=name, target_table=target_table, target_name=target_name,
             dry_run=True, **options)
-        if not preview.get("ok") or data.get("dry_run", False):
-            return jsonify({"ok": preview.get("ok", False), "result": preview}), (200 if preview.get("ok") else 400)
-        backup_paths = {}
-        if data.get("create_backup", False):
-            _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
-            backup_paths["model"] = _state["backup_path"]
-            backup_paths["report"] = str(report_writer.create_backup(report_path))
-
-        git_warning = tmdl_writer.check_git_dirty(model_path)
-        transaction_roots = _cleanup_transaction_roots(model_path, [report_path])
-        snapshot = file_transaction.snapshot_artifact_files(transaction_roots)
-        try:
-            result = report_writer.migrate_measure_to_model(
-                model_path=model_path,
-                report_path=report_path,
-                entity_name=table,
-                measure_name=name,
-                target_table=target_table,
-                target_name=target_name,
-                **options,
-            )
-        except Exception as exc:
-            rollback = _restore_cleanup_transaction(transaction_roots, snapshot)
-            return jsonify({
-                "ok": False,
-                "error": str(exc),
-                "rolled_back": rollback["ok"],
-                "rollback": rollback,
-            }), 400
-        if not result.get("ok"):
-            rollback = _restore_cleanup_transaction(transaction_roots, snapshot)
-            result = {
-                **result,
-                "rolled_back": rollback["ok"],
-                "rollback": rollback,
-            }
-            return jsonify(result), 400
-
-        return jsonify({
-            "result": result,
-            "backup_path": _state["backup_path"],
-            "backup_paths": backup_paths or None,
-            "git_warning": git_warning,
-        })
+        return jsonify({"ok": preview.get("ok", False), "result": preview}), (200 if preview.get("ok") else 400)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/measure/move", methods=["POST"])
-@_invalidates_analysis
+@_legacy_preview_only("move")
 def api_move_measure_to_table():
-    """Move model measures to another table and rewrite selected PBIR reports."""
-    transaction_roots = []
-    snapshot = None
+    """Preview a measure move and its reference updates in selected PBIR reports."""
     try:
         data = request.get_json(silent=True) or {}
         model_path_str = data.get("model_path") or (_state["model_paths"][0] if _state["model_paths"] else None)
         moves = data.get("moves") or []
         report_path_values = data.get("report_paths") or _state["report_paths"]
-        dry_run = bool(data.get("dry_run", False))
 
         if not model_path_str:
             return jsonify({"error": "No model path specified"}), 400
@@ -1881,73 +1739,23 @@ def api_move_measure_to_table():
             return jsonify(report_preview), 400
 
         git_warning = tmdl_writer.check_git_dirty(model_path)
-        if dry_run:
-            return jsonify({
-                "ok": True,
-                "dry_run": True,
-                "model_result": model_preview,
-                "report_result": report_preview,
-                "selected_report_count": len(report_paths),
-                "git_warning": git_warning,
-            })
-
-        backup_paths = {"model": None, "reports": []}
-        if data.get("create_backup", False):
-            _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
-            backup_paths["model"] = _state["backup_path"]
-            for report_path in report_paths:
-                backup_paths["reports"].append(str(report_writer.create_backup(report_path)))
-
-        transaction_roots = _cleanup_transaction_roots(model_path, report_paths)
-        snapshot = file_transaction.snapshot_artifact_files(transaction_roots)
-        model_result = tmdl_writer.move_measures_to_tables(model_path, moves, dry_run=False)
-        if not model_result.get("ok"):
-            rollback = _restore_cleanup_transaction(transaction_roots, snapshot)
-            model_result = {
-                **model_result,
-                "rolled_back": rollback["ok"],
-                "rollback": rollback,
-            }
-            return jsonify(model_result), 400
-
-        report_result = report_writer.rewrite_measure_table_references(
-            report_paths=report_paths,
-            moves=moves,
-            dry_run=False,
-        )
-        if not report_result.get("ok"):
-            rollback = _restore_cleanup_transaction(transaction_roots, snapshot)
-            return jsonify({
-                "ok": False,
-                "error": report_result.get("error") or "Report rewrite failed",
-                "model_result": model_result,
-                "report_result": report_result,
-                "rolled_back": rollback["ok"],
-                "rollback": rollback,
-            }), 400
-
         return jsonify({
             "ok": True,
-            "dry_run": False,
-            "model_result": model_result,
-            "report_result": report_result,
-            "backup_path": _state["backup_path"],
-            "backup_paths": backup_paths,
+            "dry_run": True,
+            "model_result": model_preview,
+            "report_result": report_preview,
             "selected_report_count": len(report_paths),
             "git_warning": git_warning,
         })
+
     except Exception as e:
-        rollback = _restore_cleanup_transaction(transaction_roots, snapshot) if snapshot is not None else None
-        return jsonify({"ok": False, "error": str(e),
-                        "rolled_back": bool(rollback and rollback["ok"]), "rollback": rollback}), 500
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/model/rename", methods=["POST"])
-@_invalidates_analysis
+@_legacy_preview_only("rename")
 def api_rename_model_metadata():
-    """Rename semantic-model tables/measures and rewrite selected PBIR reports."""
-    transaction_roots = []
-    snapshot = None
+    """Preview model renames and their reference updates in selected PBIR reports."""
     try:
         data = request.get_json(silent=True) or {}
         model_path_str = data.get("model_path") or (_state["model_paths"][0] if _state["model_paths"] else None)
@@ -1955,7 +1763,6 @@ def api_rename_model_metadata():
         measure_renames = data.get("measure_renames") or []
         column_renames = data.get("column_renames") or []
         report_path_values = data.get("report_paths") or _state["report_paths"]
-        dry_run = bool(data.get("dry_run", False))
 
         if not model_path_str:
             return jsonify({"error": "No model path specified"}), 400
@@ -1994,158 +1801,76 @@ def api_rename_model_metadata():
             return jsonify(report_preview), 400
 
         git_warning = tmdl_writer.check_git_dirty(model_path)
-        if dry_run:
-            return jsonify({
-                "ok": True,
-                "dry_run": True,
-                "model_result": model_preview,
-                "report_result": report_preview,
-                "selected_report_count": len(report_paths),
-                "git_warning": git_warning,
-            })
-
-        backup_paths = {"model": None, "reports": []}
-        if data.get("create_backup", False):
-            _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
-            backup_paths["model"] = _state["backup_path"]
-            for report_path in report_paths:
-                backup_paths["reports"].append(str(report_writer.create_backup(report_path)))
-
-        transaction_roots = _cleanup_transaction_roots(model_path, report_paths)
-        snapshot = file_transaction.snapshot_artifact_files(transaction_roots)
-        model_result = tmdl_writer.rename_model_metadata(
-            model_path,
-            table_renames=table_renames,
-            measure_renames=measure_renames,
-            column_renames=column_renames,
-            dry_run=False,
-        )
-        if not model_result.get("ok"):
-            rollback = _restore_cleanup_transaction(transaction_roots, snapshot)
-            model_result = {
-                **model_result,
-                "rolled_back": rollback["ok"],
-                "rollback": rollback,
-            }
-            return jsonify(model_result), 400
-
-        report_result = report_writer.rewrite_model_reference_changes(
-            report_paths=report_paths,
-            table_renames=table_renames,
-            measure_renames=measure_renames,
-            column_renames=column_renames,
-            dry_run=False,
-        )
-        if not report_result.get("ok"):
-            rollback = _restore_cleanup_transaction(transaction_roots, snapshot)
-            return jsonify({
-                "ok": False,
-                "error": report_result.get("error") or "Report rewrite failed",
-                "model_result": model_result,
-                "report_result": report_result,
-                "rolled_back": rollback["ok"],
-                "rollback": rollback,
-            }), 400
-
         return jsonify({
             "ok": True,
-            "dry_run": False,
-            "model_result": model_result,
-            "report_result": report_result,
-            "backup_path": _state["backup_path"],
-            "backup_paths": backup_paths,
+            "dry_run": True,
+            "model_result": model_preview,
+            "report_result": report_preview,
             "selected_report_count": len(report_paths),
             "git_warning": git_warning,
         })
+
     except Exception as e:
-        rollback = _restore_cleanup_transaction(transaction_roots, snapshot) if snapshot is not None else None
-        return jsonify({"ok": False, "error": str(e),
-                        "rolled_back": bool(rollback and rollback["ok"]), "rollback": rollback}), 500
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/report/cleanup-stale", methods=["POST"])
-@_invalidates_analysis
+@_legacy_preview_only("clean_stale", aliases=("dry_run", "dryRun"))
 def api_cleanup_stale_report_metadata():
-    """Remove stale formatting selectors from selected PBIR report files."""
+    """Preview removing stale formatting selectors from selected PBIR report files."""
     try:
         data = request.get_json(silent=True) or {}
         entries = data.get("entries", [])
-        dry_run = bool(data.get("dry_run") or data.get("dryRun"))
         if not entries:
             return jsonify({"error": "No stale selector entries provided"}), 400
 
-        backup_paths = []
-        if data.get("create_backup", False) and not dry_run:
-            for report_path_str in sorted({str(entry.get("report_path", "") or "").strip() for entry in entries if entry.get("report_path")}):
-                report_path = Path(report_path_str)
-                if not report_path.exists():
-                    return jsonify({"error": f"Report path not found: {report_path}"}), 400
-                backup_paths.append(str(report_writer.create_backup(report_path)))
-
-        result = report_writer.cleanup_stale_metadata_selectors(entries=entries, dry_run=dry_run)
+        result = report_writer.cleanup_stale_metadata_selectors(entries=entries, dry_run=True)
         if not result.get("ok"):
             return jsonify(result), 400
 
         return jsonify({
             "result": result,
             "removed_count": result.get("removed_count", 0),
-            "backup_paths": backup_paths or None,
+            "backup_paths": None,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/report/issues/apply", methods=["POST"])
-@_invalidates_analysis
+@_legacy_preview_only("report_issues", aliases=("dry_run", "dryRun"))
 def api_apply_report_issue_actions():
-    """Apply exact report-health row actions to PBIR report files."""
+    """Preview exact report-health row actions to PBIR report files."""
     try:
         data = request.get_json(silent=True) or {}
         entries = data.get("entries", [])
-        dry_run = bool(data.get("dry_run") or data.get("dryRun"))
         if not entries:
             return jsonify({"error": "No report issue actions provided"}), 400
 
-        backup_paths = []
-        if data.get("create_backup", False) and not dry_run:
-            for report_path_str in sorted({str(entry.get("report_path", "") or "").strip() for entry in entries if entry.get("report_path")}):
-                report_path = Path(report_path_str)
-                if not report_path.exists():
-                    return jsonify({"error": f"Report path not found: {report_path}"}), 400
-                backup_paths.append(str(report_writer.create_backup(report_path)))
-
-        result = report_writer.apply_report_issue_actions(entries=entries, dry_run=dry_run)
+        result = report_writer.apply_report_issue_actions(entries=entries, dry_run=True)
         if not result.get("ok"):
             return jsonify(result), 400
 
         return jsonify({
             "result": result,
-            "dry_run": dry_run,
+            "dry_run": True,
             "updated_reference_count": result.get("updated_reference_count", 0),
             "updated_file_count": result.get("updated_file_count", 0),
-            "backup_paths": backup_paths or None,
+            "backup_paths": None,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/report/repair-references", methods=["POST"])
-@_invalidates_analysis
+@_legacy_preview_only("report_repair", aliases=("dry_run", "dryRun"))
 def api_repair_report_references():
-    """Repair report references that point at a renamed semantic-model table.
-
-    Report-only: this rewrites the selected PBIR reports to point at the
-    user-chosen replacement table and NEVER renames the model (the model is
-    already correct in the rename-fallout case). It routes through the
-    transactional rewrite engine (snapshot + validate + rollback) and supports
-    dry_run so the UI can preview the true reference count before writing.
-    """
+    """Preview repairs to selected PBIR table or column references."""
     try:
         data = request.get_json(silent=True) or {}
         table_renames = data.get("table_renames") or []
         column_renames = data.get("column_renames") or []
         report_path_values = data.get("report_paths") or _state["report_paths"]
-        dry_run = bool(data.get("dry_run") or data.get("dryRun"))
 
         for label, renames in (("table_renames", table_renames), ("column_renames", column_renames)):
             if not isinstance(renames, list) or any(not isinstance(entry, dict) for entry in renames):
@@ -2182,16 +1907,11 @@ def api_repair_report_references():
             if not report_path.exists():
                 return jsonify({"error": f"Report path not found: {report_path}"}), 400
 
-        backup_paths = []
-        if data.get("create_backup", False) and not dry_run:
-            for report_path in report_paths:
-                backup_paths.append(str(report_writer.create_backup(report_path)))
-
         result = report_writer.rewrite_model_reference_changes(
             report_paths=report_paths,
             table_renames=clean_table_renames or None,
             column_renames=clean_column_renames or None,
-            dry_run=dry_run,
+            dry_run=True,
         )
         if not result.get("ok"):
             return jsonify(result), 400
@@ -2209,13 +1929,13 @@ def api_repair_report_references():
         warnings = result.get("warnings", []) or []
         return jsonify({
             "ok": True,
-            "dry_run": dry_run,
+            "dry_run": True,
             "updated_reference_count": result.get("updated_reference_count", 0),
             "updated_file_count": result.get("updated_file_count", 0),
             "sample_files": sample_files,
             "warnings": warnings[:_REPORT_HEALTH_PREVIEW_LIMIT],
             "warning_count": len(warnings),
-            "backup_paths": backup_paths or None,
+            "backup_paths": None,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

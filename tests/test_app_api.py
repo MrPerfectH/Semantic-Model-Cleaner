@@ -9,6 +9,10 @@ PRODUCT_QA_WORKSPACE_DIR = (
 )
 
 
+def _snapshot_files(root):
+    return {str(path.relative_to(root)): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+
+
 def _fake_results():
     return {
         "items": [
@@ -1149,7 +1153,7 @@ def test_api_cleanup_stale_report_metadata_can_preview_without_writing(tmp_path)
     assert visual_file.read_text(encoding="utf-8") == before
 
 
-def test_api_cleanup_stale_report_metadata_preview_matches_apply(tmp_path):
+def test_api_cleanup_stale_report_metadata_preview_cannot_authorize_direct_apply(tmp_path):
     report_path = tmp_path / "Executive.Report"
     visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
     visual_dir.mkdir(parents=True)
@@ -1184,6 +1188,7 @@ def test_api_cleanup_stale_report_metadata_preview_matches_apply(tmp_path):
         }
     ]
 
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     preview = client.post(
         "/api/report/cleanup-stale",
@@ -1192,18 +1197,16 @@ def test_api_cleanup_stale_report_metadata_preview_matches_apply(tmp_path):
     apply = client.post(
         "/api/report/cleanup-stale",
         json={"entries": entries},
-    ).get_json()
+    )
 
     assert preview["result"]["dry_run"] is True
-    assert apply["result"]["dry_run"] is False
-    assert apply["removed_count"] == preview["removed_count"] == 1
-    assert apply["result"]["removed_entries"] == preview["result"]["removed_entries"]
-    updated_payload = json.loads(visual_file.read_text(encoding="utf-8"))
-    labels = updated_payload["visual"]["objects"]["labels"]
-    assert labels == [{"selector": {"metadata": "Sales.Revenue"}}]
+    assert preview["removed_count"] == 1
+    assert apply.status_code == 409
+    assert apply.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
 
 
-def test_api_apply_report_issue_actions_preview_matches_apply(tmp_path):
+def test_api_report_issue_preview_cannot_authorize_direct_apply(tmp_path):
     report_path = tmp_path / "Executive.Report"
     visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
     visual_dir.mkdir(parents=True)
@@ -1240,6 +1243,7 @@ def test_api_apply_report_issue_actions_preview_matches_apply(tmp_path):
         }
     ]
 
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     preview = client.post("/api/report/issues/apply", json={"dry_run": True, "entries": entries}).get_json()
     # Preview must not touch the file on disk.
@@ -1248,15 +1252,13 @@ def test_api_apply_report_issue_actions_preview_matches_apply(tmp_path):
     assert preview["updated_reference_count"] >= 1
     assert visual_file.read_text(encoding="utf-8") == before
 
-    apply = client.post("/api/report/issues/apply", json={"entries": entries}).get_json()
-    assert apply["dry_run"] is False
-    # Same count of references the preview promised, now actually applied.
-    assert apply["updated_reference_count"] == preview["updated_reference_count"]
-    updated = json.loads(visual_file.read_text(encoding="utf-8"))
-    assert updated["visual"]["query"]["queryState"]["Values"]["projections"] == []
+    apply = client.post("/api/report/issues/apply", json={"entries": entries})
+    assert apply.status_code == 409
+    assert apply.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
 
 
-def test_api_repair_references_previews_then_rewrites_report_only(tmp_path):
+def test_api_repair_references_previews_then_withholds_direct_write(tmp_path):
     report_path = tmp_path / "Executive.Report"
     visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
     visual_dir.mkdir(parents=True)
@@ -1283,6 +1285,7 @@ def test_api_repair_references_previews_then_rewrites_report_only(tmp_path):
         "table_renames": [{"table": "IW_49n", "target_table": "Work Order Maintenance (IW_49n)"}],
     }
 
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     preview = client.post("/api/report/repair-references", json={**body, "dry_run": True}).get_json()
     assert preview["dry_run"] is True
@@ -1290,16 +1293,13 @@ def test_api_repair_references_previews_then_rewrites_report_only(tmp_path):
     # Preview writes nothing.
     assert visual_file.read_text(encoding="utf-8") == before
 
-    apply = client.post("/api/report/repair-references", json=body).get_json()
-    assert apply["dry_run"] is False
-    assert apply["updated_reference_count"] == preview["updated_reference_count"]
-    rewritten = json.loads(visual_file.read_text(encoding="utf-8"))
-    field = rewritten["visual"]["query"]["queryState"]["Values"]["projections"][0]
-    assert field["field"]["Column"]["Expression"]["SourceRef"]["Entity"] == "Work Order Maintenance (IW_49n)"
-    assert field["queryRef"] == "Work Order Maintenance (IW_49n).work_order_id"
+    apply = client.post("/api/report/repair-references", json=body)
+    assert apply.status_code == 409
+    assert apply.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
 
 
-def test_api_repair_references_renames_columns(tmp_path):
+def test_api_repair_references_previews_columns_then_withholds_direct_write(tmp_path):
     report_path = tmp_path / "Executive.Report"
     visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
     visual_dir.mkdir(parents=True)
@@ -1322,22 +1322,23 @@ def test_api_repair_references_renames_columns(tmp_path):
         "report_paths": [str(report_path)],
         "column_renames": [{"table": "Work Orders", "name": "work_order_number", "target_name": "work_order_id"}],
     }
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     preview = client.post("/api/report/repair-references", json={**body, "dry_run": True}).get_json()
     assert preview["dry_run"] is True
     assert preview["updated_reference_count"] >= 1
 
-    apply = client.post("/api/report/repair-references", json=body).get_json()
-    assert apply["dry_run"] is False
-    col = json.loads(visual_file.read_text(encoding="utf-8"))["visual"]["query"]["queryState"]["Values"]["projections"][0]["field"]["Column"]
-    assert col["Property"] == "work_order_id"
+    apply = client.post("/api/report/repair-references", json=body)
+    assert apply.status_code == 409
+    assert apply.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
 
 
 def test_api_repair_references_requires_target(tmp_path):
     report_path = tmp_path / "Executive.Report"
     (report_path / "definition").mkdir(parents=True)
     client = web_app.app.test_client()
-    resp = client.post("/api/report/repair-references", json={
+    resp = client.post("/api/report/repair-references", json={"dry_run": True,
         "report_paths": [str(report_path)],
         "table_renames": [{"table": "IW_49n", "target_table": ""}],
     })
@@ -1350,7 +1351,7 @@ def test_api_repair_references_rejects_malformed_renames(tmp_path):
     client = web_app.app.test_client()
     # Type-mismatched payloads should be a clean 400, not a 500.
     for bad in ({"column_renames": "abc"}, {"column_renames": [123]}, {"table_renames": "x"}):
-        resp = client.post("/api/report/repair-references", json={"report_paths": [str(report_path)], **bad})
+        resp = client.post("/api/report/repair-references", json={"dry_run": True, "report_paths": [str(report_path)], **bad})
         assert resp.status_code == 400, bad
 
 
@@ -1476,7 +1477,7 @@ def test_api_analyze_includes_m_source_details_for_regular_columns(monkeypatch, 
     assert "Source = #table" in payload["items"][0]["mSourceDetails"]
 
 
-def test_api_dax_updates_expression(monkeypatch, tmp_path):
+def test_api_dax_withholds_direct_expression_write(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     model_path.mkdir()
     captured = {}
@@ -1488,6 +1489,7 @@ def test_api_dax_updates_expression(monkeypatch, tmp_path):
     monkeypatch.setattr(web_app.tmdl_writer, "set_dax_expression", fake_set_dax_expression)
     monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
 
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     response = client.post(
         "/api/dax",
@@ -1501,17 +1503,13 @@ def test_api_dax_updates_expression(monkeypatch, tmp_path):
         },
     )
 
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert payload["result"]["ok"] is True
-    assert captured["table"] == "Sales"
-    assert captured["name"] == "Revenue"
-    assert captured["item_type"] == "Measure"
-    assert captured["dax_expression"] == "SUM(Sales[Amount])"
-    assert captured["source_file"] == "/tmp/Sales.Measures.tmdl"
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
+    assert captured == {}
 
 
-def test_api_action_accepts_move_to_table_group(monkeypatch, tmp_path):
+def test_api_action_withholds_direct_table_group_write(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     tables_dir = model_path / "definition" / "tables"
     tables_dir.mkdir(parents=True)
@@ -1530,6 +1528,7 @@ def test_api_action_accepts_move_to_table_group(monkeypatch, tmp_path):
     monkeypatch.setattr(web_app.tmdl_writer, "apply_actions", fake_apply_actions)
     monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
 
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     response = client.post(
         "/api/action",
@@ -1547,14 +1546,13 @@ def test_api_action_accepts_move_to_table_group(monkeypatch, tmp_path):
         },
     )
 
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert payload["results"][0]["ok"] is True
-    assert captured["model_path"] == model_path
-    assert captured["actions"][0]["table_group"] == "PNL Actuals"
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
+    assert captured == {}
 
 
-def test_api_action_returns_batch_errors_without_partial_write(monkeypatch, tmp_path):
+def test_api_action_withholds_direct_batch_without_partial_write(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     tables_dir = model_path / "definition" / "tables"
     tables_dir.mkdir(parents=True)
@@ -1567,6 +1565,7 @@ def test_api_action_returns_batch_errors_without_partial_write(monkeypatch, tmp_
 
     monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
 
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     response = client.post(
         "/api/action",
@@ -1579,12 +1578,9 @@ def test_api_action_returns_batch_errors_without_partial_write(monkeypatch, tmp_
         },
     )
 
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert payload["ok"] is False
-    assert len(payload["errors"]) == 2
-    assert payload["results"][0]["skipped"] is True
-    assert "\t\tisHidden" not in sales_file.read_text(encoding="utf-8")
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
 
 
 def test_api_action_preview_returns_plan_without_writing(monkeypatch, tmp_path):
@@ -1662,7 +1658,7 @@ def test_api_action_preview_reports_invalid_batch_without_writing(monkeypatch, t
     assert "\t\tisHidden" not in sales_file.read_text(encoding="utf-8")
 
 
-def test_api_action_does_not_create_backup_when_plan_is_invalid(monkeypatch, tmp_path):
+def test_api_action_withholds_invalid_batch_without_backup(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     tables_dir = model_path / "definition" / "tables"
     tables_dir.mkdir(parents=True)
@@ -1676,6 +1672,7 @@ def test_api_action_does_not_create_backup_when_plan_is_invalid(monkeypatch, tmp
 
     monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
 
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     response = client.post(
         "/api/action",
@@ -1689,16 +1686,12 @@ def test_api_action_does_not_create_backup_when_plan_is_invalid(monkeypatch, tmp
         },
     )
 
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert payload["ok"] is False
-    assert payload["backup_path"] is None
-    assert payload["plan"]["ok"] is False
-    assert not list(tmp_path.glob("Sales.SemanticModel_backup_*"))
-    assert "\t\tisHidden" not in sales_file.read_text(encoding="utf-8")
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
 
 
-def test_api_action_creates_backup_for_each_requested_apply(monkeypatch, tmp_path):
+def test_api_action_withholds_repeated_writes_without_creating_backups(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     tables_dir = model_path / "definition" / "tables"
     tables_dir.mkdir(parents=True)
@@ -1712,6 +1705,7 @@ def test_api_action_creates_backup_for_each_requested_apply(monkeypatch, tmp_pat
 
     monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
 
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     first = client.post(
         "/api/action",
@@ -1722,7 +1716,7 @@ def test_api_action_creates_backup_for_each_requested_apply(monkeypatch, tmp_pat
                 {"action": "hide", "table": "Sales", "name": "Revenue", "item_type": "Measure"},
             ],
         },
-    ).get_json()
+    )
     second = client.post(
         "/api/action",
         json={
@@ -1732,14 +1726,16 @@ def test_api_action_creates_backup_for_each_requested_apply(monkeypatch, tmp_pat
                 {"action": "unhide", "table": "Sales", "name": "Revenue", "item_type": "Measure"},
             ],
         },
-    ).get_json()
+    )
 
-    assert first["backup_path"]
-    assert second["backup_path"]
-    assert first["backup_path"] != second["backup_path"]
+    for response in (first, second):
+        assert response.status_code == 409
+        assert response.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
+    assert web_app._state["backup_path"] is None
 
 
-def test_api_migrate_report_measure_promotes_extension_to_model(monkeypatch, tmp_path):
+def test_api_migrate_report_measure_withholds_direct_promotion(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
     tables_dir = model_path / "definition" / "tables"
@@ -1778,6 +1774,7 @@ def test_api_migrate_report_measure_promotes_extension_to_model(monkeypatch, tmp
 
     monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
 
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     response = client.post(
         "/api/report-measure/migrate",
@@ -1789,15 +1786,12 @@ def test_api_migrate_report_measure_promotes_extension_to_model(monkeypatch, tmp
         },
     )
 
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert payload["result"]["ok"] is True
-    assert "\tmeasure 'Report Revenue' = [Existing] + 1" in (tables_dir / "Sales.tmdl").read_text(encoding="utf-8")
-    updated_extensions = json.loads((report_def_dir / "reportExtensions.json").read_text(encoding="utf-8"))
-    assert updated_extensions["entities"] == []
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
 
 
-def test_api_move_measure_updates_only_selected_reports(monkeypatch, tmp_path):
+def test_api_move_measure_previews_selected_reports_and_withholds_write(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     selected_report = tmp_path / "Selected.Report"
     unselected_report = tmp_path / "Unselected.Report"
@@ -1848,6 +1842,7 @@ def test_api_move_measure_updates_only_selected_reports(monkeypatch, tmp_path):
 
     monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
 
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     dry_run = client.post(
         "/api/measure/move",
@@ -1871,32 +1866,12 @@ def test_api_move_measure_updates_only_selected_reports(monkeypatch, tmp_path):
         },
     )
 
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert payload["ok"] is True
-    assert payload["selected_report_count"] == 1
-    assert "\tmeasure 'Revenue LY'" not in (tables_dir / "_Measures.tmdl").read_text(encoding="utf-8")
-    assert "\tmeasure 'Revenue LY' = 1" in (tables_dir / "Sales.tmdl").read_text(encoding="utf-8")
-
-    selected_visual = json.loads(
-        (selected_report / "definition" / "pages" / "Page1" / "visuals" / "Visual1" / "visual.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    unselected_visual = json.loads(
-        (unselected_report / "definition" / "pages" / "Page1" / "visuals" / "Visual1" / "visual.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    selected_projection = selected_visual["visual"]["query"]["queryState"]["Y"]["projections"][0]
-    unselected_projection = unselected_visual["visual"]["query"]["queryState"]["Y"]["projections"][0]
-    assert selected_projection["field"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "Sales"
-    assert selected_projection["queryRef"] == "Sales.Revenue LY"
-    assert unselected_projection["field"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "_Measures"
-    assert unselected_projection["queryRef"] == "_Measures.Revenue LY"
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
 
 
-def test_api_rename_model_metadata_updates_selected_reports_only(monkeypatch, tmp_path):
+def test_api_rename_model_metadata_withholds_direct_write(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     selected_report = tmp_path / "Selected.Report"
     unselected_report = tmp_path / "Unselected.Report"
@@ -1948,6 +1923,7 @@ def test_api_rename_model_metadata_updates_selected_reports_only(monkeypatch, tm
 
     monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
 
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     response = client.post(
         "/api/model/rename",
@@ -1959,34 +1935,12 @@ def test_api_rename_model_metadata_updates_selected_reports_only(monkeypatch, tm
         },
     )
 
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert payload["ok"] is True
-    assert payload["selected_report_count"] == 1
-    assert not (tables_dir / "Sales.tmdl").exists()
-    assert "measure 'Net Revenue'" in (tables_dir / "Fact Sales.tmdl").read_text(encoding="utf-8")
-
-    selected_visual = json.loads(
-        (selected_report / "definition" / "pages" / "Page1" / "visuals" / "Visual1" / "visual.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    unselected_visual = json.loads(
-        (unselected_report / "definition" / "pages" / "Page1" / "visuals" / "Visual1" / "visual.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    selected_projection = selected_visual["visual"]["query"]["queryState"]["Y"]["projections"][0]
-    unselected_projection = unselected_visual["visual"]["query"]["queryState"]["Y"]["projections"][0]
-    assert selected_projection["field"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "Fact Sales"
-    assert selected_projection["field"]["Measure"]["Property"] == "Net Revenue"
-    assert selected_projection["queryRef"] == "Fact Sales.Net Revenue"
-    assert unselected_projection["field"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "Sales"
-    assert unselected_projection["field"]["Measure"]["Property"] == "Revenue"
-    assert unselected_projection["queryRef"] == "Sales.Revenue"
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
 
 
-def test_api_move_measure_rolls_back_model_when_report_apply_fails(monkeypatch, tmp_path):
+def test_api_move_measure_withholds_before_invoking_report_writer(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
     tables_dir = model_path / "definition" / "tables"
@@ -2005,10 +1959,11 @@ def test_api_move_measure_rolls_back_model_when_report_apply_fails(monkeypatch, 
         "\t\tdataType: decimal\n",
         encoding="utf-8",
     )
-    original_measures = measures_file.read_text(encoding="utf-8")
-    original_sales = sales_file.read_text(encoding="utf-8")
+
+    writer_calls = []
 
     def fake_report_rewrite(*, dry_run=False, **_kwargs):
+        writer_calls.append(dry_run)
         if dry_run:
             return {"ok": True, "updated_reference_count": 1, "updated_files": [{"file": "visual.json"}]}
         return {"ok": False, "error": "Report write failed"}
@@ -2016,6 +1971,7 @@ def test_api_move_measure_rolls_back_model_when_report_apply_fails(monkeypatch, 
     monkeypatch.setattr(web_app.report_writer, "rewrite_measure_table_references", fake_report_rewrite)
     monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
 
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     response = client.post(
         "/api/measure/move",
@@ -2026,15 +1982,13 @@ def test_api_move_measure_rolls_back_model_when_report_apply_fails(monkeypatch, 
         },
     )
 
-    assert response.status_code == 400
-    payload = response.get_json()
-    assert payload["rolled_back"] is True
-    assert payload["report_result"]["error"] == "Report write failed"
-    assert measures_file.read_text(encoding="utf-8") == original_measures
-    assert sales_file.read_text(encoding="utf-8") == original_sales
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
+    assert writer_calls == []
 
 
-def test_api_rename_model_metadata_rolls_back_model_when_report_apply_fails(monkeypatch, tmp_path):
+def test_api_rename_model_metadata_withholds_before_invoking_report_writer(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
     tables_dir = model_path / "definition" / "tables"
@@ -2054,10 +2008,11 @@ def test_api_rename_model_metadata_rolls_back_model_when_report_apply_fails(monk
         "ref table Sales\n",
         encoding="utf-8",
     )
-    original_sales = sales_file.read_text(encoding="utf-8")
-    original_model = model_file.read_text(encoding="utf-8")
+
+    writer_calls = []
 
     def fake_report_rewrite(*, dry_run=False, **_kwargs):
+        writer_calls.append(dry_run)
         if dry_run:
             return {"ok": True, "updated_reference_count": 1, "updated_files": [{"file": "visual.json"}]}
         return {"ok": False, "error": "Report write failed"}
@@ -2065,6 +2020,7 @@ def test_api_rename_model_metadata_rolls_back_model_when_report_apply_fails(monk
     monkeypatch.setattr(web_app.report_writer, "rewrite_model_reference_changes", fake_report_rewrite)
     monkeypatch.setattr(web_app.tmdl_writer, "check_git_dirty", lambda _: None)
 
+    original_files = _snapshot_files(tmp_path)
     client = web_app.app.test_client()
     response = client.post(
         "/api/model/rename",
@@ -2076,14 +2032,10 @@ def test_api_rename_model_metadata_rolls_back_model_when_report_apply_fails(monk
         },
     )
 
-    assert response.status_code == 400
-    payload = response.get_json()
-    assert payload["rolled_back"] is True
-    assert payload["report_result"]["error"] == "Report write failed"
-    assert sales_file.exists()
-    assert sales_file.read_text(encoding="utf-8") == original_sales
-    assert model_file.read_text(encoding="utf-8") == original_model
-    assert not (tables_dir / "Fact Sales.tmdl").exists()
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "REVIEWED_PLAN_REQUIRED"
+    assert _snapshot_files(tmp_path) == original_files
+    assert writer_calls == []
 
 
 def test_api_rename_model_metadata_returns_report_validation_errors(tmp_path):
