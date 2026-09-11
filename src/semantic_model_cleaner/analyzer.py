@@ -28,6 +28,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
 
+from semantic_model_cleaner.reference_tokens import dax_tokens
 from semantic_model_cleaner.tmdl_identifiers import (
     parse_tmdl_dotted_ref,
     read_single_quoted_name,
@@ -3261,31 +3262,47 @@ def scan_additional_definition_json(
 
 
 def _split_dax_comments(dax_body: str) -> tuple[str, str]:
-    """Return (active_code, comments) from a DAX expression."""
+    """Return reference code with comments/literals masked, plus real comments.
+
+    Use the same quoted-token boundaries as the writers: comment markers inside
+    strings or escaped identifiers never start comments or hide following refs.
+    """
     active_parts = []
     comment_parts = []
+    quoted = {token.start: token for token in dax_tokens(dax_body)
+              if token.kind in {"string", "table", "object"}}
+
+    def mask(text):
+        return re.sub(r"[^\r\n]", " ", text)
+
     i = 0
 
     while i < len(dax_body):
-        if dax_body.startswith("//", i):
+        token = quoted.get(i)
+        if token:
+            text = dax_body[i:token.end]
+            active_parts.append(mask(text) if token.kind == "string" else text)
+            i = token.end
+            continue
+        if dax_body.startswith(("//", "--"), i):
             end = dax_body.find("\n", i)
             if end == -1:
                 comment_parts.append(dax_body[i:])
-                active_parts.append(" " * (len(dax_body) - i))
+                active_parts.append(mask(dax_body[i:]))
                 break
             comment_parts.append(dax_body[i:end])
-            active_parts.append(" " * (end - i))
+            active_parts.append(mask(dax_body[i:end]))
             i = end
             continue
         if dax_body.startswith("/*", i):
             end = dax_body.find("*/", i + 2)
             if end == -1:
                 comment_parts.append(dax_body[i:])
-                active_parts.append(" " * (len(dax_body) - i))
+                active_parts.append(mask(dax_body[i:]))
                 break
             end += 2
             comment_parts.append(dax_body[i:end])
-            active_parts.append(" " * (end - i))
+            active_parts.append(mask(dax_body[i:end]))
             i = end
             continue
 
@@ -3389,6 +3406,10 @@ def _read_dax_unquoted_table_name(text: str, start: int) -> tuple[str, int] | No
         return None
     match = re.match(r"[A-Za-z_]\w*", text[start:])
     if not match:
+        return None
+    # These tokens precede unqualified references, not table-qualified ones.
+    # Keep this consistent with reference_tokens._reference_owner.
+    if match.group(0).casefold() in {"return", "var", "in", "not", "and", "or", "true", "false"}:
         return None
     return match.group(0), start + len(match.group(0))
 
