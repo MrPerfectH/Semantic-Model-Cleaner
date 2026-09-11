@@ -1152,6 +1152,16 @@ def _table_has_items(lines: list[str]) -> bool:
     return False
 
 
+def _table_declaration_blocks(lines: list[str], table: str):
+    """Find every fragment of a table without including neighboring objects."""
+    for start, line in enumerate(lines):
+        if not line.startswith("table ") or _unquote_tmdl_name(line[6:]).casefold() != table.casefold():
+            continue
+        end = next((i for i in range(start + 1, len(lines))
+                    if lines[i].strip() and not lines[i].startswith("\t")), len(lines))
+        yield start, end
+
+
 def _delete_all_relationships_for_table(model_path: Path, table: str) -> list[str]:
     """Remove all relationship blocks from relationships.tmdl that reference
     the given table on either side. Returns list of removed relationship identifiers."""
@@ -1231,7 +1241,27 @@ def delete_item(
     tmdl_file, lines, block = source
 
     start, end = block
-    del lines[start:end]
+    # Slice original lines, including their endings, so neighboring fragments
+    # keep their exact bytes even when this fragment loses its final item.
+    raw_lines = tmdl_file.read_bytes().decode("utf-8").splitlines(keepends=True)
+    del raw_lines[start:end]
+    lines = "".join(raw_lines).splitlines()
+
+    declarations = []
+    retained_items = False
+    try:
+        for candidate in _iter_tmdl_files(model_path):
+            candidate_lines = lines if candidate == tmdl_file else candidate.read_text(encoding="utf-8").splitlines()
+            for table_start, table_end in _table_declaration_blocks(candidate_lines, table):
+                declarations.append((candidate, table_start, table_end))
+                retained_items |= _table_has_items(candidate_lines[table_start + 1:table_end])
+    except OSError as exc:
+        return {"ok": False, "written": False, "error": f"Cannot verify remaining table definitions: {exc}"}
+    if not retained_items and len(declarations) != 1:
+        return {"ok": False, "written": False, "error": (
+            f"Cannot delete the last item of table '{table}' across multiple TMDL declarations; "
+            "consolidate and review its source definitions before whole-table cleanup."
+        )}
 
     result = {"ok": True, "file": str(tmdl_file), "action": "delete", "item": name}
 
@@ -1241,10 +1271,15 @@ def delete_item(
         if removed_rels:
             result["removed_relationships"] = removed_rels
 
-    # Check if the table has any remaining columns or measures
-    if not _table_has_items(lines):
-        # Remove the table file entirely
-        tmdl_file.unlink()
+    # Whole-table cleanup requires absence of items in every table fragment.
+    if not retained_items:
+        _, table_start, table_end = declarations[0]
+        del raw_lines[table_start:table_end]
+        remaining_text = "".join(raw_lines)
+        if remaining_text.strip():
+            tmdl_file.write_bytes(remaining_text.encode("utf-8"))
+        else:
+            tmdl_file.unlink()
         result["table_deleted"] = True
         # Remove all remaining relationships for this table
         removed_table_rels = _delete_all_relationships_for_table(model_path, table)
@@ -1254,7 +1289,7 @@ def delete_item(
         # Remove the ref table line from model.tmdl
         _delete_table_ref_from_model(model_path, table)
     else:
-        tmdl_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        tmdl_file.write_bytes("".join(raw_lines).encode("utf-8"))
 
     return result
 
