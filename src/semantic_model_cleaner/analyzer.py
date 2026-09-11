@@ -4296,11 +4296,6 @@ def analyze(
                 indirect[target].add(source)
 
     # ── Hierarchy index ──
-    # Map hierarchy (table, name) -> [column names]
-    hierarchy_map: dict[tuple[str, str], list[str]] = {}
-    for h in all_hierarchies:
-        hierarchy_map[(h.table, h.name)] = h.columns
-
     # Find which hierarchies are referenced in reports (via HierarchyLevel refs)
     used_hierarchies: set[tuple[str, str]] = set()
     for u in all_usages:
@@ -4308,22 +4303,23 @@ def analyze(
             used_hierarchies.add(normalize_key(u.table, u.name))
 
     # Build hierarchy-column usage: columns backing used hierarchies
-    hierarchy_col_keys: dict[tuple[str, str], str] = {}  # nkey -> hierarchy name
-    for (tbl, hier_name), columns in hierarchy_map.items():
-        hier_nkey = normalize_key(tbl, hier_name)
-        if hier_nkey in used_hierarchies:
-            for col in columns:
-                col_nkey = normalize_key(tbl, col)
-                hierarchy_col_keys[col_nkey] = hier_name
+    hierarchy_col_keys: dict[tuple[str, str], set[str]] = defaultdict(set)
+    retained_hierarchy_columns: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for hierarchy in all_hierarchies:
+        for col in hierarchy.columns:
+            col_nkey = normalize_key(hierarchy.table, col)
+            retained_hierarchy_columns[col_nkey].add(hierarchy.name)
+            if normalize_key(hierarchy.table, hierarchy.name) in used_hierarchies:
+                hierarchy_col_keys[col_nkey].add(hierarchy.name)
 
     # ── sortByColumn index ──
-    sort_by_map: dict[tuple[str, str], str] = {}  # target nkey -> source column name
+    sort_by_map: dict[tuple[str, str], set[str]] = defaultdict(set)
     for item_index, item in enumerate(all_items):
         if item_index % 100 == 0:
             checkpoint("Classifying items", item_index, len(all_items))
         if item.sort_by_column and item.item_type in ("Column", "Calculated Column"):
             target_nkey = normalize_key(item.table, item.sort_by_column)
-            sort_by_map[target_nkey] = item.name
+            sort_by_map[target_nkey].add(item.name)
 
     # ── isKey index ──
     key_col_keys = {normalize_key(*item.key) for item in all_items if item.is_key}
@@ -4380,8 +4376,16 @@ def analyze(
         is_indirect_measure = identity in indirect and item.item_type == "Measure"
         is_indirect_column = identity in indirect and item.item_type in ("Column", "Calculated Column")
         is_key_col = nkey in key_col_keys
-        is_hierarchy_col = nkey in hierarchy_col_keys
-        is_sort_target = nkey in sort_by_map
+        is_model_column = (
+            item.source_kind == "model" and item.item_type in ("Column", "Calculated Column")
+        )
+        hierarchy_names = (
+            sorted(retained_hierarchy_columns.get(nkey, []), key=str.casefold)
+            if is_model_column else []
+        )
+        sort_sources = sorted(sort_by_map.get(nkey, []), key=str.casefold) if is_model_column else []
+        is_hierarchy_col = is_model_column and nkey in hierarchy_col_keys
+        is_sort_target = bool(sort_sources)
 
         if identity in broken_dax_refs and broken_dax_refs[identity]:
             count = len(broken_dax_refs[identity])
@@ -4400,13 +4404,14 @@ def analyze(
         elif is_key_col:
             status = "USED (Key Column)"
         elif is_hierarchy_col:
-            status = f"USED (Hierarchy: {hierarchy_col_keys[nkey]})"
+            status = f"USED (Hierarchy: {', '.join(sorted(hierarchy_col_keys[nkey], key=str.casefold))})"
         elif is_sort_target:
             # Only mark as sort-used if the column being sorted is itself used
-            source_nkey = normalize_key(item.table, sort_by_map[nkey])
-            source_used = source_nkey in usage_index or source_nkey in relationship_keys
-            if source_used:
-                status = f"USED (Sort Column for: {sort_by_map[nkey]})"
+            used_sort_sources = [name for name in sort_sources
+                                 if normalize_key(item.table, name) in usage_index
+                                 or normalize_key(item.table, name) in relationship_keys]
+            if used_sort_sources:
+                status = f"USED (Sort Column for: {', '.join(used_sort_sources)})"
             elif is_indirect_measure:
                 via = ", ".join(sorted(format_item_ref(k[-2:]) for k in indirect[identity]))
                 status = f"INDIRECT (via: {via})"
@@ -4447,10 +4452,19 @@ def analyze(
             review_triggers.extend(limit["message"] for limit in coverage_limitations)
             if review_triggers:
                 removal_risk = "Review"
-            elif has_dax_dependents or identity in retained_parameter_targets:
+            elif (has_dax_dependents or identity in retained_parameter_targets
+                  or sort_sources or hierarchy_names):
                 removal_risk = "Caution"
             else:
                 removal_risk = "Safe"
+            # Retained declarations are dependencies even without report usage.
+            # Keep NOT USED/Caution so policy can allow a complete sort-source
+            # deletion group after checking that no source remains.
+            review_triggers.extend(
+                f"Sort column required by retained {format_item_ref((item.table, name))}"
+                for name in sort_sources
+            )
+            review_triggers.extend(f"Column belongs to retained hierarchy {name}" for name in hierarchy_names)
 
         results.append({
             "item": item,
@@ -4460,6 +4474,7 @@ def analyze(
             "has_direct_usage": has_direct_usage,
             "removal_risk": removal_risk,
             "review_triggers": review_triggers,
+            "hierarchies": hierarchy_names,
             "broken_dax_refs": [detail["ref"] for detail in broken_dax_refs.get(identity, [])],
             "broken_dax_ref_details": broken_dax_refs.get(identity, []),
         })

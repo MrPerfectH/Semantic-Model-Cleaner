@@ -810,9 +810,10 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             other_model_uses.append("RLS")
         if item.is_key:
             other_model_uses.append("Key")
-        if analyzer.normalize_key(*item.key) in sort_target_keys:
+        if (item.source_kind == "model" and item.item_type in ("Column", "Calculated Column")
+                and analyzer.normalize_key(*item.key) in sort_target_keys):
             other_model_uses.append("Sort")
-        if "Hierarchy" in status:
+        if r.get("hierarchies") or "Hierarchy" in status:
             other_model_uses.append("Hierarchy")
         report_use_summary = (
             "No"
@@ -1072,13 +1073,18 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
         }
         if table.get("field_parameter_issues"):
             issue_counts["Broken"] = max(1, issue_counts["Broken"])
-        table_usage_status = _table_usage_status(table)
+        display_table = {
+            **table,
+            "used_item_count": sum(child.get("usageState") in {"Used", "Indirect"} for child in children),
+            "unused_item_count": sum(child.get("usageState") == "Unused" for child in children),
+        }
+        table_usage_status = _table_usage_status(display_table)
         tables.append({
             "name": table["name"],
             "roleLabel": table.get("role_label", ""),
             "roleReason": table.get("role_reason", ""),
             "usageStatus": table_usage_status,
-            "usageState": _table_usage_state(table),
+            "usageState": _table_usage_state(display_table),
             "issueState": " / ".join(key for key, count in issue_counts.items() if count),
             "issueCounts": issue_counts,
             "cleanupCounts": {state: sum(child.get("deleteSafety") == state for child in children)
@@ -1091,8 +1097,8 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             "calculatedColumnCount": table.get("calculated_column_count", 0),
             "directReportMeasureCount": table.get("direct_report_measure_count", 0),
             "directReportColumnCount": table.get("direct_report_column_count", 0),
-            "usedItemCount": table.get("used_item_count", 0),
-            "unusedItemCount": table.get("unused_item_count", 0),
+            "usedItemCount": display_table["used_item_count"],
+            "unusedItemCount": display_table["unused_item_count"],
             "hiddenItemCount": table.get("hidden_item_count", 0),
             "usageRefCount": table.get("usage_ref_count", 0),
             "reportCount": table.get("report_count", 0),
@@ -1128,8 +1134,15 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
         })
 
     report_issues = results.get("report_issues", [])
+    # UI counts follow the canonical states used by its filters and details.
+    # Leave the analyzer summary intact for the historical CLI JSON contract.
+    display_summary = {
+        **results["summary"],
+        "not_used": sum(item["usageState"] == "Unused" for item in items),
+        "indirect": sum(item["usageState"] == "Indirect" for item in items),
+    }
     return {
-        "summary": results["summary"],
+        "summary": display_summary,
         "reportBinding": results.get("report_binding"),
         "coverage": results.get("coverage", {}),
         "tables": tables,
