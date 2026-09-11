@@ -1,6 +1,7 @@
 # Landing Site
 
-This directory powers the GitHub Pages landing site that points people to the Windows download, release channels, and developer setup.
+This directory powers the GitHub Pages landing site for the `0.4.0b1` public
+beta, repository quick start, support matrix, and developer setup.
 
 ## Build & deploy
 
@@ -14,6 +15,7 @@ You can open `docs/index.html` in your browser or preview it with your preferred
 
 ## Notes
 
-- The hero CTA links go directly to the stable Windows zip and the GitHub repo.
+- The hero CTA links directly to the immutable `v0.4.0b1` Windows prerelease asset and the GitHub repo.
 - Navigation anchors point to the `channels`, `workflow`, and `faq` sections.
-- The `download` section has three cards for stable, beta, and source installs.
+- Prerelease downloads use the explicit tag and immutable asset URLs because
+  GitHub's stable-release alias excludes prereleases.

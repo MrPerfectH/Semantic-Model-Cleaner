@@ -2,15 +2,19 @@
 
 Semantic Model Cleaner analyzes Power BI PBIR + TMDL projects, shows which semantic model items appear to be unused across selected reports, and lets you apply cleanup actions locally.
 
-It is designed for local use against files on your machine. The current release target is early-stage open source for Power BI practitioners who already work with PBIR and TMDL.
+It works directly in repositories containing TMDL and PBIR files; Power BI Desktop is not required. Core workflows are free under the MIT license, with no account or paid service required. Fabric integration is a future extension.
+
+It is designed for local use against files on your machine. Version `0.4.0b1`
+is the first public beta for Power BI practitioners who already work with PBIR
+and TMDL.
 
 ## Current Status
 
-- Project maturity: early-stage `0.x`
+- Project maturity: public beta `0.4.0b1`
 - Runtime shape: Python package with a CLI, a local web UI, and Windows desktop packaging
 - Stable entry points: `semantic-model-cleaner`, `semantic-model-cleaner-web`, `smc`, and `smc-web`
 - Windows entry points: packaged `Semantic Model Cleaner.exe`, `semantic-model-cleaner-desktop`, and `smc-desktop`
-- Roadmap: beta feature isolation, release hardening, and a public landing site
+- Release channel: beta is baked into this package and shown in the UI
 
 ## What It Does
 
@@ -47,7 +51,13 @@ python -m pip install -e .[dev]
 
 ### Windows Packaged App
 
-For terminal-free Windows use, a packaged launcher is also available.
+For terminal-free Windows use, download
+[`semantic-model-cleaner-windows-x64-0.4.0b1.zip`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b1/semantic-model-cleaner-windows-x64-0.4.0b1.zip)
+and its
+[`SHA-256 checksum`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b1/semantic-model-cleaner-windows-x64-0.4.0b1.zip.sha256)
+from the explicit beta prerelease. Extract the whole ZIP, then run
+`Semantic Model Cleaner.exe`. Python, Power BI Desktop, Fabric, an account,
+and paid services are not required.
 
 Local launcher command:
 
@@ -108,14 +118,12 @@ python3 -m semantic_model_cleaner . --format full
 
 ### CLI: clean-stale
 
-`clean-stale` removes dead PBIR metadata in bulk: stale visual selectors, stale bookmark projections and stale formatting rules. These are the `warning` issues the analyzer already marks with a high-confidence `clean_stale` suggestion, because the reference is not part of the live visual query. Broken references (`missing_table`, `missing_column`, `missing_measure` — severity `error`, i.e. rename fallout) are never touched.
+`clean-stale` previews dead PBIR metadata in bulk: stale visual selectors, stale bookmark projections and stale formatting rules. These are the `warning` issues the analyzer already marks with a high-confidence `clean_stale` suggestion, because the reference is not part of the live visual query. Broken references (`missing_table`, `missing_column`, `missing_measure` — severity `error`, i.e. rename fallout) are never touched.
 
 ```bash
 smc clean-stale .                                   # dry run: counts + full candidate list
 smc clean-stale . --kind formatting selector        # limit to some kinds
 smc clean-stale . --format json                     # machine-readable
-smc clean-stale . --apply                           # write, with a backup per report
-smc clean-stale . --apply --no-backup               # write without backups
 ```
 
 By default it analyzes only the reports whose `definition.pbir` binds them to the selected semantic model (by path, or by published name for live connections) — the same invariant the web UI's report finder applies; pass `--all-reports` to analyze every discovered report, and note that `--report` filters compose on top of the bound set.
@@ -126,11 +134,11 @@ Exit codes (so CI can gate on a dry run):
 
 | Code | Meaning |
 |------|---------|
-| 0 | Nothing to clean, or `--apply` succeeded |
-| 2 | Dry run found candidates (nothing was written) |
-| 1 | Engine or validation error — the cleanup is transactional, so nothing was written |
+| 0 | No cleanup candidates |
+| 1 | Cleanup candidates found; nothing was written |
+| 2 | Input/analysis error or a withheld direct-write request |
 
-Dry run is the default: it writes nothing. With `--apply`, each affected `.Report` folder is copied to a timestamped backup first unless `--no-backup` is passed.
+This command is read-only in the beta. The legacy `--apply` shortcut is withheld because it cannot apply a previously reviewed, saved plan. Use the app change review or a `clean_stale` operation through [CLI plans](docs/cli/plans.md), followed by `smc diff`, `smc apply` and `smc verify`. The reviewed workflow always records recovery data.
 
 ### Local Web UI
 
@@ -178,8 +186,8 @@ Both web exports download the latest completed analysis without re-running it.
 ## Safety Notes
 
 - The workflow is intentionally `1 semantic model -> 1 or more reports`
-- Queued model cleanup actions are dry-run planned before `/api/action` writes files
-- The app can create a backup before destructive edits when requested
+- UI and CLI changes use saved plans with exact previews, validation, source fingerprints and guarded apply
+- Every applied plan records a receipt and original bytes for guarded restore; legacy direct-write HTTP routes are withheld
 - Field parameters backed by `NAMEOF(...)` are supported
 - Remaining caveats include calculation groups, broader metadata indirection, and malformed or skipped JSON
 
@@ -209,13 +217,17 @@ Build the Windows package locally:
 pwsh -File packaging/windows/build.ps1
 ```
 
-## Stable vs Beta
+## Public beta channel
 
-- The default `SMC_RELEASE_CHANNEL` is `stable`. Set `SMC_RELEASE_CHANNEL=beta` or `SMC_RELEASE_CHANNEL=prerelease` to exercise the beta UI that surfaces experimental flows and prerelease messaging.
+- Version `0.4.0b1` defaults to the `beta` release channel without an environment variable.
+- Developers can set `SMC_RELEASE_CHANNEL=stable` to inspect the stable-gated UI during compatibility testing.
 - Enable one or more experiments with `SMC_EXPERIMENTS=compare-models` (comma-separated for multiple keys). The web UI also accepts `--experimental compare-models` when you launch `semantic-model-cleaner-web`.
-- Stable releases hide beta banners and extra UI; beta/prerelease builds show a `Beta` banner and list the active experiments so users know they are on a fast-moving channel.
+- The public beta shows a `Beta` banner. Experiments remain separately opt-in.
 
 See `tests/test_experiments.py` for the supported experiment keys and release-channel logic.
+
+See the [five-minute repository quick start](docs/quickstart.md), [CI check
+contract](docs/cli/check.md), and [support matrix](docs/support.md).
 
 ## Repository Layout
 
@@ -247,3 +259,18 @@ Analyzer-specific usage and caveats are documented in [scripts/analyze_model_usa
 - Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - Security reporting: [SECURITY.md](SECURITY.md)
 - Issues and discussions are monitored on the public [GitHub repository](https://github.com/MrPerfectH/Semantic-Model-Cleaner).
+
+## Reviewed CLI changes
+
+The CLI and web UI share a staged change-plan engine for model cleanup, renames, measure moves, report-measure promotion and report repairs. Prepare a plan from an operations JSON file, inspect its exact differences, then apply it with freshness checks and a recovery journal:
+
+```bash
+smc plan /path/to/project --operations operations.json -o review/change.plan.json
+smc diff review/change.plan.json
+smc apply review/change.plan.json
+smc verify review/change.plan.json
+```
+
+Use `smc history` to inspect receipts and `smc restore review/change.plan.json` for guarded recovery. Plans contain local metadata and must come from a trusted source. Static validation covers supported selected files; it does not evaluate Power BI runtime behavior. See [CLI plans and recovery](docs/cli/plans.md) for operation examples, scope rules, exit codes and interrupted-operation recovery.
+
+Read [CI checks and baselines](docs/cli/check.md), [supported workflows](docs/support.md), and the [beta quick start](docs/quickstart.md).

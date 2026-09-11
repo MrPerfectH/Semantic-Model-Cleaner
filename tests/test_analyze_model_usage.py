@@ -231,7 +231,8 @@ def test_product_qa_workspace_exercises_trust_workflows():
     assert results["summary"]["models"] == ["ProductQA.SemanticModel"]
     assert results["summary"]["reports"] == ["Executive"]
     assert cleanup_note["status"] == "NOT USED"
-    assert cleanup_note["removal_risk"] == "Safe"
+    assert cleanup_note["removal_risk"] == "Review"
+    assert any("Incomplete report scan" in trigger for trigger in cleanup_note["review_triggers"])
     assert perspective_revenue["status"] == "NOT USED"
     assert perspective_revenue["removal_risk"] == "Review"
     assert any(
@@ -249,7 +250,7 @@ def test_product_qa_workspace_exercises_trust_workflows():
         "stale_formatting_rule",
     } <= stale_issue_types
     assert stale_margin["status"] == "NOT USED"
-    assert stale_margin["removal_risk"] == "Safe"
+    assert stale_margin["removal_risk"] == "Review"
     assert len(stale_margin["stale_usages"]) >= 2
 
 
@@ -1697,9 +1698,9 @@ def test_invalid_definition_pbir_is_report_health_issue(tmp_path):
 
     results = analyzer.analyze(workspace.resolve())
 
-    assert results["report_issues"][0]["issueType"] == "invalid_report_json"
-    assert results["report_issues"][0]["artifactKind"] == "Report Definition"
-    assert results["report_issues"][0]["artifactPath"] == "definition.pbir"
+    issue = next(issue for issue in results["report_issues"] if issue["issueType"] == "invalid_report_json")
+    assert issue["artifactKind"] == "Report Definition"
+    assert issue["artifactPath"] == "definition.pbir"
 
 
 def test_tmsl_model_bim_semantic_model_fails_clearly(tmp_path):
@@ -1748,7 +1749,8 @@ def test_unused_measure_with_dax_dependents_is_caution(tmp_path):
         encoding="utf-8",
     )
     (report / "definition.pbir").write_text('{"version":"4.0"}', encoding="utf-8")
-    (report / "report.json").write_text('{"sections":[]}', encoding="utf-8")
+    (report / "definition").mkdir()
+    (report / "definition/report.json").write_text('{}', encoding="utf-8")
 
     results = analyzer.analyze(workspace)
     measure_a = _find_item(results, "Measures", "A", "Measure")

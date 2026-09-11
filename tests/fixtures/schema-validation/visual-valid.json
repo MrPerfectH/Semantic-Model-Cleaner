@@ -1,0 +1,6 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "name": "RevenueCard",
+  "position": {"x": 0, "y": 0, "height": 100, "width": 200},
+  "visual": {"visualType": "card"}
+}

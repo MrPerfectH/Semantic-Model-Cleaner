@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import file_transaction, tmdl_writer
+from .reference_tokens import dax_references, rewrite_dax
 
 
 _DECLARED_SCHEMA_REQUIRED_FIELDS = (
@@ -235,7 +236,7 @@ def _report_measure_promotion_metadata(measure: dict) -> tuple[dict, list[str], 
     return create_kwargs, preserved_metadata, unpreserved_metadata
 
 
-def migrate_measure_to_model(
+def _migrate_single_measure_to_model(
     *,
     model_path: Path,
     report_path: Path,
@@ -339,6 +340,127 @@ def migrate_measure_to_model(
     }
 
 
+def migrate_measure_to_model(
+    *, model_path: Path, report_path: Path, entity_name: str, measure_name: str,
+    target_table: str | None = None, target_name: str | None = None,
+    dry_run: bool = False, include_dependencies: bool = False,
+    allow_metadata_loss: bool = False,
+) -> dict:
+    """Preflight a dependency-closed promotion before any model/report mutation."""
+    entity_name, measure_name = entity_name.strip(), measure_name.strip()
+    if ((target_table or entity_name).casefold() != entity_name.casefold()
+            or (target_name or measure_name).casefold() != measure_name.casefold()):
+        return {"ok": False, "error": "Renaming during report-measure migration is not supported yet; target table/name must match the report measure."}
+    try:
+        _, payload = _load_report_extensions(report_path)
+        extensions = {}
+        for entity in payload.get("entities", []):
+            for measure in entity.get("measures", []):
+                key = (str(entity.get("name", "")).casefold(), str(measure.get("name", "")).casefold())
+                if key in extensions:
+                    return {"ok": False, "error": "Duplicate report extension measure identity"}
+                extensions[key] = (str(entity.get("name", "")), measure)
+        root = (entity_name.casefold(), measure_name.casefold())
+        if root not in extensions:
+            return {"ok": False, "error": f"Report measure '{entity_name}[{measure_name}]' was not found"}
+        model_items = set()
+        model_measures = set()
+        for path in tmdl_writer._iter_tmdl_files(model_path):
+            owner = ''
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.startswith('table '):
+                    owner = tmdl_writer._unquote_tmdl_name(line[6:]).casefold()
+                match = re.match(r"^\t(measure|column)\s+(.+?)(?:\s*=.*)?$", line, re.I)
+                if match:
+                    key = (owner, tmdl_writer._unquote_tmdl_name(match.group(2)).casefold())
+                    model_items.add(key)
+                    if match.group(1).casefold() == 'measure':
+                        model_measures.add(key)
+        ordered, visiting, done = [], set(), set()
+        blockers = []
+        def visit(key):
+            if key in visiting:
+                blockers.append(f"Cyclic report extension dependency: {key[0]}[{key[1]}]")
+                return
+            if key in done:
+                return
+            visiting.add(key)
+            table, measure = extensions[key]
+            expression = str(measure.get('expression', '') or '')
+            if not expression.strip():
+                blockers.append(f"Empty expression: {table}[{measure.get('name')}]")
+            # Declared dependency metadata supplements lexical references.
+            refs = list(dax_references(expression))
+            for ref in (measure.get('references') or {}).get('measures', []):
+                if isinstance(ref, dict):
+                    refs.append((ref.get('entity'), str(ref.get('name', ''))))
+            for owner, name in refs:
+                candidates = [k for k in extensions if k[1] == name.casefold()
+                              and (owner is None or k[0] == owner.casefold())]
+                if len(candidates) == 1:
+                    visit(candidates[0])
+                elif len(candidates) > 1:
+                    blockers.append(f"Ambiguous report extension dependency: [{name}]")
+                elif not any(k[1] == name.casefold() and (owner is None or k[0] == owner.casefold()) for k in model_items):
+                    blockers.append(f"Unresolved dependency: {owner or ''}[{name}]")
+            visiting.remove(key)
+            done.add(key)
+            ordered.append(key)
+        visit(root)
+        promotions = []
+        promoted_names = [key[1] for key in ordered]
+        if len(set(promoted_names)) != len(promoted_names):
+            blockers.append("Multiple promoted measures would have the same semantic model name")
+        for key in ordered:
+            table, measure = extensions[key]
+            name = str(measure.get('name', ''))
+            if not tmdl_writer._find_tmdl_file(model_path, table):
+                blockers.append(f"Target table does not exist: {table}")
+            if any(existing[1] == name.casefold() for existing in model_measures):
+                blockers.append(f"A semantic model measure already has the name '{name}'")
+            kwargs, preserved, lost = _report_measure_promotion_metadata(measure)
+            known = {'name', 'expression', 'references', 'dataType', 'dataCategory', 'description',
+                     'displayFolder', 'formatString', 'hidden', 'annotations', 'measureTemplate'}
+            lost += [{"field": field, "reason": "Unsupported report extension metadata"}
+                     for field in measure if field not in known]
+            semantic_loss = [entry for entry in lost if entry['field'] != 'measureTemplate']
+            if semantic_loss and not allow_metadata_loss:
+                blockers.append(f"Promotion would discard metadata for {table}[{name}]; review unpreserved_metadata")
+            for field in ('data_type', 'data_category', 'display_folder', 'format_string'):
+                if '\n' in str(kwargs.get(field, '')) or '\r' in str(kwargs.get(field, '')):
+                    blockers.append(f"Unsupported multiline {field}: {table}[{name}]")
+            promotions.append({"table": table, "name": name, "preserved_metadata": preserved,
+                               "unpreserved_metadata": lost})
+        dependencies = [entry for entry in promotions if (entry['table'].casefold(), entry['name'].casefold()) != root]
+        if dependencies and not include_dependencies:
+            blockers.append("Report-only dependencies must be promoted together; set include_dependencies after reviewing the plan")
+        selected = next((entry for entry in promotions if (entry['table'].casefold(), entry['name'].casefold()) == root), {})
+        plan = {"ok": not blockers, "dry_run": dry_run, "action": "migrate_report_measure",
+                "promotions": promotions, "required_dependencies": dependencies, "blockers": blockers,
+                "preserved_metadata": selected.get('preserved_metadata', []),
+                "unpreserved_metadata": selected.get('unpreserved_metadata', [])}
+        if blockers:
+            return {**plan, "error": '; '.join(blockers), "written": False}
+        if dry_run:
+            return plan
+        roots = [model_path / 'definition', report_path / 'definition']
+        snapshot = file_transaction.snapshot_artifact_files(roots)
+        results = []
+        try:
+            for entry in promotions:
+                result = _migrate_single_measure_to_model(model_path=model_path, report_path=report_path,
+                    entity_name=entry['table'], measure_name=entry['name'])
+                if not result.get('ok'):
+                    raise ValueError(result.get('error', 'Promotion failed'))
+                results.append(result)
+        except Exception as exc:
+            rollback = file_transaction.restore_artifact_files(roots, snapshot)
+            return {**plan, "ok": False, "error": str(exc), "rolled_back": rollback['ok'], "rollback": rollback}
+        return {**results[-1], **plan, "results": results, "written": True}
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        return {"ok": False, "error": str(exc), "written": False, "dry_run": dry_run}
+
+
 def _split_top_level_query_ref(value: str) -> tuple[str, str] | None:
     depth_paren = 0
     depth_bracket = 0
@@ -423,11 +545,12 @@ def _rewrite_query_ref(
     measure_lookup: dict[tuple[str, str], tuple[str, str]],
     aliases: dict[str, dict],
     column_lookup: dict[tuple[str, str], tuple[str, str]] | None = None,
+    updates: list[dict] | None = None,
 ) -> tuple[str, bool]:
     column_lookup = column_lookup or {}
     wrapper = re.fullmatch(r"([A-Za-z][A-Za-z0-9_]*)\((.+)\)", value)
     if wrapper:
-        new_inner, changed = _rewrite_query_ref(wrapper.group(2), table_lookup, measure_lookup, aliases, column_lookup)
+        new_inner, changed = _rewrite_query_ref(wrapper.group(2), table_lookup, measure_lookup, aliases, column_lookup, updates)
         if changed:
             return f"{wrapper.group(1)}({new_inner})", True
         return value, False
@@ -437,7 +560,11 @@ def _rewrite_query_ref(
         return value, False
     table_or_alias, name = parts
     alias = aliases.get(table_or_alias.casefold())
-    table = str(alias.get("original_entity", alias["entity"])) if alias else table_or_alias
+    if alias and alias.get("ambiguous"):
+        if table_lookup or any(key[1] == name.casefold() for key in (*measure_lookup, *column_lookup)):
+            raise ValueError(f"Cannot resolve query alias '{table_or_alias}' for '{value}'; propagation is ambiguous.")
+        return value, False
+    table = alias["original_entity"] if alias else table_or_alias
     target_table = table_lookup.get(table.casefold(), table)
     target_name = name
     measure_target = measure_lookup.get((table.casefold(), name.casefold()))
@@ -446,6 +573,10 @@ def _rewrite_query_ref(
         target_table, target_name = measure_target
     elif column_target:
         target_table, target_name = column_target
+    if target_table.casefold() == table.casefold():
+        target_table = table_lookup.get(table.casefold(), table)
+    if alias and updates is not None:
+        _set_alias_target(alias, target_table, updates)
     output_table = table_or_alias if alias else target_table
     if output_table == table_or_alias and target_name == name:
         return value, False
@@ -455,36 +586,111 @@ def _rewrite_query_ref(
 def _rewrite_dax_table_refs(value: str, table_lookup: dict[str, str]) -> tuple[str, bool]:
     new_value = value
     for table, target_table in table_lookup.items():
-        new_value, _ = tmdl_writer._rewrite_table_name_in_text(new_value, table, target_table)
+        new_value, _ = rewrite_dax(new_value, tables={table.casefold(): target_table})
     return new_value, new_value != value
 
 
-def _collect_source_aliases(obj, path_parts: list[str] | None = None) -> dict[str, dict]:
-    if path_parts is None:
-        path_parts = []
+def _collect_source_aliases(obj, path_parts, bindings) -> dict[str, dict] | None:
+    """Read one query namespace, including its PBIR envelope, before mutation.
+
+    Query-state projections and visual selectors use the visual's main query.
+    Filter queries and sibling commands establish their own namespaces; they
+    must never be flattened into a file-wide alias dictionary.
+    """
+    if not isinstance(obj, dict):
+        return None
     aliases: dict[str, dict] = {}
-    if isinstance(obj, dict):
-        from_entries = obj.get("From")
-        if isinstance(from_entries, list):
-            for idx, source in enumerate(from_entries):
-                if not isinstance(source, dict):
-                    continue
-                alias_name = source.get("Name")
-                entity = source.get("Entity")
-                if isinstance(alias_name, str) and isinstance(entity, str):
-                    aliases[alias_name.casefold()] = {
-                        "name": alias_name,
-                        "entity": entity,
-                        "original_entity": entity,
-                        "source": source,
-                        "entity_path": path_parts + ["From", f"[{idx}]", "Entity"],
-                    }
-        for key, value in obj.items():
-            aliases.update(_collect_source_aliases(value, path_parts + [key]))
-    elif isinstance(obj, list):
-        for idx, item in enumerate(obj):
-            aliases.update(_collect_source_aliases(item, path_parts + [f"[{idx}]"]))
-    return aliases
+    if "From" in obj:
+        for idx, source in enumerate(obj["From"] if isinstance(obj["From"], list) else []):
+            if not isinstance(source, dict) or not isinstance(source.get("Name"), str):
+                continue
+            alias_name = source["Name"]
+            if id(source) not in bindings:
+                bindings[id(source)] = {
+                    "name": alias_name,
+                    "original_entity": source.get("Entity"),
+                    "source": source,
+                    "entity_path": path_parts + ["From", f"[{idx}]", "Entity"],
+                    "ambiguous": not isinstance(source.get("Entity"), str) or not source["Entity"].strip(),
+                }
+            alias_key = alias_name.casefold()
+            aliases[alias_key] = ({"ambiguous": True} if alias_key in aliases else bindings[id(source)])
+        return aliases
+    for key in ("query", "SemanticQueryDataShapeCommand", "Query", "prototypeQuery", "filter"):
+        nested = _collect_source_aliases(obj.get(key), path_parts + [key], bindings)
+        if nested is not None:
+            return nested
+    return None
+
+
+def _source_alias_scopes(obj) -> dict[int, dict[str, dict]]:
+    """Snapshot original bindings once so later edits cannot change resolution."""
+    scopes: dict[int, dict[str, dict]] = {}
+    bindings: dict[int, dict] = {}
+
+    def visit(value, path, inherited):
+        if isinstance(value, dict):
+            local = _collect_source_aliases(value, path, bindings)
+            aliases = inherited if local is None else local
+            scopes[id(value)] = aliases
+            for key, child in value.items():
+                visit(child, path + [key], aliases)
+        elif isinstance(value, list):
+            for idx, child in enumerate(value):
+                visit(child, path + [f"[{idx}]"], inherited)
+
+    visit(obj, [], {})
+    # An alias seen only in another query is not a table-name fallback. Preserve
+    # this distinction for queryRef/metadata strings outside a resolvable scope.
+    unavailable = {binding["name"].casefold(): {"ambiguous": True} for binding in bindings.values()}
+    for node, aliases in scopes.items():
+        scopes[node] = {**unavailable, **aliases}
+    return scopes
+
+
+def _reference_source_ref(reference: dict, ref_type: str) -> dict:
+    """Treat every missing/malformed source shape as unresolved, never skipped."""
+    path = ("Expression", "Hierarchy", "Expression", "SourceRef") if ref_type == "HierarchyLevel" else ("Expression", "SourceRef")
+    value = reference
+    for key in path:
+        if not isinstance(value, dict):
+            return {}
+        value = value.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _resolve_reference_source(source_ref, prop, aliases, table_lookup, object_lookup, path):
+    entity = source_ref.get("Entity")
+    if isinstance(entity, str) and entity.strip():
+        return entity, None
+    source_alias = source_ref.get("Source")
+    alias = aliases.get(source_alias.casefold()) if isinstance(source_alias, str) else None
+    if alias and not alias.get("ambiguous"):
+        return alias["original_entity"], alias
+    moving_objects = any(target[0].casefold() != key[0] for key, target in object_lookup.items())
+    if (table_lookup or (prop is None and moving_objects)
+            or (isinstance(prop, str) and any(key[1] == prop.casefold() for key in object_lookup))):
+        raise ValueError(
+            f"Cannot resolve query alias '{source_alias}' at {'.'.join(path)} for '{prop}'; "
+            "required reference propagation is ambiguous or unresolved."
+        )
+    return None, None
+
+
+def _set_alias_target(alias, target_table, updates):
+    """A shared source can only move if every reference still needs one table."""
+    previous = alias.get("required_entity")
+    if previous is not None and previous.casefold() != target_table.casefold():
+        raise ValueError(
+            f"Cannot propagate aliased references through shared query source '{alias['name']}': "
+            f"its items require both '{previous}' and '{target_table}'."
+        )
+    alias["required_entity"] = target_table
+    old_entity = alias["source"].get("Entity")
+    if old_entity != target_table:
+        alias["source"]["Entity"] = target_table
+        updates.append({"path": ".".join(alias["entity_path"]), "from": old_entity,
+                        "to": target_table, "kind": "From.Entity"})
 
 
 def _rewrite_model_refs_in_json(
@@ -496,6 +702,8 @@ def _rewrite_model_refs_in_json(
     aliases: dict[str, dict] | None = None,
     column_lookup: dict[tuple[str, str], tuple[str, str]] | None = None,
     warnings: list[str] | None = None,
+    alias_scopes: dict[int, dict[str, dict]] | None = None,
+    processed_sources: set[int] | None = None,
 ) -> None:
     if path_parts is None:
         path_parts = []
@@ -505,9 +713,13 @@ def _rewrite_model_refs_in_json(
         column_lookup = {}
     if warnings is None:
         warnings = []
+    if alias_scopes is None:
+        alias_scopes = _source_alias_scopes(obj)
+    if processed_sources is None:
+        processed_sources = set()
 
     if isinstance(obj, dict):
-        local_aliases = dict(aliases)
+        local_aliases = alias_scopes.get(id(obj), {})
         from_entries = obj.get("From")
         if isinstance(from_entries, list):
             for idx, source in enumerate(from_entries):
@@ -517,7 +729,9 @@ def _rewrite_model_refs_in_json(
                 entity = source.get("Entity")
                 if not (isinstance(alias_name, str) and isinstance(entity, str)):
                     continue
-                target_table = table_lookup.get(entity.casefold(), entity)
+                binding = local_aliases.get(alias_name.casefold(), {})
+                original_entity = binding.get("original_entity", entity)
+                target_table = binding.get("required_entity", table_lookup.get(original_entity.casefold(), original_entity))
                 if target_table != entity:
                     source["Entity"] = target_table
                     updates.append({
@@ -526,27 +740,16 @@ def _rewrite_model_refs_in_json(
                         "to": target_table,
                         "kind": "From.Entity",
                     })
-                alias_info = local_aliases.get(alias_name.casefold(), {})
-                alias_info.update({
-                    "name": alias_name,
-                    "entity": source["Entity"],
-                    "original_entity": alias_info.get("original_entity", entity),
-                    "source": source,
-                    "entity_path": path_parts + ["From", f"[{idx}]", "Entity"],
-                })
-                local_aliases[alias_name.casefold()] = alias_info
 
         measure = obj.get("Measure")
         if isinstance(measure, dict):
             prop = measure.get("Property")
-            expr = measure.get("Expression", {})
-            source_ref = expr.get("SourceRef", {}) if isinstance(expr, dict) else {}
-            if isinstance(prop, str) and isinstance(source_ref, dict):
+            source_ref = _reference_source_ref(measure, "Measure")
+            if isinstance(prop, str):
+                processed_sources.add(id(source_ref))
                 entity = source_ref.get("Entity")
-                source_alias = source_ref.get("Source")
-                alias = local_aliases.get(source_alias.casefold()) if isinstance(source_alias, str) else None
-                resolved_entity = entity if isinstance(entity, str) else (
-                    str(alias.get("original_entity", alias["entity"])) if alias else None
+                resolved_entity, alias = _resolve_reference_source(
+                    source_ref, prop, local_aliases, table_lookup, measure_lookup, path_parts,
                 )
                 if isinstance(resolved_entity, str):
                     target_table = table_lookup.get(resolved_entity.casefold(), resolved_entity)
@@ -554,6 +757,8 @@ def _rewrite_model_refs_in_json(
                     measure_target = measure_lookup.get((resolved_entity.casefold(), prop.casefold()))
                     if measure_target:
                         target_table, target_name = measure_target
+                        if target_table.casefold() == resolved_entity.casefold():
+                            target_table = table_lookup.get(resolved_entity.casefold(), resolved_entity)
                     if isinstance(entity, str) and target_table != entity:
                         source_ref["Entity"] = target_table
                         updates.append({
@@ -562,16 +767,8 @@ def _rewrite_model_refs_in_json(
                             "to": target_table,
                             "kind": "Measure.SourceRef.Entity",
                         })
-                    elif alias and target_table != alias["source"].get("Entity"):
-                        old_entity = alias["source"].get("Entity")
-                        alias["source"]["Entity"] = target_table
-                        alias["entity"] = target_table
-                        updates.append({
-                            "path": ".".join(alias["entity_path"]),
-                            "from": old_entity,
-                            "to": target_table,
-                            "kind": "From.Entity",
-                        })
+                    elif alias:
+                        _set_alias_target(alias, target_table, updates)
                     if target_name != prop:
                         measure["Property"] = target_name
                         updates.append({
@@ -585,17 +782,13 @@ def _rewrite_model_refs_in_json(
             ref = obj.get(ref_type)
             if not isinstance(ref, dict):
                 continue
-            expr = ref.get("Expression", {})
-            if ref_type == "HierarchyLevel" and isinstance(expr, dict):
-                expr = expr.get("Hierarchy", {}).get("Expression", {})
-            source_ref = expr.get("SourceRef", {}) if isinstance(expr, dict) else {}
+            source_ref = _reference_source_ref(ref, ref_type)
             prop = ref.get("Property")
             if isinstance(source_ref, dict):
+                processed_sources.add(id(source_ref))
                 entity = source_ref.get("Entity")
-                source_alias = source_ref.get("Source")
-                alias = local_aliases.get(source_alias.casefold()) if isinstance(source_alias, str) else None
-                resolved_entity = entity if isinstance(entity, str) else (
-                    str(alias.get("original_entity", alias["entity"])) if alias else None
+                resolved_entity, alias = _resolve_reference_source(
+                    source_ref, prop, local_aliases, table_lookup, column_lookup, path_parts,
                 )
                 table_move_target = table_lookup.get(str(resolved_entity).casefold(), resolved_entity) if isinstance(resolved_entity, str) else None
                 target_table = table_move_target
@@ -605,24 +798,8 @@ def _rewrite_model_refs_in_json(
                     column_target = column_lookup.get((resolved_entity.casefold(), prop.casefold()))
                     if column_target:
                         target_table, target_name = column_target
-                # A From alias is shared by every column drawn from it, so we cannot
-                # move ONE column off it to a different table than its siblings —
-                # mutating the shared From would flip-flop and silently corrupt the
-                # other columns. Skip such refs and warn instead of corrupting.
-                if (
-                    alias is not None
-                    and not isinstance(entity, str)
-                    and target_table
-                    and str(target_table).casefold() != str(table_move_target).casefold()
-                ):
-                    message = (
-                        f"Skipped aliased reference to {resolved_entity}[{prop}] — a column drawn from a "
-                        "shared query source cannot be moved to a different table than its siblings. "
-                        "Edit this reference in Power BI, or remove it."
-                    )
-                    if message not in warnings:
-                        warnings.append(message)
-                    continue
+                        if target_table.casefold() == resolved_entity.casefold():
+                            target_table = table_lookup.get(resolved_entity.casefold(), resolved_entity)
                 if isinstance(entity, str) and target_table and target_table != entity:
                     source_ref["Entity"] = target_table
                     updates.append({
@@ -631,16 +808,8 @@ def _rewrite_model_refs_in_json(
                         "to": target_table,
                         "kind": f"{ref_type}.SourceRef.Entity",
                     })
-                elif alias and target_table and target_table != alias["source"].get("Entity"):
-                    old_entity = alias["source"].get("Entity")
-                    alias["source"]["Entity"] = target_table
-                    alias["entity"] = target_table
-                    updates.append({
-                        "path": ".".join(alias["entity_path"]),
-                        "from": old_entity,
-                        "to": target_table,
-                        "kind": "From.Entity",
-                    })
+                elif alias and target_table:
+                    _set_alias_target(alias, target_table, updates)
                 if isinstance(prop, str) and isinstance(target_name, str) and target_name != prop:
                     ref["Property"] = target_name
                     updates.append({
@@ -650,10 +819,28 @@ def _rewrite_model_refs_in_json(
                         "kind": f"{ref_type}.Property",
                     })
 
+        source_ref = obj.get("SourceRef")
+        if isinstance(source_ref, dict) and id(source_ref) not in processed_sources:
+            # A source used by an expression other than the item being moved
+            # still requires the original table. Do not repoint it implicitly.
+            resolved_entity, alias = _resolve_reference_source(
+                source_ref, None, local_aliases, table_lookup,
+                {**measure_lookup, **column_lookup}, path_parts,
+            )
+            if isinstance(resolved_entity, str):
+                target_table = table_lookup.get(resolved_entity.casefold(), resolved_entity)
+                if alias:
+                    _set_alias_target(alias, target_table, updates)
+                elif target_table != resolved_entity:
+                    raise ValueError(
+                        f"Cannot propagate an unsupported SourceRef expression at {'.'.join(path_parts)}; "
+                        "review its semantic binding before renaming the table."
+                    )
+
         for key in ("queryRef", "metadata"):
             value = obj.get(key)
             if isinstance(value, str):
-                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup, local_aliases, column_lookup)
+                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup, local_aliases, column_lookup, updates)
                 if changed:
                     obj[key] = new_value
                     updates.append({
@@ -690,7 +877,9 @@ def _rewrite_model_refs_in_json(
         for dax_key in ("expression",):
             value = obj.get(dax_key)
             if isinstance(value, str):
-                new_value, changed = _rewrite_dax_table_refs(value, table_lookup)
+                new_value, expression_updates = rewrite_dax(value, tables=table_lookup,
+                    objects={**measure_lookup, **column_lookup})
+                changed = bool(expression_updates) and new_value != value
                 if changed:
                     obj[dax_key] = new_value
                     updates.append({
@@ -705,7 +894,7 @@ def _rewrite_model_refs_in_json(
             for idx, value in enumerate(query_refs):
                 if not isinstance(value, str):
                     continue
-                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup, local_aliases, column_lookup)
+                new_value, changed = _rewrite_query_ref(value, table_lookup, measure_lookup, local_aliases, column_lookup, updates)
                 if changed:
                     query_refs[idx] = new_value
                     updates.append({
@@ -716,10 +905,10 @@ def _rewrite_model_refs_in_json(
                     })
 
         for key, value in obj.items():
-            _rewrite_model_refs_in_json(value, table_lookup, measure_lookup, updates, path_parts + [key], local_aliases, column_lookup, warnings)
+            _rewrite_model_refs_in_json(value, table_lookup, measure_lookup, updates, path_parts + [key], local_aliases, column_lookup, warnings, alias_scopes, processed_sources)
     elif isinstance(obj, list):
         for idx, item in enumerate(obj):
-            _rewrite_model_refs_in_json(item, table_lookup, measure_lookup, updates, path_parts + [f"[{idx}]"], aliases, column_lookup, warnings)
+            _rewrite_model_refs_in_json(item, table_lookup, measure_lookup, updates, path_parts + [f"[{idx}]"], aliases, column_lookup, warnings, alias_scopes, processed_sources)
 
 
 def rewrite_measure_table_references(
@@ -761,29 +950,25 @@ def rewrite_model_reference_changes(
     for report_path in report_paths:
         definition_dir = report_path / "definition"
         if not report_path.exists():
-            warnings.append(f"Report path not found: {report_path}")
-            continue
+            return {"ok": False, "error": f"Report path not found: {report_path}", "written": False}
         if not definition_dir.exists():
-            warnings.append(f"Report definition folder not found: {definition_dir}")
-            continue
+            return {"ok": False, "error": f"Report definition folder not found: {definition_dir}", "written": False}
 
         for json_file in sorted(definition_dir.rglob("*.json")):
             try:
                 payload = json.loads(json_file.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                warnings.append(f"Skipped invalid JSON file: {json_file}")
-                continue
+            except (OSError, json.JSONDecodeError) as exc:
+                return {"ok": False, "error": f"Cannot read selected PBIR JSON file {json_file}: {exc}", "written": False}
 
             updates: list[dict] = []
-            _rewrite_model_refs_in_json(
-                payload,
-                table_lookup,
-                measure_lookup,
-                updates,
-                aliases=_collect_source_aliases(payload),
-                column_lookup=column_lookup,
-                warnings=warnings,
-            )
+            try:
+                _rewrite_model_refs_in_json(
+                    payload, table_lookup, measure_lookup, updates,
+                    column_lookup=column_lookup, warnings=warnings,
+                )
+            except ValueError as exc:
+                return {"ok": False, "error": f"Cannot rewrite {json_file}: {exc}",
+                        "written": False, "warnings": warnings}
             if not updates:
                 continue
 
@@ -1210,19 +1395,35 @@ def _remove_related_references(payload: dict, table: str, name: str, skip_paths:
     return len(removed), removed
 
 
+def _report_action_target(entry: dict) -> Path:
+    """Resolve an exact report-local artifact before loading or editing any bytes."""
+    raw_report = str(entry.get('report_path', '') or '').strip()
+    report = Path(raw_report)
+    artifact = Path(str(entry.get('artifact_path', '') or '').strip())
+    if not raw_report or not report.is_absolute():
+        raise ValueError('Each report action needs an absolute report_path')
+    if not report.is_dir():
+        raise ValueError(f'Report path not found: {report}')
+    if not entry.get('artifact_path') or artifact == Path('.'):
+        raise ValueError('Each report action needs artifact_path')
+    if artifact.is_absolute() or '..' in artifact.parts:
+        raise ValueError('Report action artifact must stay inside its selected report')
+    target = (report / artifact).resolve()
+    if not target.is_relative_to(report.resolve()):
+        raise ValueError('Report action artifact must stay inside its selected report')
+    return target
+
+
 def apply_report_issue_actions(*, entries: list[dict], dry_run: bool = False) -> dict:
     if not entries:
         return {"ok": False, "error": "No report issue actions were provided"}
 
     grouped: dict[Path, list[dict]] = {}
     for entry in entries:
-        report_path = Path(str(entry.get("report_path", "") or "")).resolve()
-        artifact_path = str(entry.get("artifact_path", "") or "").strip()
-        if not report_path.exists():
-            return {"ok": False, "error": f"Report path not found: {report_path}"}
-        if not artifact_path:
-            return {"ok": False, "error": "Each report issue action needs artifact_path"}
-        target_file = (report_path / artifact_path).resolve()
+        try:
+            target_file = _report_action_target(entry)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
         grouped.setdefault(target_file, []).append(entry)
 
     updated_files = []
@@ -1453,16 +1654,13 @@ def cleanup_stale_metadata_selectors(*, entries: list[dict], dry_run: bool = Fal
     formatting_rule_grouped: dict[Path, set[str]] = {}
     path_entries: dict[Path, set[str]] = {}
     for entry in entries:
-        report_path = Path(str(entry.get("report_path", "") or "")).resolve()
-        artifact_path = str(entry.get("artifact_path", "") or "").strip()
+        try:
+            target_file = _report_action_target(entry)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
         selector_value = str(entry.get("selector_value", "") or "").strip()
         source_path = str(entry.get("source_path", "") or "").strip()
         stale_kind = str(entry.get("stale_kind", "") or "").strip()
-        if not report_path.exists():
-            return {"ok": False, "error": f"Report path not found: {report_path}"}
-        if not artifact_path:
-            return {"ok": False, "error": "Each stale selector entry needs artifact_path"}
-        target_file = (report_path / artifact_path).resolve()
         if stale_kind == "bookmark_projection_entry":
             if ".singleVisual.projections." not in source_path:
                 return {"ok": False, "error": "Bookmark stale cleanup requires source_path for the projection entry"}

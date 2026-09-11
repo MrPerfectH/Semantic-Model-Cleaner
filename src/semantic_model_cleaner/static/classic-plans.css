@@ -1,0 +1,21 @@
+.classic-plan-dialog{width:min(1040px,calc(100vw - 32px));max-height:calc(100vh - 32px);margin:auto;padding:0;border:1px solid var(--border);border-radius:12px;color:var(--text);background:var(--card);box-shadow:0 24px 80px #0f172a40}
+.classic-plan-dialog::backdrop{background:#0f172a80}
+.classic-plan-dialog header,.classic-plan-dialog footer{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:18px 22px;background:var(--card)}
+.classic-plan-dialog header{border-bottom:1px solid var(--border)}
+.classic-plan-dialog footer{border-top:1px solid var(--border)}
+.classic-plan-dialog h2{font-size:20px}.classic-plan-dialog h3{font-size:15px}
+.classic-plan-dialog button{cursor:pointer;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text)}
+.classic-plan-dialog button.btn-primary{background:var(--primary);color:white;border-color:var(--primary)}
+.classic-plan-dialog button:disabled{opacity:.55;cursor:wait}
+.classic-plan-dialog button:focus-visible,.classic-plan-dialog summary:focus-visible,.classic-plan-dialog pre:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+.classic-plan-body{padding:20px 22px;max-height:65vh;overflow:auto;display:grid;gap:16px}
+.classic-plan-body p,.classic-plan-body li{line-height:1.6}.classic-plan-body ul{padding-left:20px}
+.classic-plan-eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-light);margin-bottom:5px}
+.classic-plan-scope{display:grid;gap:6px;font-size:12px}.classic-plan-scope>div{display:grid;grid-template-columns:85px 1fr;gap:8px}.classic-plan-scope dd{overflow-wrap:anywhere;font-family:monospace}
+.classic-plan-limits{font-size:12px;color:var(--text-light)}
+.classic-plan-body details{border:1px solid var(--border);border-radius:8px;overflow:hidden}.classic-plan-body summary{padding:12px;cursor:pointer;background:var(--bg);overflow-wrap:anywhere}
+.classic-plan-body pre{padding:16px;overflow:auto;max-height:360px;font-size:12px;line-height:1.6;background:#f8fafc;white-space:pre}
+.classic-plan-history{display:grid;gap:8px;border-bottom:1px solid var(--border);padding-bottom:18px}
+.classic-plan-history-button{background:white;color:var(--primary);white-space:nowrap}
+#classicPlanStatus{font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+@media(max-width:640px){.classic-plan-dialog{width:calc(100vw - 12px);max-height:calc(100vh - 12px)}.classic-plan-dialog footer{align-items:stretch;flex-direction:column}.classic-plan-body{padding:14px;max-height:60vh}.classic-plan-scope>div{grid-template-columns:1fr}.header{flex-wrap:wrap}}

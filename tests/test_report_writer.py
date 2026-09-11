@@ -318,7 +318,7 @@ def test_rewrite_model_reference_changes_updates_table_and_measure_names(tmp_pat
     assert column_object["field"]["expr"]["Aggregation"]["Expression"]["Column"]["Expression"]["SourceRef"]["Entity"] == "Fact Sales"
     assert column_object["queryRef"] == "Sum(Fact Sales.Amount)"
     assert extension_entity["name"] == "Fact Sales"
-    assert extension_measure["expression"] == "CALCULATE([Revenue], 'Fact Sales'[Amount] > 0)"
+    assert extension_measure["expression"] == "CALCULATE([Net Revenue], 'Fact Sales'[Amount] > 0)"
     assert extension_measure["references"]["columns"][0]["entity"] == "Fact Sales"
 
 
@@ -1874,7 +1874,7 @@ def test_column_move_does_not_corrupt_shared_aliased_from(tmp_path):
     # A From alias shared by a moving column and a non-moving sibling cannot
     # host both at different tables. The repair must NOT flip-flop the shared
     # From (which would leave the moved column resolving to a column that no
-    # longer exists on the old table) — it must skip that ref safely and warn.
+    # longer exists on the old table) — it must reject the rewrite atomically.
     report_path = tmp_path / "Executive.Report"
     visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
     visual_dir.mkdir(parents=True)
@@ -1900,13 +1900,14 @@ def test_column_move_does_not_corrupt_shared_aliased_from(tmp_path):
         }],
     )
 
-    assert result["ok"] is True
+    assert result["ok"] is False
+    assert result["written"] is False
     query = json.loads(visual_file.read_text(encoding="utf-8"))["visual"]["query"]["SemanticQueryDataShapeCommand"]["Query"]
     # Shared From is not flip-flopped; the non-moving 'status' column stays intact.
     assert query["From"][0]["Entity"] == "IW_49n"
     props = [c["Column"]["Property"] for c in query["Select"]]
     assert "status" in props
-    # The moved column is safely skipped (not corrupted to work_order_id under IW_49n).
+    # No partial repair is written or advertised as successful propagation.
     assert "work_order_number" in props
     assert "work_order_id" not in props
-    assert any("aliased" in w.lower() or "shared query source" in w.lower() for w in result.get("warnings", []))
+    assert "shared query source" in result["error"]

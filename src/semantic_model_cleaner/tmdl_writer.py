@@ -13,10 +13,13 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from .reference_tokens import dax_references, rewrite_dax, transform_tmdl_expressions
+
 from semantic_model_cleaner.tmdl_identifiers import (
-    quote_dax_object_name as _quote_dax_object_name,
     quote_dax_table_name as _quote_dax_table_name,
     quote_tmdl_name as _quote_tmdl_name,
+    read_single_quoted_name,
+    split_tmdl_name_and_expression,
     tmdl_name_pattern as _tmdl_name_pattern,
     unquote_tmdl_name as _unquote_tmdl_name,
 )
@@ -112,143 +115,44 @@ def _model_has_column_named(model_path: Path, name: str) -> bool:
 
 
 def _rewrite_table_name_in_text(text: str, old_table: str, new_table: str) -> tuple[str, int]:
-    count = 0
-    table_pattern = _tmdl_name_pattern(old_table)
-    new_tmdl = _quote_tmdl_name(new_table)
-    new_dax = _quote_dax_table_name(new_table)
-
-    def replace_table_decl(match: re.Match) -> str:
-        nonlocal count
-        count += 1
-        return f"{match.group(1)}{new_tmdl}"
-
-    text = re.sub(
-        rf"^(table\s+){table_pattern}\s*$",
-        replace_table_decl,
-        text,
-        flags=re.IGNORECASE | re.MULTILINE,
-    )
-
-    def replace_model_ref(match: re.Match) -> str:
-        nonlocal count
-        count += 1
-        return f"{match.group(1)}{new_tmdl}"
-
-    text = re.sub(
-        rf"^(ref\s+table\s+){table_pattern}\s*$",
-        replace_model_ref,
-        text,
-        flags=re.IGNORECASE | re.MULTILINE,
-    )
-
-    def replace_relationship_ref(match: re.Match) -> str:
-        nonlocal count
-        count += 1
-        return f"{match.group(1)}{new_tmdl}."
-
-    text = re.sub(
-        rf"^(\t(?:fromColumn|toColumn):\s+){table_pattern}\.",
-        replace_relationship_ref,
-        text,
-        flags=re.IGNORECASE | re.MULTILINE,
-    )
-
-    def replace_default_detail_rows_ref(match: re.Match) -> str:
-        nonlocal count
-        count += 1
-        return f"{match.group(1)}{new_dax}"
-
-    text = re.sub(
-        rf"^(\tdefaultDetailRowsDefinition\s*=\s*){table_pattern}\s*$",
-        replace_default_detail_rows_ref,
-        text,
-        flags=re.IGNORECASE | re.MULTILINE,
-    )
-
-    def replace_dax_table_ref(match: re.Match) -> str:
-        nonlocal count
-        count += 1
-        return f"{new_dax}["
-
-    text = re.sub(
-        rf"(?<![A-Za-z0-9_']){table_pattern}\[",
-        replace_dax_table_ref,
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    def replace_bare_dax_table_ref(match: re.Match) -> str:
-        nonlocal count
-        count += 1
-        return new_dax
-
-    text = re.sub(
-        rf"(?<![A-Za-z0-9_']){re.escape(_quote_dax_table_name(old_table))}(?!\s*(?:\[|\.))",
-        replace_bare_dax_table_ref,
-        text,
-        flags=re.IGNORECASE,
-    )
+    text, count = transform_tmdl_expressions(
+        text, lambda value: rewrite_dax(value, tables={old_table.casefold(): new_table}))
+    pattern = _tmdl_name_pattern(old_table)
+    # These are metadata identifiers, never arbitrary descriptive text or M.
+    for regex in (
+        rf"^(\s*(?:table|ref\s+table|tablePermission|perspectiveTable)\s+){pattern}([ \t]*)(?==|\r?$)",
+        rf"^(\s*(?:fromColumn|toColumn):\s+){pattern}(\.)",
+    ):
+        def replace(match):
+            return match.group(1) + _quote_tmdl_name(new_table) + match.group(2)
+        text, n = re.subn(regex, replace, text, flags=re.I | re.M)
+        count += n
     return text, count
 
 
 def _rewrite_measure_name_in_text(
-    text: str,
-    table: str,
-    old_name: str,
-    new_name: str,
-    *,
-    update_unqualified: bool,
+    text: str, table: str, old_name: str, new_name: str, *, update_unqualified: bool,
 ) -> tuple[str, int]:
-    count = 0
-    table_pattern = _tmdl_name_pattern(table)
-    old_object = re.escape(_quote_dax_object_name(old_name))
-    new_object = _quote_dax_object_name(new_name)
-    table_ref_re = re.compile(
-        rf"(?<![A-Za-z0-9_']){table_pattern}\[{old_object}\]",
-        flags=re.IGNORECASE,
-    )
-
-    def replace_table_qualified(match: re.Match) -> str:
-        nonlocal count
-        count += 1
-        return f"{_quote_dax_table_name(table)}[{new_object}]"
-
-    text = table_ref_re.sub(replace_table_qualified, text)
-
-    if update_unqualified:
-        unqualified_re = re.compile(rf"\[{old_object}\]", flags=re.IGNORECASE)
-
-        def replace_unqualified(match: re.Match) -> str:
-            nonlocal count
-            count += 1
-            return f"[{new_object}]"
-
-        text = unqualified_re.sub(replace_unqualified, text)
-
-    return text, count
+    return transform_tmdl_expressions(text, lambda value: rewrite_dax(
+        value, measures={(table.casefold(), old_name.casefold()): new_name},
+        unqualified=update_unqualified))
 
 
 def _rewrite_measure_table_ref_in_text(
-    text: str,
-    old_table: str,
-    new_table: str,
-    measure_name: str,
+    text: str, old_table: str, new_table: str, measure_name: str,
 ) -> tuple[str, int]:
-    count = 0
-    table_pattern = _tmdl_name_pattern(old_table)
-    measure_object = re.escape(_quote_dax_object_name(measure_name))
-    new_ref = f"{_quote_dax_table_name(new_table)}[{_quote_dax_object_name(measure_name)}]"
-    table_ref_re = re.compile(
-        rf"(?<![A-Za-z0-9_']){table_pattern}\[{measure_object}\]",
-        flags=re.IGNORECASE,
-    )
-
-    def replace_table_qualified(match: re.Match) -> str:
-        nonlocal count
-        count += 1
-        return new_ref
-
-    return table_ref_re.sub(replace_table_qualified, text), count
+    from .reference_tokens import dax_tokens
+    def transform(value):
+        tokens = dax_tokens(value)
+        edits = []
+        for left, right in zip(tokens, tokens[1:]):
+            if (left.kind in ("table", "identifier") and left.value.casefold() == old_table.casefold()
+                    and right.kind == "object" and right.value.casefold() == measure_name.casefold()):
+                edits.append((left.start, left.end, _quote_dax_table_name(new_table)))
+        for start, end, replacement in reversed(edits):
+            value = value[:start] + replacement + value[end:]
+        return value, len(edits)
+    return transform_tmdl_expressions(text, transform)
 
 
 def _find_item_block(
@@ -265,16 +169,13 @@ def _find_item_block(
     line of the block (exclusive — suitable for slicing).
     """
     kind = "measure" if item_type.lower() == "measure" else "column"
-    if kind == "measure":
-        pattern = re.compile(r"^\tmeasure\s+(.+?)\s*=", re.IGNORECASE)
-    else:
-        pattern = re.compile(r"^\tcolumn\s+(.+?)(?:\s*=.*)?$", re.IGNORECASE)
+    pattern = re.compile(rf"^\t{kind}\s+(.+)$", re.IGNORECASE)
 
     limit = len(lines) if end_at is None else min(end_at, len(lines))
     i = start_at
     while i < limit:
         match = pattern.match(lines[i])
-        if match and _unquote_tmdl_name(match.group(1)).casefold() == name.casefold():
+        if match and split_tmdl_name_and_expression(match.group(1))[0].casefold() == name.casefold():
             start = i
             i += 1
             # Consume all 2-tab and 3-tab property/DAX lines, plus blank lines within block
@@ -819,11 +720,23 @@ def rename_measure(
         return {"ok": False, "error": f"Table '{table}' already has a measure named '{target_name}'"}
 
     update_unqualified = not _model_has_column_named(model_path, name)
+    if not update_unqualified:
+        ambiguous_files = []
+        for filepath in _iter_tmdl_files(model_path):
+            def detect(value):
+                refs = [ref for ref in dax_references(value) if ref[0] is None and ref[1].casefold() == name.casefold()]
+                return value, len(refs)
+            _, count = transform_tmdl_expressions(filepath.read_text(encoding="utf-8"), detect)
+            if count:
+                ambiguous_files.append(str(filepath))
+        if ambiguous_files:
+            return {"ok": False, "error": "Unqualified measure references are ambiguous because a column with the same name exists; qualify the references before renaming.",
+                    "ambiguous_files": ambiguous_files, "written": False}
     changed_files = []
     reference_count = 0
 
     source_start, _ = block
-    source_match = re.match(r"^(\tmeasure\s+)(.+?)(\s*=.*)$", lines[source_start], re.IGNORECASE)
+    source_match = re.match(r"^(\tmeasure\s+)(.+)$", lines[source_start], re.IGNORECASE)
     if not source_match:
         return {"ok": False, "error": f"Measure declaration not recognized for '{name}'"}
 
@@ -833,14 +746,16 @@ def rename_measure(
         count = 0
         if filepath == tmdl_file:
             file_lines = new_text.splitlines()
-            current_block = _find_item_block(file_lines, name, "Measure")
-            if current_block:
-                start, _ = current_block
-                match = re.match(r"^(\tmeasure\s+)(.+?)(\s*=.*)$", file_lines[start], re.IGNORECASE)
-                if match:
-                    file_lines[start] = f"{match.group(1)}{_quote_tmdl_name(target_name)}{match.group(3)}"
-                    new_text = "\n".join(file_lines) + ("\n" if text.endswith("\n") else "")
-                    count += 1
+            # Use the table-scoped declaration found above. Preserve the suffix
+            # verbatim, including absent expressions and '=' inside quoted names.
+            declaration = source_match.group(2)
+            quoted_name = read_single_quoted_name(declaration)
+            name_end = quoted_name[1] if quoted_name else len(declaration.split("=", 1)[0].rstrip())
+            file_lines[source_start] = (
+                f"{source_match.group(1)}{_quote_tmdl_name(target_name)}{declaration[name_end:]}"
+            )
+            new_text = "\n".join(file_lines) + ("\n" if text.endswith("\n") else "")
+            count += 1
 
         new_text, ref_count = _rewrite_measure_name_in_text(
             new_text,
@@ -850,6 +765,8 @@ def rename_measure(
             update_unqualified=update_unqualified,
         )
         count += ref_count
+        new_text, metadata_count = _rewrite_scoped_item_metadata(new_text, table, name, target_name, 'Measure')
+        count += metadata_count
         if new_text != text:
             reference_count += count
             changed_files.append(str(filepath))
@@ -931,17 +848,114 @@ def rename_table(
     }
 
 
+def _rewrite_scoped_item_metadata(text: str, table: str, name: str, target_name: str, kind: str) -> tuple[str, int]:
+    """Rewrite identity-bearing metadata with an explicit owning table scope."""
+    count = 0
+    owner = None
+    lines = []
+    name_pattern = _tmdl_name_pattern(name)
+    for line in text.splitlines(keepends=True):
+        stripped = line.lstrip()
+        scope = re.match(r"(?:table|perspectiveTable|tablePermission)\s+(.+?)(?:\s*=.*)?$", stripped.strip(), re.I)
+        if scope:
+            owner = _unquote_tmdl_name(scope.group(1))
+        elif line and not line[0].isspace() and stripped.strip():
+            owner = None
+        if owner and owner.casefold() == table.casefold():
+            patterns = ([rf"^(\s*(?:sortByColumn|column):\s*){name_pattern}([ \t]*)(?=\r?$)",
+                         rf"^(\s*(?:perspectiveColumn|columnPermission|groupByColumn)\s+){name_pattern}([ \t]*)(?=\r?$)"]
+                        if kind == 'Column' else
+                        [rf"^(\s*perspectiveMeasure\s+){name_pattern}([ \t]*)(?=\r?$)"])
+            for pattern in patterns:
+                line, changes = re.subn(pattern, lambda m: m.group(1) + _quote_tmdl_name(target_name) + m.group(2), line, flags=re.I | re.M)
+                count += changes
+        lines.append(line)
+    return ''.join(lines), count
+
+
+def rename_column(
+    model_path: Path, table: str, name: str, target_name: str, *,
+    dry_run: bool = False, source_file: str | Path | None = None,
+) -> dict:
+    """Rename a model column with a conservative, fully preflighted reference pass."""
+    table, name, target_name = table.strip(), name.strip(), target_name.strip()
+    if not table or not name or not target_name or name.casefold() == target_name.casefold():
+        return {"ok": False, "error": "Table and distinct non-empty column names are required"}
+    source = _find_item_source(model_path, table, name, 'Column', source_file=source_file)
+    if source is None:
+        source = _find_item_source(model_path, table, name, 'Calculated Column', source_file=source_file)
+    if source is None:
+        return {"ok": False, "error": f"Column '{table}[{name}]' was not found"}
+    if (_find_item_source(model_path, table, target_name, 'Column')
+            or _find_item_source(model_path, table, target_name, 'Calculated Column')
+            or _find_item_source(model_path, table, target_name, 'Measure')):
+        return {"ok": False, "error": f"An item named '{target_name}' already exists in '{table}'"}
+    source_path = source[0]
+    all_text = {path: path.read_text(encoding='utf-8') for path in _iter_tmdl_files(model_path)}
+    same_named = 0
+    for text in all_text.values():
+        for line in text.splitlines():
+            match = re.match(r"^\t(?:column|measure)\s+(.+?)(?:\s*=.*)?$", line, re.I)
+            if match and _unquote_tmdl_name(match.group(1)).casefold() == name.casefold():
+                same_named += 1
+    ambiguous = []
+    pending = {}
+    reference_count = 0
+    for path, text in all_text.items():
+        def transform(value):
+            if same_named > 1 and any(owner is None and ref.casefold() == name.casefold() for owner, ref in dax_references(value)):
+                ambiguous.append(str(path))
+            return rewrite_dax(value, measures={(table.casefold(), name.casefold()): target_name})
+        changed, count = transform_tmdl_expressions(text, transform)
+        if path == source_path:
+            # A split TMDL source may contain several table declarations.
+            owner = None
+            lines = []
+            for line in changed.splitlines(keepends=True):
+                if line.startswith('table '):
+                    owner = _unquote_tmdl_name(line[6:].strip())
+                if owner and owner.casefold() == table.casefold():
+                    pattern = rf"^(\tcolumn\s+){_tmdl_name_pattern(name)}(?=\s*=|[ \t]*\r?$)"
+                    line, n = re.subn(pattern, lambda m: m.group(1) + _quote_tmdl_name(target_name), line, flags=re.I | re.M)
+                    count += n
+                lines.append(line)
+            changed = ''.join(lines)
+        pattern = rf"^(\s*(?:fromColumn|toColumn):\s+{_tmdl_name_pattern(table)}\.){_tmdl_name_pattern(name)}(?=[ \t]*\r?$)"
+        changed, n = re.subn(pattern, lambda m: m.group(1) + _quote_tmdl_name(target_name), changed, flags=re.I | re.M)
+        count += n
+        changed, n = _rewrite_scoped_item_metadata(changed, table, name, target_name, 'Column')
+        count += n
+        if changed != text:
+            pending[path] = changed
+            reference_count += count
+    if ambiguous:
+        return {"ok": False, "error": "Unqualified column references are ambiguous; qualify them before renaming", "ambiguous_files": sorted(set(ambiguous)), "written": False}
+    if not dry_run:
+        snapshots = _snapshot_model_files(model_path)
+        try:
+            for path, text in pending.items():
+                path.write_text(text, encoding='utf-8')
+        except Exception as exc:
+            _restore_model_files(model_path, snapshots)
+            return {"ok": False, "error": str(exc), "rolled_back": True}
+    return {"ok": True, "action": "rename_column", "table": table, "name": name,
+            "target_name": target_name, "dry_run": dry_run,
+            "changed_files": [str(path) for path in pending], "updated_reference_count": reference_count}
+
+
 def rename_model_metadata(
     model_path: Path,
     *,
     table_renames: list[dict] | None = None,
     measure_renames: list[dict] | None = None,
+    column_renames: list[dict] | None = None,
     dry_run: bool = False,
 ) -> dict:
-    """Validate and optionally apply table/measure renames in the semantic model."""
+    """Validate and optionally apply table/measure/column renames in the semantic model."""
     table_renames = table_renames or []
     measure_renames = measure_renames or []
-    if not table_renames and not measure_renames:
+    column_renames = column_renames or []
+    if not table_renames and not measure_renames and not column_renames:
         return {"ok": False, "error": "No table or measure renames specified", "results": []}
 
     validation_results = []
@@ -961,6 +975,11 @@ def rename_model_metadata(
             dry_run=True,
             source_file=rename.get("source_file") or rename.get("sourceFile"),
         ))
+    for rename in column_renames:
+        validation_results.append(rename_column(
+            model_path, str(rename.get("table", "") or ""),
+            str(rename.get("name", "") or ""), str(rename.get("target_name", "") or ""),
+            dry_run=True, source_file=rename.get("source_file") or rename.get("sourceFile")))
     if any(not result.get("ok") for result in validation_results):
         return {
             "ok": False,
@@ -1008,6 +1027,17 @@ def rename_model_metadata(
             results.append(result)
             if not result.get("ok"):
                 raise RuntimeError(result.get("error") or "Measure rename failed")
+        for rename in column_renames:
+            table_name = str(rename.get("table", "") or "")
+            for result in results:
+                if result.get("action") == "rename_table" and table_name.casefold() == str(result.get("table", "")).casefold():
+                    table_name = result['target_table']
+            result = rename_column(model_path, table_name, str(rename.get("name", "") or ""),
+                str(rename.get("target_name", "") or ""), dry_run=False,
+                source_file=rename.get("source_file") or rename.get("sourceFile"))
+            results.append(result)
+            if not result.get("ok"):
+                raise RuntimeError(result.get("error") or "Column rename failed")
     except Exception as exc:
         _restore_model_files(model_path, snapshots)
         return {
@@ -1122,6 +1152,16 @@ def _table_has_items(lines: list[str]) -> bool:
     return False
 
 
+def _table_declaration_blocks(lines: list[str], table: str):
+    """Find every fragment of a table without including neighboring objects."""
+    for start, line in enumerate(lines):
+        if not line.startswith("table ") or _unquote_tmdl_name(line[6:]).casefold() != table.casefold():
+            continue
+        end = next((i for i in range(start + 1, len(lines))
+                    if lines[i].strip() and not lines[i].startswith("\t")), len(lines))
+        yield start, end
+
+
 def _delete_all_relationships_for_table(model_path: Path, table: str) -> list[str]:
     """Remove all relationship blocks from relationships.tmdl that reference
     the given table on either side. Returns list of removed relationship identifiers."""
@@ -1201,7 +1241,27 @@ def delete_item(
     tmdl_file, lines, block = source
 
     start, end = block
-    del lines[start:end]
+    # Slice original lines, including their endings, so neighboring fragments
+    # keep their exact bytes even when this fragment loses its final item.
+    raw_lines = tmdl_file.read_bytes().decode("utf-8").splitlines(keepends=True)
+    del raw_lines[start:end]
+    lines = "".join(raw_lines).splitlines()
+
+    declarations = []
+    retained_items = False
+    try:
+        for candidate in _iter_tmdl_files(model_path):
+            candidate_lines = lines if candidate == tmdl_file else candidate.read_text(encoding="utf-8").splitlines()
+            for table_start, table_end in _table_declaration_blocks(candidate_lines, table):
+                declarations.append((candidate, table_start, table_end))
+                retained_items |= _table_has_items(candidate_lines[table_start + 1:table_end])
+    except OSError as exc:
+        return {"ok": False, "written": False, "error": f"Cannot verify remaining table definitions: {exc}"}
+    if not retained_items and len(declarations) != 1:
+        return {"ok": False, "written": False, "error": (
+            f"Cannot delete the last item of table '{table}' across multiple TMDL declarations; "
+            "consolidate and review its source definitions before whole-table cleanup."
+        )}
 
     result = {"ok": True, "file": str(tmdl_file), "action": "delete", "item": name}
 
@@ -1211,10 +1271,15 @@ def delete_item(
         if removed_rels:
             result["removed_relationships"] = removed_rels
 
-    # Check if the table has any remaining columns or measures
-    if not _table_has_items(lines):
-        # Remove the table file entirely
-        tmdl_file.unlink()
+    # Whole-table cleanup requires absence of items in every table fragment.
+    if not retained_items:
+        _, table_start, table_end = declarations[0]
+        del raw_lines[table_start:table_end]
+        remaining_text = "".join(raw_lines)
+        if remaining_text.strip():
+            tmdl_file.write_bytes(remaining_text.encode("utf-8"))
+        else:
+            tmdl_file.unlink()
         result["table_deleted"] = True
         # Remove all remaining relationships for this table
         removed_table_rels = _delete_all_relationships_for_table(model_path, table)
@@ -1224,7 +1289,7 @@ def delete_item(
         # Remove the ref table line from model.tmdl
         _delete_table_ref_from_model(model_path, table)
     else:
-        tmdl_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        tmdl_file.write_bytes("".join(raw_lines).encode("utf-8"))
 
     return result
 
