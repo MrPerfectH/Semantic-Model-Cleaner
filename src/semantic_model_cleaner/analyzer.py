@@ -940,6 +940,14 @@ def _find_nameof_close_paren(text: str, start: int) -> int:
     return -1
 
 
+def _nameof_argument_starts(text: str) -> list[int]:
+    """Locate actual NAMEOF calls, allowing whitespace and comments before (."""
+    tokens = dax_tokens(text)
+    return [opening.end for function, opening in zip(tokens, tokens[1:])
+            if function.kind == "identifier" and function.value.casefold() == "nameof"
+            and opening.kind == "punctuation" and opening.value == "("]
+
+
 def _extract_nameof_targets(text: str) -> list[tuple[str, str]]:
     """Extract NAMEOF targets as (table, name) pairs.
 
@@ -948,11 +956,11 @@ def _extract_nameof_targets(text: str) -> list[tuple[str, str]]:
     """
     targets = []
     active_text, _ = _split_dax_comments(text)
-    for match in re.finditer(r"NAMEOF\s*\(", active_text, flags=re.IGNORECASE):
-        close = _find_nameof_close_paren(active_text, match.end())
+    for argument_start in _nameof_argument_starts(active_text):
+        close = _find_nameof_close_paren(active_text, argument_start)
         if close == -1:
             continue
-        argument = active_text[match.end():close]
+        argument = active_text[argument_start:close]
         qualified = _scan_dax_qualified_refs(argument)
         if qualified:
             for table, name, _, _ in qualified:
@@ -1010,15 +1018,17 @@ def parse_field_parameters(
 
     for filepath in sorted(tables_dir.glob("*.tmdl")):
         text = filepath.read_text(encoding="utf-8")
-        if "NAMEOF(" not in text.upper():
+        if not _nameof_argument_starts(text):
             continue
 
         valid_targets = []
         invalid_nameof = False
+        supported_call = False
+        table_name = filepath.stem
         lines = text.splitlines()
 
         for current_table, header, block_text in _iter_tmdl_table_sections(lines):
-            if "NAMEOF(" not in block_text.upper():
+            if not _nameof_argument_starts(block_text):
                 continue
 
             header_lc = header.casefold()
@@ -1029,7 +1039,14 @@ def parse_field_parameters(
             )
 
             if is_supported_table_block:
+                if not supported_call:
+                    table_name = current_table
+                supported_call = True
                 valid_targets.extend(_extract_nameof_targets(block_text))
+            elif header_lc.startswith(("measure ", "column ")):
+                # Scalar NAMEOF in an item's DAX is already represented in the
+                # item dependency graphs; it is not an unsupported parameter.
+                continue
             else:
                 invalid_nameof = True
                 if warnings is not None:
@@ -1046,16 +1063,12 @@ def parse_field_parameters(
                     )
 
         if valid_targets:
-            table_name = next(
-                (table for table, _, block_text in _iter_tmdl_table_sections(lines) if "NAMEOF(" in block_text.upper()),
-                filepath.stem,
-            )
             field_parameters.append(FieldParameterInfo(
                 table=table_name,
                 source_file=filepath,
                 targets=valid_targets,
             ))
-        elif "NAMEOF(" in text.upper() and not invalid_nameof and warnings is not None:
+        elif supported_call and not invalid_nameof and warnings is not None:
             _add_warning(
                 warnings,
                 "NAMEOF_PATTERN_NOT_IN_FIELD_PARAMETER_TABLE",
