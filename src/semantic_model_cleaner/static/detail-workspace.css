@@ -258,3 +258,7 @@ body.app-flow-cleanup .view-tab.active .tab-count { color:#514ad5; }
 #tableDetailMeta { margin-bottom:18px; }
 @media(max-width:1050px) { #objectTableProperties { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:720px) { #objectTableProperties { grid-template-columns:1fr; } .object-table-review { float:none; margin:0 0 13px; } }
+@media(max-width:720px) {
+  .rail .view-tabs { flex:0 0 auto; width:max-content; }
+  .rail .view-tab,.rail .rail-item,.rail button { flex:0 0 auto; width:auto; }
+}
