@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 
+from . import __release_channel__
+
 
 @dataclass(frozen=True)
 class Experiment:
@@ -23,7 +25,9 @@ KNOWN_EXPERIMENTS = {
 
 
 def release_channel(raw: str | None = None) -> str:
-    value = (raw if raw is not None else os.getenv("SMC_RELEASE_CHANNEL", "stable")).strip().lower()
+    value = (
+        raw if raw is not None else os.getenv("SMC_RELEASE_CHANNEL", __release_channel__)
+    ).strip().lower()
     if value in {"beta", "preview", "prerelease"}:
         return "beta"
     return "stable"

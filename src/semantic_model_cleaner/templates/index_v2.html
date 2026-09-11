@@ -589,6 +589,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
   .result-guide-intro { grid-template-columns: 1fr; }
 }
 </style>
+<link rel="stylesheet" href="{{ url_for('static', filename='detail-workspace.css') }}">
 </head>
 <body class="app-flow-cleanup">
 <div class="header">
@@ -621,13 +622,13 @@ body.scope-open .scope-drawer { transform: translateX(0); }
 <div class="shell">
   <aside class="rail">
     <nav class="view-tabs" id="viewTabs" aria-label="Views">
-      <div class="view-tab active" data-view="details" id="tabDetails">Items <span class="tab-count" id="tabDetailsCount"></span></div>
-      <div class="view-tab" data-view="tables" id="tabTables">Tables <span class="tab-count" id="tabTablesCount"></span></div>
-      <div class="view-tab" data-view="reports" id="tabReports">Report health <span class="tab-count" id="tabReportsCount"></span></div>
-      <div class="view-tab" data-view="refs" id="tabRefs">References <span class="tab-count" id="tabRefsCount"></span></div>
-      <div class="view-tab detail-tab" data-view="item" id="tabItem">&#8627; Item page</div>
-      <div class="view-tab detail-tab" data-view="table" id="tabTable">&#8627; Table page</div>
-      <div class="rail-item{% if not runtime.betaEnabled %} hidden{% endif %}" data-app-flow="compare" id="railCompare" role="button">Compare <span class="rail-beta">Beta</span></div>
+      <button type="button" class="view-tab active" data-view="details" id="tabDetails">Items <span class="tab-count" id="tabDetailsCount"></span></button>
+      <button type="button" class="view-tab" data-view="tables" id="tabTables">Tables <span class="tab-count" id="tabTablesCount"></span></button>
+      <button type="button" class="view-tab" data-view="reports" id="tabReports">Report health <span class="tab-count" id="tabReportsCount"></span></button>
+      <button type="button" class="view-tab" data-view="refs" id="tabRefs">References <span class="tab-count" id="tabRefsCount"></span></button>
+      <button type="button" class="view-tab detail-tab" data-view="item" id="tabItem">&#8627; Item page</button>
+      <button type="button" class="view-tab detail-tab" data-view="table" id="tabTable">&#8627; Table page</button>
+      <button type="button" class="rail-item{% if not runtime.betaEnabled %} hidden{% endif %}" data-app-flow="compare" id="railCompare">Compare <span class="rail-beta">Beta</span></button>
     </nav>
     <div class="rail-summary hidden cleanup-flow" id="summarySection">
       <div class="rail-divider"></div>
@@ -635,6 +636,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <div class="rail-row" title="Items that look low-risk to clean up"><span class="rail-dot" style="background:#16a34a"></span>Safe<span class="value" id="sumSafe">0</span></div>
       <div class="rail-row" title="Items that may be removable, but still need a manual check first"><span class="rail-dot" style="background:#f59e0b"></span>Review<span class="value" id="sumReview">0</span></div>
       <div class="rail-row" title="Items that still have direct or indirect dependencies and should not be deleted now"><span class="rail-dot" style="background:#dc2626"></span>Blocked<span class="value" id="sumCaution">0</span></div>
+      <div class="rail-row" title="Items retained for required model structure"><span class="rail-dot" style="background:#64748b"></span>Keep<span class="value" id="sumKeep">0</span></div>
       <div class="rail-divider"></div>
       <div class="rail-heading">Inventory</div>
       <div class="rail-row" title="Total count of measures and columns found across the selected semantic model and report metadata">Total items<span class="value" id="sumTotal">0</span></div>
@@ -644,8 +646,8 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <div class="rail-row" title="Count of semantic-model columns found in the selected artifacts">Columns<span class="value" id="sumColumns">0</span></div>
     </div>
     <div class="rail-bottom">
-      <div class="rail-item" onclick="smcShowWarnings()" title="Scroll to analyzer warnings" role="button">Analyzer warnings</div>
-      <div class="rail-item" onclick="smcToggleLog()" title="Show or hide the action log" role="button">Action log</div>
+      <button type="button" class="rail-item" onclick="smcShowWarnings()" title="Scroll to analyzer warnings">Analyzer warnings</button>
+      <button type="button" class="rail-item" onclick="smcToggleLog()" title="Show or hide the action log">Action log</button>
     </div>
   </aside>
   <div class="right-col">
@@ -797,7 +799,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
   </details>
   <div class="main-toolbar">
   <div class="filters-bar hidden cleanup-flow" id="filtersSection">
-    <div class="search-wrap"><input type="text" id="filterSearch" placeholder="Search name or table" autocomplete="off"></div>
+    <div class="search-wrap"><input type="text" id="filterSearch" aria-label="Search items, tables and references" placeholder="Search name or table" autocomplete="off"></div>
     <button type="button" class="btn-filters" id="btnToggleFilters" onclick="smcToggleFilters()">Filters &#9662;</button>
     <div class="filters-panel hidden" id="filtersPanel">
       <div class="filter-group"><label>Usage</label><div class="filter-dropdown" id="filterStatus"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
@@ -834,7 +836,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
   <div class="table-container hidden cleanup-flow" id="tableSection">
     <table>
       <thead><tr>
-        <th style="width:36px"><input type="checkbox" id="checkAll"></th>
+        <th style="width:36px"><input type="checkbox" id="checkAll" aria-label="Select all items on this page"></th>
         <th data-col="type">Type <span class="sort-arrow"></span></th>
         <th data-col="table">Table <span class="sort-arrow"></span></th>
         <th data-col="name">Name <span class="sort-arrow"></span></th>
@@ -858,7 +860,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
   <div class="table-container hidden cleanup-flow" id="tablesOverviewSection">
     <table>
       <thead><tr>
-        <th style="width:36px"><input type="checkbox" id="checkAllTables"></th>
+        <th style="width:36px"><input type="checkbox" id="checkAllTables" aria-label="Select all tables on this page"></th>
         <th data-tablecol="name">Table <span class="sort-arrow"></span></th>
         <th data-tablecol="directReportMeasureCount" title="Unique measures in this table directly referenced by the selected reports">Rpt Measures <span class="sort-arrow"></span></th>
         <th data-tablecol="directReportColumnCount" title="Unique columns in this table directly referenced by the selected reports">Rpt Columns <span class="sort-arrow"></span></th>
@@ -908,8 +910,8 @@ body.scope-open .scope-drawer { transform: translateX(0); }
           <button type="button" class="report-segment" data-report-issue-group="not_visible">Not visible</button>
           <button type="button" class="report-segment" data-report-issue-group="other">Other</button>
         </div>
-        <select class="report-health-select" id="reportIssueReportSelect" title="Filter report health rows by report"></select>
-        <select class="report-health-select" id="reportIssuePageSelect" title="Filter report health rows by page"></select>
+        <select class="report-health-select" id="reportIssueReportSelect" aria-label="Report filter" title="Filter report health rows by report"></select>
+        <select class="report-health-select" id="reportIssuePageSelect" aria-label="Page filter" title="Filter report health rows by page"></select>
         <button type="button" class="btn btn-secondary btn-sm" id="btnApplyReportSuggestionsShown" title="Apply the top suggestion for selected report issue rows">Apply selected</button>
         <button type="button" class="btn btn-secondary btn-sm" id="btnRemoveReportIssuesShown" title="Remove selected report issue references from PBIR">Remove selected</button>
         <button type="button" class="btn btn-warning btn-sm" id="btnCleanStaleShown" title="Clean selected report cleanup rows">Clean selected cleanup</button>
@@ -998,11 +1000,11 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <div class="detail-actions">
         <div class="detail-action-group" id="detailFolderActionGroup">
           <input type="text" class="folder-input detail-action-field" id="detailFolderInput" placeholder="Display folder name..." value="Safe to delete" title="Folder name used by Move to folder">
-          <button class="btn btn-warning btn-sm" id="detailBtnMoveToFolder" title="Queue a display folder change for this item">Move to folder</button>
+          <button class="btn btn-warning btn-sm" id="detailBtnMoveToFolder" title="Queue a display folder change for this item">Move to display folder</button>
         </div>
         <div class="detail-action-group detail-measure-only-action" id="detailMoveMeasureActionGroup">
           <select class="folder-input detail-action-field" id="detailMoveMeasureTableSelect" title="Target table for moving this measure"></select>
-          <button class="btn btn-warning btn-sm" id="detailBtnMoveMeasureTable" title="Move this measure to another table and update selected PBIR reports">Move measure table</button>
+          <button class="btn btn-warning btn-sm" id="detailBtnMoveMeasureTable" title="Move this measure to another table and update selected PBIR reports">Move home table</button>
         </div>
         <div class="detail-action-group detail-measure-only-action" id="detailRenameMeasureActionGroup">
           <input type="text" class="folder-input detail-action-field" id="detailMeasureRenameInput" placeholder="New measure name..." title="New measure name to write to the semantic model and selected PBIR reports">
@@ -1125,7 +1127,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
     <div class="detail-card" style="margin-top:14px">
       <h4>Table Actions</h4>
       <div class="detail-actions">
-        <input type="text" class="folder-input" id="tableDetailGroupInput" placeholder="Table group name..." value="PNL Actuals" title="Tabular Editor table-group annotation value">
+        <input type="text" class="folder-input" id="tableDetailGroupInput" placeholder="Table group name..." value="" title="Tabular Editor table-group annotation value">
         <button class="btn btn-warning btn-sm" id="tableBtnMoveToTableGroup" title="Queue a table-group annotation change for this table">Move to Table Group</button>
         <input type="text" class="folder-input" id="tableRenameInput" placeholder="New table name..." title="New table name to write to the semantic model and selected PBIR reports">
         <button class="btn btn-warning btn-sm" id="tableBtnRename" title="Rename this table and update selected PBIR reports">Rename table</button>
@@ -1179,8 +1181,8 @@ body.scope-open .scope-drawer { transform: translateX(0); }
     <div class="action-group-card action-cleanup-group">
       <div class="action-cleanup-grid">
         <input type="text" class="folder-input" id="folderInput" placeholder="Display folder name..." value="Safe to delete" title="Folder name used by Move to folder">
-        <button class="btn btn-warning btn-sm" id="btnMoveToFolder" title="Queue a display folder change for the selected items">Move to folder</button>
-        <input type="text" class="folder-input hidden" id="tableGroupInput" placeholder="Table group name..." value="PNL Actuals" title="Tabular Editor table-group annotation used by Move to Table Group">
+        <button class="btn btn-warning btn-sm" id="btnMoveToFolder" title="Queue a display folder change for the selected items">Move to display folder</button>
+        <input type="text" class="folder-input hidden" id="tableGroupInput" placeholder="Table group name..." value="" title="Tabular Editor table-group annotation used by Move to Table Group">
         <button class="btn btn-warning btn-sm hidden" id="btnMoveToTableGroup" title="Queue a Tabular Editor table-group change for the selected tables">Move to Table Group</button>
         <button class="btn btn-secondary btn-sm" id="btnHide" title="Queue a hidden state for the selected items">Hide</button>
         <button class="btn btn-secondary btn-sm" id="btnUnhide" title="Queue a visible state for the selected items">Unhide</button>
@@ -1318,7 +1320,8 @@ var initialConfig = {
   defaultRoot: {{ default_root|tojson }},
   runtime: {{ runtime|tojson }},
   initialModels: {{ initial_models|tojson }},
-  initialReports: {{ initial_reports|tojson }}
+  initialReports: {{ initial_reports|tojson }},
+  initialReportBinding: {{ initial_report_binding|default(none)|tojson }}
 };
 var selectedKeys = new Set();
 var selectedReportIssueKeys = new Set();
@@ -2165,10 +2168,13 @@ function esc(s) {
   if (!s) return '';
   var d = document.createElement('div');
   d.textContent = s;
-  return d.innerHTML;
+  return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function itemKey(item) { return item.type + ':::' + item.table + ':::' + item.name; }
+function itemKey(item) {
+  var key = item.type + ':::' + item.table + ':::' + item.name;
+  return isReportItem(item) ? key + ':::report:::' + (item.sourceFile || item.sourceArtifact || '') : key;
+}
 function isReportItem(item) { return item && item.sourceKind === 'report'; }
 function sourceKindLabel(value) {
   return value === 'report' ? 'Report' : 'Model';
@@ -2191,6 +2197,10 @@ function parseItemRefText(refText) {
 }
 
 function getItemsByRefText(refText) {
+  if (refText && typeof refText === 'object') {
+    if (isReportItem(refText) && !refText.sourceFile) return [];
+    return allItems.filter(function(item) { return itemKey(item) === itemKey(refText); });
+  }
   var parsed = parseItemRefText(refText);
   if (!parsed) return [];
   return allItems.filter(function(item) {
@@ -2247,7 +2257,7 @@ function computeTableDeletePlan(tableName) {
 
   while (queue.length) {
     var current = queue.shift();
-    (current.usedByItems || []).forEach(function(refText) {
+    (current.dependentItems || current.usedByItems || []).forEach(function(refText) {
       var matches = getItemsByRefText(refText);
       matches.forEach(function(match) {
         var depKey = itemKey(match);
@@ -2338,7 +2348,7 @@ function actionStatusBadge(key) {
 }
 
 function usageValue(itemOrStatus) {
-  if (itemOrStatus && typeof itemOrStatus === 'object') return itemOrStatus.usageState || 'Unused';
+  if (itemOrStatus && typeof itemOrStatus === 'object') return itemOrStatus.usageState || 'Unknown';
   if (String(itemOrStatus || '').startsWith('INDIRECT')) return 'Indirect';
   if (String(itemOrStatus || '').startsWith('USED')) return 'Used';
   return 'Unused';
@@ -2351,7 +2361,8 @@ function usageHelpText(itemOrStatus) {
     'Used': 'Directly referenced by at least one selected report.',
     'Indirect': 'Not directly referenced by a report, but still needed through model dependencies such as measures, relationships, sort-by, hierarchies, or field parameters.',
     'Stale only': 'No live report usage was found, but stale formatting selectors still reference this item in PBIR.',
-    'Unused': 'No direct report usage or indirect model dependency was found.'
+    'Unused': 'No direct report usage or indirect model dependency was found.',
+    'Unknown': 'Usage has not been classified. Re-analyze before making a cleanup decision.'
   }[label] || 'Usage classification for this item.';
   return rawStatus && rawStatus !== label ? base + ' Raw analyzer status: ' + rawStatus : base;
 }
@@ -2802,7 +2813,7 @@ function renderPills() {
     if (connectedReportRootModelPath !== selectedModelPath) {
       connectedReportRootModelPath = selectedModelPath;
       $('connectedReportRootInput').value = connectedReportSearchStartPathFromModel(selectedModelPath);
-      $('connectedReportSearchStatus').textContent = 'Connected-report search starts one level above the selected model folder.';
+      $('connectedReportSearchStatus').textContent = 'Search includes all report subfolders beneath the chosen folder. Hidden folders are excluded.';
     }
   } else {
     connectedReportRootModelPath = '';
@@ -3154,6 +3165,7 @@ async function findConnectedReports() {
       ? 'Selected the ' + foundReports.length + ' report(s) connected to this model ('
         + (data.scanned_definition_files || 0) + ' definition file(s) scanned).'
       : 'Found 0 connected report(s) from ' + (data.scanned_definition_files || 0) + ' definition file(s).';
+    statusMessage += ' Searched ' + (data.search_root || searchRoot) + ' and all report subfolders (hidden folders excluded).';
     if (nameMatched) {
       statusMessage += ' ' + nameMatched + ' connect live to a published model with the same name as the selected model.';
     }
@@ -3234,7 +3246,7 @@ async function runAnalyze() {
       model_paths: chosenModels.map(function(m) { return m.path; }),
       report_paths: chosenReports.map(function(r) { return r.path; }),
     });
-    if (data.error) { $('analyzeStatus').textContent = data.error; return; }
+    if (data.error) { showReportBinding(data.reportBinding); $('analyzeStatus').textContent = data.error; return; }
     loadResults(data);
   } catch (err) {
     $('analyzeStatus').textContent = 'Analysis failed: ' + (err && err.message ? err.message : err);
@@ -3285,6 +3297,11 @@ function loadResults(data) {
 }
 
 function setResultsData(data, preserveActionState) {
+  if (data.reportBinding) {
+    chosenReports = data.reportBinding.selected.map(function(row) { return {path: row.path, name: row.name}; });
+    renderPills();
+    showReportBinding(data.reportBinding);
+  }
   allItems = data.items;
   allTables = data.tables || [];
   allRefs = data.references || [];
@@ -3335,7 +3352,27 @@ function renderWarnings() {
   var banner = $('warningBanner');
   var list = $('warningList');
   list.innerHTML = '';
-  banner.classList.add('hidden');
+  (allWarnings || []).forEach(function(warning) {
+    var entry = document.createElement('div');
+    entry.className = 'warning-entry';
+    var message = typeof warning === 'string' ? warning : warning.message || warning.code || 'Analysis warning';
+    entry.textContent = message;
+    var source = warning.artifactPath || warning.source_file || warning.file || '';
+    if (source) {
+      var meta = document.createElement('div');
+      meta.className = 'warning-meta';
+      meta.textContent = source;
+      entry.appendChild(meta);
+    }
+    list.appendChild(entry);
+  });
+  banner.classList.toggle('hidden', !allWarnings.length);
+}
+
+function showReportBinding(binding) {
+  if (!binding || !binding.excluded.length) return;
+  $('connectedReportSearchStatus').textContent = binding.selected.length + ' connected report(s) selected. Excluded: '
+    + binding.excluded.map(function(row) { return row.name + ': ' + row.message; }).join(' | ');
 }
 
 function renderReportHealth() {
@@ -3355,7 +3392,7 @@ function renderReportHealth() {
   var total = allReportHealth && allReportHealth.totalIssueCount ? allReportHealth.totalIssueCount : allReportIssues.length;
   var summaryHint = $('reportHealthSummaryHint');
   if (summaryHint) summaryHint.textContent = '';
-  if (!total) return;
+  if (!total && !groups.length) return;
   count.textContent = '(' + total + ')';
   if (summaryHint) {
     summaryHint.textContent = groups.length
@@ -3433,6 +3470,7 @@ function updateSummary(s) {
   $('sumSafe').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Safe'; }).length;
   $('sumReview').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Review'; }).length;
   $('sumCaution').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Blocked'; }).length;
+  $('sumKeep').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Keep'; }).length;
 }
 
 /* == Filters == */
@@ -3492,7 +3530,7 @@ function applyFilters() {
       if (search && !mainSearchTextForTable(table).includes(search)) {
         return false;
       }
-      if (!matchesSelectedValues(table.usageState || 'Unused', statuses)) return false;
+      if (!matchesSelectedValues(table.usageState || 'Unknown', statuses)) return false;
       if (!matchesSelectedValues(issueFilterValue(table), issues)) return false;
       if (!matchesSelectedValues(table.name, tables)) return false;
       return true;
@@ -3722,7 +3760,7 @@ function reportIssueRefText(issue) {
 
 function reportIssueKey(issue) {
   return [
-    issue.report || '',
+    issue.reportPath || issue.report || '',
     issue.page || '',
     issue.visualId || '',
     issue.artifactPath || '',
@@ -3940,7 +3978,7 @@ function filterReportIssues() {
     if (reportIssueGroupFilter === 'not_visible' && !(issue.visualHidden || issue.pageHidden || isReportIssueCleanup(issue))) return false;
     if (reportIssueGroupFilter === 'other' && (isReportIssueBrokenRef(issue) || isReportIssueCleanup(issue))) return false;
     if (reportIssueRootCauseFilter !== '__all__' && reportIssueRootCauseKey(issue) !== reportIssueRootCauseFilter) return false;
-    if (reportIssueReportFilter !== '__all__' && issue.report !== reportIssueReportFilter) return false;
+    if (reportIssueReportFilter !== '__all__' && reportReferenceId(issue) !== reportIssueReportFilter) return false;
     if (reportIssuePageFilter !== '__all__' && (issue.page || '') !== reportIssuePageFilter) return false;
     if (!search) return true;
     var haystack = [
@@ -3962,11 +4000,11 @@ function filterReportIssues() {
 }
 
 function reconcileReportIssueFilters() {
-  var reports = Array.from(new Set(allReportIssues.map(function(issue) { return issue.report || ''; }).filter(Boolean)));
+  var reports = Array.from(new Set(allReportIssues.map(reportReferenceId).filter(Boolean)));
   if (reportIssueReportFilter !== '__all__' && !reports.includes(reportIssueReportFilter)) reportIssueReportFilter = '__all__';
   var pageSource = reportIssueReportFilter === '__all__'
     ? allReportIssues
-    : allReportIssues.filter(function(issue) { return issue.report === reportIssueReportFilter; });
+    : allReportIssues.filter(function(issue) { return reportReferenceId(issue) === reportIssueReportFilter; });
   var pages = Array.from(new Set(pageSource.map(function(issue) { return issue.page || ''; })));
   if (reportIssuePageFilter !== '__all__' && !pages.includes(reportIssuePageFilter)) reportIssuePageFilter = '__all__';
   if (reportIssueRootCauseFilter !== '__all__') {
@@ -4006,13 +4044,13 @@ function renderReportHealthControls() {
     btn.classList.toggle('active', btn.dataset.reportIssueGroup === reportIssueGroupFilter);
   });
 
-  var reports = Array.from(new Set(allReportIssues.map(function(issue) { return issue.report || ''; }).filter(Boolean))).sort(function(a, b) { return a.localeCompare(b); });
+  var reports = Array.from(new Set(allReportIssues.map(reportReferenceId).filter(Boolean))).sort(function(a, b) { return a.localeCompare(b); });
   $('reportIssueReportSelect').innerHTML = reportIssueOptionHtml('__all__', 'All reports', reportIssueReportFilter)
-    + reports.map(function(report) { return reportIssueOptionHtml(report, report, reportIssueReportFilter); }).join('');
+    + reports.map(function(report) { return reportIssueOptionHtml(report, reportReferenceLabel(report), reportIssueReportFilter); }).join('');
 
   var pageSource = reportIssueReportFilter === '__all__'
     ? allReportIssues
-    : allReportIssues.filter(function(issue) { return issue.report === reportIssueReportFilter; });
+    : allReportIssues.filter(function(issue) { return reportReferenceId(issue) === reportIssueReportFilter; });
   var pages = Array.from(new Set(pageSource.map(function(issue) { return issue.page || ''; }))).sort(function(a, b) { return a.localeCompare(b); });
   $('reportIssuePageSelect').innerHTML = reportIssueOptionHtml('__all__', 'All pages', reportIssuePageFilter)
     + pages.map(function(page) { return reportIssueOptionHtml(page, page || 'Report level', reportIssuePageFilter); }).join('');
@@ -4472,8 +4510,9 @@ function renderReportsTable() {
   renderReportHealthControls();
   renderRootCausePanel();
   var visibleIssues = getPagedRows(filteredReportIssues, 'reports');
+  var issueIndices = new Map(allReportIssues.map(function(issue, index) { return [issue, index]; }));
   tbody.innerHTML = visibleIssues.map(function(issue) {
-    var index = allReportIssues.indexOf(issue);
+    var index = issueIndices.get(issue);
     var key = reportIssueKey(issue);
     var canSelect = isReportIssueActionable(issue);
     var checked = selectedReportIssueKeys.has(key) ? ' checked' : '';
@@ -4495,7 +4534,7 @@ function renderReportsTable() {
       + '<div class="report-meta-line" title="' + esc(issue.context || '') + '">' + esc(issue.context || 'Report metadata') + '</div>'
       + '</div>';
     var reportCell = '<div class="report-location-cell">'
-      + '<div class="cell-ellipsis" title="' + esc(issue.report || '') + '">' + esc(issue.report || '') + '</div>'
+      + '<div class="cell-ellipsis" title="' + esc(issue.reportPath || issue.report || '') + '">' + esc(issue.report || '') + '</div>'
       + '</div>';
     var pageCell = '<div class="report-location-cell">'
       + '<div class="report-meta-line" title="' + esc(issue.page || '') + '">' + esc(issue.page || 'Report level') + '</div>'
@@ -4507,7 +4546,7 @@ function renderReportsTable() {
     var fixCell = '<div class="report-action-cell">' + reportIssueActionHtml(issue, index);
     fixCell += '</div>';
     return '<tr' + selectedClass + '>'
-      + '<td><input type="checkbox" class="report-row-check" data-report-issue-key="' + esc(key) + '"' + checked + disabled + ' title="' + esc(canSelect ? 'Select this report issue for a bulk action' : 'No safe bulk action is available for this row') + '"></td>'
+      + '<td><input type="checkbox" class="report-row-check" aria-label="Select ' + esc(reportIssueTypeLabel(issue.issueType) + ' in ' + issue.report + ', ' + (issue.page || 'report level') + ': ' + reportIssueRefText(issue)) + '" data-report-issue-key="' + esc(key) + '"' + checked + disabled + ' title="' + esc(canSelect ? 'Select this report issue for a bulk action' : 'No safe bulk action is available for this row') + '"></td>'
       + '<td title="' + esc(issue.message || '') + '">' + issueCell + '</td>'
       + '<td>' + reportCell + '</td>'
       + '<td>' + pageCell + '</td>'
@@ -4560,7 +4599,7 @@ async function cleanReportIssueStaleRef(index) {
 }
 
 function reportIssueCleanupEntry(issue) {
-  var reportPath = getReportPathByName(issue.report);
+  var reportPath = getReportPathForReference(issue);
   if (!reportPath || !issue.artifactPath || !issue.sourcePath) {
     return null;
   }
@@ -4683,7 +4722,7 @@ function reportIssueSelectedSuggestion(issue) {
 }
 
 function reportIssueActionEntry(issue, action, suggestion) {
-  var reportPath = getReportPathByName(issue.report);
+  var reportPath = getReportPathForReference(issue);
   if (!reportPath || !issue.artifactPath || !issue.sourcePath) return null;
   var entry = {
     action: action,
@@ -4927,7 +4966,7 @@ function renderTable() {
     var st = actionStatus.get(key) || '';
     var actionClass = pendingActions.has(key) ? 'row-pending' : st.startsWith('Applied:') ? 'row-applied' : st.startsWith('Failed:') ? 'row-failed' : '';
     return '<tr class="' + riskClass + ' ' + sel + ' ' + actionClass + '" data-key="' + esc(key) + '">'
-      + '<td><input type="checkbox" class="row-check" ' + checked + ' data-key="' + esc(key) + '"></td>'
+      + '<td><input type="checkbox" class="row-check" aria-label="Select ' + esc(item.table + '[' + item.name + '] ' + item.type) + '" ' + checked + ' data-key="' + esc(key) + '"></td>'
       + '<td><div class="cell-ellipsis cell-nowrap" title="' + esc(item.type) + '">' + esc(item.type) + '</div></td>'
       + '<td><div class="cell-ellipsis" title="' + esc(item.table) + '">' + esc(item.table) + '</div></td>'
       + '<td><a href="#" class="item-link cell-ellipsis-link" data-item-key="' + esc(key) + '" title="' + esc(item.name) + '">' + esc(item.name) + '</a></td>'
@@ -5216,10 +5255,13 @@ function getItemByKey(key) {
 
 function formatLinkedRef(refText) {
   var matches = getItemsByRefText(refText);
+  var label = refText && typeof refText === 'object'
+    ? refText.table + '[' + refText.name + ']' + (isReportItem(refText) ? ' — ' + (refText.sourceFile || 'Unknown report owner') : '')
+    : refText;
   if (matches.length === 1) {
-    return '<a href="#" class="detail-link detail-item-link" data-item-key="' + esc(itemKey(matches[0])) + '">' + esc(refText) + '</a>';
+    return '<a href="#" class="detail-link detail-item-link" data-item-key="' + esc(itemKey(matches[0])) + '">' + esc(label) + '</a>';
   }
-  return esc(refText);
+  return esc(label);
 }
 
 function bindDetailLinks(container) {
@@ -5257,7 +5299,7 @@ function formatBrokenRefDetails(details, refs) {
 
 function usageLocatorKey(usage) {
   return [
-    usage.report || '',
+    usage.reportPath || usage.report || '',
     usage.page || '',
     usage.artifactKind || '',
     usage.artifactPath || '',
@@ -5270,7 +5312,7 @@ function usageLocatorKey(usage) {
 
 function usageLocationKey(usage) {
   return [
-    usage.report || '',
+    usage.reportPath || usage.report || '',
     usage.page || '',
     usage.artifactKind || '',
     usage.artifactPath || '',
@@ -5303,9 +5345,10 @@ function renderUsageDetails(item) {
   var reports = [];
   item.usageDetails.forEach(function(usage) {
     var reportName = usage.report || 'Report metadata';
-    var report = reports.find(function(entry) { return entry.name === reportName; });
+    var reportIdentity = reportReferenceId(usage);
+    var report = reports.find(function(entry) { return entry.identity === reportIdentity; });
     if (!report) {
-      report = { name: reportName, count: 0, pages: [] };
+      report = { name: reportName, identity: reportIdentity, path: usage.reportPath || '', count: 0, pages: [] };
       reports.push(report);
     }
     report.count += 1;
@@ -5405,7 +5448,7 @@ function renderUsageDetails(item) {
   }
 
   return '<div class="detail-ref-tree">' + reports.map(function(report) {
-    var reportMeta = report.pages.length + ' page' + (report.pages.length === 1 ? '' : 's');
+    var reportMeta = report.pages.length + ' page' + (report.pages.length === 1 ? '' : 's') + (report.path ? ' · ' + report.path : '');
     return '<details open><summary>' + treeLabel(report.name, reportMeta) + countBadge(report.count, report.count === 1 ? 'ref' : 'refs') + '</summary>'
       + '<div class="tree-body">' + report.pages.map(function(page) {
         var pageMeta = [];
@@ -5467,8 +5510,8 @@ function uniqueCount(values) {
 
 function detailCounts(item) {
   var usageDetails = item && item.usageDetails ? item.usageDetails : [];
-  var reports = uniqueCount(usageDetails.map(function(usage) { return usage.report; }));
-  var pages = item && item.pagesUsed ? item.pagesUsed.length : uniqueCount(usageDetails.map(function(usage) { return usage.page; }));
+  var reports = uniqueCount(usageDetails.map(reportReferenceId));
+  var pages = uniqueCount(usageDetails.filter(function(usage) { return usage.page; }).map(function(usage) { return reportReferenceId(usage) + ':::' + usage.page; }));
   var dependencies = (item && item.dependsOnMeasures ? item.dependsOnMeasures.length : 0)
     + (item && item.dependsOnColumns ? item.dependsOnColumns.length : 0)
     + (item && item.dependsOnTables ? item.dependsOnTables.length : 0);
@@ -5477,7 +5520,7 @@ function detailCounts(item) {
     pages: pages || (item && item.pageCount ? item.pageCount : 0),
     directRefs: usageDetails.length || (item && item.usageCount ? item.usageCount : 0),
     dependencies: dependencies,
-    dependents: item && item.usedByItems ? item.usedByItems.length : 0,
+    dependents: item ? (item.dependentItems || item.usedByItems || []).length : 0,
     staleRefs: item && item.staleUsageDetails ? item.staleUsageDetails.length : 0,
     issues: issueValue(item) ? 1 : 0,
   };
@@ -5537,14 +5580,14 @@ function detailSummaryCardHtml(item) {
 
 function detailFactsTableHtml(item) {
   if (!item) return '<div class="detail-card"><div class="detail-empty">Select an item from the table.</div></div>';
-  var dependsOn = (item.dependsOnMeasures || []).concat(item.dependsOnColumns || []).concat(item.dependsOnTables || []);
+  var dependsOn = (item.dependencyItems || (item.dependsOnMeasures || []).concat(item.dependsOnColumns || [])).concat(item.dependsOnTables || []);
   var usageText = usageHelpText(item);
   return '<div class="detail-card">'
     + '<table class="detail-summary-table"><tbody>'
     + '<tr><th>Usage</th><td>' + esc(usageText) + '</td></tr>'
     + '<tr><th>Cleanup</th><td>' + cleanupDetailContent(item) + '</td></tr>'
     + '<tr><th>Depends On</th><td>' + formatDetailList(dependsOn, { linkItems: true }) + '</td></tr>'
-    + '<tr><th>Used By</th><td>' + formatDetailList(item.usedByItems || [], { linkItems: true }) + '</td></tr>'
+    + '<tr><th>Used By</th><td>' + formatDetailList(item.dependentItems || item.usedByItems || [], { linkItems: true }) + '</td></tr>'
     + '<tr><th>Indirect Via</th><td>' + formatDetailList(item.indirectVia || [], { linkItems: true }) + '</td></tr>'
     + '<tr><th>Issues</th><td>' + formatBrokenRefDetails(item.brokenDaxRefDetails || [], item.brokenDaxRefs || []) + '</td></tr>'
     + '</tbody></table></div>';
@@ -5912,7 +5955,7 @@ function renderTableDetails() {
   $('tableRenameInput').disabled = false;
   $('tableBtnRename').disabled = false;
   $('tableDetailMeta').textContent = 'Table summary with relationship shape, usage patterns, and item-level signals.';
-  $('tableDetailUsageStatus').innerHTML = tableStatusBadge(table) + '<div class="detail-value" style="margin-top:8px">' + esc(usageHelpText({ usageState: table.usageState || 'Unused', statusDetail: table.usageStatus || '' })) + '</div>'
+  $('tableDetailUsageStatus').innerHTML = tableStatusBadge(table) + '<div class="detail-value" style="margin-top:8px">' + esc(usageHelpText({ usageState: table.usageState || 'Unknown', statusDetail: table.usageStatus || '' })) + '</div>'
     + '<div class="detail-value" style="margin-top:8px"><strong>Issues:</strong> ' + esc(table.issueState || 'None') + '</div>';
   $('tableDetailRole').innerHTML = roleBadge(table) + '<div class="detail-value" style="margin-top:8px">' + esc(table.roleReason || '') + '</div>';
   $('tableDetailCounts').innerHTML =
@@ -6048,7 +6091,7 @@ $('checkAllTables').onchange = function() {
 
 $('btnSelectAllSafe').onclick = function() {
   if (currentView === 'tables') {
-    getPagedRows(filteredTables, 'tables').filter(function(table) { return (table.usageState || 'Unused') === 'Unused'; }).forEach(function(table) {
+    getPagedRows(filteredTables, 'tables').filter(function(table) { return (table.usageState || 'Unknown') === 'Unused'; }).forEach(function(table) {
       selectedTableNames.add(table.name);
     });
     renderTablesOverview();
@@ -6077,10 +6120,37 @@ $('btnDeselectAll').onclick = function() {
 function getSelectedItems() { return allItems.filter(function(i) { return selectedKeys.has(itemKey(i)); }); }
 function getSelectedTables() { return allTables.filter(function(table) { return selectedTableNames.has(table.name); }); }
 function getModelPath() { return chosenModels.length ? chosenModels[0].path : null; }
-function getReportPathByName(name) {
-  var match = chosenReports.find(function(report) { return report.name === name; });
-  if (match) return match.path;
-  return chosenReports.length === 1 ? chosenReports[0].path : null;
+function getReportPathByName(name, sourceFile) {
+  function normalize(path) {
+    var value = String(path || '').replace(/\\/g, '/').replace(/\/$/, '');
+    return /^[A-Za-z]:\//.test(value) ? value.toLowerCase() : value;
+  }
+  if (sourceFile) {
+    var source = normalize(sourceFile);
+    var owners = chosenReports.filter(function(report) { return source.startsWith(normalize(report.path) + '/'); });
+    return owners.length === 1 ? owners[0].path : null;
+  }
+  var matches = chosenReports.filter(function(report) { return report.name === name; });
+  // Display names are not identities. Ambiguous or unmatched ownership must
+  // never select a different report for a write, even with one report selected.
+  return matches.length === 1 ? matches[0].path : null;
+}
+
+function reportReferenceId(reference) { return reference.reportPath || reference.report || ''; }
+function reportReferenceLabel(identity) {
+  var match = allReportIssues.find(function(issue) { return reportReferenceId(issue) === identity; });
+  if (!match) return identity;
+  var sameNamePaths = new Set(allReportIssues.filter(function(issue) { return issue.report === match.report; }).map(reportReferenceId));
+  return sameNamePaths.size > 1 ? match.report + ' — ' + identity : match.report;
+}
+function getReportPathForReference(reference) {
+  if (!reference.reportPath) return getReportPathByName(reference.report, reference.sourceFile);
+  var normalize = function(path) {
+    var value = String(path || '').replace(/\\/g, '/').replace(/\/$/, '');
+    return /^[A-Za-z]:\//.test(value) ? value.toLowerCase() : value;
+  };
+  var matches = chosenReports.filter(function(report) { return normalize(report.path) === normalize(reference.reportPath); });
+  return matches.length === 1 ? matches[0].path : null;
 }
 
 function summarizeReportPreview(reportResult) {
@@ -6664,7 +6734,7 @@ function staleCleanupEntriesForItem(item, seen) {
     return [];
   }
   return item.staleUsageDetails.map(function(ref) {
-    var reportPath = getReportPathByName(ref.report);
+    var reportPath = getReportPathForReference(ref);
     if (!reportPath || !ref.artifactPath || !ref.sourcePath) return null;
     var dedupeKey = ref.staleKind === 'bookmark_projection_entry'
       ? ref.sourcePath.replace(/(\.singleVisual\.projections\.[^.]+\.\[\d+\]).*/, '$1')
@@ -6887,7 +6957,7 @@ async function migrateCurrentReportMeasure() {
     return;
   }
   var modelPath = getModelPath();
-  var reportPath = getReportPathByName(item.sourceArtifact);
+  var reportPath = getReportPathByName(item.sourceArtifact, item.sourceFile);
   if (!modelPath) {
     alert('No model selected');
     return;
@@ -7061,6 +7131,7 @@ setWrapTableTextEnabled(readWrapTableTextPreference());
 setActionLogVisible(readShowActionLogPreference());
 updateColumnActionButtons();
 renderPills();
+showReportBinding(initialConfig.initialReportBinding);
 renderCompareSelection();
 setAppFlow('cleanup');
 </script>
@@ -7104,7 +7175,7 @@ setAppFlow('cleanup');
     var m = byId('mainArea');
     var el = byId('warningBanner');
     if (!m || !el) return;
-    if (el.classList.contains('hidden')) el = byId('reportHealthBanner');
+    if (el.classList.contains('hidden')) return;
     if (!el || el.classList.contains('hidden')) return;
     m.scrollTop = Math.max(0, el.offsetTop - 10);
     el.classList.add('smc-flash');
@@ -7149,5 +7220,9 @@ setAppFlow('cleanup');
   if (vt && vt.classList.contains('hidden')) window.smcOpenScope();
 })();
 </script>
+<script src="{{ url_for('static', filename='detail-workspace.js') }}"></script>
+<script src="{{ url_for('static', filename='analysis-jobs.js') }}"></script>
+<script src="{{ url_for('static', filename='schema-evidence.js') }}"></script>
+<script src="{{ url_for('static', filename='policy-workspace.js') }}"></script>
 </body>
 </html>

@@ -7,8 +7,8 @@ def snapshot_artifact_files(
     roots: list[Path],
     *,
     suffixes: tuple[str, ...] = (".tmdl", ".json"),
-) -> dict[Path, str]:
-    snapshot: dict[Path, str] = {}
+) -> dict[Path, bytes]:
+    snapshot: dict[Path, bytes] = {}
     normalized_suffixes = tuple(suffix.casefold() for suffix in suffixes)
 
     for root in roots:
@@ -17,14 +17,14 @@ def snapshot_artifact_files(
         candidates = [root] if root.is_file() else [path for path in root.rglob("*") if path.is_file()]
         for path in candidates:
             if path.suffix.casefold() in normalized_suffixes:
-                snapshot[path.resolve()] = path.read_text(encoding="utf-8")
+                snapshot[path.resolve()] = path.read_bytes()
 
     return snapshot
 
 
 def restore_artifact_files(
     roots: list[Path],
-    snapshot: dict[Path, str],
+    snapshot: dict[Path, bytes],
     *,
     suffixes: tuple[str, ...] = (".tmdl", ".json"),
 ) -> dict:
@@ -51,7 +51,7 @@ def restore_artifact_files(
     for path, content in snapshot.items():
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
+            path.write_bytes(content if isinstance(content, bytes) else content.encode("utf-8"))
         except OSError as exc:
             errors.append(f"Could not restore {path}: {exc}")
 

@@ -11,6 +11,9 @@ Usage:
 """
 
 import argparse
+import gzip
+import hashlib
+from functools import wraps
 import io
 import json
 import os
@@ -22,8 +25,57 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_file
 
 from . import __version__, analyzer, experiments, file_transaction, model_compare, report_writer, tmdl_writer
+from . import change_plan, cleanup_policy
+from .analysis_jobs import AnalysisJobs
 
 app = Flask(__name__)
+_analysis_jobs = AnalysisJobs()
+
+def _invalidates_analysis(fn):
+    @wraps(fn)
+    def guarded(*args, **kwargs):
+        with _analysis_jobs.invalidate():
+            _state["last_results"] = None
+            return fn(*args, **kwargs)
+    return guarded
+
+
+def _analysis_source_fingerprint(roots, progress=None):
+    """Hash local metadata only; never read report binary assets or data caches."""
+    digest = hashlib.sha256()
+    for root in sorted(set(roots)):
+        base = Path(root)
+        if not base.is_dir():
+            raise ValueError("Analysis source disappeared. Analyze the current selection again.")
+        for path in sorted(base.rglob('*')):
+            if path.is_file() and (path.name == '.platform'
+                                   or path.suffix.lower() in {'.json', '.tmdl', '.bim', '.pbir', '.pbip'}):
+                if progress:
+                    progress('Checking source metadata')
+                digest.update(str(path).encode('utf-8'))
+                digest.update(b'\0')
+                with path.open('rb') as stream:
+                    for block in iter(lambda: stream.read(1024 * 1024), b''):
+                        digest.update(block)
+                digest.update(b'\0')
+    return digest.digest()
+
+
+@app.after_request
+def compress_browser_json(response):
+    # The browser negotiates compression; CLI/test clients keep plain JSON.
+    if (response.mimetype == 'application/json' and not response.direct_passthrough
+            and 'Content-Encoding' not in response.headers):
+        response.vary.add('Accept-Encoding')
+        if request.accept_encodings['gzip'] > 0:
+            content = response.get_data()
+            if len(content) >= 4096:
+                packed = gzip.compress(content, compresslevel=3, mtime=0)
+                if len(packed) < len(content):
+                    response.set_data(packed)
+                    response.headers['Content-Encoding'] = 'gzip'
+    return response
+
 
 # ── Global state ──────────────────────────────────────────────────────────────
 
@@ -76,6 +128,16 @@ def _cleanup_action_plan_response(
     auto_refresh: bool | None = None,
 ) -> dict:
     plan = tmdl_writer.plan_actions(model_path, actions)
+    policy = cleanup_policy.evaluate_deletion_policy(
+        model_path, [Path(p) for p in _state.get("report_paths", [])], actions)
+    plan["policy"] = policy
+    if not policy["ok"]:
+        plan["ok"] = False
+        plan["errors"] = list(plan.get("errors", [])) + policy["errors"]
+        for entry in plan.get("actions", []):
+            if entry.get("action") in ("delete", "delete_table"):
+                entry["ok"] = False
+                entry["error"] = "; ".join(policy["errors"])
     plan["create_backup"] = create_backup
     plan["backup"] = {
         "requested": create_backup,
@@ -261,6 +323,34 @@ def _default_model_selection(models: list[Path]) -> list[Path]:
     return [models[0]]
 
 
+def _report_binding_scope(model_path, report_paths) -> dict:
+    """Use the same binding evidence for initial selection and every web analysis."""
+    scope = {"selected": [], "excluded": []}
+    names = analyzer.model_name_candidates(Path(model_path))
+    label = analyzer.model_label(Path(model_path))
+    seen = set()
+    for report in report_paths:
+        path = str(Path(report).resolve())
+        if path in seen:
+            continue
+        seen.add(path)
+        binding = analyzer.report_binding_status(Path(path), Path(model_path), names=names, label=label)
+        binding.pop("scanned", None)
+        binding.pop("warning", None)
+        group = "selected" if binding["status"] in analyzer.BOUND_REPORT_STATUSES else "excluded"
+        scope[group].append(binding)
+    return scope
+
+
+def _record_report_scope(results, scope):
+    results["report_binding"] = scope
+    results.setdefault("warnings", []).extend({
+        "code": "REPORT_SCOPE_EXCLUDED", "severity": "warning",
+        "message": f"Excluded {row['name']} from analysis: {row['message']}",
+        "artifactPath": row["definitionFile"],
+    } for row in scope["excluded"])
+
+
 def configure_runtime(
     *,
     workspace: str = ".",
@@ -403,6 +493,7 @@ def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
             severity="warning",
             count=stale_count,
             description=(
+                "Item-level stale references overlap report issues above and are not added to the total. "
                 "Stale PBIR selectors no longer match live visual or bookmark query fields. "
                 "Preview cleanup before applying repairs."
             ),
@@ -431,7 +522,7 @@ def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
             label="Broken Model References",
             severity="error",
             count=broken_count,
-            description="Unresolved DAX references block confident cleanup until the broken model dependency is resolved.",
+            description="Separate model signal, not part of the report issue total. Unresolved DAX references block confident cleanup until the broken model dependency is resolved.",
             group_items=broken_items,
         ))
 
@@ -465,7 +556,9 @@ def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
         ))
 
     return {
-        "totalIssueCount": sum(group["count"] for group in groups),
+        "totalIssueCount": len(report_issues),
+        "signalCounts": {"staleReferences": stale_count, "brokenModelReferences": broken_count,
+                         "unsupportedMetadata": unsupported_count},
         "groups": groups,
     }
 
@@ -550,6 +643,7 @@ def _build_report_root_cause_groups(report_issues: list[dict]) -> dict:
         if len(group["sampleLocations"]) < _REPORT_HEALTH_PREVIEW_LIMIT:
             group["sampleLocations"].append({
                 "report": issue.get("report", ""),
+                "reportPath": issue.get("reportPath", ""),
                 "page": issue.get("page", ""),
                 "visualId": issue.get("visualId", ""),
                 "artifactPath": issue.get("artifactPath", ""),
@@ -594,7 +688,7 @@ def _build_report_root_cause_groups(report_issues: list[dict]) -> dict:
     }
 
 
-def _serialize_results(results: dict) -> dict:
+def _serialize_results(results: dict, model_paths=None) -> dict:
     """Serialize analyzer results for JSON API responses."""
     def _issue_state(status: str, broken_refs: list[str] | None, stale_usage_count: int = 0) -> str:
         has_broken = (status or "").startswith("BROKEN") or bool(broken_refs)
@@ -647,14 +741,19 @@ def _serialize_results(results: dict) -> dict:
             return "Blocked"
         return "Review"
 
-    items_by_key = {r["item"].key: r["item"] for r in results["items"]}
-    rows_by_key = {r["item"].key: r for r in results["items"]}
+    items_by_key = {analyzer.item_identity(r["item"]): r["item"] for r in results["items"]}
+    rows_by_key = {analyzer.item_identity(r["item"]): r for r in results["items"]}
     model_name = results.get("summary", {}).get("models", [""])[0]
-    model_path = next((Path(p) for p in _state.get("model_paths", []) if Path(p).name == model_name), None)
+    model_path = next((Path(p) for p in (model_paths if model_paths is not None else _state.get("model_paths", [])) if Path(p).name == model_name), None)
     table_source_details = _extract_tmdl_table_source_details(model_path)
-    dax_measure_deps = analyzer.build_dax_dependency_graph(list(items_by_key.values()))
-    dax_column_deps = analyzer.build_dax_column_deps(list(items_by_key.values()))
-    dax_table_deps = analyzer.build_dax_table_deps(list(items_by_key.values()))
+    graphs = results.get("dependency_graphs") or analyzer.scoped_dependency_graphs(list(items_by_key.values()))
+    dax_measure_deps, dax_column_deps, dax_table_deps = (graphs[name] for name in ("measures", "columns", "tables"))
+
+    def identity_payload(identity):
+        target = items_by_key[identity]
+        return {"type": target.item_type, "table": target.table, "name": target.name,
+                "sourceKind": target.source_kind, "sourceFile": target.source_file or None}
+
     relationship_details = analyzer.parse_relationship_details(model_path) if model_path else []
     rls_refs = analyzer.parse_rls_roles(model_path) if model_path else []
     reverse_measure_deps: dict[tuple[str, str], set[tuple[str, str]]] = {}
@@ -683,12 +782,12 @@ def _serialize_results(results: dict) -> dict:
 
     items = []
     for r in results["items"]:
-        reports_used = sorted({u.report for u in r["usages"] if u.report})
+        report_paths_used = sorted({u.report_path or u.report for u in r["usages"] if u.report_path or u.report})
         pages_used = sorted({u.page for u in r["usages"] if u.page})
         visual_types = sorted({u.visual_type for u in r["usages"] if u.visual_type})
         contexts = sorted({u.context for u in r["usages"] if u.context})
         item = r["item"]
-        key = item.key
+        key = analyzer.item_identity(item)
         status = r["status"]
         dax_expression = (item.dax_body or "").strip() or None
         m_source_details = table_source_details.get(item.table) if item.item_type == "Column" else None
@@ -704,22 +803,22 @@ def _serialize_results(results: dict) -> dict:
             dep_key for dep_key in dependent_measure_keys
             if rows_by_key.get(dep_key, {}).get("usages")
         ]
-        relationship_ref_count = relationship_counts.get(analyzer.normalize_key(*key), 0)
+        relationship_ref_count = relationship_counts.get(analyzer.normalize_key(*item.key), 0)
         other_model_uses = []
         if status.startswith("USED (Field Parameter:"):
             other_model_uses.append("Field param")
-        if analyzer.normalize_key(*key) in rls_keys:
+        if analyzer.normalize_key(*item.key) in rls_keys:
             other_model_uses.append("RLS")
         if item.is_key:
             other_model_uses.append("Key")
-        if analyzer.normalize_key(*key) in sort_target_keys:
+        if analyzer.normalize_key(*item.key) in sort_target_keys:
             other_model_uses.append("Sort")
         if "Hierarchy" in status:
             other_model_uses.append("Hierarchy")
         report_use_summary = (
             "No"
             if not r["usages"]
-            else f"{len(reports_used)} rpt | {len(pages_used)} pg | {len(r['usages'])} refs"
+            else f"{len(report_paths_used)} rpt | {len(pages_used)} pg | {len(r['usages'])} refs"
         )
 
         payload_item = {
@@ -731,6 +830,9 @@ def _serialize_results(results: dict) -> dict:
             "sourceFile": item.source_file or None,
             "displayFolder": item.display_folder,
             "formatString": item.format_string or None,
+            "dataType": getattr(item, "data_type", "") or None,
+            "sourceColumn": getattr(item, "source_column", "") or None,
+            "description": getattr(item, "description", "") or None,
             "isHidden": item.is_hidden,
             "isKey": item.is_key,
             "isInferred": item.is_inferred,
@@ -743,33 +845,39 @@ def _serialize_results(results: dict) -> dict:
             "reviewTriggers": r.get("review_triggers", []),
             "brokenDaxRefs": r.get("broken_dax_refs", []),
             "brokenDaxRefDetails": r.get("broken_dax_ref_details", []),
-            "reportCount": len(reports_used),
-            "pageCount": len(pages_used),
+            "reportCount": len(report_paths_used),
+            "reportPaths": report_paths_used,
+            "pageCount": len({(u.report_path or u.report, u.page) for u in r["usages"] if u.page}),
             "pagesUsed": pages_used,
             "visualTypes": visual_types,
             "contexts": contexts,
             "usageCount": len(r["usages"]),
             "reportUseSummary": report_use_summary,
             "measureDependentCount": len(dependent_measure_keys),
-            "measureDependentItems": sorted(analyzer.format_item_ref(dep) for dep in dependent_measure_keys),
+            "measureDependentItems": sorted(analyzer.format_item_ref(dep[-2:]) for dep in dependent_measure_keys),
             "reportUsedMeasureDependentCount": len(report_used_measure_keys),
-            "reportUsedMeasureDependentItems": sorted(analyzer.format_item_ref(dep) for dep in report_used_measure_keys),
+            "reportUsedMeasureDependentItems": sorted(analyzer.format_item_ref(dep[-2:]) for dep in report_used_measure_keys),
             "relationshipRefCount": relationship_ref_count,
             "otherModelUses": other_model_uses,
             "otherModelUseCount": len(other_model_uses),
             "indirectVia": indirect_via,
-            "dependsOnMeasures": sorted(analyzer.format_item_ref(dep) for dep in dax_measure_deps.get(key, set())),
-            "dependsOnColumns": sorted(analyzer.format_item_ref(dep) for dep in dax_column_deps.get(key, set())),
+            "dependencyItems": [identity_payload(dep) for dep in sorted(dax_measure_deps.get(key, set()) | dax_column_deps.get(key, set()))],
+            "dependentItems": [identity_payload(dep) for dep in sorted(reverse_measure_deps.get(key, set()) | reverse_column_deps.get(key, set()))],
+            "dependsOnMeasures": sorted(analyzer.format_item_ref(dep[-2:]) for dep in dax_measure_deps.get(key, set())),
+            "dependsOnColumns": sorted(analyzer.format_item_ref(dep[-2:]) for dep in dax_column_deps.get(key, set())),
             "dependsOnTables": sorted(dax_table_deps.get(key, set()), key=str.casefold),
             "commentedRefs": sorted(analyzer.extract_dax_commented_refs(item.dax_body or "")),
             "usedByItems": sorted(
-                analyzer.format_item_ref(dep) for dep in
+                analyzer.format_item_ref(dep[-2:]) for dep in
                 (reverse_measure_deps.get(key, set()) | reverse_column_deps.get(key, set()))
             ),
             "usageDetails": [
                 {
                     "report": u.report,
+                    "reportPath": u.report_path,
                     "page": u.page,
+                    "pageHidden": u.page_hidden,
+                    "visualHidden": u.visual_hidden,
                     "visualType": u.visual_type,
                     "visualTitle": u.visual_title or "",
                     "visualId": u.visual_id or "",
@@ -779,6 +887,7 @@ def _serialize_results(results: dict) -> dict:
                     "artifactPath": u.artifact_path or "",
                     "refType": u.ref_type,
                     "staleKind": u.stale_kind or "",
+                    "selectorValue": u.selector_value or "",
                 }
                 for u in r["usages"]
             ],
@@ -786,7 +895,10 @@ def _serialize_results(results: dict) -> dict:
             "staleUsageDetails": [
                 {
                     "report": u.report,
+                    "reportPath": u.report_path,
                     "page": u.page,
+                    "pageHidden": u.page_hidden,
+                    "visualHidden": u.visual_hidden,
                     "visualType": u.visual_type,
                     "visualTitle": u.visual_title or "",
                     "visualId": u.visual_id or "",
@@ -814,7 +926,7 @@ def _serialize_results(results: dict) -> dict:
         items.append(payload_item)
 
     item_display_state = {
-        (payload_item["type"], payload_item["table"], payload_item["name"]): {
+        (payload_item["type"], payload_item["table"], payload_item["name"], payload_item.get("sourceFile")): {
             "usageState": payload_item["usageState"],
             "issueState": payload_item["issueState"],
             "deleteSafety": payload_item["deleteSafety"],
@@ -827,7 +939,7 @@ def _serialize_results(results: dict) -> dict:
         item = r["item"]
         status = r["status"]
         risk = r.get("removal_risk", "") or None
-        display_state = item_display_state.get((item.item_type, item.table, item.name), {})
+        display_state = item_display_state.get((item.item_type, item.table, item.name, item.source_file or None), {})
         if r["usages"]:
             for u in r["usages"]:
                 references.append({
@@ -841,7 +953,10 @@ def _serialize_results(results: dict) -> dict:
                     "displayFolder": item.display_folder,
                     "formatString": item.format_string or None,
                     "report": u.report,
+                    "reportPath": u.report_path,
                     "page": u.page,
+                    "pageHidden": u.page_hidden,
+                    "visualHidden": u.visual_hidden,
                     "visualType": u.visual_type,
                     "visualTitle": u.visual_title or "",
                     "visualId": u.visual_id or "",
@@ -877,7 +992,10 @@ def _serialize_results(results: dict) -> dict:
                 "displayFolder": item.display_folder,
                 "formatString": item.format_string or None,
                 "report": "",
+                "reportPath": "",
                 "page": "",
+                "pageHidden": False,
+                "visualHidden": False,
                 "visualType": "",
                 "visualTitle": "",
                 "visualId": "",
@@ -913,7 +1031,10 @@ def _serialize_results(results: dict) -> dict:
                 "displayFolder": item.display_folder,
                 "formatString": item.format_string or None,
                 "report": u.report,
+                "reportPath": u.report_path,
                 "page": u.page,
+                    "pageHidden": u.page_hidden,
+                    "visualHidden": u.visual_hidden,
                 "visualType": u.visual_type,
                 "visualTitle": u.visual_title or "",
                 "visualId": u.visual_id or "",
@@ -938,8 +1059,20 @@ def _serialize_results(results: dict) -> dict:
                 "brokenDaxRefDetails": r.get("broken_dax_ref_details", []),
             })
 
+    canonical_items = {(item["type"], item["table"], item["name"], item.get("sourceFile")): item for item in items}
     tables = []
     for table in results.get("table_summaries", []):
+        children = [canonical_items.get((child.get("type"), table["name"], child.get("name"), child.get("source_file") or None), {
+            "name": child.get("name", ""), "type": child.get("type", ""),
+            "table": table["name"], "usageState": "Unknown", "issueState": "Unknown",
+            "deleteSafety": "Review", "usageCount": child.get("usage_count", 0),
+        }) for child in table.get("items", [])]
+        issue_counts = {
+            "Broken": sum(bool(child.get("brokenDaxRefs")) or "Broken" in child.get("issueState", "") for child in children),
+            "Stale": sum(bool(child.get("staleUsageCount")) or "Stale" in child.get("issueState", "") for child in children),
+        }
+        if table.get("field_parameter_issues"):
+            issue_counts["Broken"] = max(1, issue_counts["Broken"])
         table_usage_status = _table_usage_status(table)
         tables.append({
             "name": table["name"],
@@ -947,7 +1080,12 @@ def _serialize_results(results: dict) -> dict:
             "roleReason": table.get("role_reason", ""),
             "usageStatus": table_usage_status,
             "usageState": _table_usage_state(table),
-            "issueState": _table_issue_state(table),
+            "issueState": " / ".join(key for key, count in issue_counts.items() if count),
+            "issueCounts": issue_counts,
+            "cleanupCounts": {state: sum(child.get("deleteSafety") == state for child in children)
+                              for state in ("Safe", "Review", "Blocked", "Keep")},
+            "sourceKind": "model" if any(c.get("sourceKind") == "model" for c in children) else "report",
+            "mSourceDetails": table_source_details.get(table["name"]),
             "itemCount": table.get("item_count", 0),
             "measureCount": table.get("measure_count", 0),
             "columnCount": table.get("column_count", 0),
@@ -987,25 +1125,14 @@ def _serialize_results(results: dict) -> dict:
             ],
             "signals": table.get("signals", []),
             "fieldParameterIssues": table.get("field_parameter_issues", []),
-            "items": [
-                {
-                    "name": item.get("name", ""),
-                    "ref": item.get("ref", ""),
-                    "type": item.get("type", ""),
-                    "status": item.get("status", ""),
-                    "removalRisk": item.get("removal_risk"),
-                    "reviewTriggers": item.get("review_triggers", []),
-                    "brokenDaxRefs": item.get("broken_dax_refs", []),
-                    "brokenDaxRefDetails": item.get("broken_dax_ref_details", []),
-                    "usageCount": item.get("usage_count", 0),
-                }
-                for item in table.get("items", [])
-            ],
+            "items": [{**child, "ref": analyzer.format_item_ref((table["name"], child["name"]))} for child in children],
         })
 
     report_issues = results.get("report_issues", [])
     return {
         "summary": results["summary"],
+        "reportBinding": results.get("report_binding"),
+        "coverage": results.get("coverage", {}),
         "tables": tables,
         "warnings": results.get("warnings", []),
         "reportIssues": report_issues,
@@ -1014,6 +1141,22 @@ def _serialize_results(results: dict) -> dict:
         "items": items,
         "references": references,
     }
+
+
+def _compact_browser_results(payload):
+    """Transmit each item/source once; the browser restores the legacy view model."""
+    by_identity = {(i['type'], i['table'], i['name'], i.get('sourceFile')): n
+                   for n, i in enumerate(payload['items'])}
+    for table in payload['tables']:
+        table['itemIndices'] = [by_identity[(i['type'], i['table'], i['name'], i.get('sourceFile'))]
+                                for i in table.pop('items')]
+    for item in payload['items']:
+        if item.get('mSourceDetails') is not None:
+            item['mSourceTable'] = item['table']
+            item.pop('mSourceDetails')
+    payload.pop('references')
+    payload['_transport'] = 'smc-browser-v1'
+    return payload
 
 
 def _analysis_download_basename(results: dict) -> str:
@@ -1054,12 +1197,14 @@ def _build_stamp() -> str:
 def index():
     models, reports = _discover_initial_artifacts()
     selected_models = _default_model_selection(models)
-    selected_reports = reports
+    report_binding = (_report_binding_scope(selected_models[0], reports) if selected_models
+                      else {"selected": [], "excluded": []})
+    selected_reports = [Path(row["path"]) for row in report_binding["selected"]]
     # Layout preview toggle: ?ui=v2 opts into the new layout, ?ui=classic opts
-    # back out; the choice sticks via cookie until changed. Default: classic.
+    # back out; the choice sticks via cookie until changed. Default: v2.
     requested_ui = request.args.get("ui", "").strip().lower()
     if requested_ui not in ("v2", "classic"):
-        requested_ui = request.cookies.get("smc_ui", "classic")
+        requested_ui = request.cookies.get("smc_ui", "v2")
     template = "index_v2.html" if requested_ui == "v2" else "index.html"
     response = app.make_response(render_template(
         template,
@@ -1068,6 +1213,7 @@ def index():
         runtime=_state.get("runtime") or experiments.runtime_config(),
         initial_models=[{"path": str(m), "name": m.name.replace(".SemanticModel", "")} for m in selected_models],
         initial_reports=[{"path": str(r), "name": analyzer.report_display_name(r)} for r in selected_reports],
+        initial_report_binding=report_binding,
     ))
     response.set_cookie("smc_ui", "v2" if template == "index_v2.html" else "classic", max_age=60 * 60 * 24 * 365)
     return response
@@ -1116,6 +1262,7 @@ def api_browse():
 
 
 @app.route("/api/discover", methods=["GET", "POST"])
+@_invalidates_analysis
 def api_discover():
     """Discover available models and reports.
 
@@ -1187,11 +1334,6 @@ def api_find_connected_reports():
                 scanned_files += 1
             warning = binding.pop("warning", None)
             binding.pop("scanned", None)
-            if binding["status"] == "unreadable":
-                if warning:
-                    warnings.append(warning)
-                continue
-
             report_statuses.append(binding)
             if warning:
                 warnings.append(warning)
@@ -1221,6 +1363,7 @@ def api_find_connected_reports():
 
 
 @app.route("/api/demo", methods=["POST"])
+@_invalidates_analysis
 def api_demo():
     """Load the bundled demo workspace.
 
@@ -1260,6 +1403,7 @@ def api_demo():
 
 
 @app.route("/api/analyze", methods=["POST"])
+@_invalidates_analysis
 def api_analyze():
     """Run analysis and return JSON results."""
     try:
@@ -1267,21 +1411,24 @@ def api_analyze():
         model_paths = data.get("model_paths", _state["model_paths"])
         report_paths = data.get("report_paths", _state["report_paths"])
 
-        if not model_paths or not report_paths:
+        if not isinstance(model_paths, list) or not isinstance(report_paths, list) or not model_paths or not report_paths:
             return jsonify({"error": "No model or reports selected. Run discover first."}), 400
         if len(model_paths) != 1:
             return jsonify({
                 "error": "Select exactly one semantic model and one or more reports before analyzing.",
             }), 400
-        missing = [p for p in [*model_paths, *report_paths] if not Path(p).is_dir()]
+        missing = [p for p in [*model_paths, *report_paths] if not isinstance(p, str) or not Path(p).is_dir()]
         if missing:
             return jsonify({
                 "error": "These folders were not found: "
                 + ", ".join(str(p) for p in missing)
                 + ". Check that the paths still exist and try again.",
             }), 400
-        _state["model_paths"] = model_paths
-        _state["report_paths"] = report_paths
+        scope = _report_binding_scope(model_paths[0], report_paths)
+        report_paths = [row["path"] for row in scope["selected"]]
+        if not report_paths:
+            return jsonify({"error": "No connected reports selected. Check report bindings or choose another model.",
+                            "reportBinding": scope}), 400
 
         results = analyzer.analyze(
             workspace=Path(_state["workspace"]) if _state["workspace"] else Path("."),
@@ -1289,7 +1436,8 @@ def api_analyze():
             report_paths=[Path(p) for p in report_paths],
         )
 
-        _state["last_results"] = results
+        _record_report_scope(results, scope)
+        _state.update(model_paths=model_paths, report_paths=report_paths, last_results=results)
         return jsonify(_serialize_results(results))
     except analyzer.UnsupportedSemanticModelError as e:
         return jsonify({"error": str(e)}), 400
@@ -1297,6 +1445,60 @@ def api_analyze():
         return jsonify({"error": "Analysis failed — no models or reports found at the given paths."}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/analysis-jobs", methods=["POST"])
+def api_start_analysis_job():
+    data = request.get_json(silent=True) or {}
+    models = data.get("model_paths", _state["model_paths"])
+    reports = data.get("report_paths", _state["report_paths"])
+    if not isinstance(models, list) or len(models) != 1 or not isinstance(reports, list) or not reports:
+        return jsonify({"error": "Select exactly one semantic model and one or more reports."}), 400
+    try:
+        if any(not isinstance(p, str) or not Path(p).is_dir() for p in models + reports):
+            raise ValueError("Selected model/report folders were not found.")
+        requested_reports = reports
+        scope = _report_binding_scope(models[0], requested_reports)
+        reports = [row["path"] for row in scope["selected"]]
+        if not reports:
+            return jsonify({"error": "No connected reports selected. Check report bindings or choose another model.",
+                            "reportBinding": scope}), 400
+        workspace = Path(_state["workspace"] or ".")
+        raw = {}
+        def run(progress):
+            before = _analysis_source_fingerprint(models + requested_reports, progress)
+            if _report_binding_scope(models[0], requested_reports) != scope:
+                raise ValueError('Report bindings changed before analysis. Analyze the current selection again.')
+            progress("Reading selected metadata")
+            result = analyzer.analyze(workspace=workspace, model_paths=[Path(p) for p in models],
+                                      report_paths=[Path(p) for p in reports], progress=progress)
+            from .metadata_validation import validate_report_paths
+            schema = validate_report_paths(reports, workspace=workspace, progress=progress)
+            _record_report_scope(result, scope)
+            progress("Preparing browser results")
+            payload = _compact_browser_results(_serialize_results(result, model_paths=models))
+            payload['schemaValidation'] = schema
+            if _analysis_source_fingerprint(models + requested_reports, progress) != before:
+                raise ValueError('Source metadata changed during analysis. Analyze the current selection again.')
+            if _report_binding_scope(models[0], requested_reports) != scope:
+                raise ValueError('Report bindings changed during analysis. Analyze the current selection again.')
+            raw['results'] = result
+            return payload
+        def publish(payload):
+            _state.update(model_paths=models, report_paths=reports, last_results=raw['results'])
+        job = _analysis_jobs.start(run, publish)
+        return jsonify({"job": job}), 202
+    except (ValueError, TypeError) as exc:
+        return jsonify({"error": str(exc)}), 409
+
+
+@app.route("/api/analysis-jobs/<identity>", methods=["GET", "DELETE"])
+def api_analysis_job(identity):
+    try:
+        job = _analysis_jobs.cancel(identity) if request.method == "DELETE" else _analysis_jobs.get(identity)
+        return jsonify({"job": job})
+    except KeyError:
+        return jsonify({"error": "Analysis job not found or expired."}), 404
 
 
 @app.route("/api/compare", methods=["POST"])
@@ -1419,6 +1621,7 @@ def api_export():
 
 
 @app.route("/api/action", methods=["POST"])
+@_invalidates_analysis
 def api_action():
     """Apply actions (move_to_folder, move_to_table_group, hide, unhide, delete)."""
     try:
@@ -1508,6 +1711,7 @@ def api_action_preview():
 
 
 @app.route("/api/dax", methods=["POST"])
+@_invalidates_analysis
 def api_dax():
     """Update DAX for a measure or calculated column."""
     try:
@@ -1557,6 +1761,7 @@ def api_dax():
 
 
 @app.route("/api/report-measure/migrate", methods=["POST"])
+@_invalidates_analysis
 def api_migrate_report_measure():
     """Promote a report-level measure into the semantic model."""
     try:
@@ -1580,6 +1785,14 @@ def api_migrate_report_measure():
         if not report_path.exists():
             return jsonify({"error": f"Report path not found: {report_path}"}), 400
 
+        options = {"include_dependencies": bool(data.get("include_dependencies", False)),
+                   "allow_metadata_loss": bool(data.get("allow_metadata_loss", False))}
+        preview = report_writer.migrate_measure_to_model(
+            model_path=model_path, report_path=report_path, entity_name=table,
+            measure_name=name, target_table=target_table, target_name=target_name,
+            dry_run=True, **options)
+        if not preview.get("ok") or data.get("dry_run", False):
+            return jsonify({"ok": preview.get("ok", False), "result": preview}), (200 if preview.get("ok") else 400)
         backup_paths = {}
         if data.get("create_backup", False):
             _state["backup_path"] = str(tmdl_writer.create_backup(model_path))
@@ -1597,6 +1810,7 @@ def api_migrate_report_measure():
                 measure_name=name,
                 target_table=target_table,
                 target_name=target_name,
+                **options,
             )
         except Exception as exc:
             rollback = _restore_cleanup_transaction(transaction_roots, snapshot)
@@ -1626,8 +1840,11 @@ def api_migrate_report_measure():
 
 
 @app.route("/api/measure/move", methods=["POST"])
+@_invalidates_analysis
 def api_move_measure_to_table():
     """Move model measures to another table and rewrite selected PBIR reports."""
+    transaction_roots = []
+    snapshot = None
     try:
         data = request.get_json(silent=True) or {}
         model_path_str = data.get("model_path") or (_state["model_paths"][0] if _state["model_paths"] else None)
@@ -1720,24 +1937,30 @@ def api_move_measure_to_table():
             "git_warning": git_warning,
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        rollback = _restore_cleanup_transaction(transaction_roots, snapshot) if snapshot is not None else None
+        return jsonify({"ok": False, "error": str(e),
+                        "rolled_back": bool(rollback and rollback["ok"]), "rollback": rollback}), 500
 
 
 @app.route("/api/model/rename", methods=["POST"])
+@_invalidates_analysis
 def api_rename_model_metadata():
     """Rename semantic-model tables/measures and rewrite selected PBIR reports."""
+    transaction_roots = []
+    snapshot = None
     try:
         data = request.get_json(silent=True) or {}
         model_path_str = data.get("model_path") or (_state["model_paths"][0] if _state["model_paths"] else None)
         table_renames = data.get("table_renames") or []
         measure_renames = data.get("measure_renames") or []
+        column_renames = data.get("column_renames") or []
         report_path_values = data.get("report_paths") or _state["report_paths"]
         dry_run = bool(data.get("dry_run", False))
 
         if not model_path_str:
             return jsonify({"error": "No model path specified"}), 400
-        if not table_renames and not measure_renames:
-            return jsonify({"error": "No table or measure renames specified"}), 400
+        if not table_renames and not measure_renames and not column_renames:
+            return jsonify({"error": "No table, measure or column renames specified"}), 400
         if not report_path_values:
             return jsonify({"error": "No selected reports provided"}), 400
 
@@ -1754,6 +1977,7 @@ def api_rename_model_metadata():
             model_path,
             table_renames=table_renames,
             measure_renames=measure_renames,
+            column_renames=column_renames,
             dry_run=True,
         )
         if not model_preview.get("ok"):
@@ -1763,6 +1987,7 @@ def api_rename_model_metadata():
             report_paths=report_paths,
             table_renames=table_renames,
             measure_renames=measure_renames,
+            column_renames=column_renames,
             dry_run=True,
         )
         if not report_preview.get("ok"):
@@ -1792,6 +2017,7 @@ def api_rename_model_metadata():
             model_path,
             table_renames=table_renames,
             measure_renames=measure_renames,
+            column_renames=column_renames,
             dry_run=False,
         )
         if not model_result.get("ok"):
@@ -1807,6 +2033,7 @@ def api_rename_model_metadata():
             report_paths=report_paths,
             table_renames=table_renames,
             measure_renames=measure_renames,
+            column_renames=column_renames,
             dry_run=False,
         )
         if not report_result.get("ok"):
@@ -1831,10 +2058,13 @@ def api_rename_model_metadata():
             "git_warning": git_warning,
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        rollback = _restore_cleanup_transaction(transaction_roots, snapshot) if snapshot is not None else None
+        return jsonify({"ok": False, "error": str(e),
+                        "rolled_back": bool(rollback and rollback["ok"]), "rollback": rollback}), 500
 
 
 @app.route("/api/report/cleanup-stale", methods=["POST"])
+@_invalidates_analysis
 def api_cleanup_stale_report_metadata():
     """Remove stale formatting selectors from selected PBIR report files."""
     try:
@@ -1866,6 +2096,7 @@ def api_cleanup_stale_report_metadata():
 
 
 @app.route("/api/report/issues/apply", methods=["POST"])
+@_invalidates_analysis
 def api_apply_report_issue_actions():
     """Apply exact report-health row actions to PBIR report files."""
     try:
@@ -1899,6 +2130,7 @@ def api_apply_report_issue_actions():
 
 
 @app.route("/api/report/repair-references", methods=["POST"])
+@_invalidates_analysis
 def api_repair_report_references():
     """Repair report references that point at a renamed semantic-model table.
 
@@ -2034,6 +2266,140 @@ def main():
     print_startup_banner(args.host, args.port, debug=args.debug)
 
     app.run(host=args.host, port=args.port, debug=args.debug)
+
+
+# Shared, persisted plans used by the v2 UI and headless automation.
+def _plan_directory() -> Path:
+    return _user_data_dir() / "plans"
+
+
+def _stored_plan(plan_id: str) -> dict:
+    if not re.fullmatch(r"[0-9a-f]{32}", plan_id):
+        raise change_plan.PlanError("Invalid plan identity")
+    return change_plan.load_plan(_plan_directory() / f"{plan_id}.plan.json")
+
+
+@app.route("/api/plans", methods=["GET", "POST"])
+def api_plans():
+    try:
+        if request.method == "GET":
+            directory = _plan_directory()
+            plans, receipts = [], []
+            for path in sorted(directory.glob("*.plan.json"), reverse=True):
+                plan = change_plan.load_plan(path)
+                summary = {k: v for k, v in plan.items() if k not in {"inputs", "outputs", "changes"}}
+                summary["changes"] = [{k: v for k, v in change.items() if k not in {"before", "after"}} for change in plan["changes"]]
+                plans.append(summary)
+            for path in sorted(directory.glob("*.receipt.json"), reverse=True):
+                receipts.append(json.loads(path.read_text()))
+            return jsonify({"plans": plans, "receipts": receipts})
+        data = request.get_json(silent=True) or {}
+        model_path, error = _cleanup_action_model_path(data)
+        if error:
+            return jsonify(error[0]), error[1]
+        reports = data.get("report_paths") if "report_paths" in data else _state["report_paths"]
+        plan = change_plan.create_plan(model_path, reports or [], data.get("operations"))
+        change_plan.save_plan(plan, _plan_directory())
+        return jsonify({"ok": True, "plan": plan})
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/plans/<plan_id>", methods=["GET"])
+def api_get_plan(plan_id):
+    try:
+        return jsonify({"ok": True, "plan": _stored_plan(plan_id)})
+    except (ValueError, OSError, KeyError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/plans/<plan_id>/<operation>", methods=["POST"])
+def api_plan_operation(plan_id, operation):
+    try:
+        plan = _stored_plan(plan_id)
+        if operation == "apply":
+            with _analysis_jobs.invalidate():
+                _state["last_results"] = None
+                result = change_plan.apply_plan(plan, _plan_directory())
+        elif operation == "restore":
+            with _analysis_jobs.invalidate():
+                _state["last_results"] = None
+                result = change_plan.restore_plan(plan, _plan_directory())
+        elif operation == "recover-lock":
+            result = change_plan.recover_interrupted_lock(plan, _plan_directory())
+        elif operation == "verify":
+            result = change_plan.verify_plan(plan)
+        else:
+            return jsonify({"ok": False, "error": "Unknown plan operation"}), 404
+        if operation in {"apply", "restore"} and result.get("ok"):
+            _state["last_results"] = None
+        return jsonify(result), 200 if result.get("ok") else 409
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 409
+
+
+def _review_scope(data):
+    models = data.get('model_paths', _state['model_paths'])
+    reports = data.get('report_paths', _state['report_paths'])
+    if not isinstance(models, list) or len(models) != 1 or not isinstance(reports, list) or not reports:
+        raise ValueError('Select one model and its reports before reviewing policy.')
+    workspace = Path(data.get('project_path') or _state['workspace'] or '.').resolve()
+    paths = [Path(p).resolve() for p in models + reports]
+    if any(not p.is_dir() or not p.is_relative_to(workspace) for p in paths):
+        raise ValueError('The policy project folder must contain the selected model and report folders.')
+    return workspace, paths[0], paths[1:]
+
+
+@app.route('/api/review-findings', methods=['POST'])
+def api_review_findings():
+    from . import review_policy
+    try:
+        workspace, model, reports = _review_scope(request.get_json(silent=True) or {})
+        result = review_policy.review_findings(workspace, model, reports)
+        return jsonify({**result, 'project_path': str(workspace),
+                        'policy': review_policy.load_policy(workspace)})
+    except (ValueError, OSError, TypeError) as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+
+
+@app.route('/api/review-policy', methods=['PUT'])
+def api_save_review_policy():
+    from . import review_policy
+    try:
+        data = request.get_json(silent=True) or {}
+        workspace, _, _ = _review_scope(data)
+        policy = review_policy.save_policy(workspace, data.get('policy'), expected_digest=data.get('expected_digest'))
+        return jsonify({'ok': True, 'policy': policy})
+    except (ValueError, OSError, TypeError) as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+
+
+@app.route('/api/review-policy/decisions', methods=['POST', 'DELETE'])
+def api_review_decisions():
+    from . import review_policy
+    try:
+        data = request.get_json(silent=True) or {}
+        workspace, _, _ = _review_scope(data)
+        if request.method == 'DELETE':
+            policy = review_policy.remove_decision(workspace, data.get('decision_id'))
+        else:
+            policy = review_policy.add_decision(workspace, data.get('finding') or {}, data.get('scope') or {},
+                disposition=data.get('disposition'), reason=data.get('reason'), owner=data.get('owner'),
+                expires_on=data.get('expires_on'))
+        return jsonify({'ok': True, 'policy': policy})
+    except (ValueError, OSError, TypeError, KeyError) as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+
+
+@app.route('/api/naming-preview', methods=['POST'])
+def api_naming_preview():
+    from . import review_policy
+    try:
+        data = request.get_json(silent=True) or {}
+        workspace, model, reports = _review_scope(data)
+        return jsonify(review_policy.naming_preview(workspace, model, reports, policy=data.get('policy')))
+    except (ValueError, OSError, TypeError) as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
 
 
 if __name__ == "__main__":

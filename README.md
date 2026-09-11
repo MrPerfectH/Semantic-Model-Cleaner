@@ -2,15 +2,19 @@
 
 Semantic Model Cleaner analyzes Power BI PBIR + TMDL projects, shows which semantic model items appear to be unused across selected reports, and lets you apply cleanup actions locally.
 
-It is designed for local use against files on your machine. The current release target is early-stage open source for Power BI practitioners who already work with PBIR and TMDL.
+It works directly in repositories containing TMDL and PBIR files; Power BI Desktop is not required. Core workflows are free under the MIT license, with no account or paid service required. Fabric integration is a future extension.
+
+It is designed for local use against files on your machine. Version `0.4.0b1`
+is the first public beta for Power BI practitioners who already work with PBIR
+and TMDL.
 
 ## Current Status
 
-- Project maturity: early-stage `0.x`
+- Project maturity: public beta `0.4.0b1`
 - Runtime shape: Python package with a CLI, a local web UI, and Windows desktop packaging
 - Stable entry points: `semantic-model-cleaner`, `semantic-model-cleaner-web`, `smc`, and `smc-web`
 - Windows entry points: packaged `Semantic Model Cleaner.exe`, `semantic-model-cleaner-desktop`, and `smc-desktop`
-- Roadmap: beta feature isolation, release hardening, and a public landing site
+- Release channel: beta is baked into this package and shown in the UI
 
 ## What It Does
 
@@ -47,7 +51,13 @@ python -m pip install -e .[dev]
 
 ### Windows Packaged App
 
-For terminal-free Windows use, a packaged launcher is also available.
+For terminal-free Windows use, download
+[`semantic-model-cleaner-windows-x64-0.4.0b1.zip`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b1/semantic-model-cleaner-windows-x64-0.4.0b1.zip)
+and its
+[`SHA-256 checksum`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b1/semantic-model-cleaner-windows-x64-0.4.0b1.zip.sha256)
+from the explicit beta prerelease. Extract the whole ZIP, then run
+`Semantic Model Cleaner.exe`. Python, Power BI Desktop, Fabric, an account,
+and paid services are not required.
 
 Local launcher command:
 
@@ -209,13 +219,17 @@ Build the Windows package locally:
 pwsh -File packaging/windows/build.ps1
 ```
 
-## Stable vs Beta
+## Public beta channel
 
-- The default `SMC_RELEASE_CHANNEL` is `stable`. Set `SMC_RELEASE_CHANNEL=beta` or `SMC_RELEASE_CHANNEL=prerelease` to exercise the beta UI that surfaces experimental flows and prerelease messaging.
+- Version `0.4.0b1` defaults to the `beta` release channel without an environment variable.
+- Developers can set `SMC_RELEASE_CHANNEL=stable` to inspect the stable-gated UI during compatibility testing.
 - Enable one or more experiments with `SMC_EXPERIMENTS=compare-models` (comma-separated for multiple keys). The web UI also accepts `--experimental compare-models` when you launch `semantic-model-cleaner-web`.
-- Stable releases hide beta banners and extra UI; beta/prerelease builds show a `Beta` banner and list the active experiments so users know they are on a fast-moving channel.
+- The public beta shows a `Beta` banner. Experiments remain separately opt-in.
 
 See `tests/test_experiments.py` for the supported experiment keys and release-channel logic.
+
+See the [five-minute repository quick start](docs/quickstart.md), [CI check
+contract](docs/cli/check.md), and [support matrix](docs/support.md).
 
 ## Repository Layout
 
@@ -247,3 +261,18 @@ Analyzer-specific usage and caveats are documented in [scripts/analyze_model_usa
 - Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - Security reporting: [SECURITY.md](SECURITY.md)
 - Issues and discussions are monitored on the public [GitHub repository](https://github.com/MrPerfectH/Semantic-Model-Cleaner).
+
+## Reviewed CLI changes
+
+The CLI and web UI share a staged change-plan engine for model cleanup, renames, measure moves, report-measure promotion and report repairs. Prepare a plan from an operations JSON file, inspect its exact differences, then apply it with freshness checks and a recovery journal:
+
+```bash
+smc plan /path/to/project --operations operations.json -o review/change.plan.json
+smc diff review/change.plan.json
+smc apply review/change.plan.json
+smc verify review/change.plan.json
+```
+
+Use `smc history` to inspect receipts and `smc restore review/change.plan.json` for guarded recovery. Plans contain local metadata and must come from a trusted source. Static validation covers supported selected files; it does not evaluate Power BI runtime behavior. See [CLI plans and recovery](docs/cli/plans.md) for operation examples, scope rules, exit codes and interrupted-operation recovery.
+
+Read [CI checks and baselines](docs/cli/check.md), [supported workflows](docs/support.md), and the [beta quick start](docs/quickstart.md).

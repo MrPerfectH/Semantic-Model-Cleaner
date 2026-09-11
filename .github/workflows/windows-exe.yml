@@ -1,7 +1,7 @@
-name: Windows EXE
+name: Public beta packages
 
 permissions:
-  contents: write
+  contents: read
 
 on:
   workflow_dispatch:
@@ -9,19 +9,20 @@ on:
     paths:
       - ".github/workflows/windows-exe.yml"
       - "packaging/windows/**"
+      - "scripts/release_checksums.py"
+      - "scripts/smoke_wheel.py"
+      - "scripts/verify_release_identity.py"
       - "pyproject.toml"
       - "src/semantic_model_cleaner/**"
       - "tests/**"
-  release:
-    # `published` already covers prereleases, so listing `prereleased` as well
-    # ran the whole build twice for every release and raced two `gh release
-    # upload --clobber` calls at the same asset.
-    types: [published]
+  push:
+    tags:
+      - "v*"
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-
+  python-package:
+    name: Build and consume Python distributions
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,36 +32,153 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install source validation and build tooling
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .[dev]
 
-      - name: Determine package version
-        id: version
-        shell: pwsh
+      - name: Verify beta identity and tag
+        run: python scripts/verify_release_identity.py --tag "$RELEASE_TAG"
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+
+      - name: Validate source
         run: |
-          $version = python -c "from semantic_model_cleaner import __version__; print(__version__)"
-          "version=$($version.Trim())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          python -m ruff check .
+          python -m pytest
 
-      - name: Run lint
-        run: python -m ruff check .
+      - name: Build wheel and source distribution
+        run: python -m build
 
-      - name: Run tests
-        run: python -m pytest
+      - name: Install wheel with dependencies in a fresh environment
+        run: python scripts/smoke_wheel.py dist/*.whl
+
+      - name: Write Python distribution checksums
+        run: python scripts/release_checksums.py write dist/*.whl dist/*.tar.gz
+
+      - name: Upload Python distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: |
+            dist/*.whl
+            dist/*.whl.sha256
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+          if-no-files-found: error
+
+  windows-build:
+    name: Build Windows ZIP
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Verify beta identity and tag
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: python scripts/verify_release_identity.py --tag "$env:RELEASE_TAG"
 
       - name: Build Windows package
         shell: pwsh
         run: ./packaging/windows/build.ps1
 
-      - name: Upload build artifact
+      - name: Upload unverified Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: semantic-model-cleaner-windows-x64
-          path: dist/semantic-model-cleaner-windows-x64-${{ steps.version.outputs.version }}.zip
+          name: windows-package
+          path: |
+            dist/semantic-model-cleaner-windows-x64-*.zip
+            dist/semantic-model-cleaner-windows-x64-*.zip.sha256
+          if-no-files-found: error
 
-      - name: Attach asset to GitHub release
-        if: github.event_name == 'release'
+  windows-verify:
+    name: Verify downloaded Windows ZIP
+    needs: windows-build
+    runs-on: windows-latest
+    steps:
+      - name: Checkout verification harness
+        uses: actions/checkout@v4
+
+      - name: Set up verification Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install browser driver
+        run: |
+          python -m pip install playwright==1.55.0
+          python -m playwright install chromium
+
+      - name: Download ZIP outside the checkout
+        uses: actions/download-artifact@v5
+        with:
+          name: windows-package
+          path: ${{ runner.temp }}/release under test
+
+      - name: Run executable and browser end-to-end verification
+        shell: pwsh
+        run: |
+          $download = Join-Path $env:RUNNER_TEMP "release under test"
+          $zip = Get-ChildItem $download -Filter "*.zip" | Select-Object -First 1
+          $checksum = Get-ChildItem $download -Filter "*.zip.sha256" | Select-Object -First 1
+          if (-not $zip -or -not $checksum) { throw "Downloaded ZIP or checksum is missing" }
+          python packaging/windows/smoke.py --zip $zip.FullName --sha256 $checksum.FullName --evidence-dir (Join-Path $env:RUNNER_TEMP "windows verification evidence")
+
+      - name: Upload Windows verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-verification-evidence
+          path: ${{ runner.temp }}/windows verification evidence
+          if-no-files-found: warn
+
+  publish-prerelease:
+    name: Publish GitHub prerelease
+    if: github.ref_type == 'tag'
+    needs: [python-package, windows-verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v4
+
+      - name: Download Python distributions
+        uses: actions/download-artifact@v5
+        with:
+          name: python-distributions
+          path: release-assets/python
+
+      - name: Download verified Windows package
+        uses: actions/download-artifact@v5
+        with:
+          name: windows-package
+          path: release-assets/windows
+
+      - name: Verify every release checksum
+        run: python scripts/release_checksums.py verify release-assets/python/*.sha256 release-assets/windows/*.sha256
+
+      - name: Create or update prerelease and upload assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.event.release.tag_name }}" dist/semantic-model-cleaner-windows-x64-${{ steps.version.outputs.version }}.zip --clobber
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --title "Semantic Model Cleaner $VERSION public beta" --notes-file docs/releases/0.4.0b1.md
+          else
+            gh release create "$RELEASE_TAG" --prerelease --verify-tag --title "Semantic Model Cleaner $VERSION public beta" --notes-file docs/releases/0.4.0b1.md
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/python/* release-assets/windows/* --clobber

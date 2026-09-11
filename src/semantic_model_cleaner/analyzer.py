@@ -23,7 +23,7 @@ import re
 import sys
 import tempfile
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
@@ -59,6 +59,9 @@ class ModelItem:
     source_file: str = ""
     format_string: str = ""
     explicit_measure_refs: tuple[tuple[str, str], ...] = ()
+    data_type: str = ""
+    source_column: str = ""
+    description: str = ""
 
     @property
     def key(self) -> tuple:
@@ -89,6 +92,7 @@ class UsageRef:
     visual_width: float | int | None = None
     visual_height: float | int | None = None
 
+    report_path: str = ""
 
 @dataclass
 class HierarchyInfo:
@@ -153,6 +157,7 @@ class ReportIssue:
     visual_height: float | int | None = None
     suggestions: list[dict] = field(default_factory=list)
 
+    report_path: str = ""
 
 @dataclass
 class UnsupportedMetadataRef:
@@ -161,6 +166,7 @@ class UnsupportedMetadataRef:
     source_file: str = ""
     possible_hidden_dependency: str = ""
     user_harm: str = ""
+    unresolved_targets: bool = False
 
 
 REPORT_EXTENSION_PRIMITIVE_TYPES = {
@@ -227,6 +233,18 @@ def _discover_artifact_dirs(search_roots: list[Path], suffix: str, conventional_
         if not root.is_dir():
             continue
 
+        if suffix == ".Report":
+            # Search every visible descendant, even when a conventional Reports
+            # folder exists. Prune hidden checkouts/caches before traversing them.
+            for current, directories, _ in os.walk(root):
+                parent = Path(current)
+                directories[:] = [name for name in directories
+                                  if not _skip_discovery_path(parent / name, root, source_root=source_root)]
+                artifacts = [name for name in directories if name.endswith(suffix)]
+                discovered.extend(parent / name for name in artifacts)
+                directories[:] = [name for name in directories if name not in artifacts]
+            continue
+
         # Fast path for common workspace layout.
         conventional = root / conventional_dir
         if conventional.exists() and conventional.is_dir():
@@ -280,7 +298,7 @@ def paths_match(a: Path, b: Path) -> bool:
 def platform_display_name(artifact_path: Path) -> str:
     """Read the Fabric display name from an artifact's .platform file, if present.
 
-    The folder name (e.g. PMRA_POC.SemanticModel) is only a local convention;
+    The folder name (e.g. Retail_POC.SemanticModel) is only a local convention;
     the .platform metadata.displayName is the name the artifact is published
     under, so it is what live report connections refer to.
     """
@@ -309,6 +327,42 @@ def model_name_candidates(model_path: Path) -> set[str]:
 def model_label(model_path: Path) -> str:
     """Published display name of a semantic model, falling back to the folder name."""
     return platform_display_name(Path(model_path)) or Path(model_path).name.replace(".SemanticModel", "")
+
+
+def _connection_catalog(connection_string: str) -> str:
+    """Read Initial Catalog, respecting quoted values and escaped quote pairs."""
+    fields, field, quote = [], [], None
+    index = 0
+    while index < len(connection_string):
+        char = connection_string[index]
+        if quote:
+            field.append(char)
+            if char == quote:
+                if index + 1 < len(connection_string) and connection_string[index + 1] == quote:
+                    field.append(quote)
+                    index += 1
+                else:
+                    quote = None
+        elif char in {'"', "'"}:
+            quote = char
+            field.append(char)
+        elif char == ';':
+            fields.append(''.join(field))
+            field = []
+        else:
+            field.append(char)
+        index += 1
+    if quote:
+        return ''
+    fields.append(''.join(field))
+    for field in fields:
+        key, separator, value = field.partition('=')
+        if separator and key.strip().casefold() == 'initial catalog':
+            value = value.strip()
+            if len(value) >= 2 and value[0] in {'"', "'"} and value[-1] == value[0]:
+                value = value[1:-1].replace(value[0] * 2, value[0])
+            return value
+    return ''
 
 
 def report_binding_status(
@@ -364,8 +418,8 @@ def report_binding_status(
         status["message"] = f"Could not read definition.pbir: {exc}"
         status["warning"] = f"Skipped {definition_file}: {exc}"
         return status
-    except json.JSONDecodeError as exc:
-        return fail("invalid_definition", f"Invalid definition.pbir JSON: {exc.msg}")
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        return fail("invalid_definition", f"Invalid definition.pbir JSON: {getattr(exc, 'msg', str(exc))}")
     if not isinstance(definition, dict):
         return fail("invalid_definition", "Invalid definition.pbir JSON: expected a JSON object.")
 
@@ -376,11 +430,7 @@ def report_binding_status(
         if isinstance(connection, dict):
             connection_string = connection.get("connectionString")
             if isinstance(connection_string, str):
-                catalog_match = re.search(
-                    r"initial catalog\s*=\s*([^;]+)", connection_string, re.IGNORECASE
-                )
-                if catalog_match:
-                    published_name = catalog_match.group(1).strip()
+                published_name = _connection_catalog(connection_string)
         if published_name:
             status["publishedModelName"] = published_name
         if published_name and published_name.casefold() in candidates:
@@ -536,6 +586,7 @@ def _serialize_report_issue(issue: ReportIssue) -> dict:
         "severity": issue.severity,
         "issueType": issue.issue_type,
         "report": issue.report,
+        "reportPath": issue.report_path,
         "page": issue.page,
         "visualType": issue.visual_type,
         "visualTitle": issue.visual_title,
@@ -685,9 +736,7 @@ def _unsupported_ref(
     item_keys: set[tuple[str, str]],
     source_file: Path,
     model_path: Path,
-) -> UnsupportedMetadataRef | None:
-    if not item_keys:
-        return None
+) -> UnsupportedMetadataRef:
     hidden_dependency, user_harm = _unsupported_metadata_info(area)
     return UnsupportedMetadataRef(
         area=area,
@@ -764,6 +813,12 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
         ("Secondary expressions", ("secondaryExpression", "secondaryExpressions")),
     ]
     refs: list[UnsupportedMetadataRef] = []
+    measure_names: dict[str, set[tuple[str, str]]] = defaultdict(set)
+    model_items = parse_model_items(model_path)
+    known_keys = {normalize_key(*item.key) for item in model_items}
+    for item in model_items:
+        if item.item_type == "Measure":
+            measure_names[item.name.casefold()].add(item.key)
 
     for filepath in sorted(tables_dir.glob("*.tmdl")):
         text = filepath.read_text(encoding="utf-8")
@@ -771,14 +826,17 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
             metadata_blocks = _extract_tmdl_metadata_blocks(text, markers)
             if not metadata_blocks:
                 continue
-            ref = _unsupported_ref(
-                area,
-                _extract_item_keys_from_metadata_text("\n".join(metadata_blocks)),
-                filepath,
-                model_path,
-            )
-            if ref:
-                refs.append(ref)
+            metadata_text = "\n".join(metadata_blocks)
+            item_keys = _extract_item_keys_from_metadata_text(metadata_text)
+            unresolved = any(normalize_key(*key) not in known_keys for key in item_keys)
+            for name in _extract_dax_unqualified_refs(metadata_text):
+                matches = measure_names.get(name.casefold(), set())
+                item_keys.update(matches)
+                if len(matches) != 1:
+                    unresolved = True
+            ref = _unsupported_ref(area, item_keys, filepath, model_path)
+            ref.unresolved_targets = unresolved or not item_keys
+            refs.append(ref)
 
     return refs
 
@@ -1104,6 +1162,10 @@ def promote_field_parameter_usages(
                     name=target.name,
                     ref_type=ref_type,
                     report=origin.report,
+                    report_path=origin.report_path,
+                    artifact_path=origin.artifact_path,
+                    source_path=origin.source_path,
+                    visual_id=origin.visual_id,
                     page=origin.page,
                     visual_type=origin.visual_type,
                     visual_title=origin.visual_title,
@@ -1207,6 +1269,13 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
                 first_dax = first_dax[3:].strip()
 
             dax_lines = [first_dax] if first_dax and first_dax != "```" else []
+            data_type = source_column = format_string = ""
+            description_lines = []
+            previous = i - 1
+            while previous >= 0 and lines[previous].startswith("\t///"):
+                description_lines.insert(0, lines[previous][4:].lstrip())
+                previous -= 1
+            description = "\n".join(description_lines)
             display_folder = ""
             is_hidden = False
             i += 1
@@ -1224,6 +1293,14 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
                     continue
                 if inner.startswith("\t\t") and not inner.startswith("\t\t\t"):
                     prop = inner.strip()
+                    if prop.startswith("dataType:"):
+                        data_type = prop.split(":", 1)[1].strip()
+                    if prop.startswith("sourceColumn:"):
+                        source_column = prop.split(":", 1)[1].strip()
+                    if prop.startswith("description:"):
+                        description = prop.split(":", 1)[1].strip()
+                    if prop.startswith("formatString:"):
+                        format_string = prop.split(":", 1)[1].strip()
                     if prop.startswith("displayFolder:"):
                         display_folder = prop.split(":", 1)[1].strip()
                     if prop.startswith("hidden:") or prop.startswith("isHidden:"):
@@ -1251,6 +1328,10 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
                 dax_body="\n".join(dax_lines),
                 is_hidden=is_hidden,
                 source_file=str(filepath),
+                data_type=data_type,
+                source_column=source_column,
+                description=description,
+                format_string=format_string,
             ))
             continue
 
@@ -1259,6 +1340,13 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
         if c:
             name, first_dax, _ = c
             is_calculated = bool(first_dax)
+            data_type = source_column = format_string = ""
+            description_lines = []
+            previous = i - 1
+            while previous >= 0 and lines[previous].startswith("\t///"):
+                description_lines.insert(0, lines[previous][4:].lstrip())
+                previous -= 1
+            description = "\n".join(description_lines)
             display_folder = ""
             is_hidden = False
             is_key = False
@@ -1278,6 +1366,14 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
                     continue
                 if inner.startswith("\t\t") and not inner.startswith("\t\t\t"):
                     prop = inner.strip()
+                    if prop.startswith("dataType:"):
+                        data_type = prop.split(":", 1)[1].strip()
+                    if prop.startswith("sourceColumn:"):
+                        source_column = prop.split(":", 1)[1].strip()
+                    if prop.startswith("description:"):
+                        description = prop.split(":", 1)[1].strip()
+                    if prop.startswith("formatString:"):
+                        format_string = prop.split(":", 1)[1].strip()
                     if "expression" in prop and "=" in prop and not prop.startswith("formatString"):
                         is_calculated = True
                         expr_part = prop.split("=", 1)[1].strip()
@@ -1319,6 +1415,10 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
                 is_inferred=is_inferred,
                 sort_by_column=sort_by_column,
                 source_file=str(filepath),
+                data_type=data_type,
+                source_column=source_column,
+                description=description,
+                format_string=format_string,
             ))
             continue
 
@@ -1418,6 +1518,7 @@ def _report_extension_issue(
         severity="warning",
         issue_type=issue_type,
         report=report_display_name(report_path),
+        report_path=str(report_path.resolve()),
         artifact_kind="Report Extension",
         artifact_path=_artifact_rel_path(report_path, report_extensions),
         message=message,
@@ -1600,12 +1701,17 @@ def _dedupe_items_with_warnings(
     items: list[ModelItem],
     warnings: list[AnalyzerWarning],
 ) -> list[ModelItem]:
-    seen: dict[tuple[str, str, str], ModelItem] = {}
-    duplicates: dict[tuple[str, str, str], list[ModelItem]] = defaultdict(list)
+    seen: dict[tuple[str, ...], ModelItem] = {}
+    duplicates: dict[tuple[str, ...], list[ModelItem]] = defaultdict(list)
 
     for item in items:
-        nkey = normalize_key(*item.key) + (item.item_type.casefold(),)
+        owner = item.source_file if item.source_kind == "report" else "model"
+        nkey = (owner,) + normalize_key(*item.key) + (item.item_type.casefold(),)
         if nkey in seen:
+            if item.source_kind == "report":
+                raise UnsupportedSemanticModelError(
+                    "Duplicate Report Extension Measure declaration within one report: "
+                    + format_item_ref(item.key))
             duplicates[nkey].append(item)
             continue
         seen[nkey] = item
@@ -1692,8 +1798,9 @@ def parse_relationship_details(model_path: Path) -> list[RelationshipInfo]:
             from_column=from_ref[1],
             to_table=to_ref[0],
             to_column=to_ref[1],
-            from_cardinality=unquote_tmdl_name(props.get("fromCardinality", "")).strip().lower(),
-            to_cardinality=unquote_tmdl_name(props.get("toCardinality", "")).strip().lower(),
+            # TOM SingleColumnRelationship defaults (verified with SDK 19.114.0).
+            from_cardinality=unquote_tmdl_name(props.get("fromCardinality", "many")).strip().lower(),
+            to_cardinality=unquote_tmdl_name(props.get("toCardinality", "one")).strip().lower(),
             is_active=is_active_raw not in ("false", "0", "no"),
         ))
 
@@ -2191,6 +2298,7 @@ def scan_invalid_report_json(report_path: Path) -> list[ReportIssue]:
                 severity="error",
                 issue_type="invalid_report_json",
                 report=rpt_name,
+                report_path=str(report_path.resolve()),
                 page=page,
                 visual_id=visual_id,
                 artifact_kind=_invalid_json_artifact_kind(rel_path),
@@ -2203,6 +2311,7 @@ def scan_invalid_report_json(report_path: Path) -> list[ReportIssue]:
                 severity="warning",
                 issue_type="invalid_report_json",
                 report=rpt_name,
+                report_path=str(report_path.resolve()),
                 artifact_kind=_invalid_json_artifact_kind(rel_path),
                 artifact_path=rel_path,
                 message=f"Could not read PBIR JSON file: {exc}",
@@ -2242,6 +2351,7 @@ def _report_issue_from_usage(
         severity=severity,
         issue_type=issue_type,
         report=usage.report,
+        report_path=usage.report_path,
         page=usage.page,
         visual_type=usage.visual_type,
         visual_title=usage.visual_title,
@@ -2268,10 +2378,10 @@ def _report_issue_from_usage(
 
 def _report_issue_dedupe_key(issue: ReportIssue) -> tuple:
     if issue.issue_type == "invalid_report_json":
-        return (issue.issue_type, issue.report, issue.artifact_path)
+        return (issue.issue_type, issue.report_path or issue.report, issue.artifact_path)
     return (
         issue.issue_type,
-        issue.report,
+        issue.report_path or issue.report,
         issue.page,
         issue.visual_id,
         issue.table.casefold(),
@@ -2417,8 +2527,19 @@ def build_report_issues(
     hierarchy_keys = {normalize_key(info.table, info.name) for info in hierarchies}
 
     issues: list[ReportIssue] = list(invalid_json_issues)
-    suggestion_cache: dict[tuple[str, str, str], list[dict]] = {}
+    scope_cache = {}
+    def items_for_report(usage):
+        if not usage.report_path:
+            return all_items
+        if usage.report_path not in scope_cache:
+            scope_cache[usage.report_path] = [item for item in all_items if item.source_kind != "report"
+                or (item.source_file and str(Path(item.source_file).parent.parent.resolve()) == usage.report_path)]
+        return scope_cache[usage.report_path]
+    suggestion_cache: dict[tuple, list[dict]] = {}
     for usage in direct_usages:
+        scoped_items = items_for_report(usage)
+        report_entity_names = {item.table.casefold() for item in scoped_items if item.source_kind == "report"}
+        measure_keys = {normalize_key(*item.key) for item in scoped_items if item.item_type == "Measure"}
         issue_type = _classify_missing_usage(
             usage,
             model_table_names=model_table_names,
@@ -2433,9 +2554,9 @@ def build_report_issues(
         if usage.stale_kind == "inactive_visual_filter_reference":
             issue_type = "inactive_visual_filter_reference"
             severity = "warning"
-        suggestion_key = (usage.table.casefold(), usage.name.casefold(), usage.ref_type.casefold())
+        suggestion_key = (usage.report_path, usage.table.casefold(), usage.name.casefold(), usage.ref_type.casefold())
         if suggestion_key not in suggestion_cache:
-            suggestion_cache[suggestion_key] = _fuzzy_suggestions(usage, all_items)
+            suggestion_cache[suggestion_key] = _fuzzy_suggestions(usage, scoped_items)
         issues.append(_report_issue_from_usage(
             usage,
             issue_type=issue_type,
@@ -2445,6 +2566,9 @@ def build_report_issues(
         ))
 
     for usage in stale_usages:
+        scoped_items = items_for_report(usage)
+        report_entity_names = {item.table.casefold() for item in scoped_items if item.source_kind == "report"}
+        measure_keys = {normalize_key(*item.key) for item in scoped_items if item.item_type == "Measure"}
         if usage.stale_kind == "inactive_visual_filter_reference":
             missing_type = _classify_missing_usage(
                 usage,
@@ -2545,6 +2669,7 @@ def scan_report_visuals(
                         severity="error",
                         issue_type="invalid_report_json",
                         report=rpt_name,
+                        report_path=str(report_path.resolve()),
                         page=page_name,
                         visual_id=visual_dir.name,
                         artifact_kind="Visual",
@@ -2609,6 +2734,7 @@ def scan_report_visuals(
                     name=ref["name"],
                     ref_type=ref["ref_type"],
                     report=rpt_name,
+                    report_path=str(report_path.resolve()),
                     page=page_name,
                     visual_type=visual_type,
                     visual_title=visual_title,
@@ -2688,6 +2814,7 @@ def scan_visual_interactions(
                     severity="error",
                     issue_type="invalid_report_json",
                     report=rpt_name,
+                    report_path=str(report_path.resolve()),
                     page=page_dir.name,
                     artifact_kind="Page",
                     artifact_path=_artifact_rel_path(report_path, page_json),
@@ -2721,6 +2848,7 @@ def scan_visual_interactions(
                         name=name,
                         ref_type="Column",
                         report=rpt_name,
+                        report_path=str(report_path.resolve()),
                         page=page_name,
                         visual_type=f"slicer \u2192 {target_label}",
                         visual_title=source_meta.get("title", ""),
@@ -2760,6 +2888,7 @@ def scan_visual_interactions(
                         name=ref["name"],
                         ref_type=ref["ref_type"],
                         report=rpt_name,
+                        report_path=str(report_path.resolve()),
                         page=page_name,
                         visual_type=visual_type,
                         visual_title="",
@@ -2784,6 +2913,7 @@ def scan_visual_interactions(
                         name=ref["name"],
                         ref_type=ref["ref_type"],
                         report=rpt_name,
+                        report_path=str(report_path.resolve()),
                         page=page_name,
                         visual_type="Drillthrough",
                         visual_title="",
@@ -2802,6 +2932,7 @@ def scan_visual_interactions(
                     name=ref["name"],
                     ref_type=ref["ref_type"],
                     report=rpt_name,
+                    report_path=str(report_path.resolve()),
                     page=page_name,
                     visual_type="Drillthrough",
                     visual_title="",
@@ -2835,6 +2966,7 @@ def scan_report_filters(
                 severity="error",
                 issue_type="invalid_report_json",
                 report=rpt_name,
+                report_path=str(report_path.resolve()),
                 artifact_kind="Report",
                 artifact_path=_artifact_rel_path(report_path, report_json),
                 message=f"Could not parse PBIR JSON file: {exc}",
@@ -2856,6 +2988,7 @@ def scan_report_filters(
                 name=ref["name"],
                 ref_type=ref["ref_type"],
                 report=rpt_name,
+                report_path=str(report_path.resolve()),
                 page="",
                 visual_type="Filters pane",
                 visual_title="All pages",
@@ -2892,6 +3025,7 @@ def scan_bookmarks(
                     severity="error",
                     issue_type="invalid_report_json",
                     report=rpt_name,
+                    report_path=str(report_path.resolve()),
                     visual_type="Bookmark",
                     visual_title=bm_file.stem,
                     visual_id=bm_file.stem,
@@ -2928,6 +3062,7 @@ def scan_bookmarks(
                             severity="warning",
                             issue_type="orphan_bookmark_visual_state",
                             report=rpt_name,
+                            report_path=str(report_path.resolve()),
                             page=page_name,
                             visual_type="Bookmark",
                             visual_title=bm_name,
@@ -3038,6 +3173,7 @@ def scan_bookmarks(
                 name=ref["name"],
                 ref_type=ref["ref_type"],
                 report=rpt_name,
+                report_path=str(report_path.resolve()),
                 page=page_name,
                 visual_type=visual_type,
                 visual_title=visual_title or bm_name,
@@ -3090,6 +3226,7 @@ def scan_additional_definition_json(
                     severity="error",
                     issue_type="invalid_report_json",
                     report=rpt_name,
+                    report_path=str(report_path.resolve()),
                     artifact_kind=_invalid_json_artifact_kind(_artifact_rel_path(report_path, json_file)),
                     artifact_path=_artifact_rel_path(report_path, json_file),
                     message=f"Could not parse PBIR JSON file: {exc}",
@@ -3106,6 +3243,7 @@ def scan_additional_definition_json(
                 name=ref["name"],
                 ref_type=ref["ref_type"],
                 report=rpt_name,
+                report_path=str(report_path.resolve()),
                 page="",
                 visual_type="Definition JSON",
                 visual_title="",
@@ -3446,6 +3584,46 @@ def build_dax_column_deps(items: list[ModelItem]) -> dict[tuple[str, str], set[t
     return deps
 
 
+def _known_unquoted_table_refs(expression: str, table_names: dict[str, str]) -> set[str]:
+    """Recognize known bare table tokens without inventing missing-table errors."""
+    refs = set()
+    i = 0
+    while i < len(expression):
+        if expression.startswith("//", i):
+            end = expression.find("\n", i)
+            i = len(expression) if end < 0 else end
+            continue
+        if expression.startswith("/*", i):
+            end = expression.find("*/", i + 2)
+            i = len(expression) if end < 0 else end + 2
+            continue
+        if expression[i] == '"':
+            i += 1
+            while i < len(expression):
+                if expression.startswith('""', i):
+                    i += 2
+                elif expression[i] == '"':
+                    i += 1
+                    break
+                else:
+                    i += 1
+            continue
+        parsed = read_single_quoted_name(expression, i) or _read_dax_bracketed_name(expression, i)
+        if parsed:
+            _, i = parsed
+            continue
+        parsed = _read_dax_unquoted_table_name(expression, i)
+        if parsed:
+            name, end = parsed
+            following = _skip_dax_whitespace(expression, end)
+            if (following == len(expression) or expression[following] not in "([") and name.casefold() in table_names:
+                refs.add(table_names[name.casefold()])
+            i = end
+        else:
+            i += 1
+    return refs
+
+
 def build_dax_table_deps(items: list[ModelItem]) -> dict[tuple[str, str], set[str]]:
     """Build item_key -> {referenced table names via bare table refs in DAX} graph."""
     table_name_index = {item.table.casefold(): item.table for item in items}
@@ -3456,6 +3634,7 @@ def build_dax_table_deps(items: list[ModelItem]) -> dict[tuple[str, str], set[st
             continue
 
         refs: set[str] = set()
+        refs.update(_known_unquoted_table_refs(item.dax_body, table_name_index))
         for table_name in _extract_dax_table_refs(item.dax_body):
             resolved = table_name_index.get(table_name.casefold())
             if resolved:
@@ -3663,6 +3842,7 @@ def build_table_summaries(
                 "broken_dax_refs": row.get("broken_dax_refs", []),
                 "broken_dax_ref_details": row.get("broken_dax_ref_details", []),
                 "usage_count": len(row["usages"]),
+                "source_file": item.source_file,
             })
 
         active_relationships = sum(1 for rel in relationships if rel.is_active)
@@ -3773,9 +3953,10 @@ def build_table_summaries(
             "unused_item_count": len(rows) - used_count,
             "hidden_item_count": hidden_count,
             "usage_ref_count": sum(len(row["usages"]) for row in rows),
-            "report_count": len(reports),
+            "report_count": len({u.report_path or u.report for u in usages if u.report_path or u.report}),
             "reports": reports,
-            "page_count": len(pages),
+            "report_paths": sorted({u.report_path for u in usages if u.report_path}),
+            "page_count": len({(u.report_path or u.report, u.page) for u in usages if u.page}),
             "pages": pages,
             "relationship_count": len(relationships),
             "active_relationship_count": active_relationships,
@@ -3797,6 +3978,76 @@ def build_table_summaries(
     return summaries
 
 
+def item_identity(item: ModelItem) -> tuple[str, str, str, str]:
+    """Graph identity; display keys alone cannot identify report-local definitions."""
+    owner = str(Path(item.source_file).resolve()) if item.source_kind == "report" else "model"
+    return (owner, item.item_type, item.table, item.name)
+
+
+def scoped_dependency_graphs(items: list[ModelItem]) -> dict:
+    """Resolve model and report-local formulas in independent artifact contexts.
+
+    Plain-key graph builders remain public compatibility helpers. Only this graph
+    is suitable for multi-report analysis. A local/model name collision resolves
+    conservatively to both candidates and is separately a coverage blocker.
+    """
+    model_items = [item for item in items if item.source_kind != "report"]
+    contexts = defaultdict(list)
+    for item in items:
+        if item.source_kind == "report":
+            contexts[item.source_file].append(item)
+    graphs = {name: {} for name in ("measures", "columns", "tables", "broken")}
+    builders = {"measures": build_dax_dependency_graph, "columns": build_dax_column_deps,
+                "tables": build_dax_table_deps, "broken": find_broken_dax_references}
+    for local in [model_items, *contexts.values()]:
+        context = local if local is model_items else model_items + local
+        candidates = defaultdict(set)
+        for candidate in context:
+            candidates[normalize_key(*candidate.key)].add(item_identity(candidate))
+        # Model entries supply target indexes only in a report context. Clearing
+        # their expressions prevents diagnostics or edges leaking into a local
+        # same-name definition, including a local definition with no expression.
+        source_context = context if local is model_items else [
+            replace(item, dax_body="", explicit_measure_refs=()) for item in model_items
+        ] + local
+        for name, builder in builders.items():
+            plain = builder(source_context)
+            for item in local:
+                identity = item_identity(item)
+                value = plain.get(item.key, [] if name == "broken" else set())
+                if name in ("tables", "broken"):
+                    graphs[name][identity] = value
+                    continue
+                allowed_types = {"Measure"} if name == "measures" else {"Column", "Calculated Column"}
+                targets = {target for key in value for target in candidates[normalize_key(*key)]
+                           if target[1] in allowed_types and target != identity}
+                # Legacy builders intentionally exclude self references by display
+                # key. A different owned definition with that key is not self.
+                if item.dax_body and name == "measures":
+                    self_ref = (any(normalize_key(*key) == normalize_key(*item.key)
+                                    for key in _extract_dax_qualified_refs(item.dax_body) | set(item.explicit_measure_refs))
+                                or any(ref.casefold() == item.name.casefold()
+                                       for ref in _extract_dax_unqualified_refs(item.dax_body)))
+                    if self_ref:
+                        targets |= {target for target in candidates[normalize_key(*item.key)]
+                                    if target[1] == "Measure" and target != identity}
+                graphs[name][identity] = targets
+    return graphs
+
+
+def _display_graph(graph):
+    """Conservative display-key union for legacy table aggregation only."""
+    result = defaultdict(set)
+    for identity, targets in graph.items():
+        result[identity[-2:]].update(target[-2:] if isinstance(target, tuple) else target for target in targets)
+    return dict(result)
+
+
+def _usage_belongs_to_item(item: ModelItem, usage: UsageRef) -> bool:
+    return item.source_kind != "report" or not usage.report_path or (
+        bool(item.source_file) and str(Path(item.source_file).parent.parent.resolve()) == usage.report_path)
+
+
 def analyze(
     workspace: Path,
     model_filters: list[str] | None = None,
@@ -3805,7 +4056,13 @@ def analyze(
     report_paths: list[Path] | None = None,
     model_search_roots: list[Path] | None = None,
     report_search_roots: list[Path] | None = None,
+    progress=None,
 ) -> dict:
+    def checkpoint(stage, current=0, total=None):
+        if progress is not None:
+            progress(stage, current, total)
+
+    checkpoint("Discovering scope")
     if model_paths is not None:
         models = _unique_sorted_paths(model_paths)
     else:
@@ -3842,7 +4099,8 @@ def analyze(
     parsed_model_items = []
     warnings: list[AnalyzerWarning] = []
 
-    for model_path in models:
+    for model_index, model_path in enumerate(models):
+        checkpoint("Reading model metadata", model_index, len(models))
         unsupported_error = _unsupported_semantic_model_error(model_path)
         if unsupported_error:
             raise UnsupportedSemanticModelError(unsupported_error)
@@ -3869,10 +4127,15 @@ def analyze(
             )
         )
 
-    for report_path in reports:
+    for report_index, report_path in enumerate(reports):
+        checkpoint("Reading report extensions", report_index, len(reports))
         all_items.extend(parse_report_extension_measures(report_path, warnings))
 
     all_items = _dedupe_items_with_warnings(all_items, warnings)
+    model_keys = {normalize_key(*item.key) + (item.item_type,) for item in parsed_model_items}
+    ambiguous_extensions = [item for item in all_items if item.source_kind == "report"
+                            and normalize_key(*item.key) + (item.item_type,) in model_keys]
+
 
     # ── Scan reports ──
     all_visual_usages = []
@@ -3884,9 +4147,30 @@ def analyze(
     all_definition_meta_usages = []
     all_report_issues = []
     all_invalid_json_issues = []
+    for item in ambiguous_extensions:
+        all_report_issues.append(ReportIssue(
+            severity="error", issue_type="ambiguous_extension_identity",
+            table=item.table, name=item.name, ref_type=item.item_type,
+            report=item.source_artifact, report_path=str(Path(item.source_file).parent.parent.resolve()),
+            artifact_kind="report_extension", artifact_path="definition/reportExtensions.json",
+            message=("Report-local and model measures share a qualified name; reference ownership cannot be proven. "
+                     "Both candidates are retained conservatively: " + format_item_ref(item.key)),
+        ))
 
-    for report_path in reports:
+
+    for report_index, report_path in enumerate(reports):
+        checkpoint("Scanning reports", report_index, len(reports))
+        # Syntax diagnostics remain useful even when the report format itself is unsupported.
         all_report_issues.extend(scan_invalid_report_json(report_path))
+        if not (report_path / "definition").is_dir():
+            all_report_issues.append(ReportIssue(
+                severity="error", issue_type="unsupported_report_format",
+                report=report_display_name(report_path), report_path=str(report_path.resolve()),
+                artifact_kind="report", artifact_path="report.json" if (report_path / "report.json").exists() else "definition/",
+                message=("Unsupported report format: the selected report has no PBIR definition directory. "
+                         "Save it in enhanced PBIR format before relying on usage or cleanup recommendations."),
+            ))
+            continue
         all_report_issues.extend(scan_report_extension_issues(report_path))
         visual_usages, stale_visual_usages, visual_meta = scan_report_visuals(report_path, all_invalid_json_issues)
         all_visual_usages.extend(visual_usages)
@@ -3913,6 +4197,7 @@ def analyze(
         + all_definition_meta_usages
     )
 
+    checkpoint("Resolving report references")
     # ── Build indices ──
     direct_usage_index: dict[tuple[str, str], list[UsageRef]] = defaultdict(list)
     for u in direct_usages:
@@ -3949,34 +4234,32 @@ def analyze(
     for role, tbl, col in all_rls_refs:
         rls_role_map[normalize_key(tbl, col)].append(role)
 
+    checkpoint("Resolving model dependencies")
     # ── DAX dependencies ──
-    dax_deps = build_dax_dependency_graph(all_items)
-    dax_col_deps = build_dax_column_deps(all_items)
-    dax_table_deps = build_dax_table_deps(all_items)
-    broken_dax_refs = find_broken_dax_references(all_items)
-
-    directly_used_measures = set()
-    directly_used_keys = set()
-    for item in all_items:
-        nkey = normalize_key(*item.key)
-        if nkey in usage_index:
-            directly_used_keys.add(nkey)
-            if item.item_type == "Measure":
-                directly_used_measures.add(item.key)
-
-    # Also count relationship/RLS as directly used for transitive analysis
-    for item in all_items:
-        nkey = normalize_key(*item.key)
-        if nkey in relationship_keys or nkey in rls_keys:
-            directly_used_keys.add(nkey)
-
-    indirect_measures = resolve_indirect_measures(all_items, directly_used_measures, dax_deps)
-    all_needed_measures = directly_used_measures | set(indirect_measures.keys())
-
-    indirect_columns = resolve_indirect_columns(
-        all_items, directly_used_keys, relationship_keys, rls_keys,
-        all_needed_measures, dax_col_deps,
-    )
+    graphs = scoped_dependency_graphs(all_items)
+    dax_deps, dax_col_deps, dax_table_deps, broken_dax_refs = (
+        graphs[name] for name in ("measures", "columns", "tables", "broken"))
+    items_by_identity = {item_identity(item): item for item in all_items}
+    directly_used = {
+        item_identity(item) for item in all_items
+        if any(_usage_belongs_to_item(item, usage) for usage in usage_index.get(normalize_key(*item.key), []))
+        or (item.source_kind != "report" and normalize_key(*item.key) in relationship_keys | rls_keys)
+    }
+    needed = set(directly_used)
+    queue = list(needed)
+    while queue:
+        source = queue.pop()
+        for target in dax_deps.get(source, set()) | dax_col_deps.get(source, set()):
+            if target not in needed:
+                needed.add(target)
+                queue.append(target)
+    indirect = defaultdict(set)
+    dependents = defaultdict(set)
+    for source in items_by_identity:
+        for target in dax_deps.get(source, set()) | dax_col_deps.get(source, set()):
+            dependents[target].add(source)
+            if source in needed and target not in directly_used:
+                indirect[target].add(source)
 
     # ── Hierarchy index ──
     # Map hierarchy (table, name) -> [column names]
@@ -4001,7 +4284,9 @@ def analyze(
 
     # ── sortByColumn index ──
     sort_by_map: dict[tuple[str, str], str] = {}  # target nkey -> source column name
-    for item in all_items:
+    for item_index, item in enumerate(all_items):
+        if item_index % 100 == 0:
+            checkpoint("Classifying items", item_index, len(all_items))
         if item.sort_by_column and item.item_type in ("Column", "Calculated Column"):
             target_nkey = normalize_key(item.table, item.sort_by_column)
             sort_by_map[target_nkey] = item.name
@@ -4015,24 +4300,54 @@ def analyze(
         for key in ref.item_keys:
             unsupported_metadata_by_key[normalize_key(*key)].append(ref)
 
+    # Presence without resolved targets still limits cleanup confidence. Do not
+    # turn a parser blind spot into evidence that an item is safe to remove.
+    unknown_metadata = [
+        ref for ref in all_unsupported_metadata_refs
+        if ref.unresolved_targets or not ref.item_keys
+    ]
+    invalid_report_issues = [
+        issue for issue in report_issues if issue.issue_type in {"invalid_report_json", "unsupported_report_format", "ambiguous_extension_identity"}
+    ]
+    coverage_limitations = [
+        {
+            "kind": issue.issue_type, "report": issue.report, "reportPath": issue.report_path,
+            "source_file": issue.artifact_path,
+            "message": (issue.message if issue.issue_type == "ambiguous_extension_identity" else
+                        (f"Incomplete report scan: {issue.report}/{issue.artifact_path} could not be inspected. "
+                         + (issue.message if issue.issue_type != "invalid_report_json" else "")).strip()),
+        }
+        for issue in invalid_report_issues
+    ] + [
+        {
+            "kind": "unsupported_metadata", "area": ref.area,
+            "source_file": ref.source_file,
+            "message": f"Unsupported Metadata: {ref.area} in {ref.source_file} has unresolved dependency coverage.",
+        }
+        for ref in unknown_metadata
+    ]
+
     # ── Classify each item ──
     results = []
-    for item in all_items:
+    for item_index, item in enumerate(all_items):
+        if item_index % 100 == 0:
+            checkpoint("Classifying items", item_index, len(all_items))
         nkey = normalize_key(*item.key)
-        usages = usage_index.get(nkey, [])
-        stale_usages = stale_usage_index.get(nkey, [])
-        has_direct_usage = nkey in direct_usage_index
+        usages = [u for u in usage_index.get(nkey, []) if _usage_belongs_to_item(item, u)]
+        stale_usages = [u for u in stale_usage_index.get(nkey, []) if _usage_belongs_to_item(item, u)]
+        has_direct_usage = any(_usage_belongs_to_item(item, u) for u in direct_usage_index.get(nkey, []))
         field_parameter_tables = field_parameter_targets.get(nkey, set())
         is_relationship = nkey in relationship_keys
         is_rls = nkey in rls_keys
-        is_indirect_measure = item.key in indirect_measures and item.item_type == "Measure"
-        is_indirect_column = nkey in indirect_columns and item.item_type in ("Column", "Calculated Column")
+        identity = item_identity(item)
+        is_indirect_measure = identity in indirect and item.item_type == "Measure"
+        is_indirect_column = identity in indirect and item.item_type in ("Column", "Calculated Column")
         is_key_col = nkey in key_col_keys
         is_hierarchy_col = nkey in hierarchy_col_keys
         is_sort_target = nkey in sort_by_map
 
-        if item.key in broken_dax_refs:
-            count = len(broken_dax_refs[item.key])
+        if identity in broken_dax_refs and broken_dax_refs[identity]:
+            count = len(broken_dax_refs[identity])
             noun = "ref" if count == 1 else "refs"
             status = f"BROKEN ({count} missing {noun})"
         elif has_direct_usage:
@@ -4056,43 +4371,34 @@ def analyze(
             if source_used:
                 status = f"USED (Sort Column for: {sort_by_map[nkey]})"
             elif is_indirect_measure:
-                via = ", ".join(sorted(format_item_ref(k) for k in indirect_measures[item.key]))
+                via = ", ".join(sorted(format_item_ref(k[-2:]) for k in indirect[identity]))
                 status = f"INDIRECT (via: {via})"
             elif is_indirect_column:
-                via = ", ".join(sorted(indirect_columns[nkey]))
+                via = ", ".join(sorted(format_item_ref(k[-2:]) for k in indirect[identity]))
                 status = f"INDIRECT (via: {via})"
             else:
                 status = "NOT USED"
         elif is_indirect_measure:
-            via = ", ".join(sorted(format_item_ref(k) for k in indirect_measures[item.key]))
+            via = ", ".join(sorted(format_item_ref(k[-2:]) for k in indirect[identity]))
             status = f"INDIRECT (via: {via})"
         elif is_indirect_column:
-            via = ", ".join(sorted(indirect_columns[nkey]))
+            via = ", ".join(sorted(format_item_ref(k[-2:]) for k in indirect[identity]))
             status = f"INDIRECT (via: {via})"
         else:
             status = "NOT USED"
 
         # ── Removal risk ──
         review_triggers: list[str] = []
-        if item.key in broken_dax_refs:
+        if identity in broken_dax_refs and broken_dax_refs[identity]:
             removal_risk = ""
-            review_triggers.extend([detail["message"] for detail in broken_dax_refs[item.key]])
+            review_triggers.extend([detail["message"] for detail in broken_dax_refs[identity]])
         elif status != "NOT USED":
             removal_risk = ""
         elif item.is_inferred:
             removal_risk = "Do not remove"
         else:
             # Check if any other item's DAX references this item
-            has_dax_dependents = False
-            for dep_key, refs in dax_deps.items():
-                if item.key in refs:
-                    has_dax_dependents = True
-                    break
-            if not has_dax_dependents:
-                for dep_key, refs in dax_col_deps.items():
-                    if item.key in refs:
-                        has_dax_dependents = True
-                        break
+            has_dax_dependents = bool(dependents.get(identity))
             if item.is_hidden:
                 review_triggers.append("Item is hidden")
             if item.is_key:
@@ -4101,6 +4407,7 @@ def analyze(
                 _unsupported_metadata_review_trigger(item, ref)
                 for ref in unsupported_metadata_by_key.get(nkey, [])
             )
+            review_triggers.extend(limit["message"] for limit in coverage_limitations)
             if review_triggers:
                 removal_risk = "Review"
             elif has_dax_dependents:
@@ -4116,10 +4423,11 @@ def analyze(
             "has_direct_usage": has_direct_usage,
             "removal_risk": removal_risk,
             "review_triggers": review_triggers,
-            "broken_dax_refs": [detail["ref"] for detail in broken_dax_refs.get(item.key, [])],
-            "broken_dax_ref_details": broken_dax_refs.get(item.key, []),
+            "broken_dax_refs": [detail["ref"] for detail in broken_dax_refs.get(identity, [])],
+            "broken_dax_ref_details": broken_dax_refs.get(identity, []),
         })
 
+    checkpoint("Building table summaries")
     # ── Table-level summary ──
     field_parameter_issues_by_table: dict[str, list[str]] = defaultdict(list)
     for warning in warnings:
@@ -4130,8 +4438,8 @@ def analyze(
         results,
         all_usages,
         all_relationship_details,
-        dax_col_deps,
-        dax_table_deps,
+        _display_graph(dax_col_deps),
+        _display_graph(dax_table_deps),
         {table: sorted(set(messages), key=str.casefold) for table, messages in field_parameter_issues_by_table.items()},
     )
 
@@ -4190,7 +4498,15 @@ def analyze(
     }
 
     return {
+        "coverage": {"complete": not coverage_limitations, "limitations": coverage_limitations},
+        "unsupported_metadata": [
+            {"area": ref.area, "source_file": ref.source_file,
+             "targets": [format_item_ref(key) for key in sorted(ref.item_keys)],
+             "unresolved_targets": ref.unresolved_targets or not ref.item_keys}
+            for ref in all_unsupported_metadata_refs
+        ],
         "items": results,
+        "dependency_graphs": graphs,
         "summary": summary,
         "table_summaries": table_summaries,
         "warnings": [_serialize_warning(w) for w in warnings],
@@ -4369,6 +4685,7 @@ def format_json_output(results: dict) -> str:
         "tables": results.get("table_summaries", []),
         "warnings": results.get("warnings", []),
         "reportIssues": results.get("report_issues", []),
+        "coverage": results.get("coverage", {"complete": False, "limitations": []}),
         "items": [],
     }
     for r in results["items"]:
@@ -4393,6 +4710,7 @@ def format_json_output(results: dict) -> str:
                 "usages": [
                 {
                     "report": u.report,
+                    "reportPath": u.report_path,
                     "page": u.page,
                     "visualType": u.visual_type,
                     "visualTitle": u.visual_title,
@@ -4733,6 +5051,9 @@ def report_path_index(report_paths: Optional[list[Path]]) -> dict[str, str]:
         index[name] = str(path)
     for name in ambiguous:
         index.pop(name, None)
+    # Stable identities remain addressable even when display names collide.
+    for path in report_paths or []:
+        index[str(Path(path).resolve())] = str(path)
     return index
 
 
@@ -4742,7 +5063,8 @@ def stale_cleanup_entry(issue: dict, report_index: dict[str, str]) -> Optional[d
     Mirrors `reportIssueCleanupEntry()` in the web templates exactly, so the CLI
     and the UI hand the engine identical payloads.
     """
-    report_path = report_index.get(str(issue.get("report") or ""))
+    identity = str(issue.get("reportPath") or issue.get("report") or "")
+    report_path = report_index.get(identity)
     if not report_path or not issue.get("artifactPath") or not issue.get("sourcePath"):
         return None
     return {

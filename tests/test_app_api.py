@@ -188,15 +188,15 @@ def _layout_cookie(response):
     return None
 
 
-def test_index_defaults_to_classic_layout():
+def test_index_defaults_to_new_layout():
     web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="stable")
     client = web_app.app.test_client()
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b'href="/?ui=v2"' in response.data
-    assert b"scopeChip" not in response.data
-    assert _layout_cookie(response) == "classic"
+    assert b'href="/?ui=classic"' in response.data
+    assert b"scopeChip" in response.data
+    assert _layout_cookie(response) == "v2"
 
 
 def test_index_renders_new_layout_when_requested():
@@ -228,7 +228,7 @@ def test_index_remembers_layout_choice_across_requests():
 def test_index_ignores_unknown_layout_value():
     web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="stable")
     client = web_app.app.test_client()
-    assert b"scopeChip" not in client.get("/?ui=nonsense").data
+    assert b"scopeChip" in client.get("/?ui=nonsense").data
 
     client.get("/?ui=v2")
     assert b"scopeChip" in client.get("/?ui=nonsense").data
@@ -241,6 +241,10 @@ def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):
     report_path.mkdir()
 
     monkeypatch.setattr(web_app.analyzer, "analyze", lambda **_: _fake_results())
+
+    (report_path / "definition.pbir").write_text(json.dumps({
+        "datasetReference": {"byPath": {"path": str(model_path)}}
+    }))
 
     client = web_app.app.test_client()
     response = client.post(
@@ -328,6 +332,10 @@ def test_api_analyze_returns_report_issues_for_selected_reports(tmp_path):
         ),
         encoding="utf-8",
     )
+
+    (report_path / "definition.pbir").write_text(json.dumps({
+        "datasetReference": {"byPath": {"path": str(model_path)}}
+    }))
 
     client = web_app.app.test_client()
     response = client.post(
@@ -627,7 +635,7 @@ def test_api_serialization_groups_report_health_workflow():
     payload = web_app._serialize_results(results)
 
     health = payload["reportHealth"]
-    assert health["totalIssueCount"] == 4
+    assert health["totalIssueCount"] == 2  # Item signals must not inflate report issue totals.
     assert [group["key"] for group in health["groups"]] == [
         "invalid_pbir_json",
         "report_extension_metadata",
@@ -781,6 +789,10 @@ def test_api_analyze_includes_review_triggers(monkeypatch, tmp_path):
 
     monkeypatch.setattr(web_app.analyzer, "analyze", lambda **_: _fake_review_results())
 
+    (report_path / "definition.pbir").write_text(json.dumps({
+        "datasetReference": {"byPath": {"path": str(model_path)}}
+    }))
+
     client = web_app.app.test_client()
     response = client.post(
         "/api/analyze",
@@ -838,6 +850,10 @@ def test_api_analyze_returns_report_health_issues(tmp_path):
     )
     (visual_dir / "visual.json").write_text("{ bad json", encoding="utf-8")
 
+    (report_path / "definition.pbir").write_text(json.dumps({
+        "datasetReference": {"byPath": {"path": str(model_path)}}
+    }))
+
     client = web_app.app.test_client()
     response = client.post(
         "/api/analyze",
@@ -887,7 +903,7 @@ def test_api_analyze_product_qa_workspace_exposes_report_health_groups():
     assert any(
         item["table"] == "Sales"
         and item["name"] == "Cleanup Note"
-        and item["deleteSafety"] == "Safe"
+        and item["deleteSafety"] == "Review"
         for item in payload["items"]
     )
 
@@ -900,6 +916,10 @@ def test_api_analyze_rejects_tmsl_model_bim_with_clear_message(tmp_path):
     (model_path / "model.bim").write_text("{}", encoding="utf-8")
     (model_path / "definition.pbism").write_text('{"version":"4.0"}', encoding="utf-8")
     (report_path / "definition.pbir").write_text('{"version":"4.0"}', encoding="utf-8")
+
+    (report_path / "definition.pbir").write_text(json.dumps({
+        "datasetReference": {"byPath": {"path": str(model_path)}}
+    }))
 
     client = web_app.app.test_client()
     response = client.post(
@@ -1355,6 +1375,10 @@ def test_api_analyze_exposes_table_permission_rls_usage(tmp_path):
         encoding="utf-8",
     )
 
+    (report_path / "definition.pbir").write_text(json.dumps({
+        "datasetReference": {"byPath": {"path": str(model_path)}}
+    }))
+
     client = web_app.app.test_client()
     response = client.post(
         "/api/analyze",
@@ -1392,6 +1416,10 @@ def test_api_analyze_returns_model_item_source_file(tmp_path):
         encoding="utf-8",
     )
 
+    (report_path / "definition.pbir").write_text(json.dumps({
+        "datasetReference": {"byPath": {"path": str(model_path)}}
+    }))
+
     client = web_app.app.test_client()
     response = client.post(
         "/api/analyze",
@@ -1428,6 +1456,10 @@ def test_api_analyze_includes_m_source_details_for_regular_columns(monkeypatch, 
     )
 
     monkeypatch.setattr(web_app.analyzer, "analyze", lambda **_: _fake_column_results())
+
+    (report_path / "definition.pbir").write_text(json.dumps({
+        "datasetReference": {"byPath": {"path": str(model_path)}}
+    }))
 
     client = web_app.app.test_client()
     response = client.post(
@@ -2737,7 +2769,7 @@ def test_api_find_connected_reports_tolerates_path_case_differences(tmp_path):
 def test_index_hides_compare_flow_switcher_on_stable_channel():
     web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="stable")
     client = web_app.app.test_client()
-    response = client.get("/")
+    response = client.get("/?ui=classic")
 
     assert response.status_code == 200
     assert b'class="app-flow-switcher hidden"' in response.data
@@ -2746,7 +2778,7 @@ def test_index_hides_compare_flow_switcher_on_stable_channel():
 def test_index_shows_compare_flow_switcher_on_beta_channel():
     web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="beta")
     client = web_app.app.test_client()
-    response = client.get("/")
+    response = client.get("/?ui=classic")
 
     assert response.status_code == 200
     assert b'class="app-flow-switcher"' in response.data
@@ -2771,12 +2803,12 @@ def _write_live_connection_pbir(report_dir, catalog):
 
 
 def test_api_find_connected_reports_matches_live_connections_by_model_name(tmp_path):
-    model_path = tmp_path / "Models" / "PMRA_POC.SemanticModel"
+    model_path = tmp_path / "Models" / "Retail_POC.SemanticModel"
     model_path.mkdir(parents=True)
     reports_root = tmp_path / "Reports"
     matching = reports_root / "Scorecard.Report"
     other = reports_root / "Other.Report"
-    _write_live_connection_pbir(matching, "pmra_poc")
+    _write_live_connection_pbir(matching, "retail_poc")
     _write_live_connection_pbir(other, "Finance Model")
 
     client = web_app.app.test_client()
@@ -2792,21 +2824,21 @@ def test_api_find_connected_reports_matches_live_connections_by_model_name(tmp_p
 
     matched_status = next(s for s in payload["reportStatuses"] if s["path"] == str(matching.resolve()))
     assert matched_status["status"] == "connected_by_name"
-    assert matched_status["publishedModelName"] == "pmra_poc"
+    assert matched_status["publishedModelName"] == "retail_poc"
     assert "Matched by name" in matched_status["message"]
 
     other_status = next(s for s in payload["reportStatuses"] if s["path"] == str(other.resolve()))
     assert other_status["status"] == "remote"
     assert "'Finance Model'" in other_status["message"]
-    assert "does not match the selected model 'PMRA_POC'" in other_status["message"]
+    assert "does not match the selected model 'Retail_POC'" in other_status["message"]
 
 
 def test_api_find_connected_reports_matches_live_connections_by_platform_display_name(tmp_path):
-    model_path = tmp_path / "Models" / "PMRA_POC.SemanticModel"
+    model_path = tmp_path / "Models" / "Retail_POC.SemanticModel"
     model_path.mkdir(parents=True)
     (model_path / ".platform").write_text(
         json.dumps({
-            "metadata": {"type": "SemanticModel", "displayName": "PMRA - Production Model"},
+            "metadata": {"type": "SemanticModel", "displayName": "Retail - Production Model"},
             "config": {"version": "2.0"},
         }),
         encoding="utf-8",
@@ -2815,8 +2847,8 @@ def test_api_find_connected_reports_matches_live_connections_by_platform_display
     by_display_name = reports_root / "Scorecard.Report"
     by_folder_name = reports_root / "Legacy.Report"
     other = reports_root / "Other.Report"
-    _write_live_connection_pbir(by_display_name, "PMRA - Production Model")
-    _write_live_connection_pbir(by_folder_name, "PMRA_POC")
+    _write_live_connection_pbir(by_display_name, "Retail - Production Model")
+    _write_live_connection_pbir(by_folder_name, "Retail_POC")
     _write_live_connection_pbir(other, "Finance Model")
 
     client = web_app.app.test_client()
@@ -2827,14 +2859,14 @@ def test_api_find_connected_reports_matches_live_connections_by_platform_display
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload["model_display_name"] == "PMRA - Production Model"
+    assert payload["model_display_name"] == "Retail - Production Model"
     connected_paths = {r["path"] for r in payload["reports"]}
     assert connected_paths == {str(by_display_name.resolve()), str(by_folder_name.resolve())}
     assert all(r["status"] == "connected_by_name" for r in payload["reports"])
 
     other_status = next(s for s in payload["reportStatuses"] if s["path"] == str(other.resolve()))
     assert other_status["status"] == "remote"
-    assert "does not match the selected model 'PMRA - Production Model'" in other_status["message"]
+    assert "does not match the selected model 'Retail - Production Model'" in other_status["message"]
 
 
 def test_api_find_connected_reports_ignores_corrupt_platform_file(tmp_path):
