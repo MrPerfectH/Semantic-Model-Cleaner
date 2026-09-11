@@ -158,7 +158,7 @@ def _require_completed_analysis(payload: dict) -> dict:
     return job
 
 
-def _run_browser_analysis(page, trigger: str, timeout: float) -> dict:
+def _run_browser_analysis(page, trigger, timeout: float) -> dict:
     timeout_ms = int(timeout * 1000)
     with page.expect_response(
         lambda response: (
@@ -167,7 +167,7 @@ def _run_browser_analysis(page, trigger: str, timeout: float) -> dict:
         ),
         timeout=timeout_ms,
     ) as started:
-        page.locator(trigger).click()
+        trigger()
     start_response = started.value
     if not start_response.ok:
         raise RuntimeError(
@@ -179,16 +179,20 @@ def _run_browser_analysis(page, trigger: str, timeout: float) -> dict:
     if not identity:
         raise RuntimeError(f"Analysis start response did not contain a job ID: {start_payload}")
 
-    page.locator(f"{trigger}:not([disabled])").wait_for(timeout=timeout_ms)
-    final_response = page.request.get(
-        start_response.url.rstrip("/") + "/" + identity,
-        timeout=timeout_ms,
-    )
-    if not final_response.ok:
-        raise RuntimeError(
-            f"Could not read final analysis status: HTTP {final_response.status} {final_response.text()}"
-        )
-    return _require_completed_analysis(final_response.json())
+    status_url = start_response.url.rstrip("/") + "/" + identity
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        final_response = page.request.get(status_url, timeout=timeout_ms)
+        if not final_response.ok:
+            raise RuntimeError(
+                f"Could not read final analysis status: HTTP {final_response.status} {final_response.text()}"
+            )
+        payload = final_response.json()
+        status = payload.get("job", {}).get("status")
+        if status in {"completed", "failed", "cancelled"}:
+            return _require_completed_analysis(payload)
+        page.wait_for_timeout(200)
+    raise RuntimeError(f"Browser analysis job {identity} did not finish in time")
 
 
 def _url_request(base: str):
@@ -301,7 +305,11 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
                 report["checks"].append("v2/classic UI and packaged assets")
 
                 page.goto(base + "/?ui=v2", wait_until="networkidle")
-                demo_job = _run_browser_analysis(page, "#btnLoadDemo", timeout)
+                demo_job = _run_browser_analysis(
+                    page,
+                    lambda: page.locator("#btnLoadDemo").click(),
+                    timeout,
+                )
                 page.locator("#summarySection:not(.hidden)").wait_for(timeout=30_000)
                 page.locator("#demoStatus").wait_for(state="visible")
                 page.screenshot(path=evidence_dir / "01-demo-analysis.png", full_page=True)
@@ -365,7 +373,11 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
                 }
                 report["checks"].append("browser reviewed plan/apply/verify/restore with byte-exact recovery")
 
-                restored_job = _run_browser_analysis(page, "#btnAnalyze", timeout)
+                restored_job = _run_browser_analysis(
+                    page,
+                    lambda: page.get_by_role("button", name="Re-analyze", exact=True).click(),
+                    timeout,
+                )
                 if len(restored_job["result"]["items"]) != browser_state["itemCount"]:
                     raise RuntimeError("Restored browser analysis returned an unexpected item count")
                 page.screenshot(path=evidence_dir / "03-restored-and-reanalyzed.png", full_page=True)

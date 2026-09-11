@@ -45,6 +45,69 @@ def test_browser_analysis_rejects_accepted_incomplete_or_failed_jobs(payload, me
         smoke._require_completed_analysis(payload)
 
 
+def test_browser_analysis_polls_started_job_until_completed():
+    class Response:
+        ok = True
+        status = 200
+        url = 'http://127.0.0.1:61234/api/analysis-jobs'
+
+        def __init__(self, payload, *, method='GET'):
+            self.payload = payload
+            self.request = type('Request', (), {'method': method})()
+
+        def json(self):
+            return self.payload
+
+        def text(self):
+            return json.dumps(self.payload)
+
+    class ExpectedResponse:
+        def __init__(self, response):
+            self.value = response
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    completed = {'job': {'id': 'job-1', 'status': 'completed', 'result': {'items': [{}]}}}
+    responses = iter([
+        Response({'job': {'id': 'job-1', 'status': 'running'}}),
+        Response(completed),
+    ])
+    requested = []
+    waited = []
+
+    class Page:
+        def __init__(self):
+            self.request = type('API', (), {
+                'get': lambda _self, url, timeout: (
+                    requested.append((url, timeout)) or next(responses)
+                ),
+            })()
+
+        def expect_response(self, predicate, timeout):
+            started = Response({'job': {'id': 'job-1', 'status': 'queued'}}, method='POST')
+            assert predicate(started)
+            assert timeout == 1000
+            return ExpectedResponse(started)
+
+        def wait_for_timeout(self, milliseconds):
+            waited.append(milliseconds)
+
+    triggered = []
+    job = smoke._run_browser_analysis(Page(), lambda: triggered.append(True), timeout=1)
+
+    assert job == completed['job']
+    assert triggered == [True]
+    assert waited == [200]
+    assert requested == [
+        ('http://127.0.0.1:61234/api/analysis-jobs/job-1', 1000),
+        ('http://127.0.0.1:61234/api/analysis-jobs/job-1', 1000),
+    ]
+
+
 @pytest.mark.parametrize('broken', [None, 'skip_transitive_errors', 'accept_unknown_schema'])
 def test_launcher_schema_probe_detects_real_validation_and_regressions(tmp_path, monkeypatch, broken):
     report = tmp_path / 'Disposable.Report'
