@@ -4,11 +4,25 @@ from __future__ import annotations
 
 import argparse
 import socket
+import sys
 import threading
 import time
 import webbrowser
 
 from . import webapp
+
+
+def _configure_console_output() -> None:
+    """Keep redirected Windows console output from crashing on Unicode text."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(errors="backslashreplace")
+        except (OSError, ValueError):
+            # Tests and embedded hosts can expose a closed or fixed text stream.
+            continue
 
 
 def _pick_available_port(host: str, preferred_port: int) -> int:
@@ -43,6 +57,7 @@ def _open_browser_when_ready(url: str, host: str, port: int) -> None:
 
 
 def main() -> None:
+    _configure_console_output()
     from waitress import serve
 
     parser = argparse.ArgumentParser(
