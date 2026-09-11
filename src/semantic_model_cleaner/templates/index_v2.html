@@ -3281,8 +3281,8 @@ $('btnLoadDemo').onclick = async function() {
   }
 };
 
-function loadResults(data) {
-  setResultsData(data, false);
+function loadResults(data, preserveActionState) {
+  setResultsData(data, !!preserveActionState);
   $('summarySection').classList.remove('hidden');
   $('resultGuideSection').classList.remove('hidden');
   $('filtersSection').classList.remove('hidden');
@@ -7115,7 +7115,7 @@ async function reAnalyze(opts) {
       report_paths: chosenReports.map(function(r) { return r.path; }),
     });
     if (data.error) { logEntry('Re-analysis failed: ' + data.error, 'err'); return {ok: false, error: data.error}; }
-    setResultsData(data, true);
+    loadResults(data, true);
     if (opts.showPostDeleteDisclaimer) showPostRefreshDisclaimer();
     logEntry('Analysis refreshed', 'info');
     return {ok: true};

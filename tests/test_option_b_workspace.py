@@ -121,3 +121,23 @@ async function apiPost(){return {error:'Analysis cancelled. Previous results are
 """ + 'async ' + function(source, 'reAnalyze', '') + """
 (async()=>{const result=await reAnalyze({});assert.equal(result.ok,false);assert(result.error.includes('cancelled'));assert.equal(loaded,false);})();
 """)
+
+
+def test_history_refresh_reveals_results_before_first_analysis_and_preserves_pending_state(tmp_path):
+    source = TEMPLATE.read_text()
+    run_js(tmp_path, """
+var chosenModels=[{path:'/Model'}],chosenReports=[{path:'/Report'}],currentView='details';
+var pendingActions=new Map([['draft',{action:'hide'}]]),preserved=[],shown=new Set(),switched=null;
+function $(id){return {classList:{remove(name){assert.equal(name,'hidden');shown.add(id);}}};}
+function logEntry(){}function setResultsData(data,preserve){preserved.push(preserve);if(!preserve)pendingActions.clear();}
+function renderResultGuideLegend(){}function applyResultGuideState(){}function switchView(view){switched=view;}
+function requestAnimationFrame(fn){fn();}function setupFilterDropdowns(){}function setupResizableTables(){}
+function showPostRefreshDisclaimer(){}async function apiPost(){return {items:[],tables:[]};}
+""" + function(source, 'loadResults', '') + 'async ' + function(source, 'reAnalyze', '') + """
+(async()=>{
+  const result=await reAnalyze({});assert.equal(result.ok,true);assert.deepEqual(preserved,[true]);
+  assert.equal(pendingActions.size,1);assert.equal(switched,'details');
+  for(const id of ['summarySection','resultGuideSection','filtersSection','viewToolbar','exportSection'])assert(shown.has(id),id+' remains hidden');
+  loadResults({});assert.equal(preserved[1],false);assert.equal(pendingActions.size,0);
+})();
+""")
