@@ -4349,6 +4349,9 @@ def analyze(
     ]
 
     # ── Classify each item ──
+    retained_parameter_targets = {
+        item_identity(target) for _, targets in all_field_parameters for target in targets
+    }
     results = []
     for item_index, item in enumerate(all_items):
         if item_index % 100 == 0:
@@ -4431,7 +4434,7 @@ def analyze(
             review_triggers.extend(limit["message"] for limit in coverage_limitations)
             if review_triggers:
                 removal_risk = "Review"
-            elif has_dax_dependents:
+            elif has_dax_dependents or identity in retained_parameter_targets:
                 removal_risk = "Caution"
             else:
                 removal_risk = "Safe"

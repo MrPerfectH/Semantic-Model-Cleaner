@@ -92,6 +92,25 @@ def evaluate_deletion_policy(
                 if removed(target):
                     owner = "" if source[0] == "model" else f" in {source[0]}"
                     reject("SMC-D006", f"{analyzer.format_item_ref(target[-2:])} is required by retained {analyzer.format_item_ref(source[-2:])}{owner}.", *target[-2:])
+    # NAMEOF dependencies live in calculated-table definitions, not item DAX.
+    # They remain structural consumers even when the parameter has no report
+    # usage. Row deletions alone cannot prove the source definition will vanish
+    # (for example, a table can span files); require its removal to be verified
+    # in a prior plan before allowing deletion of its targets.
+    parameter_warnings = []
+    parameters = analyzer.resolve_field_parameter_targets(
+        analyzer.parse_field_parameters(model_path, parameter_warnings),
+        [row["item"] for row in rows.values()], model_path.name, parameter_warnings,
+    )
+    for warning in parameter_warnings:
+        scope["complete"] = False
+        reject("SMC-D002", warning.message)
+    for parameter, dependencies in parameters:
+        for dependency in dependencies:
+            target = analyzer.normalize_key(*dependency.key)
+            if target in targets:
+                reject("SMC-D006", f"{analyzer.format_item_ref(dependency.key)} is required by NAMEOF in retained "
+                       f"field parameter {parameter.table} ({parameter.source_file}).", *dependency.key)
     # Sort-by and hierarchy declarations must remain valid even when their source
     # column currently has no live report references.
     for item in items:
