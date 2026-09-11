@@ -76,6 +76,7 @@ def test_job_api_real_demo_and_invalid_scope(tmp_path, monkeypatch):
 
 
 def test_compact_transport_reconstructs_references_and_shares_items(tmp_path):
+    from dataclasses import replace
     import json
     from pathlib import Path
     import shutil
@@ -87,8 +88,14 @@ def test_compact_transport_reconstructs_references_and_shares_items(tmp_path):
         pytest.skip('Node required for browser transport roundtrip')
     model, report = project(tmp_path)
     result = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
+    used_row = next(row for row in result['items'] if row['usages'])
+    used_row['usages'][0].page_hidden = True
+    used_row['usages'][0].visual_hidden = True
+    used_row['stale_usages'] = [replace(used_row['usages'][0], stale_kind='removed_visual')]
     payload = webapp._serialize_results(result, model_paths=[model])
     expected = payload['references']
+    assert any(ref['pageHidden'] and ref['visualHidden'] and ref['isStale'] for ref in expected)
+    assert any(ref['pageHidden'] and ref['visualHidden'] and not ref['isStale'] for ref in expected)
     packed = webapp._compact_browser_results(payload)
     input_file = tmp_path / 'compact.json'
     input_file.write_text(json.dumps(packed))
