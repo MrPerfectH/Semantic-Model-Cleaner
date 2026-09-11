@@ -82,9 +82,10 @@ def test_redirected_cp1252_console_does_not_crash_on_unicode_banner(monkeypatch)
     windows_launcher.webapp.print_startup_banner(
         "127.0.0.1", 61234, debug=False, mode="desktop"
     )
-    stdout.flush()
 
     output = stdout_bytes.getvalue().decode("cp1252")
+    assert stdout.line_buffering is True
+    assert stdout.write_through is True
     assert "URL       : http://127.0.0.1:61234" in output
     assert "Mode      : desktop" in output
     assert r"\u2500" in output

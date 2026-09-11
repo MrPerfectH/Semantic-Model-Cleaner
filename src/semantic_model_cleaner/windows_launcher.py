@@ -19,8 +19,12 @@ def _configure_console_output() -> None:
         if reconfigure is None:
             continue
         try:
-            reconfigure(errors="backslashreplace")
-        except (OSError, ValueError):
+            reconfigure(
+                errors="backslashreplace",
+                line_buffering=True,
+                write_through=True,
+            )
+        except (OSError, TypeError, ValueError):
             # Tests and embedded hosts can expose a closed or fixed text stream.
             continue
 
