@@ -5359,6 +5359,7 @@ function renderUsageDetails(item) {
     if (!page) {
       page = {
         name: pageName,
+        hidden: !!usage.pageHidden,
         count: 0,
         visuals: [],
         contextSet: new Set(),
@@ -5427,6 +5428,8 @@ function renderUsageDetails(item) {
     var usage = visual.usage;
     var meta = [];
     if (usage.visualType && usage.artifactKind !== 'Bookmark') meta.push('Visual: ' + usage.visualType);
+    if (usage.pageHidden) meta.push('Page hidden');
+    if (usage.visualHidden) meta.push('Visual hidden');
     if (usage.visualId) meta.push('Visual ID: ' + usage.visualId);
     if (visual.refTypes.length) meta.push('Match: ' + visual.refTypes.join(', '));
     var contexts = visual.contexts.length
@@ -5453,6 +5456,7 @@ function renderUsageDetails(item) {
     return '<details open><summary>' + treeLabel(report.name, reportMeta) + countBadge(report.count, report.count === 1 ? 'ref' : 'refs') + '</summary>'
       + '<div class="tree-body">' + report.pages.map(function(page) {
         var pageMeta = [];
+        if (page.hidden) pageMeta.push('Page hidden');
         if (page.visualNames.length) pageMeta.push(page.visualNames.slice(0, 3).join(', ') + (page.visualNames.length > 3 ? ', ...' : ''));
         if (page.contexts.length) pageMeta.push('Context: ' + page.contexts.slice(0, 4).join(', ') + (page.contexts.length > 4 ? ', ...' : ''));
         return '<details><summary>' + treeLabel(page.name, pageMeta.join(' | ')) + countBadge(page.count, page.count === 1 ? 'ref' : 'refs') + '<span class="tree-hint">Details</span></summary>'
@@ -5487,6 +5491,9 @@ function renderStaleUsageDetails(item) {
     var usage = entry.usage;
     var summary = summarizeUsageLocation(usage);
     var details = [];
+    if (usage.reportPath) details.push('<div class="detail-subtle"><strong>Report:</strong> ' + esc(usage.reportPath) + '</div>');
+    if (usage.pageHidden) details.push('<div class="detail-subtle">Page hidden</div>');
+    if (usage.visualHidden) details.push('<div class="detail-subtle">Visual hidden</div>');
     if (usage.staleKind === 'bookmark_projection_entry' && usage.selectorValue) {
       details.push('<div class="detail-subtle"><strong>Bucket:</strong> <code>' + esc(usage.selectorValue) + '</code></div>');
     } else if (usage.selectorValue) {
@@ -7098,15 +7105,24 @@ $('tableBtnReset').onclick = function() { $('btnReset').click(); };
 async function reAnalyze(opts) {
   opts = opts || {};
   logEntry('Re-analyzing...', 'info');
-  if (!chosenModels.length || !chosenReports.length) { logEntry('Cannot re-analyze: no model/report selected', 'err'); return; }
-  var data = await apiPost('/api/analyze', {
-    model_paths: chosenModels.map(function(m) { return m.path; }),
-    report_paths: chosenReports.map(function(r) { return r.path; }),
-  });
-  if (data.error) { logEntry('Re-analysis failed: ' + data.error, 'err'); return; }
-  setResultsData(data, true);
-  if (opts.showPostDeleteDisclaimer) showPostRefreshDisclaimer();
-  logEntry('Analysis refreshed', 'info');
+  if (!chosenModels.length || !chosenReports.length) {
+    var missing = 'No model/report selected'; logEntry('Cannot re-analyze: ' + missing, 'err');
+    return {ok: false, error: missing};
+  }
+  try {
+    var data = await apiPost('/api/analyze', {
+      model_paths: chosenModels.map(function(m) { return m.path; }),
+      report_paths: chosenReports.map(function(r) { return r.path; }),
+    });
+    if (data.error) { logEntry('Re-analysis failed: ' + data.error, 'err'); return {ok: false, error: data.error}; }
+    setResultsData(data, true);
+    if (opts.showPostDeleteDisclaimer) showPostRefreshDisclaimer();
+    logEntry('Analysis refreshed', 'info');
+    return {ok: true};
+  } catch (error) {
+    logEntry('Re-analysis failed: ' + error.message, 'err');
+    return {ok: false, error: error.message};
+  }
 }
 
 $('btnToggleSetup').onclick = function() {
