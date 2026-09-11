@@ -558,7 +558,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="title-row">
       <h1>Semantic Model Cleaner</h1>
       {% if runtime.betaEnabled %}
-      <span class="beta-badge">{{ runtime.releaseChannel }} beta</span>
+      <span class="beta-badge">{{ runtime.releaseChannel if runtime.releaseChannel != 'stable' else 'experimental' }}</span>
       {% endif %}
     </div>
     <div class="subtitle">Analyze &amp; clean Power BI semantic models</div>

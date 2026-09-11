@@ -597,7 +597,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
     <div class="brand-logo"></div>
     <h1>Semantic Model Cleaner</h1>
     {% if runtime.betaEnabled %}
-    <span class="beta-badge">{{ runtime.releaseChannel }} beta</span>
+    <span class="beta-badge">{{ runtime.releaseChannel if runtime.releaseChannel != 'stable' else 'experimental' }}</span>
     {% endif %}
   </div>
   <button class="scope-chip" id="scopeChip" type="button" onclick="smcOpenScope()" title="Edit the analyzed model and report scope">
