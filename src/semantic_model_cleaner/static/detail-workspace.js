@@ -94,7 +94,12 @@
   }
   renderDetailLayoutContent = function (item) {
     if (!$('objectItemPrimary')) return;
-    if (!item) { $('objectItemPrimary').innerHTML = empty('Select a measure or column from Items.'); return; }
+    if (!item) {
+      $('objectItemPrimary').innerHTML = empty('Select a measure or column from Items.');
+      ['objectItemBreadcrumb', 'objectItemSummary', 'objectItemProperties', 'item-pane-dependencies', 'objectPromotionInputs'].forEach(function (id) { $(id).innerHTML = ''; });
+      $('objectPromotionName').value = ''; $('objectPromotionTable').value = ''; $('objectPromotionDependencies').checked = false;
+      return;
+    }
     var type = item.type || 'Item';
     if (lastItemType !== type) { lastItemType = type; selectTab('item', itemTabByType[type] || 'overview'); }
     $('objectItemBreadcrumb').innerHTML = '<button type="button" data-back-items>Items</button><span>/</span><button type="button" class="detail-table-link" data-table-name="' + esc(item.table) + '">' + esc(item.table) + '</button><span>/</span><span aria-current="page">' + esc(item.name) + '</span>';
@@ -143,9 +148,17 @@
   }
   var originalSetResultsData = setResultsData;
   setResultsData = function (data, preserve) {
+    var previousView = currentView;
+    var previousItem = detailItemKey;
+    var previousTable = detailTableName;
     analyzedScope = selectedScope();
     if (data.reportBinding) analyzedScope.reports = data.reportBinding.selected.map(function (report) { return {name: report.name, path: report.path}; });
     originalSetResultsData(data, preserve);
+    if (previousView === 'item' && previousItem && !getItemByKey(previousItem) && !detailItemKey) {
+      switchView('details'); $('mainArea').scrollTop = inventoryScroll; $('tabDetails').focus({preventScroll:true});
+    } else if (previousView === 'table' && previousTable && !getTableByName(previousTable) && !detailTableName) {
+      switchView('tables'); $('tabTables').focus({preventScroll:true});
+    }
     analysisIsCurrent = true;
     if (window.smcUpdateScopeChip) window.smcUpdateScopeChip();
   };
@@ -211,7 +224,11 @@
   }
   var oldRenderTable = renderTableDetails;
   renderTableDetails = function () {
-    oldRenderTable(); if (!$('objectTableSummary') || !detailTableName) return;
+    oldRenderTable(); if (!$('objectTableSummary')) return;
+    if (!detailTableName) {
+      ['objectTableSummary', 'objectTableProperties', 'objectTableSource', 'objectTableGrid', 'objectTableCount'].forEach(function (id) { $(id).innerHTML = ''; });
+      return;
+    }
     var table = getTableByName(detailTableName); if (!table) return;
     lastRenderedTableKey = draftKeyForItem('Table:::' + detailTableName);
     $('tableDetailGroupInput').value = '';
@@ -317,7 +334,7 @@
     var draftKey = currentView === 'table' ? draftKeyForItem('Table:::' + detailTableName) : detailItemKey ? draftKeyForItem(detailItemKey) : null;
     $('objectReviewTitle').textContent = title || 'Review change'; $('objectReviewBody').innerHTML = '<p>Preparing a validated preview…</p>'; $('objectReviewStatus').textContent = 'No files have been changed.'; $('objectReviewApply').disabled = true; $('objectReviewApply').hidden = false;
     var requestId = Date.now() + Math.random(); dialog.dataset.requestId = String(requestId);
-    dialog.addEventListener('close', function () { if (origin && origin.isConnected) origin.focus(); }, { once: true });
+    dialog.addEventListener('close', function () { if (origin && origin.isConnected && origin.getClientRects().length) origin.focus(); else if (currentView === 'details') $('tabDetails').focus(); else if (currentView === 'tables') $('tabTables').focus(); }, { once: true });
     dialog.showModal();
     if (!savedScope && (!analysisIsCurrent || !analyzedScope || scopeIdentity(analyzedScope) !== scopeIdentity(selectedScope()))) {
       $('objectReviewBody').innerHTML = '<p class="object-error">Analyze selected scope first. The visible item evidence belongs to the previous analysis; no plan was prepared.</p>';

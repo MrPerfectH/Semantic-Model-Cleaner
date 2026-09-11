@@ -141,3 +141,22 @@ function showPostRefreshDisclaimer(){}async function apiPost(){return {items:[],
   loadResults({});assert.equal(preserved[1],false);assert.equal(pendingActions.size,0);
 })();
 """)
+
+
+def test_refresh_navigates_away_from_removed_identity_without_guessing_replacement(tmp_path):
+    source = JS.read_text()
+    start = source.index('  setResultsData = function (data, preserve) {')
+    assigned = source[start:source.index('\n  };', start) + 5]
+    run_js(tmp_path, """
+var currentView='item',detailItemKey='report:::Ratio',detailTableName='Sales',analyzedScope=null,analysisIsCurrent=false,inventoryScroll=17,focused=null;
+var items=new Set(),tables=new Set(['Sales']);
+function selectedScope(){return {model:'/Model',reports:[]};}
+function originalSetResultsData(){if(!items.has(detailItemKey))detailItemKey=null;if(!tables.has(detailTableName))detailTableName=null;}
+function getItemByKey(key){return items.has(key);}function getTableByName(name){return tables.has(name);}
+function switchView(view){currentView=view;}function $(id){return {focus(){focused=id;}};}
+var window={smcUpdateScopeChip(){}};var setResultsData;
+""" + assigned + """
+setResultsData({},true);assert.equal(currentView,'details');assert.equal(focused,'tabDetails');assert.equal(detailItemKey,null);assert.equal(analysisIsCurrent,true);
+currentView='table';detailTableName='Removed';focused=null;setResultsData({},true);assert.equal(currentView,'tables');assert.equal(focused,'tabTables');
+currentView='item';detailItemKey='model:::Renamed';items.add(detailItemKey);focused=null;setResultsData({},true);assert.equal(currentView,'item');assert.equal(detailItemKey,'model:::Renamed');assert.equal(focused,null);
+""")
