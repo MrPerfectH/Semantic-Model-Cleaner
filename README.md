@@ -118,14 +118,12 @@ python3 -m semantic_model_cleaner . --format full
 
 ### CLI: clean-stale
 
-`clean-stale` removes dead PBIR metadata in bulk: stale visual selectors, stale bookmark projections and stale formatting rules. These are the `warning` issues the analyzer already marks with a high-confidence `clean_stale` suggestion, because the reference is not part of the live visual query. Broken references (`missing_table`, `missing_column`, `missing_measure` — severity `error`, i.e. rename fallout) are never touched.
+`clean-stale` previews dead PBIR metadata in bulk: stale visual selectors, stale bookmark projections and stale formatting rules. These are the `warning` issues the analyzer already marks with a high-confidence `clean_stale` suggestion, because the reference is not part of the live visual query. Broken references (`missing_table`, `missing_column`, `missing_measure` — severity `error`, i.e. rename fallout) are never touched.
 
 ```bash
 smc clean-stale .                                   # dry run: counts + full candidate list
 smc clean-stale . --kind formatting selector        # limit to some kinds
 smc clean-stale . --format json                     # machine-readable
-smc clean-stale . --apply                           # write, with a backup per report
-smc clean-stale . --apply --no-backup               # write without backups
 ```
 
 By default it analyzes only the reports whose `definition.pbir` binds them to the selected semantic model (by path, or by published name for live connections) — the same invariant the web UI's report finder applies; pass `--all-reports` to analyze every discovered report, and note that `--report` filters compose on top of the bound set.
@@ -136,11 +134,11 @@ Exit codes (so CI can gate on a dry run):
 
 | Code | Meaning |
 |------|---------|
-| 0 | Nothing to clean, or `--apply` succeeded |
-| 2 | Dry run found candidates (nothing was written) |
-| 1 | Engine or validation error — the cleanup is transactional, so nothing was written |
+| 0 | No cleanup candidates |
+| 1 | Cleanup candidates found; nothing was written |
+| 2 | Input/analysis error or a withheld direct-write request |
 
-Dry run is the default: it writes nothing. With `--apply`, each affected `.Report` folder is copied to a timestamped backup first unless `--no-backup` is passed.
+This command is read-only in the beta. The legacy `--apply` shortcut is withheld because it cannot apply a previously reviewed, saved plan. Use the app change review or a `clean_stale` operation through [CLI plans](docs/cli/plans.md), followed by `smc diff`, `smc apply` and `smc verify`. The reviewed workflow always records recovery data.
 
 ### Local Web UI
 
@@ -188,8 +186,8 @@ Both web exports download the latest completed analysis without re-running it.
 ## Safety Notes
 
 - The workflow is intentionally `1 semantic model -> 1 or more reports`
-- Queued model cleanup actions are dry-run planned before `/api/action` writes files
-- The app can create a backup before destructive edits when requested
+- UI and CLI changes use saved plans with exact previews, validation, source fingerprints and guarded apply
+- Every applied plan records a receipt and original bytes for guarded restore; legacy direct-write HTTP routes are withheld
 - Field parameters backed by `NAMEOF(...)` are supported
 - Remaining caveats include calculation groups, broader metadata indirection, and malformed or skipped JSON
 

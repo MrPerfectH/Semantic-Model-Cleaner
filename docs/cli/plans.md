@@ -4,6 +4,8 @@ The CLI and local web UI use the same change-plan engine. A plan stages operatio
 
 Use plans generated locally from files you trust. A plan contains absolute paths, original and replacement metadata, file fingerprints, and a digest. The digest detects accidental editing; it is not a signature or proof that a plan came from a trusted author. Do not apply downloaded or untrusted plans. Plans and journals can contain model expressions and other confidential metadata.
 
+Legacy mutation HTTP routes and `smc clean-stale --apply` cannot bypass this workflow in the beta. Their direct-write requests are rejected with guidance to prepare and apply a saved plan.
+
 ## First change
 
 Create `operations.json` outside discovered or selected model/report folders:

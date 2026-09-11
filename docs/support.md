@@ -19,15 +19,17 @@ Semantic Model Cleaner is a free, MIT-licensed tool that works on local project 
 | Construct or workflow | Analysis | Change review |
 | --- | --- | --- |
 | Measures and columns | Direct report references plus supported transitive DAX dependencies | Display folder, visibility and deletion actions; DAX editing for measures/calculated columns |
-| Tables | Child items, relationship roles and report usage | Table rename, group annotation and dependency-aware cleanup |
+| Tables | Child items, relationship roles and report usage | Table rename, group annotation and dependency-aware cleanup. Removing the last item in one split file preserves a table retained elsewhere; ambiguous final deletion is blocked. |
 | Model relationships, keys, sorting, hierarchies and RLS | Retention/dependency evidence for supported metadata | Inspect dependency impact before removal; unsupported rewrites must not be treated as validated |
-| `NAMEOF` field parameters | Supported resolved targets; unresolved/ambiguous patterns produce review evidence | Treat warnings as coverage limits when planning changes |
+| `NAMEOF` field parameters | Supported resolved targets; unresolved/ambiguous patterns produce review evidence | A retained parameter definition protects its targets even when the parameter has no report usage. Remove and verify the definition in a separate reviewed plan before deleting its targets. |
 | Calculation groups and broader dynamic indirection | Incomplete coverage | Review required; do not interpret absence of a reference as proof of safety |
 | Report stale metadata | Stale selectors, formatting rules and supported bookmark projections | Explicit cleanup; broken live references are a separate repair workflow |
 | Renames and measure home-table moves | Model/report reference impact | Preview the supported model and selected-report rewrites together |
 | Report measure promotion | Origin and report-only dependencies matter | Review the full required dependency set and target identity before applying |
 
 “Unused” means no supported usage was found in the selected scope. It does not mean that every consumer, external report, or dynamic expression has been proven absent. A hidden item can still be required. Hiding changes discoverability; it does not remove the item or its storage.
+
+Legacy direct-write HTTP routes and `smc clean-stale --apply` are withheld in this beta. Use the shared saved-plan workflow from the UI or CLI. Read-only stale-candidate discovery remains available.
 
 ## A complete review
 
