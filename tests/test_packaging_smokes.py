@@ -108,6 +108,40 @@ def test_browser_analysis_polls_started_job_until_completed():
     ]
 
 
+def option_b_state():
+    return {
+        'item': 'Revenue',
+        'viewport': {'width': 1280, 'height': 800},
+        'scope_chip_in_strip': True,
+        'history_buttons': 2,
+        'visible_history_buttons': 2,
+        'definition_has_expression': True,
+        'tabs': {
+            name: {'selected': True, 'visible': True, 'content': True}
+            for name in smoke.OPTION_B_TAB_CONTENT
+        },
+    }
+
+
+def test_option_b_workspace_requires_real_item_tabs_and_laptop_layout():
+    state = option_b_state()
+    assert smoke._require_option_b_workspace(state) is state
+
+
+@pytest.mark.parametrize('break_state', [
+    lambda state: state.update(viewport={'width': 1440, 'height': 1000}),
+    lambda state: state.update(visible_history_buttons=1),
+    lambda state: state.update(scope_chip_in_strip=False),
+    lambda state: state['tabs']['Dependencies'].update(content=False),
+    lambda state: state.update(definition_has_expression=False),
+])
+def test_option_b_workspace_rejects_incomplete_installed_ui(break_state):
+    state = option_b_state()
+    break_state(state)
+    with pytest.raises(RuntimeError, match='Option B item workspace verification failed'):
+        smoke._require_option_b_workspace(state)
+
+
 @pytest.mark.parametrize('broken', [None, 'skip_transitive_errors', 'accept_unknown_schema'])
 def test_launcher_schema_probe_detects_real_validation_and_regressions(tmp_path, monkeypatch, broken):
     report = tmp_path / 'Disposable.Report'

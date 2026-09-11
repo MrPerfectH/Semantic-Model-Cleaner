@@ -40,6 +40,13 @@ ASSETS_BY_LAYOUT = {
     ),
 }
 EXPECTED_CHANNEL = "beta"
+OPTION_B_ITEM_KEY = "Measure:::Sales:::Revenue"
+OPTION_B_TAB_CONTENT = {
+    "Definition": ("Definition",),
+    "References": ("Report Reference Tree", "TestReport"),
+    "Dependencies": ("Depends on", "Used by"),
+    "Changes": ("Plan a change",),
+}
 
 
 def _schema_smoke(request, model_paths: list[str], report_paths: list[str], timeout: float) -> dict:
@@ -195,6 +202,85 @@ def _run_browser_analysis(page, trigger, timeout: float) -> dict:
     raise RuntimeError(f"Browser analysis job {identity} did not finish in time")
 
 
+def _require_option_b_workspace(state: dict) -> dict:
+    problems = []
+    if state.get("item") != "Revenue":
+        problems.append(f"opened item was {state.get('item')!r}")
+    if state.get("viewport") != {"width": 1280, "height": 800}:
+        problems.append(f"viewport was {state.get('viewport')!r}")
+    if not state.get("scope_chip_in_strip"):
+        problems.append("scope chip was not in the dedicated strip")
+    if state.get("history_buttons") != 2 or state.get("visible_history_buttons") != 2:
+        problems.append(
+            "expected two visible Changes & history buttons, got "
+            f"{state.get('visible_history_buttons')}/{state.get('history_buttons')}"
+        )
+    if not state.get("definition_has_expression"):
+        problems.append("Definition did not expose the real item expression")
+    tab_results = state.get("tabs", {})
+    for name in OPTION_B_TAB_CONTENT:
+        result = tab_results.get(name, {})
+        if not result.get("selected") or not result.get("visible") or not result.get("content"):
+            problems.append(f"{name} tab did not expose its expected real-item content")
+    if problems:
+        raise RuntimeError("Option B item workspace verification failed: " + "; ".join(problems))
+    return state
+
+
+def _exercise_option_b_workspace(page, evidence_dir: Path) -> dict:
+    """Exercise the installed Option B item workspace at a laptop viewport."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    item_link = page.locator(f'#tableBody [data-item-key="{OPTION_B_ITEM_KEY}"]')
+    item_link.wait_for(state="visible", timeout=30_000)
+    item_link.click()
+    workspace = page.locator("#itemDetailSection:not(.hidden)")
+    workspace.wait_for(state="visible", timeout=30_000)
+
+    state = {
+        "item": page.locator("#detailTitle").inner_text().strip(),
+        "viewport": page.viewport_size,
+        "scope_chip_in_strip": (
+            page.locator(".object-scope-strip > #scopeChip").count() == 1
+            and page.locator(".object-scope-strip > #scopeChip").is_visible()
+        ),
+        "tabs": {},
+    }
+    history = page.get_by_role("button", name="Changes & history", exact=True)
+    state["history_buttons"] = history.count()
+    state["visible_history_buttons"] = sum(
+        history.nth(index).is_visible() for index in range(history.count())
+    )
+
+    tablist = workspace.get_by_role("tablist", name="Item details", exact=True)
+    for name, markers in OPTION_B_TAB_CONTENT.items():
+        tab = tablist.get_by_role("tab", name=name, exact=True)
+        if tab.count() != 1:
+            raise RuntimeError(f"Expected one {name} item tab, found {tab.count()}")
+        tab.click()
+        pane = page.locator(f"#item-pane-{name.lower()}")
+        pane.wait_for(state="visible", timeout=10_000)
+        content = pane.inner_text()
+        state["tabs"][name] = {
+            "selected": tab.get_attribute("aria-selected") == "true",
+            "visible": pane.is_visible(),
+            "content": all(marker in content for marker in markers),
+        }
+    expression = page.locator("#item-pane-definition #detailDaxEditor")
+    state["definition_has_expression"] = bool(expression.input_value().strip())
+    _require_option_b_workspace(state)
+
+    tablist.get_by_role("tab", name="Overview", exact=True).click()
+    page.locator("#item-pane-overview").wait_for(state="visible", timeout=10_000)
+    screenshot = evidence_dir / "04-option-b-item-laptop.png"
+    page.screenshot(path=screenshot, full_page=False)
+    state["screenshot"] = screenshot.name
+
+    page.locator("#objectItemBreadcrumb").get_by_role("button", name="Items", exact=True).click()
+    page.locator("#tableSection:not(.hidden)").wait_for(state="visible", timeout=10_000)
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    return state
+
+
 def _url_request(base: str):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -327,6 +413,9 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
                 source_file = model_path / "definition/tables/Sales.tmdl"
                 original_hash = _sha256(source_file)
                 report["checks"].append("browser demo analysis in spaces/non-ASCII paths")
+
+                report["option_b_workspace"] = _exercise_option_b_workspace(page, evidence_dir)
+                report["checks"].append("browser Option B real-item tabs at 1280x800")
 
                 export = page.request.get(base + "/api/export?format=json")
                 if not export.ok or not json.loads(export.body()).get("items"):
