@@ -117,6 +117,7 @@ _state = {
 }
 
 _WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:(?![\\/])")
+_MODEL_BROWSE_ROOT = Path("/Users")
 
 
 def _cleanup_action_model_path(data: dict) -> tuple[Path | None, tuple[dict, int] | None]:
@@ -183,6 +184,13 @@ def _normalize_browse_path(raw: str) -> str:
 def _default_workspace_root() -> Path:
     """Use the current working directory as the local-first default root."""
     return Path.cwd().resolve()
+
+
+def _default_model_browse_root() -> Path:
+    """Start first-time model browsing at the macOS users directory."""
+    if _MODEL_BROWSE_ROOT.is_dir():
+        return _MODEL_BROWSE_ROOT.resolve()
+    return _default_workspace_root()
 
 
 def _user_data_dir() -> Path:
@@ -1235,6 +1243,7 @@ def index():
         template,
         build_stamp=_build_stamp(),
         default_root=_state.get("workspace") or str(_default_workspace_root()),
+        model_browse_root=str(_default_model_browse_root()),
         runtime=_state.get("runtime") or experiments.runtime_config(),
         initial_models=[{"path": str(m), "name": m.name.replace(".SemanticModel", "")} for m in selected_models],
         initial_reports=[{"path": str(r), "name": analyzer.report_display_name(r)} for r in selected_reports],
