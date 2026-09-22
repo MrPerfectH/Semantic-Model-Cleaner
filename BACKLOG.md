@@ -4,8 +4,6 @@ Last updated: 2026-09-22
 
 ## Highest priority
 
-- Complete the 0.4.0b2 release gates for the positional DAX metadata scanner and first-run model/comparison browse defaults: combined source tests, real browser flow, fresh-wheel smoke and downloaded Windows ZIP verification.
-- Reproduce [#74](https://github.com/MrPerfectH/Semantic-Model-Cleaner/issues/74) against the original failing model or an equivalent minimized fixture before closing it. Synthetic bracket-only reference probes alone do not establish that the reported model is fixed.
 - Time-boxed UX pass on first-session analysis feedback, actionable path errors, and label/legend clarity using the current default tabbed workspace.
 
 ## Near-term
@@ -31,6 +29,9 @@ Last updated: 2026-09-22
 - Evaluate service-wide Fabric discovery separately from the supported local-file workflow.
 
 ## Completed recently
+
+- Integrated the large-metadata scan performance fix and first-run model/comparison picker defaults for 0.4.0b2. Release publication remains gated by combined tests, fresh-wheel consumption and downloaded Windows ZIP browser verification.
+- Verified the original four-measure pattern from [#74](https://github.com/MrPerfectH/Semantic-Model-Cleaner/issues/74): guard dependencies resolve without missing references. Added an end-to-end regression for both `NOT [guard]` and `NOT[guard]`; source model/report files were unchanged.
 
 - Released public beta 0.4.0b1 with MIT licensing, public installation/support docs, versioned Python and Windows artifacts, checksum sidecars, and source/wheel/downloaded-EXE release gates.
 - Made the approved tabbed workspace the default: stable item tabs, contextual properties, inventory filters, scoped drafts, exact saved-plan review, receipts and guarded restore.
