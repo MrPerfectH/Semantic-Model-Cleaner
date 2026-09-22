@@ -109,7 +109,7 @@ def main() -> None:
         installed = json.loads(identity.stdout)
         if (
             not Path(installed["path"]).is_relative_to(venv)
-            or installed["version"] != "0.4.0b1"
+            or installed["version"] != "0.4.0b2"
             or installed["channel"] != "beta"
         ):
             raise RuntimeError(f"Unexpected installed wheel identity: {installed}")
@@ -145,7 +145,7 @@ def main() -> None:
             )
         try:
             html = _wait_for_web(f"http://127.0.0.1:{port}", process)
-            if b"Semantic Model Cleaner" not in html or b"0.4.0b1" not in html or b"beta-badge" not in html:
+            if b"Semantic Model Cleaner" not in html or b"0.4.0b2" not in html or b"beta-badge" not in html:
                 raise RuntimeError("Installed smc-web did not serve the public-beta UI")
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             for asset in ("detail-workspace.js", "analysis-jobs.js", "schema-evidence.js"):

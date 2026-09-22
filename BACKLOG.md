@@ -1,42 +1,47 @@
 # Backlog
 
-Last updated: 2026-08-05
+Last updated: 2026-09-22
 
 ## Highest priority
 
-- Decide whether the v2 layout becomes the default, on tester feedback from v0.3.1. It ships behind `?ui=v2` (cookie-remembered, classic stays default), with a link between the two layouts in both directions; the open questions are whether classic is retired or kept and how much of the duplication below that resolves.
-- Time-boxed UX paper-cut pass on the first-session path (analyze loading feedback, actionable path errors, label/legend clarity).
+- Complete the 0.4.0b2 release gates for the positional DAX metadata scanner and first-run model/comparison browse defaults: combined source tests, real browser flow, fresh-wheel smoke and downloaded Windows ZIP verification.
+- Reproduce [#74](https://github.com/MrPerfectH/Semantic-Model-Cleaner/issues/74) against the original failing model or an equivalent minimized fixture before closing it. Synthetic bracket-only reference probes alone do not establish that the reported model is fixed.
+- Time-boxed UX pass on first-session analysis feedback, actionable path errors, and label/legend clarity using the current default tabbed workspace.
 
 ## Near-term
 
-- The two layouts duplicate ~7k lines of template that now have to be kept in sync by hand. Resolve it when the v2 default is decided — either retire classic or extract the shared parts.
-- Report-only MEASURE-reference repair. The engine already accepts `measure_renames` in `rewrite_model_reference_changes`, but `/api/report/repair-references` only validates `table_renames` and `column_renames` (webapp.py:2020-2038), so measure renames have no endpoint or UI path. Never trust a fuzzy High blindly (forced-High on exact name match regardless of table, analyzer.py:2153-2154) — keep it user-directed.
-- Replace the `allReportIssues.indexOf` lookup per row in `renderReportsTable` (O(rows × issues)) with a precomputed index — it is pre-existing, but it bites hardest on the PMRA-scale workspaces the grouping feature was built for.
-- Export Cleanup Action plans as JSON or Markdown for review before edits are applied.
-  Design: reuse `tmdl_writer.plan_actions()` output and the `model_compare` formatter patterns; store the last plan in `_state`; add `GET /api/action/plan/export`; export buttons in the action plan preview panel.
-- Add a Protected Items list for items that should never be flagged or modified.
-  Design: app-side store in the user dir keyed by resolved model path (`~/.semantic-model-cleaner/protected_items.json`); new `Protected` Cleanup Recommendation distinct from `Keep`; hard block on delete/rename/move/DAX-edit in `_validate_action`/`plan_actions`/`apply_actions` (incl. protected-table cascade); annotate analysis and plan exports; Protect/Unprotect toggle in Item Details.
+- Reconcile [#75](https://github.com/MrPerfectH/Semantic-Model-Cleaner/issues/75) with shipped `smc check`: warning gating and reviewed baselines exist, but `--fail-on-unused` and a Safe-only unused gate do not. Decide whether an unused-specific policy is still needed; preserve the existing check exit contract (0 pass, 1 findings, 2 error).
+- Finish the bulk repair CLI experience in [#77](https://github.com/MrPerfectH/Semantic-Model-Cleaner/issues/77): grouped map generation and a dedicated repair command remain missing. Reuse `report_repair` saved plans, including table/column/measure rename maps, exact diff review, freshness checks, receipts and recovery.
+- Reduce template duplication between the default tabbed and classic layouts; decide whether to retire classic or extract more shared behavior. Detail workspace, plan, policy and schema code already have separate modules.
+- Improve plan review/export ergonomics where needed. Reviewable JSON plans and CLI diff output already ship; a dedicated browser download or Markdown export remains a possible follow-up.
+- Add an explicit Protected Items policy that blocks changes to protected items and protects table children during cascading actions. Repository review-policy `keep` decisions currently suppress eligible CI warnings only; they do not prevent edits.
 - Expand analyzer fixtures for metadata and report-definition edge cases.
-- Normalize the `/api/analyze` payload further: `references` rows repeat per-item verdict fields (~11 MB on PMRA-scale workspaces) and `reportIssues` rows carry full message strings. Needs a client-side join from `allItems`, so do it together with the front-end module split below.
-- Split the single-page web template into smaller front-end modules around cleanup planning, product-language helpers, and render helpers once the next product slices settle.
+- Reduce repeated verdict fields and long issue messages in large analysis payloads; coordinate the response contract with client-side lookup changes and measure a real large workspace.
+- Add search within filter/slicer option lists.
 
 ## Medium-term
 
-- Add calculation-group support to the analyzer.
-- Add search support for slicers.
-- Cover broader metadata indirection and additional dynamic report references.
-- Add more TMDL editing safety checks and regression tests.
+- Complete calculation-group support and broader metadata/dynamic-reference coverage; current support remains partial and requires review.
+- Add BOM-safe TMDL writes with byte-preserving regression coverage before lifting the beta's write block for model scopes containing BOM-prefixed files.
+- Extend editing safety checks and recovery regression tests as additional model/report constructs become supported.
 
 ## Later
 
-- Make backups less annoying instead of changing the default: single backup folder and/or auto-pruning of old backups. (Decision 2026-06-11: backup before apply stays on by default — it is cheap insurance and a trust signal for a file-editing tool.)
-- Prepare the repo for public release with an OSS license, public-facing demo assets, and issue/community scaffolding.
+- Improve backup/journal organization and retention without weakening reviewed recovery. Backup before apply stays the default; retained original bytes support guarded restore.
+- Evaluate service-wide Fabric discovery separately from the supported local-file workflow.
 
 ## Completed recently
 
-- Narrowed the `windows-exe` release trigger to `published`. `published` already covers prereleases, so listing `prereleased` too built the Windows zip twice per release (confirmed on v0.3.0: two `release` runs at the same second) and raced two `--clobber` uploads at the same asset.
+- Released public beta 0.4.0b1 with MIT licensing, public installation/support docs, versioned Python and Windows artifacts, checksum sidecars, and source/wheel/downloaded-EXE release gates.
+- Made the approved tabbed workspace the default: stable item tabs, contextual properties, inventory filters, scoped drafts, exact saved-plan review, receipts and guarded restore.
+- Shipped read-only `smc check` with structured findings, exit codes 0/1/2, warning thresholds and reviewed baselines; added repository review decisions and naming previews.
+- Shipped shared saved plans for the web UI and CLI, including model cleanup/refactoring and report-only repairs with table, column and measure maps. Legacy direct-write HTTP routes and `clean-stale --apply` are withheld.
+- Replaced per-row report-issue `indexOf` searches with a precomputed map in the default layout.
+- Added pinned offline PBIR schema validation and explicit scope/support evidence.
+
+- Removed duplicate Windows builds in the earlier release-event workflow. The current public-beta pipeline builds on version tags and publishes only after Python and Windows verification succeed.
 - Made `apply_report_issue_actions` and `cleanup_stale_metadata_selectors` pre-serialize before the snapshot, matching `rewrite_model_reference_changes`. A `json.dumps` failure mid-loop escaped `except OSError`, leaving earlier reports rewritten with no rollback; both writers now build the `(path, text)` list before touching disk, with a regression test each.
-- Added the opt-in v2 layout behind `?ui=v2` (cookie-remembered, classic stays default): persistent left nav, topbar scope chip and drawer. Verified on the real PMRA workspace with the v0.3.0 root-cause grouping intact.
+- Introduced the v2 layout with persistent left navigation and a scope drawer; it became the default in 0.4.0b1. Classic remains available through the remembered layout switch.
 - Cut prerelease v0.3.0 (2026-06-19, PRs #63–#68): testers get the report-issue root-cause grouping, table + column reference repair, and the trust fixes (field-parameter NAMEOF, report-health payload, group-safe removal). Windows zip attached to the GitHub prerelease.
 - Made the bundled demo workspace showcase the new feature: "Try the demo workspace" now ships a rename-fallout (a missing `Sales Orders` table renamed to `Orders`, plus renamed `OrderTotal`/`OrderQty` columns) so the root-cause grouping and both table + column repair flows are visible on first click. The clean field-parameter demo and `warnings == []` are preserved.
 - Added column-rename repair: `rewrite_model_reference_changes` now rewrites `Column.Property` (and Entity on cross-table move) via `column_renames`; the column-mapping UI maps each missing column (exact-name matches pre-seeded, fuzzy shown as a verify-hint only). Aliased divergent column-moves are skipped with a warning to avoid corrupting siblings.

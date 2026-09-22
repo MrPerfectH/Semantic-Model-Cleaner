@@ -17,7 +17,7 @@ spec.loader.exec_module(smoke)
 
 
 def test_downloaded_windows_archive_checksum_is_enforced(tmp_path):
-    archive = tmp_path / 'semantic-model-cleaner-windows-x64-0.4.0b1.zip'
+    archive = tmp_path / 'semantic-model-cleaner-windows-x64-0.4.0b2.zip'
     archive.write_bytes(b'packaged beta')
     expected = hashlib.sha256(archive.read_bytes()).hexdigest()
     sidecar = tmp_path / (archive.name + '.sha256')

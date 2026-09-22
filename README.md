@@ -4,13 +4,13 @@ Semantic Model Cleaner analyzes Power BI PBIR + TMDL projects, shows which seman
 
 It works directly in repositories containing TMDL and PBIR files; Power BI Desktop is not required. Core workflows are free under the MIT license, with no account or paid service required. Fabric integration is a future extension.
 
-It is designed for local use against files on your machine. Version `0.4.0b1`
+It is designed for local use against files on your machine. Version `0.4.0b2`
 is the first public beta for Power BI practitioners who already work with PBIR
 and TMDL.
 
 ## Current Status
 
-- Project maturity: public beta `0.4.0b1`
+- Project maturity: public beta `0.4.0b2`
 - Runtime shape: Python package with a CLI, a local web UI, and Windows desktop packaging
 - Stable entry points: `semantic-model-cleaner`, `semantic-model-cleaner-web`, `smc`, and `smc-web`
 - Windows entry points: packaged `Semantic Model Cleaner.exe`, `semantic-model-cleaner-desktop`, and `smc-desktop`
@@ -52,9 +52,9 @@ python -m pip install -e .[dev]
 ### Windows Packaged App
 
 For terminal-free Windows use, download
-[`semantic-model-cleaner-windows-x64-0.4.0b1.zip`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b1/semantic-model-cleaner-windows-x64-0.4.0b1.zip)
+[`semantic-model-cleaner-windows-x64-0.4.0b2.zip`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b2/semantic-model-cleaner-windows-x64-0.4.0b2.zip)
 and its
-[`SHA-256 checksum`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b1/semantic-model-cleaner-windows-x64-0.4.0b1.zip.sha256)
+[`SHA-256 checksum`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b2/semantic-model-cleaner-windows-x64-0.4.0b2.zip.sha256)
 from the explicit beta prerelease. Extract the whole ZIP, then run
 `Semantic Model Cleaner.exe`. Python, Power BI Desktop, Fabric, an account,
 and paid services are not required.
@@ -219,7 +219,7 @@ pwsh -File packaging/windows/build.ps1
 
 ## Public beta channel
 
-- Version `0.4.0b1` defaults to the `beta` release channel without an environment variable.
+- Version `0.4.0b2` defaults to the `beta` release channel without an environment variable.
 - Developers can set `SMC_RELEASE_CHANNEL=stable` to inspect the stable-gated UI during compatibility testing.
 - Enable one or more experiments with `SMC_EXPERIMENTS=compare-models` (comma-separated for multiple keys). The web UI also accepts `--experimental compare-models` when you launch `semantic-model-cleaner-web`.
 - The public beta shows a `Beta` banner. Experiments remain separately opt-in.
