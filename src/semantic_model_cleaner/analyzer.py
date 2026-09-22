@@ -3464,10 +3464,15 @@ def _scan_dax_qualified_refs(text: str) -> list[tuple[str, str, int, int]]:
     return refs
 
 
+_DAX_UNQUOTED_TABLE_NAME = re.compile(r"[A-Za-z_]\w*")
+
+
 def _read_dax_unquoted_table_name(text: str, start: int) -> tuple[str, int] | None:
     if start > 0 and (text[start - 1].isalnum() or text[start - 1] in ("_", "'")):
         return None
-    match = re.match(r"[A-Za-z_]\w*", text[start:])
+    # Match in place: slicing the remaining metadata at every token makes
+    # reference scans quadratic for large culture/translation files.
+    match = _DAX_UNQUOTED_TABLE_NAME.match(text, start)
     if not match:
         return None
     # These tokens precede unqualified references, not table-qualified ones.

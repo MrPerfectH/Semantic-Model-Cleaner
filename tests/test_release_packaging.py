@@ -21,13 +21,13 @@ checksums = _load("release_checksums", ROOT / "scripts/release_checksums.py")
 
 
 def test_public_beta_release_identity_is_consistent():
-    release = identity.verify("v0.4.0b1")
+    release = identity.verify("v0.4.0b2")
     assert release == {
         "name": "semantic-model-cleaner",
-        "version": "0.4.0b1",
+        "version": "0.4.0b2",
         "channel": "beta",
-        "tag": "v0.4.0b1",
-        "windows_archive": "semantic-model-cleaner-windows-x64-0.4.0b1.zip",
+        "tag": "v0.4.0b2",
+        "windows_archive": "semantic-model-cleaner-windows-x64-0.4.0b2.zip",
     }
 
 

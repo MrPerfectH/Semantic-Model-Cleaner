@@ -176,10 +176,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
+          python scripts/verify_release_identity.py --tag "$RELEASE_TAG"
           VERSION="${RELEASE_TAG#v}"
+          NOTES_FILE="docs/releases/$VERSION.md"
+          test -f "$NOTES_FILE" || { echo "Missing release notes: $NOTES_FILE" >&2; exit 1; }
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" --draft=false --prerelease --title "Semantic Model Cleaner $VERSION public beta" --notes-file docs/releases/0.4.0b1.md
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --title "Semantic Model Cleaner $VERSION public beta" --notes-file "$NOTES_FILE"
           else
-            gh release create "$RELEASE_TAG" --prerelease --verify-tag --title "Semantic Model Cleaner $VERSION public beta" --notes-file docs/releases/0.4.0b1.md
+            gh release create "$RELEASE_TAG" --prerelease --verify-tag --title "Semantic Model Cleaner $VERSION public beta" --notes-file "$NOTES_FILE"
           fi
           gh release upload "$RELEASE_TAG" release-assets/python/* release-assets/windows/* --clobber

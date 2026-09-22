@@ -170,6 +170,34 @@ def test_index_renders_packaged_template():
     assert b"runSemanticModelCompare" in response.data
 
 
+def test_default_model_browse_root_prefers_users_directory(monkeypatch, tmp_path):
+    users_root = tmp_path / "Users"
+    users_root.mkdir()
+    monkeypatch.setattr(web_app, "_MODEL_BROWSE_ROOT", users_root)
+
+    assert web_app._default_model_browse_root() == users_root.resolve()
+
+
+def test_default_model_browse_root_falls_back_when_users_directory_is_missing(
+    monkeypatch, tmp_path
+):
+    fallback = tmp_path / "workspace"
+    monkeypatch.setattr(web_app, "_MODEL_BROWSE_ROOT", tmp_path / "missing-users")
+    monkeypatch.setattr(web_app, "_default_workspace_root", lambda: fallback)
+
+    assert web_app._default_model_browse_root() == fallback
+
+
+def test_index_exposes_first_time_model_browse_root(monkeypatch):
+    monkeypatch.setattr(web_app, "_default_model_browse_root", lambda: Path("/Users"))
+    client = web_app.app.test_client()
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b'modelBrowseRoot: "/Users"' in response.data
+
+
 def test_index_shows_beta_banner_when_runtime_enabled():
     web_app._state["runtime"] = web_app.experiments.runtime_config(
         raw_channel="beta",
@@ -2544,6 +2572,7 @@ def test_index_renders_empty_selection_state():
     assert "function writeExplorerDefaultPath(mode, path) {" in html
     assert "function updateExplorerDefaultUI() {" in html
     assert "var savedDefault = mode === 'folder' ? '' : readExplorerDefaultPath(mode);" in html
+    assert "return initialConfig.modelBrowseRoot || initialConfig.defaultRoot || '';" in html
     assert "Search folder is based on the selected model" in html
     assert "Searching definition.pbir files under " in html
     assert "definition*.pbir" not in html

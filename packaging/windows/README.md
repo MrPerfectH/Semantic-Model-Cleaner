@@ -16,7 +16,7 @@ Output:
 - release zip: `dist/semantic-model-cleaner-windows-x64-<version>.zip`
 - SHA-256 sidecar files: `<zip-name>.sha256`
 
-The public beta is available from the [v0.4.0b1 prerelease](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b1). Download the versioned ZIP and its checksum, verify it, then extract the entire ZIP before opening the executable. The package includes its beta identity, templates, static JavaScript/CSS, pinned schemas, and synthetic demo files.
+The public beta is available from the [v0.4.0b2 prerelease](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b2). Download the versioned ZIP and its checksum, verify it, then extract the entire ZIP before opening the executable. The package includes its beta identity, templates, static JavaScript/CSS, pinned schemas, and synthetic demo files.
 
 ## Runtime Behavior
 

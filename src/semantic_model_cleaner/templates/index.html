@@ -1236,6 +1236,7 @@ var allReportIssues = [];
 var filteredReportIssues = [];
 var initialConfig = {
   defaultRoot: {{ default_root|tojson }},
+  modelBrowseRoot: {{ model_browse_root|tojson }},
   runtime: {{ runtime|tojson }},
   initialModels: {{ initial_models|tojson }},
   initialReports: {{ initial_reports|tojson }},
@@ -2825,6 +2826,9 @@ function explorerStartPath(mode, existing) {
   var savedDefault = mode === 'folder' ? '' : readExplorerDefaultPath(mode);
   if (existing.length) return parentDir(existing[0].path);
   if (savedDefault) return savedDefault;
+  if (mode === 'model' || mode === 'compareBaseline' || mode === 'compareCandidate') {
+    return initialConfig.modelBrowseRoot || initialConfig.defaultRoot || '';
+  }
   if (mode === 'report' && chosenModels.length) return reportStartPathFromModel(chosenModels[0].path);
   if (mode === 'folder') {
     var currentRoot = $('connectedReportRootInput').value.trim();

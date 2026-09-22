@@ -1734,6 +1734,51 @@ def test_dax_dependency_graph_excludes_self_references():
     assert deps[item.key] == set()
 
 
+@pytest.mark.parametrize("not_separator", [" ", ""])
+def test_not_guard_measure_resolves_in_full_analysis(tmp_path, not_separator):
+    """Issue #74: NOT must not become the table owner of a bare measure ref."""
+    model = tmp_path / "Guard.SemanticModel"
+    report = tmp_path / "Overview.Report"
+    table_file = model / "definition" / "tables" / "Measures.tmdl"
+    table_file.parent.mkdir(parents=True)
+    table_file.write_text(
+        "table Measures\n"
+        "\tmeasure '_Guard: Hide Value' = FALSE()\n"
+        "\tmeasure 'Visible Value' = "
+        f"IF(NOT{not_separator}[_Guard: Hide Value] && TRUE(), 1, BLANK())\n",
+        encoding="utf-8",
+    )
+    page_dir = _write_page(report)
+    visual_dir = page_dir / "visuals" / "Value"
+    visual_dir.mkdir(parents=True)
+    (visual_dir / "visual.json").write_text(
+        json.dumps({"visual": {"query": {"Measure": {
+            "Expression": {"SourceRef": {"Entity": "Measures"}},
+            "Property": "Visible Value",
+        }}}}),
+        encoding="utf-8",
+    )
+    (report / "definition" / "report.json").write_text("{}", encoding="utf-8")
+    (report / "definition.pbir").write_text(
+        json.dumps({"datasetReference": {"byPath": {"path": "../Guard.SemanticModel"}}}),
+        encoding="utf-8",
+    )
+
+    results = analyzer.analyze(tmp_path)
+    visible = _find_item(results, "Measures", "Visible Value", "Measure")
+    guard = _find_item(results, "Measures", "_Guard: Hide Value", "Measure")
+    source_id = analyzer.item_identity(visible["item"])
+    guard_id = analyzer.item_identity(guard["item"])
+
+    assert results["dependency_graphs"]["measures"][source_id] == {guard_id}
+    assert not any(results["dependency_graphs"]["broken"].values())
+    assert visible["status"] == "USED"
+    assert guard["status"].startswith("INDIRECT")
+    assert visible["broken_dax_refs"] == []
+    assert results["summary"]["broken"] == 0
+    assert results["report_issues"] == []
+
+
 def test_unused_measure_with_dax_dependents_is_caution(tmp_path):
     workspace = tmp_path / "Workspace"
     model = workspace / "Models" / "Test.SemanticModel"

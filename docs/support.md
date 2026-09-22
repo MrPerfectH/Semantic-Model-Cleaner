@@ -47,7 +47,7 @@ Review decisions and naming conventions can be saved in the repository; see [rev
 ## Installation and reporting problems
 
 Windows users should download the versioned ZIP and checksum from the
-[v0.4.0b1 prerelease](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b1),
+[v0.4.0b2 prerelease](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b2),
 verify the SHA-256 value, extract the entire ZIP, and run the executable from
 the extracted folder. The app opens a local browser UI. Preserve the adjacent
 packaged files, including the release manifest, static assets, schemas, and demo

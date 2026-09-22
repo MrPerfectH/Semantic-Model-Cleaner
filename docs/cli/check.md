@@ -83,7 +83,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MrPerfectH/Semantic-Model-Cleaner
-          ref: 'v0.4.0b1'
+          ref: 'v0.4.0b2'
           path: .tools/smc
       - uses: actions/setup-python@v5
         with:
@@ -114,7 +114,7 @@ steps:
   - bash: |
       set -euo pipefail
       git clone https://github.com/MrPerfectH/Semantic-Model-Cleaner.git .tools/smc
-      git -C .tools/smc checkout 'v0.4.0b1'
+      git -C .tools/smc checkout 'v0.4.0b2'
       python -m pip install ./.tools/smc
     displayName: Install reviewed Semantic Model Cleaner
   - bash: smc check ./bi --format json > smc-findings.json
