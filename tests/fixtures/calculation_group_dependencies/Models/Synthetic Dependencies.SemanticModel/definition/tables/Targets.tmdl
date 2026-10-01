@@ -1,0 +1,15 @@
+table Targets
+	measure Target = 1000
+		kpi
+			targetExpression = 'Sales'[Revenue Goal] * 1.1
+			statusExpression = ```
+					VAR current = [Target]
+					RETURN IF(current > 0, 1, -1)
+				```
+			trendExpression = 1
+			statusGraphic: Traffic Light - Single
+
+	partition Targets = m
+		mode: import
+		source =
+			#table({"Key"}, {{1}})

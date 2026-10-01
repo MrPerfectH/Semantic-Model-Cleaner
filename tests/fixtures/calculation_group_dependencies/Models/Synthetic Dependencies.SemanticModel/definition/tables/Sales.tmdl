@@ -1,0 +1,43 @@
+table Sales
+	column Amount
+		dataType: decimal
+		sourceColumn: Amount
+
+	column Region
+		dataType: string
+		sourceColumn: Region
+
+	column 'Order Date'
+		dataType: dateTime
+		sourceColumn: Order Date
+
+	measure Revenue = SUM(Sales[Amount])
+		formatString: #,0
+
+	/// Unused goal referenced only by a KPI target expression and a perspective.
+	measure 'Revenue Goal' = 1000
+
+	measure 'Revenue Ignoring TI 01' = CALCULATE([Revenue], REMOVEFILTERS('Time Intelligence'))
+
+	measure 'Revenue Ignoring TI 02' = CALCULATE([Revenue], REMOVEFILTERS('Time Intelligence'))
+
+	measure 'Revenue Ignoring TI 03' = CALCULATE([Revenue], ALL('Time Intelligence'))
+
+	measure 'Revenue Ignoring TI 04' = CALCULATE([Revenue], ALL('Time Intelligence'))
+
+	measure 'Revenue Ignoring TI 05' = CALCULATE([Revenue], REMOVEFILTERS('Time Intelligence'))
+
+	measure 'Revenue Ignoring TI 06' = CALCULATE([Revenue], REMOVEFILTERS('Time Intelligence'))
+
+	measure 'Revenue Ignoring TI 07' = CALCULATE([Revenue], ALL('Time Intelligence'))
+
+	measure 'Revenue Ignoring TI 08' = CALCULATE([Revenue], ALL('Time Intelligence'))
+
+	measure 'Revenue Ignoring TI 09' = CALCULATE([Revenue], REMOVEFILTERS('Time Intelligence'))
+
+	measure 'Revenue Ignoring TI 10' = CALCULATE([Revenue], REMOVEFILTERS('Time Intelligence'))
+
+	partition Sales = m
+		mode: import
+		source =
+			#table({"Amount", "Region", "Order Date"}, {{1, "Synthetic", #date(2026, 1, 1)}})

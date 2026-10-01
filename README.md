@@ -189,7 +189,8 @@ Both web exports download the latest completed analysis without re-running it.
 - UI and CLI changes use saved plans with exact previews, validation, source fingerprints and guarded apply
 - Every applied plan records a receipt and original bytes for guarded restore; legacy direct-write HTTP routes are withheld
 - Field parameters backed by `NAMEOF(...)` are supported
-- Remaining caveats include calculation groups, broader metadata indirection, and malformed or skipped JSON
+- Calculation groups are recognized (type, items, selector column, retained parent-table DAX consumers); calculation item expressions remain Analysis limitations and keep unused items at Review
+- Analysis limitations are listed separately from Report Health with distinct-limitation and affected-item counts; remaining caveats include broader metadata indirection and malformed or skipped JSON
 
 ## Development
 
