@@ -232,13 +232,18 @@ def test_product_qa_workspace_exercises_trust_workflows():
     assert results["summary"]["reports"] == ["Executive"]
     assert cleanup_note["status"] == "NOT USED"
     assert cleanup_note["removal_risk"] == "Review"
-    assert any("Incomplete report scan" in trigger for trigger in cleanup_note["review_triggers"])
+    assert any("unreadable PBIR JSON file" in trigger for trigger in cleanup_note["review_triggers"])
+    assert cleanup_note["analysis_limitation_ids"]
+    assert all(limitation["kind"] == "invalid_report_json" for limitation in results["coverage"]["limitations"])
     assert perspective_revenue["status"] == "NOT USED"
     assert perspective_revenue["removal_risk"] == "Review"
+    # Perspective membership is concrete metadata evidence, not an analysis gap.
     assert any(
-        trigger.startswith("Unsupported Metadata: Perspectives")
+        trigger.startswith("Member of perspective Executive")
         for trigger in perspective_revenue["review_triggers"]
     )
+    assert not any("Unsupported Metadata" in trigger for trigger in perspective_revenue["review_triggers"])
+    assert perspective_revenue["perspectives"][0]["perspective"] == "Executive"
     assert store_code["status"] == "USED (RLS: Store Role)"
     assert report_margin["item"].source_kind == "report"
 
@@ -1240,7 +1245,7 @@ def test_unused_hidden_column_includes_review_triggers(tmp_path):
     assert payload_item["reviewTriggers"] == ["Item is hidden"]
 
 
-def test_unused_item_is_review_when_perspective_may_hide_dependency(tmp_path):
+def test_unused_item_is_review_when_perspective_membership_is_known(tmp_path):
     workspace = tmp_path / "Workspace"
     model = workspace / "Models" / "Sales.SemanticModel"
     report = workspace / "Reports" / "Executive.Report"
@@ -1272,13 +1277,17 @@ def test_unused_item_is_review_when_perspective_may_hide_dependency(tmp_path):
     assert revenue["removal_risk"] == "Review"
     assert revenue["review_triggers"] == [
         (
-            "Unsupported Metadata: Perspectives in definition/perspectives/Executive.tmdl "
-            "can reference Sales[Revenue]. Hidden dependency: perspective membership may "
-            "keep this field available outside scanned report visuals. User harm: deleting "
-            "it could break curated perspective views, Excel connections, or downstream "
-            "tools that rely on the perspective."
+            "Member of perspective Executive (definition/perspectives/Executive.tmdl). "
+            "Removing the item also removes this perspective member; membership alone "
+            "does not prove a report executes it."
         )
     ]
+    assert revenue["perspectives"] == [
+        {"perspective": "Executive", "source_file": "definition/perspectives/Executive.tmdl", "line": 3}
+    ]
+    # Membership is evidence, not a limitation: coverage stays complete.
+    assert results["coverage"]["complete"]
+    assert results["analysis_limitations"] == []
 
     payload = json.loads(analyzer.format_json_output(results))
     payload_item = next(item for item in payload["items"] if item["table"] == "Sales" and item["name"] == "Revenue")
@@ -1311,7 +1320,6 @@ def test_unsupported_metadata_areas_downgrade_safe_items_to_review(tmp_path):
         "\tmeasure DetailRowsTarget = 1\n"
         "\tmeasure FormatTarget = 1\n"
         "\tmeasure CoverageTarget = 1\n"
-        "\tmeasure SecondaryTarget = 1\n"
         "\tmeasure TranslationTarget = 1\n",
         encoding="utf-8",
     )
@@ -1347,12 +1355,6 @@ def test_unsupported_metadata_areas_downgrade_safe_items_to_review(tmp_path):
         "\t\tdataCoverageDefinition = 'Sales'[CoverageTarget] > 0\n",
         encoding="utf-8",
     )
-    (tables_dir / "SecondaryMetadata.tmdl").write_text(
-        "table SecondaryMetadata\n"
-        "\tmeasure SecondaryCarrier = 1\n"
-        "\t\tsecondaryExpression = 'Sales'[SecondaryTarget]\n",
-        encoding="utf-8",
-    )
     (cultures_dir / "en-US.tmdl").write_text(
         "culture en-US\n"
         "\tlinguisticMetadata = 'Sales'[TranslationTarget]\n",
@@ -1368,7 +1370,6 @@ def test_unsupported_metadata_areas_downgrade_safe_items_to_review(tmp_path):
         "DetailRowsTarget": "Detail rows",
         "FormatTarget": "Format string definitions",
         "CoverageTarget": "Data coverage definitions",
-        "SecondaryTarget": "Secondary expressions",
         "TranslationTarget": "Cultures/translations",
     }
     for measure_name, area in expectations.items():
@@ -1376,8 +1377,13 @@ def test_unsupported_metadata_areas_downgrade_safe_items_to_review(tmp_path):
         assert item["status"] == "NOT USED"
         assert item["removal_risk"] == "Review"
         assert any(area in trigger for trigger in item["review_triggers"])
-        assert any("Hidden dependency:" in trigger for trigger in item["review_triggers"])
-        assert any("User harm:" in trigger for trigger in item["review_triggers"])
+        assert any(trigger.startswith("Referenced by the ") for trigger in item["review_triggers"])
+        assert any("Dependency checking is incomplete" in trigger for trigger in item["review_triggers"])
+    kpi_target = _find_item(results, "Sales", "KpiTarget", "Measure")
+    assert any(
+        "KPI target expression of measure 'KpiMetadata'[KpiCarrier] (definition/tables/KpiMetadata.tmdl:4)" in trigger
+        for trigger in kpi_target["review_triggers"]
+    )
 
 
 def test_ordinary_unused_item_remains_safe_without_unsupported_metadata(tmp_path):

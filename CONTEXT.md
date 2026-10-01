@@ -49,19 +49,43 @@ The app's user-facing judgment about whether a semantic model item can be change
 _Avoid_: Cleanup status, delete status
 
 **Safe**:
-A cleanup recommendation meaning no supported scanned metadata indicates that the item is required.
+A cleanup recommendation meaning no supported scanned metadata indicates that the item is required and no shared Analysis Limitation applies.
 _Avoid_: Unused, deletable
+
+**No Use Found In Scope**:
+The usage statement for an item with no Live Report Reference in the selected reports and no supported model dependency. When Analysis Limitations keep coverage incomplete, it is not a claim of global non-use.
+_Avoid_: Globally unused, proven unused
 
 **Review**:
 A cleanup recommendation meaning a human should inspect the item because evidence is incomplete, ambiguous, unsupported, or caution-worthy.
 _Avoid_: Maybe safe, warning
 
 **Unsupported Metadata**:
-Documented Power BI, TMDL, or PBIR metadata that the app can detect or encounter but does not yet fully analyze.
+Documented Power BI, TMDL, or PBIR metadata that the app can detect or encounter but does not yet fully analyze. Detected only from actual TMDL declarations, never from words in names, descriptions, comments, or expressions.
 _Avoid_: Unknown metadata, edge case
 
+**Analysis Limitation**:
+One concrete gap in what the app checked for the selected scope: a specific Unsupported Metadata construct with its owning object and source location, or a report file it could not read. It states what was checked, what remains unchecked, and the effect on the Cleanup Recommendation. A shared limitation keeps every item with no use found in scope at Review; a targeted limitation affects only the items it references. Limitations are counted as distinct limitations and affected items, never once per repeated warning.
+_Avoid_: Warning occurrence, report problem, unsupported warning
+
+**Analysis Limitations**:
+The product surface that lists Analysis Limitations separately from Report Health.
+_Avoid_: Unsupported Metadata group, Report Health warnings
+
+**Parent-Table Consumer**:
+A retained DAX expression outside a table that references the table itself (for example `ALL('Table')`) rather than one of its items. It blocks whole-table deletion and is shown separately from direct DAX consumers and Report References.
+_Avoid_: Column consumer, usage
+
+**Calculation Group Selector**:
+The string column of a calculation group table that report authors place in slicers or filters to pick a calculation item.
+_Avoid_: Calc group column, field
+
+**Perspective Membership**:
+Concrete model metadata stating that a table, measure, column, or hierarchy belongs to a named perspective. It is evidence for a reviewed change, not proof that a report executes the item, and not an Analysis Limitation.
+_Avoid_: Perspective usage, perspective dependency
+
 **Report Health**:
-The product surface that explains PBIR problems, stale references, invalid report JSON, and repair opportunities.
+The product surface that explains PBIR problems, stale references, invalid report JSON, and repair opportunities. Model Analysis Limitations are not part of it.
 _Avoid_: Warnings, issues list
 
 **Cleanup Action**:

@@ -29,6 +29,11 @@ from pathlib import Path
 from typing import Optional
 
 from semantic_model_cleaner.reference_tokens import dax_tokens
+from semantic_model_cleaner.report_writer import STALE_CLEANUP_SUPPORTED_KINDS
+from semantic_model_cleaner.tmdl_declarations import (
+    extract_feature_expressions,
+    extract_perspective_members,
+)
 from semantic_model_cleaner.tmdl_identifiers import (
     parse_tmdl_dotted_ref,
     read_single_quoted_name,
@@ -94,6 +99,9 @@ class UsageRef:
     visual_height: float | int | None = None
 
     report_path: str = ""
+    # Visual filter card with no saved condition ("All"). Evidence of a live filter
+    # control, never of staleness.
+    all_values_filter: bool = False
 
 @dataclass
 class HierarchyInfo:
@@ -162,12 +170,64 @@ class ReportIssue:
 
 @dataclass
 class UnsupportedMetadataRef:
+    """A genuine TMDL declaration the analyzer detects but does not fully analyze.
+
+    One ref describes one construct (for example one calculation item or one KPI
+    target expression), with its owning object and source location. `item_keys`
+    are the model items its expression references; `unresolved_targets` means the
+    expression may depend on items the analyzer could not identify, so the gap
+    limits cleanup confidence for every item without a use in scope.
+    """
     area: str
     item_keys: set[tuple[str, str]]
     source_file: str = ""
     possible_hidden_dependency: str = ""
     user_harm: str = ""
     unresolved_targets: bool = False
+    feature: str = ""
+    construct: str = ""
+    owner: str = ""
+    table: str = ""
+    line: int = 0
+    dynamic: bool = False
+
+    @property
+    def id(self) -> str:
+        return f"unsupported_metadata:{self.source_file}:{self.construct}:{self.owner}:{self.line}"
+
+
+@dataclass
+class PerspectiveMembership:
+    """Concrete perspective metadata: the member exists in the named perspective."""
+    perspective: str
+    table: str
+    name: str  # empty for table-level membership
+    kind: str
+    source_file: str
+    line: int = 0
+
+
+@dataclass
+class ModelMetadata:
+    """Declaration-level model facts that are evidence, not usage."""
+    calculation_groups: dict[str, dict] = field(default_factory=dict)  # table -> {calculation_items, source_file, line}
+    perspective_members: list[PerspectiveMembership] = field(default_factory=list)
+
+    def table_kind(self, table: str) -> str:
+        return "Calculation group" if table in self.calculation_groups else "Table"
+
+    def item_perspectives(self) -> dict[tuple[str, str], list[PerspectiveMembership]]:
+        index: dict[tuple[str, str], list[PerspectiveMembership]] = defaultdict(list)
+        for member in self.perspective_members:
+            if member.name:
+                index[normalize_key(member.table, member.name)].append(member)
+        return index
+
+    def table_perspectives(self) -> dict[str, list[str]]:
+        index: dict[str, set[str]] = defaultdict(set)
+        for member in self.perspective_members:
+            index[member.table.casefold()].add(member.perspective)
+        return {table: sorted(names, key=str.casefold) for table, names in index.items()}
 
 
 REPORT_EXTENSION_PRIMITIVE_TYPES = {
@@ -743,31 +803,44 @@ def _unsupported_semantic_model_error(model_path: Path) -> str | None:
 
 
 def parse_unsupported_metadata_refs(model_path: Path) -> list[UnsupportedMetadataRef]:
-    definition_dir = model_path / "definition"
-    perspectives_dir = definition_dir / "perspectives"
-    refs: list[UnsupportedMetadataRef] = []
+    """Return Unsupported Metadata detected from actual TMDL declarations.
 
+    Perspective membership is not an analysis gap; it is concrete metadata and is
+    parsed separately by parse_model_metadata.
+    """
+    refs: list[UnsupportedMetadataRef] = []
     refs.extend(_parse_unsupported_tmdl_metadata_refs(model_path))
     refs.extend(_parse_culture_translation_refs(model_path))
-
-    if perspectives_dir.exists():
-        for filepath in sorted(perspectives_dir.glob("*.tmdl")):
-            item_keys = _parse_perspective_item_refs(filepath)
-            if item_keys:
-                refs.append(UnsupportedMetadataRef(
-                    area="Perspectives",
-                    item_keys=item_keys,
-                    source_file=filepath.relative_to(model_path).as_posix(),
-                    possible_hidden_dependency=(
-                        "perspective membership may keep this field available outside scanned report visuals"
-                    ),
-                    user_harm=(
-                        "deleting it could break curated perspective views, Excel connections, "
-                        "or downstream tools that rely on the perspective"
-                    ),
-                ))
-
     return refs
+
+
+def parse_model_metadata(model_path: Path) -> ModelMetadata:
+    """Collect calculation groups and perspective membership from TMDL declarations."""
+    metadata = ModelMetadata()
+    tables_dir = model_path / "definition" / "tables"
+    if tables_dir.is_dir():
+        for filepath in sorted(tables_dir.glob("*.tmdl")):
+            _, tables = extract_feature_expressions(filepath.read_text(encoding="utf-8-sig"))
+            for table, info in tables.items():
+                existing = metadata.calculation_groups.get(table)
+                entry = {
+                    "calculation_items": list(info["calculation_items"]),
+                    "source_file": filepath.relative_to(model_path).as_posix(),
+                    "line": info["line"],
+                }
+                if existing:
+                    entry["calculation_items"] = existing["calculation_items"] + entry["calculation_items"]
+                metadata.calculation_groups[table] = entry
+    perspectives_dir = model_path / "definition" / "perspectives"
+    if perspectives_dir.is_dir():
+        for filepath in sorted(perspectives_dir.glob("*.tmdl")):
+            source_file = filepath.relative_to(model_path).as_posix()
+            for member in extract_perspective_members(filepath.read_text(encoding="utf-8-sig")):
+                metadata.perspective_members.append(PerspectiveMembership(
+                    perspective=member.perspective, table=member.table, name=member.name,
+                    kind=member.kind, source_file=source_file, line=member.line,
+                ))
+    return metadata
 
 
 def _unsupported_metadata_info(area: str) -> tuple[str, str]:
@@ -837,80 +910,73 @@ def _extract_item_keys_from_metadata_text(text: str) -> set[tuple[str, str]]:
     return item_keys
 
 
-def _tmdl_indent_depth(line: str) -> int:
-    return len(line) - len(line.lstrip("\t"))
+_DYNAMIC_DAX_FUNCTIONS = {
+    "selectedmeasure", "selectedmeasurename", "isselectedmeasure",
+    "selectedmeasureformatstring",
+}
 
 
-def _extract_tmdl_metadata_blocks(text: str, markers: tuple[str, ...]) -> list[str]:
-    lines = text.splitlines()
-    marker_terms = tuple(marker.casefold() for marker in markers)
-    blocks: list[str] = []
-
-    for index, line in enumerate(lines):
-        if not any(marker in line.casefold() for marker in marker_terms):
-            continue
-
-        base_indent = _tmdl_indent_depth(line)
-        block = [line]
-        next_index = index + 1
-        while next_index < len(lines):
-            next_line = lines[next_index]
-            if not next_line.strip():
-                lookahead = next_index + 1
-                while lookahead < len(lines) and not lines[lookahead].strip():
-                    lookahead += 1
-                if lookahead < len(lines) and _tmdl_indent_depth(lines[lookahead]) > base_indent:
-                    block.append(next_line)
-                    next_index += 1
-                    continue
-                break
-            if _tmdl_indent_depth(next_line) <= base_indent:
-                break
-            block.append(next_line)
-            next_index += 1
-
-        blocks.append("\n".join(block))
-
-    return blocks
+def _expression_uses_dynamic_measure_context(expression: str) -> bool:
+    active, _ = _split_dax_comments(expression)
+    return any(token.kind == "identifier" and token.value.casefold() in _DYNAMIC_DAX_FUNCTIONS
+               for token in dax_tokens(active))
 
 
 def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedMetadataRef]:
+    """Detect unsupported constructs from TMDL declarations, one ref per construct.
+
+    Only real declarations count: a `kpi` object under a measure, a
+    `calculationItem` under a `calculationGroup`, a `detailRowsDefinition`
+    property. Names, descriptions, comments, string literals and ordinary DAX
+    bodies never produce a finding, whatever words they contain.
+    """
     tables_dir = model_path / "definition" / "tables"
     if not tables_dir.exists():
         return []
 
-    marker_areas = [
-        ("Calculation Groups", ("calculationGroup", "calculationItem")),
-        ("KPI expressions", ("kpi", "targetExpression", "statusExpression", "trendExpression")),
-        ("Detail rows", ("detailRowsDefinition", "defaultDetailRowsExpression")),
-        ("Format string definitions", ("formatStringDefinition",)),
-        ("Data coverage definitions", ("dataCoverageDefinition",)),
-        ("Secondary expressions", ("secondaryExpression", "secondaryExpressions")),
-    ]
     refs: list[UnsupportedMetadataRef] = []
     measure_names: dict[str, set[tuple[str, str]]] = defaultdict(set)
     model_items = parse_model_items(model_path)
     known_keys = {normalize_key(*item.key) for item in model_items}
+    table_names = {item.table.casefold(): item.table for item in model_items}
     for item in model_items:
         if item.item_type == "Measure":
             measure_names[item.name.casefold()].add(item.key)
 
     for filepath in sorted(tables_dir.glob("*.tmdl")):
-        text = filepath.read_text(encoding="utf-8-sig")
-        for area, markers in marker_areas:
-            metadata_blocks = _extract_tmdl_metadata_blocks(text, markers)
-            if not metadata_blocks:
-                continue
-            metadata_text = "\n".join(metadata_blocks)
-            item_keys = _extract_item_keys_from_metadata_text(metadata_text)
+        features, _ = extract_feature_expressions(filepath.read_text(encoding="utf-8-sig"))
+        for feature in features:
+            expression = feature.expression
+            item_keys = set(_extract_dax_qualified_refs(expression)) if expression else set()
             unresolved = any(normalize_key(*key) not in known_keys for key in item_keys)
-            for name in _extract_dax_unqualified_refs(metadata_text):
-                matches = measure_names.get(name.casefold(), set())
-                item_keys.update(matches)
-                if len(matches) != 1:
+            if expression:
+                # Metadata expressions are not yet in the table dependency
+                # graph. Resolving their item refs does not account for a bare
+                # table used alongside them (for example FILTER(Sales, ...)).
+                # Keep cleanup fail-closed until those table consumers can be
+                # represented, including expressions with no item refs at all.
+                if (_extract_dax_table_refs(expression)
+                        or _known_unquoted_table_refs(expression, table_names)):
                     unresolved = True
-            ref = _unsupported_ref(area, item_keys, filepath, model_path)
-            ref.unresolved_targets = unresolved or not item_keys
+                for name in _extract_dax_unqualified_refs(expression):
+                    matches = measure_names.get(name.casefold(), set())
+                    item_keys.update(matches)
+                    if len(matches) != 1:
+                        unresolved = True
+                if _expression_uses_dynamic_measure_context(expression):
+                    unresolved = True
+            if feature.dynamic and not item_keys:
+                # A calculation item without any identifiable reference is still
+                # applied to arbitrary measures at runtime.
+                unresolved = True
+            ref = _unsupported_ref(feature.area, item_keys, filepath, model_path)
+            ref.unresolved_targets = unresolved
+            ref.feature = feature.feature
+            ref.construct = feature.construct
+            ref.owner = feature.owner
+            ref.table = feature.table
+            ref.line = feature.line
+            ref.dynamic = feature.dynamic
             refs.append(ref)
 
     return refs
@@ -936,8 +1002,10 @@ def _parse_culture_translation_refs(model_path: Path) -> list[UnsupportedMetadat
                 filepath,
                 model_path,
             )
-            if ref:
-                refs.append(ref)
+            ref.feature = "culture or translation metadata"
+            ref.construct = "culture"
+            ref.owner = f"culture file {filepath.name}"
+            refs.append(ref)
 
     return refs
 
@@ -953,38 +1021,169 @@ def parse_hierarchies(model_path: Path) -> list[HierarchyInfo]:
     return hierarchies
 
 
-def _parse_perspective_item_refs(filepath: Path) -> set[tuple[str, str]]:
-    lines = filepath.read_text(encoding="utf-8-sig").splitlines()
-    item_keys: set[tuple[str, str]] = set()
-    current_table = ""
-
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("perspectiveTable "):
-            current_table = unquote_tmdl_name(stripped[len("perspectiveTable "):])
-            continue
-        if not current_table:
-            continue
-        for keyword in ("perspectiveMeasure", "perspectiveColumn"):
-            prefix = f"{keyword} "
-            if stripped.startswith(prefix):
-                name = unquote_tmdl_name(stripped[len(prefix):])
-                if name:
-                    item_keys.add((current_table, name))
-
-    return item_keys
+def _limitation_location(ref: UnsupportedMetadataRef) -> str:
+    return f"{ref.source_file}:{ref.line}" if ref.line else ref.source_file
 
 
 def _unsupported_metadata_review_trigger(
     item: ModelItem,
     ref: UnsupportedMetadataRef,
 ) -> str:
-    source = f" in {ref.source_file}" if ref.source_file else ""
+    """Concrete evidence: the item is referenced by a construct we do not fully analyze."""
+    feature = ref.feature or ref.area
+    owner = f" of {ref.owner}" if ref.owner else ""
     return (
-        f"Unsupported Metadata: {ref.area}{source} can reference {format_item_ref(item.key)}. "
-        f"Hidden dependency: {ref.possible_hidden_dependency}. "
-        f"User harm: {ref.user_harm}."
+        f"Referenced by the {feature}{owner} ({_limitation_location(ref)}). "
+        f"Dependency checking is incomplete for {ref.area}, so the reference is "
+        f"evidence of a dependency, not proof of report use; the item stays at Review."
     )
+
+
+def _perspective_review_trigger(member: PerspectiveMembership) -> str:
+    """Perspective membership is metadata evidence, not proof of runtime use."""
+    return (
+        f"Member of perspective {member.perspective} ({member.source_file}). "
+        f"Removing the item also removes this perspective member; membership alone "
+        f"does not prove a report executes it."
+    )
+
+
+def _limitation_explanation(ref: UnsupportedMetadataRef) -> dict:
+    """Explain one Unsupported Metadata construct: what is checked and what is not."""
+    targets = sorted(format_item_ref(key) for key in ref.item_keys)
+    feature = ref.feature or ref.area
+    if targets:
+        checked = (f"Direct item references in the expression were resolved: {', '.join(targets)}. "
+                   f"Those items stay at Review instead of Safe.")
+    elif ref.construct == "measure/kpi":
+        checked = "The KPI declaration was recognized; it declares no target, status or trend expression."
+    else:
+        checked = "The expression was parsed; it references no identifiable model item."
+    if ref.dynamic:
+        unchecked = (f"The {feature} is applied to whichever measure is selected at runtime, so "
+                     f"it cannot be tied to specific items from TMDL alone.")
+    elif ref.unresolved_targets:
+        unchecked = (f"Some references in the {feature} could not be matched to exactly one model "
+                     f"item, so hidden dependencies cannot be ruled out.")
+    else:
+        unchecked = (f"The {feature} is not part of the dependency graph and is not evaluated, "
+                     f"so it is not counted as model use.")
+    if ref.unresolved_targets:
+        effect = ("Every item with no use found in the selected scope stays at Review instead of "
+                  "Safe until this gap is resolved.")
+    elif targets:
+        effect = "Only the referenced items are affected; they stay at Review."
+    else:
+        effect = "No cleanup recommendation changes; the construct is listed for transparency."
+    return {
+        "id": ref.id,
+        "kind": "unsupported_metadata",
+        "area": ref.area,
+        "feature": feature,
+        "construct": ref.construct,
+        "owner": ref.owner,
+        "table": ref.table,
+        "source_file": ref.source_file,
+        "line": ref.line,
+        "location": _limitation_location(ref),
+        "scope": "shared" if ref.unresolved_targets else "targeted",
+        "targets": targets,
+        "checked": checked,
+        "unchecked": unchecked,
+        "effect": effect,
+        "message": (f"Dependency checking is incomplete for the {feature}"
+                    + (f" of {ref.owner}" if ref.owner else "")
+                    + f" ({_limitation_location(ref)})."),
+    }
+
+
+def _report_scan_limitation(issue: ReportIssue) -> dict:
+    """Explain a report-side scan gap as an analysis limitation, not a report defect."""
+    location = f"{issue.report}/{issue.artifact_path}" if issue.artifact_path else issue.report
+    if issue.issue_type == "ambiguous_extension_identity":
+        feature, checked, unchecked = (
+            "report-local and model measure with one qualified name",
+            "Both definitions were retained conservatively.",
+            "Reference ownership between the report-local and model definition cannot be proven.",
+        )
+        message = issue.message
+    elif issue.issue_type == "unsupported_report_format":
+        feature, checked, unchecked = (
+            "legacy report layout",
+            "The report folder was found and its syntax diagnostics were recorded.",
+            "The report has no PBIR definition directory, so none of its references were scanned.",
+        )
+        message = f"Incomplete report scan: {location} could not be inspected. {issue.message}".strip()
+    else:
+        feature, checked, unchecked = (
+            "unreadable PBIR JSON file",
+            "Readable report files in the selected scope were scanned.",
+            "References inside this file are unknown until the JSON is repaired.",
+        )
+        message = f"Incomplete report scan: {location} could not be inspected."
+    return {
+        "id": f"{issue.issue_type}:{issue.report_path or issue.report}:{issue.artifact_path}",
+        "kind": issue.issue_type,
+        "area": "Report scan",
+        "feature": feature,
+        "construct": issue.issue_type,
+        "owner": f"report {issue.report}",
+        "table": issue.table,
+        "report": issue.report,
+        "reportPath": issue.report_path,
+        "source_file": issue.artifact_path,
+        "line": 0,
+        "location": location,
+        "scope": "shared",
+        "targets": [],
+        "checked": checked,
+        "unchecked": unchecked,
+        "effect": ("Every item with no use found in the selected scope stays at Review instead of "
+                   "Safe until the report scan is complete."),
+        "message": message,
+    }
+
+
+def _shared_limitation_trigger(limitations: list[dict]) -> str:
+    """One collapsed Review reason for coverage gaps that apply to every unused item."""
+    labels = []
+    for limitation in limitations:
+        if limitation.get("kind") == "unsupported_metadata":
+            labels.append(limitation.get("owner") or limitation.get("feature") or limitation.get("area"))
+        else:
+            labels.append(f"{limitation.get('feature') or limitation.get('kind')} in "
+                          f"{limitation.get('location') or limitation.get('report')}")
+    shown = "; ".join(labels[:2]) + (f"; +{len(labels) - 2} more" if len(labels) > 2 else "")
+    count = len(limitations)
+    noun = "analysis limitation" if count == 1 else "analysis limitations"
+    return (f"No use found in the selected scope, but {count} {noun} ({shown}) keep dependency "
+            f"coverage incomplete, so Safe is not asserted. See Analysis limitations.")
+
+
+def _calculation_group_triggers(
+    item: ModelItem, group: dict, table_dependents: list[str],
+) -> list[str]:
+    """Explain calculation-group membership and retained parent-table consumers."""
+    items = group.get("calculation_items", [])
+    listed = ", ".join(items[:5]) + (f", +{len(items) - 5} more" if len(items) > 5 else "")
+    role = ("Selector column" if item.item_type in ("Column", "Calculated Column")
+            and (item.data_type.casefold() == "string" or not item.data_type) else "Item")
+    triggers = [
+        f"{role} of calculation group '{item.table}' ({len(items)} calculation "
+        f"{'item' if len(items) == 1 else 'items'}: {listed}). Delete the whole group through a "
+        f"reviewed table plan rather than this item alone."
+    ]
+    if table_dependents:
+        shown = ", ".join(table_dependents[:5]) + (
+            f", +{len(table_dependents) - 5} more" if len(table_dependents) > 5 else "")
+        count = len(table_dependents)
+        triggers.append(
+            f"Parent table '{item.table}' is required by {count} retained DAX "
+            f"{'consumer' if count == 1 else 'consumers'} outside it ({shown}). These are "
+            f"parent-table references, not direct consumers of this item; whole-group deletion "
+            f"stays Blocked while they remain unless a coordinated plan updates or removes them."
+        )
+    return triggers
 
 
 def _find_nameof_close_paren(text: str, start: int) -> int:
@@ -2434,6 +2633,7 @@ def _report_issue_from_usage(
     severity: str,
     message: str,
     suggestions: list[dict] | None = None,
+    context: str | None = None,
 ) -> ReportIssue:
     return ReportIssue(
         severity=severity,
@@ -2444,7 +2644,7 @@ def _report_issue_from_usage(
         visual_type=usage.visual_type,
         visual_title=usage.visual_title,
         visual_id=usage.visual_id,
-        context=usage.context,
+        context=usage.context if context is None else context,
         table=usage.table,
         name=usage.name,
         ref_type=usage.ref_type,
@@ -2639,9 +2839,11 @@ def build_report_issues(
         if not issue_type:
             continue
         severity = "error"
-        if usage.stale_kind == "inactive_visual_filter_reference":
+        issue_context = None
+        if usage.all_values_filter:
             issue_type = "inactive_visual_filter_reference"
             severity = "warning"
+            issue_context = "Inactive Filter"
         suggestion_key = (usage.report_path, usage.table.casefold(), usage.name.casefold(), usage.ref_type.casefold())
         if suggestion_key not in suggestion_cache:
             suggestion_cache[suggestion_key] = _fuzzy_suggestions(usage, scoped_items)
@@ -2651,32 +2853,10 @@ def build_report_issues(
             severity=severity,
             message=_missing_issue_message(issue_type, usage),
             suggestions=suggestion_cache[suggestion_key] if severity == "error" else [],
+            context=issue_context,
         ))
 
     for usage in stale_usages:
-        scoped_items = items_for_report(usage)
-        report_entity_names = {item.table.casefold() for item in scoped_items if item.source_kind == "report"}
-        measure_keys = {normalize_key(*item.key) for item in scoped_items if item.item_type == "Measure"}
-        if usage.stale_kind == "inactive_visual_filter_reference":
-            missing_type = _classify_missing_usage(
-                usage,
-                model_table_names=model_table_names,
-                report_entity_names=report_entity_names,
-                measure_keys=measure_keys,
-                column_keys=column_keys,
-                hierarchy_keys=hierarchy_keys,
-            )
-            if not missing_type:
-                continue
-            issues.append(_report_issue_from_usage(
-                usage,
-                issue_type="inactive_visual_filter_reference",
-                severity="warning",
-                message=_missing_issue_message("inactive_visual_filter_reference", usage),
-                suggestions=[],
-            ))
-            continue
-
         if usage.stale_kind == "bookmark_projection_entry":
             issue_type = "stale_bookmark_projection"
         elif usage.stale_kind == "formatting_rule_reference":
@@ -2816,7 +2996,7 @@ def scan_report_visuals(
                 is_formatting_rule_reference = context == "Aggregation" and ref["path"].startswith("visual.objects.")
                 is_stale_selector = bool(entry_selector_value)
                 is_stale_formatting_selector = bool(formatting_selector_prefix)
-                is_inactive_filter_reference = bool(inactive_filter_prefix)
+                is_all_values_filter = bool(inactive_filter_prefix)
                 u = UsageRef(
                     table=ref["table"],
                     name=ref["name"],
@@ -2832,13 +3012,13 @@ def scan_report_visuals(
                     artifact_kind="Visual",
                     artifact_path=_artifact_rel_path(report_path, visual_json),
                     selector_value=entry_selector_value or format_item_ref((ref["table"], ref["name"])),
-                    is_stale=is_stale_selector or is_stale_formatting_selector or is_inactive_filter_reference or is_formatting_rule_reference,
+                    is_stale=is_stale_selector or is_stale_formatting_selector or is_formatting_rule_reference,
                     stale_kind=(
                         "visual_formatting_selector_entry" if is_stale_formatting_selector
-                        else "inactive_visual_filter_reference" if inactive_filter_prefix
                         else "formatting_rule_reference" if is_formatting_rule_reference
                         else ""
                     ),
+                    all_values_filter=is_all_values_filter,
                     visual_hidden=visual_hidden,
                     page_hidden=page_hidden,
                     visual_x=position.get("x"),
@@ -2846,12 +3026,8 @@ def scan_report_visuals(
                     visual_width=position.get("width"),
                     visual_height=position.get("height"),
                 )
-                if is_stale_selector or is_stale_formatting_selector or is_inactive_filter_reference or is_formatting_rule_reference:
-                    u.context = (
-                        "Inactive Filter" if is_inactive_filter_reference
-                        else "Stale Formatting Rule" if is_formatting_rule_reference
-                        else "Stale Formatting"
-                    )
+                if u.is_stale:
+                    u.context = "Stale Formatting Rule" if is_formatting_rule_reference else "Stale Formatting"
                     stale_usages.append(u)
                 else:
                     usages.append(u)
@@ -3870,7 +4046,11 @@ def build_table_summaries(
     dax_column_deps: dict[tuple[str, str], set[tuple[str, str]]],
     dax_table_deps: dict[tuple[str, str], set[str]],
     field_parameter_issues: dict[str, list[str]] | None = None,
+    model_metadata: ModelMetadata | None = None,
+    shared_limitation_count: int = 0,
 ) -> list[dict]:
+    model_metadata = model_metadata or ModelMetadata()
+    table_perspectives = model_metadata.table_perspectives()
     rows_by_table: dict[str, list[dict]] = defaultdict(list)
     usage_by_table: dict[str, list[UsageRef]] = defaultdict(list)
     relationships_by_table: dict[str, list[RelationshipInfo]] = defaultdict(list)
@@ -4012,8 +4192,19 @@ def build_table_summaries(
                 "role": role,
             })
 
-        role_label, role_reason = _classify_table_role(table, relationships)
+        calculation_group = model_metadata.calculation_groups.get(table)
+        if calculation_group is not None:
+            count = len(calculation_group.get("calculation_items", []))
+            role_label, role_reason = "calculation-group", (
+                f"Calculation group with {count} calculation {'item' if count == 1 else 'items'}. "
+                "Relationship roles do not apply; dependencies come from DAX that references this table.")
+        else:
+            role_label, role_reason = _classify_table_role(table, relationships)
         signals = []
+        if calculation_group is not None:
+            items = calculation_group.get("calculation_items", [])
+            signals.append(f"Calculation group: {', '.join(items[:5])}"
+                           + (f", +{len(items) - 5} more" if len(items) > 5 else "") + ".")
         if role_label == "dimension-like":
             signals.append("Looks like a dimension table based on active 1:* relationships.")
         elif role_label == "fact-like":
@@ -4043,6 +4234,36 @@ def build_table_summaries(
             noun = "item" if count == 1 else "items"
             verb = "depends" if count == 1 else "depend"
             signals.append(f"{count} DAX {noun} outside this table {verb} on it.")
+
+        perspectives = table_perspectives.get(table.casefold(), [])
+        if perspectives:
+            signals.append(f"Member of {'perspective' if len(perspectives) == 1 else 'perspectives'} "
+                           f"{', '.join(perspectives)}; membership does not prove report use.")
+
+        # Whole-table (whole-group) deletion recommendation. Retained consumers
+        # outside the table block it even when no child is directly used.
+        child_recommendations = {row.get("removal_risk") or "" for row in rows}
+        child_used = any(is_used_status(row["status"]) or row["status"].startswith("BROKEN")
+                         or row["item"].is_inferred for row in rows)
+        if external_dax_dependents:
+            count = len(external_dax_dependents)
+            shown = ", ".join(external_dax_dependents[:5]) + (
+                f", +{count - 5} more" if count > 5 else "")
+            cleanup_recommendation = "Blocked"
+            cleanup_reason = (
+                f"Deleting every item in '{table}' is blocked: {count} retained DAX "
+                f"{'consumer' if count == 1 else 'consumers'} outside the table reference it "
+                f"({shown}). A coordinated plan must update or remove them first.")
+        elif child_used or "Caution" in child_recommendations or "Do not remove" in child_recommendations:
+            cleanup_recommendation = "Blocked"
+            cleanup_reason = "Items in this table are still used or required by model dependencies."
+        elif "Review" in child_recommendations or shared_limitation_count:
+            cleanup_recommendation = "Review"
+            cleanup_reason = ("Items in this table need review before deletion"
+                              + ("; analysis coverage is incomplete." if shared_limitation_count else "."))
+        else:
+            cleanup_recommendation = "Safe"
+            cleanup_reason = "No use was found in the selected scope for any item in this table."
 
         if single_column_measures:
             count = len(single_column_measures)
@@ -4085,6 +4306,11 @@ def build_table_summaries(
             "relationships": relationship_items,
             "signals": signals,
             "field_parameter_issues": table_fp_issues,
+            "table_kind": model_metadata.table_kind(table),
+            "calculation_items": list((calculation_group or {}).get("calculation_items", [])),
+            "perspectives": perspectives,
+            "cleanup_recommendation": cleanup_recommendation,
+            "cleanup_reason": cleanup_reason,
             "items": items_in_table,
         })
 
@@ -4211,6 +4437,7 @@ def analyze(
     all_unsupported_metadata_refs = []
     all_calculation_group_tables: set[str] = set()
     parsed_model_items = []
+    model_metadata = ModelMetadata()
     warnings: list[AnalyzerWarning] = []
 
     for model_index, model_path in enumerate(models):
@@ -4235,6 +4462,9 @@ def analyze(
         all_calculation_group_tables |= {
             name.casefold() for name in parse_calculation_group_tables(model_path)
         }
+        parsed_metadata = parse_model_metadata(model_path)
+        model_metadata.calculation_groups.update(parsed_metadata.calculation_groups)
+        model_metadata.perspective_members.extend(parsed_metadata.perspective_members)
         all_field_parameters.extend(
             resolve_field_parameter_targets(
                 parse_field_parameters(model_path, warnings),
@@ -4415,30 +4645,34 @@ def analyze(
 
     # Presence without resolved targets still limits cleanup confidence. Do not
     # turn a parser blind spot into evidence that an item is safe to remove.
-    unknown_metadata = [
-        ref for ref in all_unsupported_metadata_refs
-        if ref.unresolved_targets or not ref.item_keys
-    ]
+    # Every limitation is explained once; shared ones apply to every item with
+    # no use found in scope, targeted ones only to the items they reference.
     invalid_report_issues = [
         issue for issue in report_issues if issue.issue_type in {"invalid_report_json", "unsupported_report_format", "ambiguous_extension_identity"}
     ]
-    coverage_limitations = [
-        {
-            "kind": issue.issue_type, "report": issue.report, "reportPath": issue.report_path,
-            "source_file": issue.artifact_path,
-            "message": (issue.message if issue.issue_type == "ambiguous_extension_identity" else
-                        (f"Incomplete report scan: {issue.report}/{issue.artifact_path} could not be inspected. "
-                         + (issue.message if issue.issue_type != "invalid_report_json" else "")).strip()),
-        }
-        for issue in invalid_report_issues
-    ] + [
-        {
-            "kind": "unsupported_metadata", "area": ref.area,
-            "source_file": ref.source_file,
-            "message": f"Unsupported Metadata: {ref.area} in {ref.source_file} has unresolved dependency coverage.",
-        }
-        for ref in unknown_metadata
-    ]
+    analysis_limitations: list[dict] = []
+    seen_limitation_ids: set[str] = set()
+    for limitation in ([_report_scan_limitation(issue) for issue in invalid_report_issues]
+                       + [_limitation_explanation(ref) for ref in all_unsupported_metadata_refs]):
+        if limitation["id"] in seen_limitation_ids:
+            continue
+        seen_limitation_ids.add(limitation["id"])
+        analysis_limitations.append(limitation)
+    coverage_limitations = [limitation for limitation in analysis_limitations if limitation["scope"] == "shared"]
+    shared_limitation_trigger = _shared_limitation_trigger(coverage_limitations) if coverage_limitations else ""
+    shared_limitation_ids = [limitation["id"] for limitation in coverage_limitations]
+
+    # ── Declaration-level metadata evidence ──
+    perspective_index = model_metadata.item_perspectives()
+    display_table_deps = _display_graph(dax_table_deps)
+    table_dependents_by_table: dict[str, list[str]] = defaultdict(list)
+    for item in all_items:
+        for table in display_table_deps.get(item.key, set()):
+            if table.casefold() != item.table.casefold():
+                table_dependents_by_table[table.casefold()].append(format_item_ref(item.key))
+    table_dependents_by_table = {
+        table: sorted(set(refs), key=str.casefold) for table, refs in table_dependents_by_table.items()
+    }
 
     # ── Classify each item ──
     retained_parameter_targets = {
@@ -4532,7 +4766,17 @@ def analyze(
                 _unsupported_metadata_review_trigger(item, ref)
                 for ref in unsupported_metadata_by_key.get(nkey, [])
             )
-            review_triggers.extend(limit["message"] for limit in coverage_limitations)
+            if item.source_kind == "model":
+                if item.table in model_metadata.calculation_groups:
+                    review_triggers.extend(_calculation_group_triggers(
+                        item, model_metadata.calculation_groups[item.table],
+                        table_dependents_by_table.get(item.table.casefold(), []),
+                    ))
+                review_triggers.extend(
+                    _perspective_review_trigger(member) for member in perspective_index.get(nkey, [])
+                )
+            if shared_limitation_trigger:
+                review_triggers.append(shared_limitation_trigger)
             if review_triggers:
                 removal_risk = "Review"
             elif (has_dax_dependents or identity in retained_parameter_targets
@@ -4549,6 +4793,19 @@ def analyze(
             )
             review_triggers.extend(f"Column belongs to retained hierarchy {name}" for name in hierarchy_names)
 
+        targeted_limitation_ids = [ref.id for ref in unsupported_metadata_by_key.get(nkey, [])]
+        limitation_ids = targeted_limitation_ids + (
+            shared_limitation_ids if status == "NOT USED" and not item.is_inferred else [])
+        calculation_group = model_metadata.calculation_groups.get(item.table) if item.source_kind == "model" else None
+        model_role = ""
+        if calculation_group is not None:
+            if item.item_type in ("Column", "Calculated Column") and (
+                    item.data_type.casefold() == "string" or not item.data_type):
+                model_role = "Calculation group selector"
+            elif item.item_type in ("Column", "Calculated Column"):
+                model_role = "Calculation group column"
+            else:
+                model_role = "Calculation group measure"
         results.append({
             "item": item,
             "status": status,
@@ -4560,6 +4817,15 @@ def analyze(
             "hierarchies": hierarchy_names,
             "broken_dax_refs": [detail["ref"] for detail in broken_dax_refs.get(identity, [])],
             "broken_dax_ref_details": broken_dax_refs.get(identity, []),
+            "analysis_limitation_ids": limitation_ids,
+            "perspectives": [
+                {"perspective": member.perspective, "source_file": member.source_file, "line": member.line}
+                for member in (perspective_index.get(nkey, []) if item.source_kind == "model" else [])
+            ],
+            "table_kind": model_metadata.table_kind(item.table) if item.source_kind == "model" else "Report",
+            "model_role": model_role,
+            "table_dependents": (table_dependents_by_table.get(item.table.casefold(), [])
+                                 if item.source_kind == "model" else []),
         })
 
     checkpoint("Building table summaries")
@@ -4574,8 +4840,10 @@ def analyze(
         all_usages,
         all_relationship_details,
         _display_graph(dax_col_deps),
-        _display_graph(dax_table_deps),
+        display_table_deps,
         {table: sorted(set(messages), key=str.casefold) for table, messages in field_parameter_issues_by_table.items()},
+        model_metadata=model_metadata,
+        shared_limitation_count=len(coverage_limitations),
     )
     # Navigation evidence for calculation group pages: which items the recorded
     # calculation item expressions can reference. Classification is unchanged.
@@ -4650,14 +4918,30 @@ def analyze(
         "tables": dict(table_stats),
     }
 
+    affected_item_ids = {
+        item_identity(r["item"]) for r in results if r["analysis_limitation_ids"]
+    }
     return {
         "coverage": {"complete": not coverage_limitations, "limitations": coverage_limitations},
+        "analysis_limitations": analysis_limitations,
+        "analysis_limitation_summary": {
+            "distinct_count": len(analysis_limitations),
+            "shared_count": len(coverage_limitations),
+            "targeted_count": len(analysis_limitations) - len(coverage_limitations),
+            "affected_item_count": len(affected_item_ids),
+        },
         "unsupported_metadata": [
-            {"area": ref.area, "source_file": ref.source_file,
+            {"area": ref.area, "source_file": ref.source_file, "feature": ref.feature,
+             "construct": ref.construct, "owner": ref.owner, "line": ref.line, "id": ref.id,
              "targets": [format_item_ref(key) for key in sorted(ref.item_keys)],
-             "unresolved_targets": ref.unresolved_targets or not ref.item_keys}
+             "unresolved_targets": ref.unresolved_targets}
             for ref in all_unsupported_metadata_refs
         ],
+        "model_metadata": {
+            "calculation_groups": model_metadata.calculation_groups,
+            "perspectives": sorted({member.perspective for member in model_metadata.perspective_members},
+                                   key=str.casefold),
+        },
         "items": results,
         "dependency_graphs": graphs,
         "summary": summary,
@@ -4697,6 +4981,27 @@ def _format_warnings_section(results: dict) -> list[str]:
     return lines
 
 
+def _format_analysis_limitations_section(results: dict) -> list[str]:
+    limitations = results.get("analysis_limitations", [])
+    if not limitations:
+        return []
+    summary = results.get("analysis_limitation_summary", {})
+    lines = ["## Analysis Limitations\n"]
+    lines.append(
+        f"{summary.get('distinct_count', len(limitations))} distinct limitations; "
+        f"{summary.get('affected_item_count', 0)} items affected "
+        f"({summary.get('shared_count', 0)} shared, {summary.get('targeted_count', 0)} targeted). "
+        "These are analysis gaps, not report problems.\n")
+    for limitation in limitations:
+        lines.append(f"- **{limitation.get('feature') or limitation.get('area')}** "
+                     f"({limitation.get('owner') or limitation.get('report') or 'unknown owner'}; "
+                     f"{limitation.get('location') or limitation.get('source_file')}) — "
+                     f"Checked: {limitation.get('checked', '')} Unchecked: {limitation.get('unchecked', '')} "
+                     f"Effect: {limitation.get('effect', '')}")
+    lines.append("")
+    return lines
+
+
 def format_full(results: dict) -> str:
     lines = []
     s = results["summary"]
@@ -4705,6 +5010,7 @@ def format_full(results: dict) -> str:
     lines.append(f"**Models**: {', '.join(s['models'])}")
     lines.append(f"**Reports**: {', '.join(s['reports'])}\n")
     lines.extend(_format_warnings_section(results))
+    lines.extend(_format_analysis_limitations_section(results))
 
     lines.append("## Summary\n")
     lines.append("| Metric | Count |")
@@ -4839,6 +5145,9 @@ def format_json_output(results: dict) -> str:
         "warnings": results.get("warnings", []),
         "reportIssues": results.get("report_issues", []),
         "coverage": results.get("coverage", {"complete": False, "limitations": []}),
+        "analysisLimitations": results.get("analysis_limitations", []),
+        "analysisLimitationSummary": results.get("analysis_limitation_summary", {
+            "distinct_count": 0, "shared_count": 0, "targeted_count": 0, "affected_item_count": 0}),
         "items": [],
     }
     for r in results["items"]:
@@ -4858,6 +5167,10 @@ def format_json_output(results: dict) -> str:
             "status": r["status"],
             "removalRisk": r.get("removal_risk", "") or None,
                 "reviewTriggers": r.get("review_triggers", []),
+                "analysisLimitationIds": r.get("analysis_limitation_ids", []),
+                "perspectives": [member["perspective"] for member in r.get("perspectives", [])],
+                "modelRole": r.get("model_role", "") or None,
+                "tableDependents": r.get("table_dependents", []),
                 "brokenDaxRefs": r.get("broken_dax_refs", []),
                 "brokenDaxRefDetails": r.get("broken_dax_ref_details", []),
                 "usages": [
@@ -4959,12 +5272,15 @@ def format_xlsx(results: dict, output_path: str, announce: bool = True) -> None:
     _section_banner(ws_sum, row, "Overall Metrics", 2)
     total_items = s["total_measures"] + s["total_columns"]
     total_used = total_items - s["not_used"] - s.get("broken", 0)
+    limitation_summary = results.get("analysis_limitation_summary", {})
     overall_metrics = [
         ("Total items", total_items),
         ("Total used", total_used),
         ("Broken DAX items", s.get("broken", 0)),
         ("Total unused", s["not_used"]),
         ("Usage references", s["total_usage_refs"]),
+        ("Analysis limitations (distinct)", limitation_summary.get("distinct_count", 0)),
+        ("Items affected by analysis limitations", limitation_summary.get("affected_item_count", 0)),
     ]
     for label, val in overall_metrics:
         row += 1
@@ -5164,7 +5480,9 @@ def create_xlsx_bytes(results: dict) -> bytes:
 # reference is not part of the live visual query. `missing_table`/`missing_column`/
 # `missing_measure`/`missing_report_measure` (severity `error`, i.e. rename
 # fallout) and `inactive_visual_filter_reference` are deliberately excluded --
-# removing those would strip live fields from visuals.
+# removing those would strip live fields from visuals. The usage-level twin of
+# this allow-list is `stale_usage_cleanup_eligible`; both map onto the kinds the
+# writer supports (`report_writer.STALE_CLEANUP_SUPPORTED_KINDS`).
 STALE_CLEANUP_ISSUE_KINDS: dict[str, str] = {
     "stale_visual_selector": "selector",
     "stale_bookmark_projection": "bookmark",
@@ -5172,6 +5490,16 @@ STALE_CLEANUP_ISSUE_KINDS: dict[str, str] = {
 }
 
 STALE_CLEANUP_KIND_CHOICES: list[str] = ["selector", "bookmark", "formatting"]
+
+
+def stale_usage_cleanup_eligible(usage: UsageRef) -> bool:
+    """True when a stale usage maps to an entry the cleanup engine can remove."""
+    return bool(
+        usage.is_stale
+        and usage.stale_kind in STALE_CLEANUP_SUPPORTED_KINDS
+        and usage.artifact_path
+        and usage.source_path
+    )
 
 
 def stale_cleanup_kind(issue: dict) -> Optional[str]:

@@ -1,0 +1,46 @@
+{
+  "name": "RevenueCard",
+  "position": {
+    "x": 40,
+    "y": 40,
+    "width": 360,
+    "height": 180
+  },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Property": "Revenue",
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Sales"
+                    }
+                  }
+                }
+              },
+              "queryRef": "Sales.Revenue"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Property": "Revenue Ignoring TI 01",
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Sales"
+                    }
+                  }
+                }
+              },
+              "queryRef": "Sales.Revenue Ignoring TI 01"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

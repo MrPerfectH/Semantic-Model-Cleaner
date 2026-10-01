@@ -119,7 +119,7 @@ def test_report_health_total_does_not_double_count_stale_or_model_signals():
     items = [{'staleUsageCount': 5, 'brokenDaxRefs': ['A[B]', 'C[D]']}]
     health = webapp._build_report_health(issues, items)
     assert health['totalIssueCount'] == len(issues)
-    assert health['signalCounts'] == {'staleReferences': 5, 'brokenModelReferences': 2, 'unsupportedMetadata': 0}
+    assert health['signalCounts'] == {'staleReferences': 5, 'brokenModelReferences': 2}
 
 
 def test_async_analysis_rejects_platform_binding_changed_during_scan(scope, monkeypatch):
