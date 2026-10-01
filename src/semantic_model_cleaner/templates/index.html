@@ -5834,7 +5834,7 @@ function renderItemDetails() {
   $('detailUsageList').innerHTML = renderUsageDetails(item);
   $('detailStaleUsageList').innerHTML = renderStaleUsageDetails(item);
   $('detailStaleStatus').textContent = '';
-  $('detailBtnCleanStale').disabled = !(item.staleUsageDetails && item.staleUsageDetails.length);
+  $('detailBtnCleanStale').disabled = !cleanupEligibleStaleUsages(item).length;
   renderDetailLayoutContent(item);
   placeDetailModules();
   bindDetailLinks($('itemDetailSection'));
@@ -6643,11 +6643,13 @@ $('detailBtnDelete').onclick = function() { queueDetailAction('delete'); };
 $('detailBtnApply').onclick = async function() { await applyQueuedActions(); };
 $('detailBtnReset').onclick = function() { $('btnReset').click(); };
 
+function cleanupEligibleStaleUsages(item) {
+  // The analyzer marks which stale usages the cleanup engine can remove; anything else is a finding only.
+  return (item.staleUsageDetails || []).filter(function(ref) { return ref.cleanupEligible === true; });
+}
+
 function staleCleanupEntriesForItem(item, seen) {
-  if (!item.staleUsageDetails || !item.staleUsageDetails.length) {
-    return [];
-  }
-  return item.staleUsageDetails.map(function(ref) {
+  return cleanupEligibleStaleUsages(item).map(function(ref) {
     var reportPath = getReportPathForReference(ref);
     if (!reportPath || !ref.artifactPath || !ref.sourcePath) return null;
     var dedupeKey = ref.staleKind === 'bookmark_projection_entry'
@@ -6780,8 +6782,8 @@ async function cleanCurrentItemStaleRefs() {
     alert('Select an item first');
     return;
   }
-  if (!item.staleUsageDetails || !item.staleUsageDetails.length) {
-    alert('No stale PBIR selectors were recorded for this item');
+  if (!cleanupEligibleStaleUsages(item).length) {
+    alert('No stale PBIR selectors with a supported cleanup were recorded for this item');
     return;
   }
   var entries = staleCleanupEntriesForItems([item]);

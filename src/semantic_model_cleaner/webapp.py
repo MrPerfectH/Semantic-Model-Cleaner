@@ -451,6 +451,15 @@ def _highest_severity(items: list[dict]) -> str:
 _REPORT_HEALTH_PREVIEW_LIMIT = 5
 
 
+def _stale_cleanup_entry_key(detail: dict) -> tuple:
+    source_path = detail.get("sourcePath", "")
+    if detail.get("staleKind") == "bookmark_projection_entry":
+        source_path = re.sub(r"(\.singleVisual\.projections\.[^.]+\.\[\d+\]).*", r"\1", source_path)
+        return (detail.get("reportPath", ""), detail.get("staleKind", ""), detail.get("artifactPath", ""), source_path)
+    return (detail.get("reportPath", ""), detail.get("staleKind", ""), detail.get("artifactPath", ""),
+            detail.get("selectorValue") or source_path)
+
+
 def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
     groups: list[dict] = []
 
@@ -506,22 +515,36 @@ def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
     ]
     stale_count = sum(item["staleUsageCount"] for item in stale_items)
     if stale_count:
+        # Findings and cleanup entries differ: only usages the cleanup engine supports
+        # become entries, and the browser dedupes entries on this same key.
+        eligible_entries = {
+            _stale_cleanup_entry_key(detail)
+            for item in items
+            for detail in item.get("staleUsageDetails", [])
+            if detail.get("cleanupEligible") is True
+        }
+        entry_count = len(eligible_entries)
+        description = (
+            "Item-level stale references overlap report issues above and are not added to the total. "
+            "Stale PBIR selectors no longer match live visual or bookmark query fields. "
+        )
+        description += (
+            f"{entry_count} cleanup {'entry' if entry_count == 1 else 'entries'} can be previewed before applying repairs."
+            if entry_count else
+            "No supported cleanup action exists for these findings; review them in the report."
+        )
         groups.append(_group(
             "stale_report_references",
             label="Stale Report References",
             severity="warning",
             count=stale_count,
-            description=(
-                "Item-level stale references overlap report issues above and are not added to the total. "
-                "Stale PBIR selectors no longer match live visual or bookmark query fields. "
-                "Preview cleanup before applying repairs."
-            ),
+            description=description,
             group_items=stale_items,
             action={
                 "type": "cleanup_stale",
                 "label": "Preview stale cleanup",
-                "entryCount": stale_count,
-            },
+                "entryCount": entry_count,
+            } if entry_count else None,
         ))
 
     broken_items = [
@@ -929,6 +952,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
                     "selectorValue": u.selector_value or "",
                     "refType": u.ref_type,
                     "staleKind": u.stale_kind or "",
+                    "cleanupEligible": analyzer.stale_usage_cleanup_eligible(u),
                 }
                 for u in r.get("stale_usages", [])
             ],
@@ -1065,6 +1089,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
                 "selectorValue": u.selector_value or "",
                 "isStale": True,
                 "staleKind": u.stale_kind or "",
+                "cleanupEligible": analyzer.stale_usage_cleanup_eligible(u),
                 "status": status,
                 "usageState": display_state.get("usageState", "Unused"),
                 "issueState": display_state.get("issueState", _issue_state(status, r.get("broken_dax_refs", []), len(r.get("stale_usages", [])))),

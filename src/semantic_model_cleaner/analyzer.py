@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Optional
 
 from semantic_model_cleaner.reference_tokens import dax_tokens
+from semantic_model_cleaner.report_writer import STALE_CLEANUP_SUPPORTED_KINDS
 from semantic_model_cleaner.tmdl_identifiers import (
     parse_tmdl_dotted_ref,
     read_single_quoted_name,
@@ -94,6 +95,9 @@ class UsageRef:
     visual_height: float | int | None = None
 
     report_path: str = ""
+    # Visual filter card with no saved condition ("All"). Evidence of a live filter
+    # control, never of staleness.
+    all_values_filter: bool = False
 
 @dataclass
 class HierarchyInfo:
@@ -2434,6 +2438,7 @@ def _report_issue_from_usage(
     severity: str,
     message: str,
     suggestions: list[dict] | None = None,
+    context: str | None = None,
 ) -> ReportIssue:
     return ReportIssue(
         severity=severity,
@@ -2444,7 +2449,7 @@ def _report_issue_from_usage(
         visual_type=usage.visual_type,
         visual_title=usage.visual_title,
         visual_id=usage.visual_id,
-        context=usage.context,
+        context=usage.context if context is None else context,
         table=usage.table,
         name=usage.name,
         ref_type=usage.ref_type,
@@ -2639,9 +2644,11 @@ def build_report_issues(
         if not issue_type:
             continue
         severity = "error"
-        if usage.stale_kind == "inactive_visual_filter_reference":
+        issue_context = None
+        if usage.all_values_filter:
             issue_type = "inactive_visual_filter_reference"
             severity = "warning"
+            issue_context = "Inactive Filter"
         suggestion_key = (usage.report_path, usage.table.casefold(), usage.name.casefold(), usage.ref_type.casefold())
         if suggestion_key not in suggestion_cache:
             suggestion_cache[suggestion_key] = _fuzzy_suggestions(usage, scoped_items)
@@ -2651,32 +2658,10 @@ def build_report_issues(
             severity=severity,
             message=_missing_issue_message(issue_type, usage),
             suggestions=suggestion_cache[suggestion_key] if severity == "error" else [],
+            context=issue_context,
         ))
 
     for usage in stale_usages:
-        scoped_items = items_for_report(usage)
-        report_entity_names = {item.table.casefold() for item in scoped_items if item.source_kind == "report"}
-        measure_keys = {normalize_key(*item.key) for item in scoped_items if item.item_type == "Measure"}
-        if usage.stale_kind == "inactive_visual_filter_reference":
-            missing_type = _classify_missing_usage(
-                usage,
-                model_table_names=model_table_names,
-                report_entity_names=report_entity_names,
-                measure_keys=measure_keys,
-                column_keys=column_keys,
-                hierarchy_keys=hierarchy_keys,
-            )
-            if not missing_type:
-                continue
-            issues.append(_report_issue_from_usage(
-                usage,
-                issue_type="inactive_visual_filter_reference",
-                severity="warning",
-                message=_missing_issue_message("inactive_visual_filter_reference", usage),
-                suggestions=[],
-            ))
-            continue
-
         if usage.stale_kind == "bookmark_projection_entry":
             issue_type = "stale_bookmark_projection"
         elif usage.stale_kind == "formatting_rule_reference":
@@ -2816,7 +2801,7 @@ def scan_report_visuals(
                 is_formatting_rule_reference = context == "Aggregation" and ref["path"].startswith("visual.objects.")
                 is_stale_selector = bool(entry_selector_value)
                 is_stale_formatting_selector = bool(formatting_selector_prefix)
-                is_inactive_filter_reference = bool(inactive_filter_prefix)
+                is_all_values_filter = bool(inactive_filter_prefix)
                 u = UsageRef(
                     table=ref["table"],
                     name=ref["name"],
@@ -2832,13 +2817,13 @@ def scan_report_visuals(
                     artifact_kind="Visual",
                     artifact_path=_artifact_rel_path(report_path, visual_json),
                     selector_value=entry_selector_value or format_item_ref((ref["table"], ref["name"])),
-                    is_stale=is_stale_selector or is_stale_formatting_selector or is_inactive_filter_reference or is_formatting_rule_reference,
+                    is_stale=is_stale_selector or is_stale_formatting_selector or is_formatting_rule_reference,
                     stale_kind=(
                         "visual_formatting_selector_entry" if is_stale_formatting_selector
-                        else "inactive_visual_filter_reference" if inactive_filter_prefix
                         else "formatting_rule_reference" if is_formatting_rule_reference
                         else ""
                     ),
+                    all_values_filter=is_all_values_filter,
                     visual_hidden=visual_hidden,
                     page_hidden=page_hidden,
                     visual_x=position.get("x"),
@@ -2846,12 +2831,8 @@ def scan_report_visuals(
                     visual_width=position.get("width"),
                     visual_height=position.get("height"),
                 )
-                if is_stale_selector or is_stale_formatting_selector or is_inactive_filter_reference or is_formatting_rule_reference:
-                    u.context = (
-                        "Inactive Filter" if is_inactive_filter_reference
-                        else "Stale Formatting Rule" if is_formatting_rule_reference
-                        else "Stale Formatting"
-                    )
+                if u.is_stale:
+                    u.context = "Stale Formatting Rule" if is_formatting_rule_reference else "Stale Formatting"
                     stale_usages.append(u)
                 else:
                     usages.append(u)
@@ -5164,7 +5145,9 @@ def create_xlsx_bytes(results: dict) -> bytes:
 # reference is not part of the live visual query. `missing_table`/`missing_column`/
 # `missing_measure`/`missing_report_measure` (severity `error`, i.e. rename
 # fallout) and `inactive_visual_filter_reference` are deliberately excluded --
-# removing those would strip live fields from visuals.
+# removing those would strip live fields from visuals. The usage-level twin of
+# this allow-list is `stale_usage_cleanup_eligible`; both map onto the kinds the
+# writer supports (`report_writer.STALE_CLEANUP_SUPPORTED_KINDS`).
 STALE_CLEANUP_ISSUE_KINDS: dict[str, str] = {
     "stale_visual_selector": "selector",
     "stale_bookmark_projection": "bookmark",
@@ -5172,6 +5155,16 @@ STALE_CLEANUP_ISSUE_KINDS: dict[str, str] = {
 }
 
 STALE_CLEANUP_KIND_CHOICES: list[str] = ["selector", "bookmark", "formatting"]
+
+
+def stale_usage_cleanup_eligible(usage: UsageRef) -> bool:
+    """True when a stale usage maps to an entry the cleanup engine can remove."""
+    return bool(
+        usage.is_stale
+        and usage.stale_kind in STALE_CLEANUP_SUPPORTED_KINDS
+        and usage.artifact_path
+        and usage.source_path
+    )
 
 
 def stale_cleanup_kind(issue: dict) -> Optional[str]:
