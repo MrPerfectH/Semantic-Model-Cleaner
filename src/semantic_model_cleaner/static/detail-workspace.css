@@ -262,3 +262,43 @@ body.app-flow-cleanup .view-tab.active .tab-count { color:#514ad5; }
   .rail .view-tabs { flex:0 0 auto; width:max-content; }
   .rail .view-tab,.rail .rail-item,.rail button { flex:0 0 auto; width:auto; }
 }
+
+/* Readable, responsive object details (#85) and obvious parent navigation (#86).
+   Body copy stays at 14px or larger; width follows the viewport while prose keeps a readable measure. */
+.object-workspace { max-width:none; }
+.object-workspace .detail-header-main { flex:1 1 auto; min-width:0; }
+.object-workspace h3 { font-size:clamp(24px,1.4vw + 14px,30px); }
+.object-workspace .detail-meta { font-size:14px; }
+.object-crumbs { font-size:14px; }
+.object-workspace .detail-pagenav { font-size:14px; flex-wrap:wrap; row-gap:8px; }
+.object-summary p,.object-summary strong { font-size:15px; }
+.object-summary p { margin-top:6px; }
+.object-tabs button { font-size:14px; }
+.object-overview-brief>div { font-size:14px; }
+.object-overview-brief strong { font-size:22px; }
+.object-properties { font-size:14px; grid-template-columns:minmax(120px,.9fr) minmax(0,1.4fr); }
+.object-note,.object-workspace .detail-section-head p,.object-scope-reports,.object-scope-warning,.object-review-rail,.object-review-rail p,.object-check,.object-child-filter,.object-evidence-row,.object-child-table,.object-workspace .detail-list li,.object-workspace .detail-empty,.object-workspace .detail-value,.object-workspace .detail-action-status { font-size:14px; }
+.object-child-table td { font-size:14px; }
+.object-evidence-row small,.object-scope-reports small,.object-source-foot,.object-workspace .detail-subtle,.object-child-table th { font-size:12.5px; }
+.object-promotion-fields>label:not(.object-check) { font-size:13px; }
+.object-workspace .detail-code,.object-workspace .detail-editor,.object-review-content pre { font-size:13.5px; }
+.object-workspace .detail-card h4 { font-size:15px; }
+.object-workspace .btn,.object-workspace .btn-sm { font-size:13px; }
+.object-summary p,.object-note,.object-workspace .detail-section-head p,.object-review-rail p { max-width:80ch; }
+.object-subhead { font-size:13px; font-weight:650; color:#63718a; margin:14px 0 6px; text-transform:none; }
+.object-parent-actions { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin-top:10px; min-width:0; }
+.object-parent-actions .btn,.object-parent-actions .object-link { white-space:normal; text-align:left; max-width:100%; overflow-wrap:anywhere; }
+.object-parent-action { font-size:14px; padding:7px 12px; }
+.object-properties dd .object-link { overflow-wrap:anywhere; text-align:right; }
+.object-notice-count { font-weight:500; color:#a16207; margin-left:8px; }
+.object-notice-toggle { display:none; }
+body.object-view #warningBanner { padding:10px 15px; }
+body.object-view #warningBanner h3 { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:0; font-size:14px; }
+body.object-view #warningBanner h3 .object-notice-toggle { display:inline-flex; margin-left:auto; }
+body.object-view #warningBanner:not(.object-notice-open) .warning-note,body.object-view #warningBanner:not(.object-notice-open) #warningList { display:none; }
+body.object-view #warningBanner.object-notice-open .warning-note { margin-top:8px; }
+body.object-view #warningBanner.object-notice-open #warningList { max-height:40vh; overflow:auto; }
+.object-detail-grid { grid-template-columns:minmax(0,1fr) minmax(260px,320px); }
+@media(min-width:1400px) { .object-detail-grid { grid-template-columns:minmax(0,1fr) minmax(300px,360px); gap:28px; } }
+@media(min-width:1900px) { .container { padding-left:48px; padding-right:48px; } .object-detail-grid { grid-template-columns:minmax(0,1fr) minmax(340px,420px); gap:32px; } .object-workspace .detail-code { max-height:480px; } .object-tab-content .detail-ref-tree { max-height:70vh; } }
+@media(max-width:720px) { .object-workspace .detail-header>.btn { width:100%; } .object-parent-action { width:100%; } }

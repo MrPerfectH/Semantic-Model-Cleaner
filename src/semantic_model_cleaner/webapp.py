@@ -1101,6 +1101,9 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
         table_usage_status = _table_usage_status(display_table)
         tables.append({
             "name": table["name"],
+            "isCalculationGroup": bool(table.get("is_calculation_group")),
+            "calculationGroupTargets": table.get("calculation_group_targets", []),
+            "calculationGroupUnresolved": bool(table.get("calculation_group_unresolved")),
             "roleLabel": table.get("role_label", ""),
             "roleReason": table.get("role_reason", ""),
             "usageStatus": table_usage_status,

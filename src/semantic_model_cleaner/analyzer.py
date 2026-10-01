@@ -654,6 +654,30 @@ def parse_model_items(model_path: Path) -> list[ModelItem]:
     return items
 
 
+def parse_calculation_group_tables(model_path: Path) -> set[str]:
+    """Names of tables that declare a TMDL ``calculationGroup`` block.
+
+    This is a presentation hint for navigation labels only; cleanup
+    classification of calculation group metadata stays with the unsupported
+    metadata scan.
+    """
+    tables_dir = model_path / "definition" / "tables"
+    if not tables_dir.exists():
+        return set()
+    names: set[str] = set()
+    for filepath in sorted(tables_dir.glob("*.tmdl")):
+        current_table = None
+        for line in filepath.read_text(encoding="utf-8-sig").splitlines():
+            if not line.startswith("\t") and line.startswith("table "):
+                current_table = unquote_tmdl_name(line[6:].strip())
+                continue
+            if not current_table or not line.startswith("\t") or line.startswith("\t\t"):
+                continue
+            if line.strip().split()[:1] == ["calculationGroup"]:
+                names.add(current_table)
+    return names
+
+
 def _unsupported_semantic_model_error(model_path: Path) -> str | None:
     tables = model_path / "definition" / "tables"
     model_file = model_path / "definition" / "model.tmdl"
@@ -4185,6 +4209,7 @@ def analyze(
     all_hierarchies = []
     all_field_parameters = []
     all_unsupported_metadata_refs = []
+    all_calculation_group_tables: set[str] = set()
     parsed_model_items = []
     warnings: list[AnalyzerWarning] = []
 
@@ -4207,6 +4232,9 @@ def analyze(
         all_rls_refs.extend(parse_rls_roles(model_path))
         all_hierarchies.extend(parse_hierarchies(model_path))
         all_unsupported_metadata_refs.extend(parse_unsupported_metadata_refs(model_path))
+        all_calculation_group_tables |= {
+            name.casefold() for name in parse_calculation_group_tables(model_path)
+        }
         all_field_parameters.extend(
             resolve_field_parameter_targets(
                 parse_field_parameters(model_path, warnings),
@@ -4549,6 +4577,24 @@ def analyze(
         _display_graph(dax_table_deps),
         {table: sorted(set(messages), key=str.casefold) for table, messages in field_parameter_issues_by_table.items()},
     )
+    # Navigation evidence for calculation group pages: which items the recorded
+    # calculation item expressions can reference. Classification is unchanged.
+    source_file_by_table = {}
+    for item in parsed_model_items:
+        if item.source_file and item.table.casefold() not in source_file_by_table:
+            source_file_by_table[item.table.casefold()] = Path(item.source_file).resolve()
+    calculation_refs_by_file: dict[Path, list[UnsupportedMetadataRef]] = defaultdict(list)
+    for model_path in models:
+        for ref in all_unsupported_metadata_refs:
+            if ref.area == "Calculation Groups" and ref.source_file:
+                calculation_refs_by_file[(model_path / ref.source_file).resolve()].append(ref)
+    for summary in table_summaries:
+        is_calculation_group = summary["name"].casefold() in all_calculation_group_tables
+        summary["is_calculation_group"] = is_calculation_group
+        refs = calculation_refs_by_file.get(source_file_by_table.get(summary["name"].casefold()), []) if is_calculation_group else []
+        summary["calculation_group_targets"] = sorted(
+            {format_item_ref(key) for ref in refs for key in ref.item_keys}, key=str.casefold)
+        summary["calculation_group_unresolved"] = any(ref.unresolved_targets for ref in refs)
 
     table_stats: dict[str, dict] = defaultdict(lambda: {
         "total": 0, "used": 0, "unused": 0,
