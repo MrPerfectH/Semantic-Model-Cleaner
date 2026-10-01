@@ -273,11 +273,16 @@ def _table_usage_status(table_summary: dict) -> str:
         return f"BROKEN ({count} field parameter {noun})"
     used_items = int(table_summary.get("used_item_count", 0) or 0)
     usage_refs = int(table_summary.get("usage_ref_count", 0) or 0)
+    external = table_summary.get("external_dax_dependents") or []
 
+    external_note = ""
+    if external:
+        count = len(external)
+        external_note = f"{count} DAX {'consumer' if count == 1 else 'consumers'} outside this table"
     if used_items == 0:
-        return "NOT USED"
+        return f"INDIRECT (via: {external_note})" if external_note else "NOT USED"
     if usage_refs == 0:
-        return "INDIRECT (via: model dependencies)"
+        return "INDIRECT (via: model dependencies" + (f"; {external_note}" if external_note else "") + ")"
     return "USED"
 
 
@@ -285,7 +290,9 @@ def _table_usage_state(table_summary: dict) -> str:
     used_items = int(table_summary.get("used_item_count", 0) or 0)
     usage_refs = int(table_summary.get("usage_ref_count", 0) or 0)
     if used_items == 0:
-        return "Unused"
+        # Retained DAX outside the table that references the table itself is a
+        # dependency even when no child item is used or indirectly used.
+        return "Indirect" if table_summary.get("external_dax_dependents") else "Unused"
     if usage_refs == 0:
         return "Indirect"
     return "Used"
@@ -568,40 +575,38 @@ def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
             group_items=broken_items,
         ))
 
-    unsupported_items = []
-    unsupported_count = 0
-    for item in items:
-        triggers = [
-            trigger for trigger in item.get("reviewTriggers", [])
-            if str(trigger).startswith("Unsupported Metadata:")
-        ]
-        if not triggers:
-            continue
-        unsupported_count += len(triggers)
-        unsupported_items.append({
-            "type": item.get("type", ""),
-            "table": item.get("table", ""),
-            "name": item.get("name", ""),
-            "reviewTriggers": triggers,
-        })
-    if unsupported_count:
-        groups.append(_group(
-            "unsupported_metadata",
-            label="Unsupported Metadata",
-            severity="warning",
-            count=unsupported_count,
-            description=(
-                "Cleanup recommendations were downgraded to Review because documented metadata "
-                "can hide dependencies the app does not fully analyze yet."
-            ),
-            group_items=unsupported_items,
-        ))
-
+    # Model analysis limitations (Unsupported Metadata, incomplete scans) are not
+    # report problems. They ship on the separate Analysis limitations surface.
     return {
         "totalIssueCount": len(report_issues),
-        "signalCounts": {"staleReferences": stale_count, "brokenModelReferences": broken_count,
-                         "unsupportedMetadata": unsupported_count},
+        "signalCounts": {"staleReferences": stale_count, "brokenModelReferences": broken_count},
         "groups": groups,
+    }
+
+
+def _build_analysis_limitations(results: dict, items: list[dict]) -> dict:
+    """Separate surface: distinct limitations with explicit units and affected items."""
+    limitations = [dict(limitation) for limitation in results.get("analysis_limitations", [])]
+    affected: dict[str, list[dict]] = {limitation["id"]: [] for limitation in limitations}
+    for item in items:
+        for limitation_id in item.get("analysisLimitationIds", []):
+            if limitation_id in affected:
+                affected[limitation_id].append({"type": item.get("type", ""), "table": item.get("table", ""),
+                                                "name": item.get("name", "")})
+    for limitation in limitations:
+        rows = affected.get(limitation["id"], [])
+        limitation["affectedItemCount"] = len(rows)
+        limitation["affectedItems"] = rows[:_REPORT_HEALTH_PREVIEW_LIMIT]
+    affected_items = {(item["type"], item["table"], item["name"], item.get("sourceFile"))
+                      for item in items if item.get("analysisLimitationIds")}
+    shared = [limitation for limitation in limitations if limitation.get("scope") == "shared"]
+    return {
+        "distinctCount": len(limitations),
+        "sharedCount": len(shared),
+        "targetedCount": len(limitations) - len(shared),
+        "affectedItemCount": len(affected_items),
+        "coverageComplete": not shared,
+        "limitations": limitations,
     }
 
 
@@ -886,6 +891,15 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             "statusDetail": status,
             "removalRisk": r.get("removal_risk", "") or None,
             "reviewTriggers": r.get("review_triggers", []),
+            "analysisLimitationIds": r.get("analysis_limitation_ids", []),
+            "perspectiveMemberships": [
+                {"perspective": member["perspective"], "sourceFile": member["source_file"]}
+                for member in r.get("perspectives", [])
+            ],
+            "tableKind": r.get("table_kind", "") or ("Report" if item.source_kind == "report" else "Table"),
+            "modelRole": r.get("model_role", "") or None,
+            "tableDependentItems": r.get("table_dependents", []),
+            "tableDependentCount": len(r.get("table_dependents", [])),
             "brokenDaxRefs": r.get("broken_dax_refs", []),
             "brokenDaxRefDetails": r.get("broken_dax_ref_details", []),
             "reportCount": len(report_paths_used),
@@ -1131,6 +1145,11 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             "calculationGroupUnresolved": bool(table.get("calculation_group_unresolved")),
             "roleLabel": table.get("role_label", ""),
             "roleReason": table.get("role_reason", ""),
+            "tableKind": table.get("table_kind", "Table"),
+            "calculationItems": table.get("calculation_items", []),
+            "perspectives": table.get("perspectives", []),
+            "cleanupRecommendation": table.get("cleanup_recommendation", ""),
+            "cleanupReason": table.get("cleanup_reason", ""),
             "usageStatus": table_usage_status,
             "usageState": _table_usage_state(display_table),
             "issueState": " / ".join(key for key, count in issue_counts.items() if count),
@@ -1197,6 +1216,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
         "warnings": results.get("warnings", []),
         "reportIssues": report_issues,
         "reportHealth": _build_report_health(report_issues, items),
+        "analysisLimitations": _build_analysis_limitations(results, items),
         "rootCauseGroups": _build_report_root_cause_groups(report_issues),
         "items": items,
         "references": references,

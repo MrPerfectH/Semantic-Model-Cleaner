@@ -1,0 +1,24 @@
+/// KPI flags shown on scorecards. Mentions kpi, targetExpression and statusExpression
+/// in prose only; this table declares no KPI.
+table 'KPI Selector'
+	// kpi selector comment: no kpi object is declared anywhere in this file
+	column 'KPI Name'
+		dataType: string
+		description: KPI flag label used by kpi cards
+		sourceColumn: KPI Name
+
+	column 'KPI Flag'
+		dataType: boolean
+		sourceColumn: KPI Flag
+
+	measure 'KPI Label' = "kpi: " & SELECTEDVALUE('KPI Selector'[KPI Name])
+
+	measure 'KPI Count' =
+			VAR kpi = COUNTROWS('KPI Selector')
+			RETURN kpi
+		displayFolder: KPI
+
+	partition 'KPI Selector' = m
+		mode: import
+		source =
+			#table({"KPI Name", "KPI Flag"}, {{"Synthetic", true}})

@@ -616,11 +616,10 @@ def test_serialize_results_marks_stale_only_usage_and_stale_details():
 
 def test_api_serialization_groups_report_health_workflow():
     results = _fake_results()
-    unsupported_reason = (
-        "Unsupported Metadata: Perspectives in definition/perspectives/Executive.tmdl "
-        "can reference Sales[Revenue]. Hidden dependency: perspective membership may "
-        "keep this field available outside scanned report visuals. User harm: deleting "
-        "it could break curated perspective views."
+    perspective_reason = (
+        "Member of perspective Executive (definition/perspectives/Executive.tmdl). "
+        "Removing the item also removes this perspective member; membership alone "
+        "does not prove a report executes it."
     )
     results["report_issues"] = [
         {
@@ -645,7 +644,7 @@ def test_api_serialization_groups_report_health_workflow():
         },
     ]
     results["items"][0]["removal_risk"] = "Review"
-    results["items"][0]["review_triggers"] = [unsupported_reason]
+    results["items"][0]["review_triggers"] = [perspective_reason]
     results["items"][0]["stale_usages"] = [
         analyzer.UsageRef(
             table="Sales",
@@ -669,12 +668,13 @@ def test_api_serialization_groups_report_health_workflow():
 
     health = payload["reportHealth"]
     assert health["totalIssueCount"] == 2  # Item signals must not inflate report issue totals.
+    # Model analysis limitations are not Report Health groups.
     assert [group["key"] for group in health["groups"]] == [
         "invalid_pbir_json",
         "report_extension_metadata",
         "stale_report_references",
-        "unsupported_metadata",
     ]
+    assert "unsupportedMetadata" not in health["signalCounts"]
     stale_group = next(group for group in health["groups"] if group["key"] == "stale_report_references")
     assert stale_group["count"] == 1
     assert stale_group["action"] == {
@@ -682,8 +682,11 @@ def test_api_serialization_groups_report_health_workflow():
         "label": "Preview stale cleanup",
         "entryCount": 1,
     }
-    unsupported_group = next(group for group in health["groups"] if group["key"] == "unsupported_metadata")
-    assert unsupported_group["items"][0]["reviewTriggers"] == [unsupported_reason]
+    assert payload["items"][0]["reviewTriggers"] == [perspective_reason]
+    assert payload["analysisLimitations"] == {
+        "distinctCount": 0, "sharedCount": 0, "targetedCount": 0,
+        "affectedItemCount": 0, "coverageComplete": True, "limitations": [],
+    }
 
 
 def test_build_report_root_cause_groups_collapses_by_target():
@@ -847,13 +850,12 @@ def test_api_analyze_includes_review_triggers(monkeypatch, tmp_path):
     assert payload["references"][0]["reviewTriggers"] == ["Item is hidden"]
 
 
-def test_api_serialization_preserves_unsupported_metadata_review_reason():
+def test_api_serialization_preserves_perspective_review_reason():
     results = _fake_results()
     reason = (
-        "Unsupported Metadata: Perspectives in definition/perspectives/Executive.tmdl "
-        "can reference Sales[Revenue]. Hidden dependency: perspective membership may "
-        "keep this field available outside scanned report visuals. User harm: deleting "
-        "it could break curated perspective views."
+        "Member of perspective Executive (definition/perspectives/Executive.tmdl). "
+        "Removing the item also removes this perspective member; membership alone "
+        "does not prove a report executes it."
     )
     results["items"][0]["removal_risk"] = "Review"
     results["items"][0]["review_triggers"] = [reason]
@@ -929,9 +931,17 @@ def test_api_analyze_product_qa_workspace_exposes_report_health_groups():
     assert {
         "stale_report_references",
         "broken_model_references",
-        "unsupported_metadata",
         "invalid_pbir_json",
     } <= health_keys
+    assert "unsupported_metadata" not in health_keys
+    limitations = payload["analysisLimitations"]
+    assert limitations["distinctCount"] == len(limitations["limitations"]) >= 1
+    assert all(limitation["kind"] == "invalid_report_json" for limitation in limitations["limitations"])
+    assert limitations["affectedItemCount"] >= 1
+    perspective_item = next(item for item in payload["items"] if item["name"] == "Perspective Revenue")
+    assert perspective_item["perspectiveMemberships"] == [
+        {"perspective": "Executive", "sourceFile": "definition/perspectives/Executive.tmdl"}
+    ]
     assert any(
         item["table"] == "Report Metrics"
         and item["name"] == "Report Margin"

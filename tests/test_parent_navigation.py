@@ -55,10 +55,10 @@ def test_table_summaries_carry_navigation_hint_without_changing_classification(p
     calc = summaries['Time Intelligence']
     assert calc['is_calculation_group'] is True
     assert calc['calculation_group_targets'] == ['Sales[Amount]']
-    assert calc['calculation_group_unresolved'] is False
+    assert calc['calculation_group_unresolved'] is True  # SELECTEDMEASURE requires dynamic coverage
     rows = {row['item'].name: row for row in result['items']}
     assert rows['Amount']['removal_risk'] == 'Review'
-    assert rows['Spare']['removal_risk'] == 'Safe'
+    assert rows['Spare']['removal_risk'] == 'Review'  # shared dynamic calculation-group gap
     payload = web_app._serialize_results(result, [str(model)])
     tables = {table['name']: table for table in payload['tables']}
     assert tables['Time Intelligence']['isCalculationGroup'] is True

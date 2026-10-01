@@ -1,0 +1,7 @@
+perspective Executive
+	perspectiveTable Sales
+		perspectiveMeasure Revenue
+		perspectiveMeasure 'Revenue Goal'
+
+	perspectiveTable 'Time Intelligence'
+		perspectiveColumn Name

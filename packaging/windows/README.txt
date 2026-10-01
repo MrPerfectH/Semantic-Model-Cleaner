@@ -1,4 +1,4 @@
-Semantic Model Cleaner 0.4.0b2 (public beta)
+Semantic Model Cleaner 0.4.0b3 (public beta)
 ================================================
 
 1. Extract the complete ZIP to a local folder.
@@ -10,4 +10,4 @@ This beta is unsigned, so Windows may show a reputation warning. Verify the
 ZIP against its SHA-256 file on the GitHub prerelease page before extracting.
 
 Support and known limits:
-https://github.com/MrPerfectH/Semantic-Model-Cleaner/blob/v0.4.0b2/docs/support.md
+https://github.com/MrPerfectH/Semantic-Model-Cleaner/blob/v0.4.0b3/docs/support.md

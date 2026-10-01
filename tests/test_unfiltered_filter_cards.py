@@ -292,3 +292,35 @@ def test_cli_dry_run_reports_only_the_genuine_stale_selector(workspace, capsys):
     assert payload["candidate_count"] == 1
     assert [c["selectorValue"] for c in payload["candidates"]] == ["Sales.Legacy Margin"]
     assert _snapshot(workspace) == before
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="Node.js unavailable")
+@pytest.mark.parametrize("template", TEMPLATES)
+def test_bulk_stale_cleanup_excludes_inactive_cards_and_orphan_bookmarks(template):
+    html = (ROOT / "src/semantic_model_cleaner/templates" / template).read_text()
+    functions = []
+    for name in ("getReportPathByName", "getReportPathForReference", "isReportIssueStale",
+                 "isReportIssueCleanup", "reportIssueCleanupEntry", "reportIssueActionEntry",
+                 "reportCleanupEntriesForIssues"):
+        match = re.search(r"function " + name + r"\([^)]*\) \{.*?\n\}", html, re.S)
+        assert match, (template, name)
+        functions.append(match.group())
+    issues = [{"reportPath": "/demo.Report", "artifactPath": "visual.json",
+               "sourcePath": f"visual.objects.[{i}]", "issueType": kind,
+               "selectorValue": "Sales.Old"}
+              for i, kind in enumerate(("stale_visual_selector", "inactive_visual_filter_reference",
+                                        "orphan_bookmark_visual_state"))]
+    script = ("var chosenReports=[{name:'Demo',path:'/demo.Report'}];\n"
+              + "\n".join(functions) + "\nvar issues=" + json.dumps(issues) + ";\n"
+              + "process.stdout.write(JSON.stringify({selected:reportCleanupEntriesForIssues(issues),"
+              + "all:reportCleanupEntriesForIssues(issues.filter(isReportIssueCleanup)),"
+              + "explicit:reportIssueActionEntry(issues[1],'remove')}));")
+    result = subprocess.run([shutil.which("node"), "-e", script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    for scope in ("selected", "all"):
+        assert len(payload[scope]["stale"]) == 1
+        assert payload[scope]["stale"][0]["source_path"] == "visual.objects.[0]"
+        assert payload[scope]["remove"] == []
+    assert payload["explicit"]["action"] == "remove"
+    assert payload["explicit"]["source_path"] == "visual.objects.[1]"
