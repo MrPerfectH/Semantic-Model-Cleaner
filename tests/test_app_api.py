@@ -770,7 +770,11 @@ def test_report_health_groups_truncate_previews_for_large_issue_sets():
             "table": "T",
             "name": f"C{i}",
             "staleUsageCount": 3,
-            "staleUsageDetails": [{"report": "R", "page": "P"}] * 3,
+            "staleUsageDetails": [
+                {"report": "R", "page": "P", "reportPath": "R", "artifactPath": f"v{i}.json",
+                 "selectorValue": f"s{n}", "cleanupEligible": True}
+                for n in range(3)
+            ],
             "brokenDaxRefs": [],
             "reviewTriggers": [],
         }

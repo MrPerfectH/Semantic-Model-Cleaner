@@ -1645,9 +1645,23 @@ def _remove_formatting_rule_entries(obj, stale_values: set[str], removed: list[d
             _remove_formatting_rule_entries(item, stale_values, removed, path_parts + [f"[{idx}]"])
 
 
+# "" is a plain stale visual selector entry; "exact_reference" is a user-selected row removal.
+STALE_CLEANUP_SUPPORTED_KINDS = frozenset({
+    "",
+    "bookmark_projection_entry",
+    "visual_formatting_selector_entry",
+    "formatting_rule_reference",
+})
+_CLEANUP_ENTRY_KINDS = STALE_CLEANUP_SUPPORTED_KINDS | {"exact_reference"}
+
+
 def cleanup_stale_metadata_selectors(*, entries: list[dict], dry_run: bool = False) -> dict:
     if not entries:
         return {"ok": False, "error": "No stale selector entries were provided"}
+    for entry in entries:
+        entry_kind = str(entry.get("stale_kind", "") or "").strip()
+        if entry_kind not in _CLEANUP_ENTRY_KINDS and entry.get("action") != "remove":
+            return {"ok": False, "error": f"Unsupported stale cleanup kind: {entry_kind}. Nothing was changed."}
 
     selector_grouped: dict[Path, set[str]] = {}
     formatting_selector_grouped: dict[Path, set[str]] = {}
