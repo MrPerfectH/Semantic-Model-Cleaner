@@ -105,16 +105,16 @@ def test_fixture_is_deterministic_and_refuses_existing_content(tmp_path, capsys)
     assert 'refusing' in capsys.readouterr().out
     assert snapshot(first['root']) == original
     output_file = tmp_path / 'file'
-    output_file.write_text('retain this')
+    output_file.write_text('retain this', encoding="utf-8")
     with pytest.raises(ValueError):
         generator.generate_fixture(output_file)
-    assert output_file.read_text() == 'retain this'
+    assert output_file.read_text(encoding="utf-8") == 'retain this'
 
 
 def test_fixture_refuses_output_symlinks(tmp_path):
     target = tmp_path / 'existing'
     target.mkdir()
-    (target / 'keep.txt').write_text('retain this')
+    (target / 'keep.txt').write_text('retain this', encoding="utf-8")
     original = snapshot(target)
     link = tmp_path / 'link'
     try:

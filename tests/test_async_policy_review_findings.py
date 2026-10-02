@@ -29,10 +29,10 @@ def isolated_app(monkeypatch, tmp_path):
     monkeypatch.setattr(webapp, '_analysis_jobs', jobs)
     model, report = tmp_path / 'Demo.SemanticModel', tmp_path / 'Demo.Report'
     (model / "definition").mkdir(parents=True)
-    (model / "definition/model.tmdl").write_text("model Model\n")
+    (model / "definition/model.tmdl").write_text("model Model\n", encoding="utf-8")
     report.mkdir()
     (report / "definition.pbir").write_text(
-        '{"datasetReference":{"byPath":{"path":"../Demo.SemanticModel"}}}')
+        '{"datasetReference":{"byPath":{"path":"../Demo.SemanticModel"}}}', encoding="utf-8")
     webapp._state.update(workspace=str(tmp_path), model_paths=[str(model)],
                          report_paths=[str(report)], last_results={'snapshot': 'previous'})
     monkeypatch.setattr(webapp, '_serialize_results', lambda result, **kwargs:
@@ -86,7 +86,7 @@ def test_analysis_does_not_overwrite_a_newer_selected_scope(isolated_app, monkey
     newer_model = str(tmp_path / 'New.SemanticModel')
     newer_report = str(tmp_path / 'New.Report')
     (tmp_path / 'New.SemanticModel/definition').mkdir(parents=True)
-    (tmp_path / 'New.SemanticModel/definition/model.tmdl').write_text('model New\n')
+    (tmp_path / 'New.SemanticModel/definition/model.tmdl').write_text('model New\n', encoding="utf-8")
     try:
         assert read.wait(3)
         monkeypatch.setattr(webapp.analyzer, 'discover_models', lambda roots: [tmp_path / 'New.SemanticModel'])
@@ -114,10 +114,10 @@ def test_repository_owner_text_cannot_inject_input_attributes(layout):
     if not node:
         pytest.skip('Node required to execute UI helpers')
     source_root = Path(webapp.__file__).parent
-    template = (source_root / 'templates' / layout).read_text()
+    template = (source_root / 'templates' / layout).read_text(encoding="utf-8")
     start = template.index('function esc(s) {')
     escape = template[start:template.index('\nfunction itemKey', start)]
-    script = (source_root / 'static/policy-workspace.js').read_text()
+    script = (source_root / 'static/policy-workspace.js').read_text(encoding="utf-8")
     start = script.index('  function formField(')
     field = script[start:script.index('\n  async function call(', start)]
     # A div's innerHTML serializer escapes &, < and > in a text node, but not
@@ -149,7 +149,7 @@ console.log(JSON.stringify(formField('owner','Owner','text','" autofocus onfocus
 def test_external_metadata_edit_discards_scan(isolated_app, monkeypatch):
     client, jobs, model, report = isolated_app
     metadata = model / 'model.tmdl'
-    metadata.write_text('model Original')
+    metadata.write_text('model Original', encoding="utf-8")
     read, release = threading.Event(), threading.Event()
 
     def analyze(**kwargs):
@@ -163,7 +163,7 @@ def test_external_metadata_edit_discards_scan(isolated_app, monkeypatch):
     })
     try:
         assert read.wait(3)
-        metadata.write_text('model Changed')
+        metadata.write_text('model Changed', encoding="utf-8")
     finally:
         release.set()
     job = wait_terminal(jobs, response.json['job']['id'])

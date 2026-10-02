@@ -44,15 +44,15 @@ def main(argv=None):
             target = Path(args.output).resolve()
             if any(target.is_relative_to(p.resolve()) for p in [*models, *reports, *analyzer.discover_models([root]), *analyzer.discover_reports([root])]) or target == Path(args.operations).resolve():
                 raise change_plan.PlanError('Plan output must be outside discovered or selected artifacts and must not replace the operations file.')
-            raw = json.loads(Path(args.operations).read_text())
+            raw = json.loads(Path(args.operations).read_text(encoding="utf-8"))
             operations = raw.get('operations') if isinstance(raw, dict) else raw
             result = change_plan.create_plan(models[0], reports, operations)
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(json.dumps(result, indent=2) + '\n')
+            target.write_text(json.dumps(result, indent=2) + '\n', encoding="utf-8")
             print(json.dumps({'ok': True, 'plan_file': str(target), 'id': result['id'],
                               'changed_files': len(result['changes']), 'validation': result['validation']}))
         elif args.command == 'history':
-            print(json.dumps({'receipts': [json.loads(p.read_text()) for p in sorted(Path(args.journal_dir).glob('*.receipt.json'))]}, indent=2))
+            print(json.dumps({'receipts': [json.loads(p.read_text(encoding="utf-8")) for p in sorted(Path(args.journal_dir).glob('*.receipt.json'))]}, indent=2))
         elif args.command == 'diff':
             if args.candidate:
                 print(json.dumps(model_compare.compare_models(Path(args.baseline), Path(args.candidate)), indent=2))
