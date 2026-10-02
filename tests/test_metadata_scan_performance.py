@@ -1,4 +1,4 @@
-"""Large translation metadata must not copy its remaining text per token."""
+"""Large metadata text must not copy its remaining text per token."""
 
 import pytest
 
@@ -20,28 +20,28 @@ class SliceCountingText(str):
         return result
 
 
-@pytest.mark.parametrize("translation_count", [128, 512])
-def test_translation_reference_scan_has_linear_text_copy_budget(translation_count):
-    # Real cultures contain long runs of punctuation, identifiers and Unicode
-    # captions between references. Include a non-BMP character so copied suffixes
-    # also represent the expensive wide-string case seen in customer metadata.
-    caption = "\t\tcaption: Zażółć gęślą jaźń; 日本語; αβ; 😀; translated_label\n"
-    metadata = SliceCountingText(
-        "culture pl-PL\n\tmetadata: Sales[Revenue]\n"
-        + caption * translation_count
+@pytest.mark.parametrize("filler_count", [128, 512])
+def test_qualified_reference_scan_has_linear_text_copy_budget(filler_count):
+    # Long DAX and metadata expressions contain long runs of punctuation,
+    # identifiers and Unicode between references. Include a non-BMP character
+    # so copied suffixes also represent the expensive wide-string case.
+    filler = "\t\tcaption: Zażółć gęślą jaźń; 日本語; αβ; 😀; translated_label\n"
+    text = SliceCountingText(
+        "metadata: Sales[Revenue]\n"
+        + filler * filler_count
         + "\tmetadata: 'Customer''s 地域'[Label]]Text]\n"
-        + caption * translation_count
+        + filler * filler_count
         + "\tmetadata: Salesą[Amount]\n"
     )
 
-    assert analyzer._extract_item_keys_from_metadata_text(metadata) == {
+    assert analyzer._extract_dax_qualified_refs_from_text(text) == {
         ("Sales", "Revenue"),
         ("Customer's 地域", "Label]Text"),
         ("Salesą", "Amount"),
     }
     # Allow several complete copies; repeatedly slicing the remaining suffix
     # consumes hundreds of input lengths even at the smaller fixture size.
-    assert metadata.copied_characters <= 4 * len(metadata), (
-        f"Copied {metadata.copied_characters:,} characters while scanning "
-        f"{len(metadata):,} characters of metadata"
+    assert text.copied_characters <= 4 * len(text), (
+        f"Copied {text.copied_characters:,} characters while scanning "
+        f"{len(text):,} characters of text"
     )

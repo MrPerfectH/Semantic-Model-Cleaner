@@ -2464,6 +2464,7 @@ function mainSearchTextForItem(item) {
     item.modelRole || '',
     item.tableKind || '',
     (item.perspectiveMemberships || []).map(function(member) { return 'perspective ' + member.perspective; }),
+    (item.translationMemberships || []).map(function(translation) { return 'translation culture ' + translation.culture; }),
     sourceSummary(item),
     item.sourceArtifact || '',
     issueAndReviewSearchText(item)
@@ -5256,7 +5257,8 @@ function renderResultGuideLegend() {
         { label: 'Analysis limitation', definition: 'A documented TMDL or PBIR feature the app detects but cannot fully check, such as a calculation item expression, a KPI expression or an unreadable report file. It names the construct, its source location, what was checked and what remains unchecked. It does not mean the model is broken.' },
         { label: 'Report Health', definition: 'Report-side problems in PBIR files: references to missing items, stale selectors and invalid JSON, with repair actions.' },
         { label: 'Unused in scope', definition: 'No use found in the selected reports and supported model metadata. When coverage is incomplete, this is not a claim of global non-use.' },
-        { label: 'Perspective membership', definition: 'Concrete metadata evidence that an item belongs to a perspective. Removal also removes the member; membership alone does not prove a report executes the item.' }
+        { label: 'Perspective membership', definition: 'Concrete metadata evidence that an item belongs to a perspective. Removal also removes the member; membership alone does not prove a report executes the item.' },
+        { label: 'Translation membership', definition: 'Concrete culture metadata evidence that a table or item has a translated caption, description or display folder (culture, file and line). Removal also removes the translation; a translation does not prove report use and is not an analysis limitation.' }
       ]
     }
   ];
