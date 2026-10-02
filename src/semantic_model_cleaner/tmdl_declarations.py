@@ -332,3 +332,95 @@ def extract_perspective_members(text: str) -> list[PerspectiveMember]:
                     members.append(PerspectiveMember(declaration.name, table_member.name,
                                                      member.name, kind, member.line))
     return members
+
+
+# Translated properties TMDL emits under `culture/translations`. The
+# `translated*` spellings are the TOM ObjectTranslation property names some
+# tools serialize; both are accepted.
+_TRANSLATION_PROPERTIES = {
+    "caption": "caption", "translatedCaption": "caption",
+    "description": "description", "translatedDescription": "description",
+    "displayFolder": "displayFolder", "translatedDisplayFolder": "displayFolder",
+}
+_TRANSLATED_ITEM_KINDS = ("measure", "column", "hierarchy")
+
+
+@dataclass
+class TranslationEntry:
+    """One translated object in a culture: the object has translations in that culture."""
+    culture: str
+    table: str
+    name: str  # empty for table-level translation
+    kind: str  # "table" | "measure" | "column" | "hierarchy"
+    properties: list[str]  # translated properties, e.g. ["caption", "displayFolder"]
+    line: int
+
+
+@dataclass
+class LinguisticMetadataBlock:
+    culture: str
+    line: int
+
+
+def _translated_properties(declaration: TmdlDeclaration) -> list[str]:
+    found: list[str] = []
+    for child in declaration.children:
+        prop = _TRANSLATION_PROPERTIES.get(child.keyword)
+        if prop and child.kind == "value" and prop not in found:
+            found.append(prop)
+    return found
+
+
+def extract_culture_metadata(text: str) -> tuple[list[TranslationEntry], list[LinguisticMetadataBlock]]:
+    """Return translated objects and linguistic metadata blocks from one culture file.
+
+    Grammar (TMDL reference, "Translations in TMDL")::
+
+        culture pt-PT
+            translations
+                model Model
+                    table Sales
+                        caption: Vendas
+                        measure 'Sales Amount'
+                            caption: Total de Vendas
+            linguisticMetadata = { ...json... }
+
+    Only `table` declarations under `translations/model` (or directly under
+    `translations`) and their `measure`/`column`/`hierarchy` children are
+    translations, and only when they carry a translated property. Names in
+    captions, descriptions, comments or the linguistic metadata payload never
+    produce an entry.
+    """
+    translations: list[TranslationEntry] = []
+    linguistic: list[LinguisticMetadataBlock] = []
+    for declaration in scan_tmdl_declarations(text):
+        if declaration.keyword not in ("culture", "cultureInfo") or declaration.depth != 0:
+            continue
+        culture = declaration.name
+        for child in declaration.children:
+            if child.keyword == "linguisticMetadata":
+                linguistic.append(LinguisticMetadataBlock(culture, child.line))
+                continue
+            if child.keyword != "translations" or child.kind != "object":
+                continue
+            tables: list[TmdlDeclaration] = []
+            for node in child.children:
+                if node.keyword == "model" and node.kind == "object":
+                    tables.extend(table for table in node.children if table.keyword == "table")
+                elif node.keyword == "table":
+                    tables.append(node)
+            for table in tables:
+                if not table.name:
+                    continue
+                properties = _translated_properties(table)
+                if properties:
+                    translations.append(TranslationEntry(culture, table.name, "", "table",
+                                                         properties, table.line))
+                for item in table.children:
+                    if item.keyword not in _TRANSLATED_ITEM_KINDS or not item.name:
+                        continue
+                    properties = _translated_properties(item)
+                    if properties:
+                        translations.append(TranslationEntry(culture, table.name, item.name,
+                                                             item.keyword, properties, item.line))
+    return translations, linguistic

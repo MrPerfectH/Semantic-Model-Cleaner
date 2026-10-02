@@ -31,6 +31,7 @@ from typing import Optional
 from semantic_model_cleaner.reference_tokens import dax_tokens
 from semantic_model_cleaner.report_writer import STALE_CLEANUP_SUPPORTED_KINDS
 from semantic_model_cleaner.tmdl_declarations import (
+    extract_culture_metadata,
     extract_feature_expressions,
     extract_perspective_members,
 )
@@ -208,10 +209,36 @@ class PerspectiveMembership:
 
 
 @dataclass
+class TranslationMembership:
+    """Concrete culture metadata: the object has translations in the named culture."""
+    culture: str
+    table: str
+    name: str  # empty for table-level translation
+    kind: str  # "table" | "measure" | "column" | "hierarchy"
+    properties: list[str]
+    source_file: str
+    line: int = 0
+
+    @property
+    def owner(self) -> str:
+        return f"{self.table}[{self.name}]" if self.name else self.table
+
+    @property
+    def location(self) -> str:
+        return f"{self.source_file}:{self.line}" if self.line else self.source_file
+
+    def to_dict(self) -> dict:
+        return {"culture": self.culture, "owner": self.owner, "kind": self.kind,
+                "properties": list(self.properties), "source_file": self.source_file,
+                "line": self.line}
+
+
+@dataclass
 class ModelMetadata:
     """Declaration-level model facts that are evidence, not usage."""
     calculation_groups: dict[str, dict] = field(default_factory=dict)  # table -> {calculation_items, source_file, line}
     perspective_members: list[PerspectiveMembership] = field(default_factory=list)
+    translations: list[TranslationMembership] = field(default_factory=list)
 
     def table_kind(self, table: str) -> str:
         return "Calculation group" if table in self.calculation_groups else "Table"
@@ -228,6 +255,22 @@ class ModelMetadata:
         for member in self.perspective_members:
             index[member.table.casefold()].add(member.perspective)
         return {table: sorted(names, key=str.casefold) for table, names in index.items()}
+
+    def item_translations(self) -> dict[tuple[str, str], list[TranslationMembership]]:
+        # Hierarchies are not Semantic Model Items; indexing them by name could
+        # attach their translation to an unrelated column or measure.
+        index: dict[tuple[str, str], list[TranslationMembership]] = defaultdict(list)
+        for translation in self.translations:
+            if translation.name and translation.kind in ("measure", "column"):
+                index[normalize_key(translation.table, translation.name)].append(translation)
+        return index
+
+    def table_translations(self) -> dict[str, list[TranslationMembership]]:
+        index: dict[str, list[TranslationMembership]] = defaultdict(list)
+        for translation in self.translations:
+            if not translation.name:
+                index[translation.table.casefold()].append(translation)
+        return index
 
 
 REPORT_EXTENSION_PRIMITIVE_TYPES = {
@@ -805,8 +848,8 @@ def _unsupported_semantic_model_error(model_path: Path) -> str | None:
 def parse_unsupported_metadata_refs(model_path: Path) -> list[UnsupportedMetadataRef]:
     """Return Unsupported Metadata detected from actual TMDL declarations.
 
-    Perspective membership is not an analysis gap; it is concrete metadata and is
-    parsed separately by parse_model_metadata.
+    Perspective membership and culture translations are not analysis gaps; they
+    are concrete metadata and are parsed separately by parse_model_metadata.
     """
     refs: list[UnsupportedMetadataRef] = []
     refs.extend(_parse_unsupported_tmdl_metadata_refs(model_path))
@@ -815,7 +858,8 @@ def parse_unsupported_metadata_refs(model_path: Path) -> list[UnsupportedMetadat
 
 
 def parse_model_metadata(model_path: Path) -> ModelMetadata:
-    """Collect calculation groups and perspective membership from TMDL declarations."""
+    """Collect calculation groups, perspective membership and culture translations
+    from TMDL declarations."""
     metadata = ModelMetadata()
     tables_dir = model_path / "definition" / "tables"
     if tables_dir.is_dir():
@@ -840,6 +884,15 @@ def parse_model_metadata(model_path: Path) -> ModelMetadata:
                     perspective=member.perspective, table=member.table, name=member.name,
                     kind=member.kind, source_file=source_file, line=member.line,
                 ))
+    cultures_dir = model_path / "definition" / "cultures"
+    if cultures_dir.is_dir():
+        for filepath in sorted(cultures_dir.glob("*.tmdl")):
+            source_file = filepath.relative_to(model_path).as_posix()
+            translations, _ = extract_culture_metadata(filepath.read_text(encoding="utf-8-sig"))
+            metadata.translations.extend(TranslationMembership(
+                culture=entry.culture, table=entry.table, name=entry.name, kind=entry.kind,
+                properties=entry.properties, source_file=source_file, line=entry.line,
+            ) for entry in translations)
     return metadata
 
 
@@ -872,8 +925,8 @@ def _unsupported_metadata_info(area: str) -> tuple[str, str]:
             "deleting it could break alternate semantic expressions used by clients",
         ),
         "Cultures/translations": (
-            "culture or translation metadata may reference this field",
-            "deleting it could break localized names, descriptions, or translated metadata",
+            "culture linguistic metadata may describe this field",
+            "deleting it could leave Q&A linguistic metadata describing a missing field",
         ),
     }
     return info.get(area, (default_dependency, default_harm))
@@ -893,21 +946,6 @@ def _unsupported_ref(
         possible_hidden_dependency=hidden_dependency,
         user_harm=user_harm,
     )
-
-
-def _extract_item_keys_from_metadata_text(text: str) -> set[tuple[str, str]]:
-    item_keys = set(_extract_dax_qualified_refs_from_text(text))
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        return item_keys
-
-    for ref in _find_json_refs(data):
-        table = str(ref.get("table", "")).strip()
-        name = str(ref.get("name", "")).strip()
-        if table and name:
-            item_keys.add((table, name))
-    return item_keys
 
 
 _DYNAMIC_DAX_FUNCTIONS = {
@@ -983,30 +1021,25 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
 
 
 def _parse_culture_translation_refs(model_path: Path) -> list[UnsupportedMetadataRef]:
-    definition_dir = model_path / "definition"
-    candidate_dirs = [
-        definition_dir / "cultures",
-        definition_dir / "translations",
-    ]
+    """Detect `linguisticMetadata` blocks in culture files, one ref per culture block.
+
+    Translations are concrete per-object evidence (see parse_model_metadata),
+    not limitations. The linguistic metadata JSON payload is not parsed, and no
+    item reference is ever derived from its text or from any other culture text.
+    """
+    cultures_dir = model_path / "definition" / "cultures"
+    if not cultures_dir.is_dir():
+        return []
     refs: list[UnsupportedMetadataRef] = []
-
-    for candidate_dir in candidate_dirs:
-        if not candidate_dir.exists():
-            continue
-        for filepath in sorted(candidate_dir.rglob("*")):
-            if not filepath.is_file() or filepath.suffix.casefold() not in (".tmdl", ".json"):
-                continue
-            ref = _unsupported_ref(
-                "Cultures/translations",
-                _extract_item_keys_from_metadata_text(filepath.read_text(encoding="utf-8-sig")),
-                filepath,
-                model_path,
-            )
-            ref.feature = "culture or translation metadata"
-            ref.construct = "culture"
-            ref.owner = f"culture file {filepath.name}"
+    for filepath in sorted(cultures_dir.glob("*.tmdl")):
+        _, linguistic = extract_culture_metadata(filepath.read_text(encoding="utf-8-sig"))
+        for block in linguistic:
+            ref = _unsupported_ref("Cultures/translations", set(), filepath, model_path)
+            ref.feature = "linguistic metadata"
+            ref.construct = "culture/linguisticMetadata"
+            ref.owner = f"culture {block.culture}"
+            ref.line = block.line
             refs.append(ref)
-
     return refs
 
 
@@ -1048,18 +1081,33 @@ def _perspective_review_trigger(member: PerspectiveMembership) -> str:
     )
 
 
+def _translation_review_trigger(translation: TranslationMembership) -> str:
+    """Translation Membership is metadata evidence, not proof of report use."""
+    return (
+        f"Translated in culture {translation.culture} ({translation.location}). "
+        f"Removing the item also removes its translation; a translation does not prove report use."
+    )
+
+
 def _limitation_explanation(ref: UnsupportedMetadataRef) -> dict:
     """Explain one Unsupported Metadata construct: what is checked and what is not."""
     targets = sorted(format_item_ref(key) for key in ref.item_keys)
     feature = ref.feature or ref.area
-    if targets:
+    if ref.construct == "culture/linguisticMetadata":
+        checked = ("The linguisticMetadata block was recognized as a declaration of "
+                   f"{ref.owner}. Translations in the same culture are read structurally and "
+                   "listed as Translation Membership on each translated item.")
+    elif targets:
         checked = (f"Direct item references in the expression were resolved: {', '.join(targets)}. "
                    f"Those items stay at Review instead of Safe.")
     elif ref.construct == "measure/kpi":
         checked = "The KPI declaration was recognized; it declares no target, status or trend expression."
     else:
         checked = "The expression was parsed; it references no identifiable model item."
-    if ref.dynamic:
+    if ref.construct == "culture/linguisticMetadata":
+        unchecked = ("The linguistic metadata JSON payload (Q&A synonyms and phrasings) is not parsed; "
+                     "names inside it are never treated as item references.")
+    elif ref.dynamic:
         unchecked = (f"The {feature} is applied to whichever measure is selected at runtime, so "
                      f"it cannot be tied to specific items from TMDL alone.")
     elif ref.unresolved_targets:
@@ -4051,6 +4099,7 @@ def build_table_summaries(
 ) -> list[dict]:
     model_metadata = model_metadata or ModelMetadata()
     table_perspectives = model_metadata.table_perspectives()
+    table_translations = model_metadata.table_translations()
     rows_by_table: dict[str, list[dict]] = defaultdict(list)
     usage_by_table: dict[str, list[UsageRef]] = defaultdict(list)
     relationships_by_table: dict[str, list[RelationshipInfo]] = defaultdict(list)
@@ -4239,6 +4288,11 @@ def build_table_summaries(
         if perspectives:
             signals.append(f"Member of {'perspective' if len(perspectives) == 1 else 'perspectives'} "
                            f"{', '.join(perspectives)}; membership does not prove report use.")
+        translations = [translation.to_dict() for translation in table_translations.get(table.casefold(), [])]
+        if translations:
+            cultures = sorted({translation["culture"] for translation in translations}, key=str.casefold)
+            signals.append(f"Translated in {'culture' if len(cultures) == 1 else 'cultures'} "
+                           f"{', '.join(cultures)}; a translation does not prove report use.")
 
         # Whole-table (whole-group) deletion recommendation. Retained consumers
         # outside the table block it even when no child is directly used.
@@ -4309,6 +4363,7 @@ def build_table_summaries(
             "table_kind": model_metadata.table_kind(table),
             "calculation_items": list((calculation_group or {}).get("calculation_items", [])),
             "perspectives": perspectives,
+            "translations": translations,
             "cleanup_recommendation": cleanup_recommendation,
             "cleanup_reason": cleanup_reason,
             "items": items_in_table,
@@ -4465,6 +4520,7 @@ def analyze(
         parsed_metadata = parse_model_metadata(model_path)
         model_metadata.calculation_groups.update(parsed_metadata.calculation_groups)
         model_metadata.perspective_members.extend(parsed_metadata.perspective_members)
+        model_metadata.translations.extend(parsed_metadata.translations)
         all_field_parameters.extend(
             resolve_field_parameter_targets(
                 parse_field_parameters(model_path, warnings),
@@ -4664,6 +4720,7 @@ def analyze(
 
     # ── Declaration-level metadata evidence ──
     perspective_index = model_metadata.item_perspectives()
+    translation_index = model_metadata.item_translations()
     display_table_deps = _display_graph(dax_table_deps)
     table_dependents_by_table: dict[str, list[str]] = defaultdict(list)
     for item in all_items:
@@ -4775,6 +4832,10 @@ def analyze(
                 review_triggers.extend(
                     _perspective_review_trigger(member) for member in perspective_index.get(nkey, [])
                 )
+                review_triggers.extend(
+                    _translation_review_trigger(translation)
+                    for translation in translation_index.get(nkey, [])
+                )
             if shared_limitation_trigger:
                 review_triggers.append(shared_limitation_trigger)
             if review_triggers:
@@ -4821,6 +4882,10 @@ def analyze(
             "perspectives": [
                 {"perspective": member.perspective, "source_file": member.source_file, "line": member.line}
                 for member in (perspective_index.get(nkey, []) if item.source_kind == "model" else [])
+            ],
+            "translations": [
+                translation.to_dict()
+                for translation in (translation_index.get(nkey, []) if item.source_kind == "model" else [])
             ],
             "table_kind": model_metadata.table_kind(item.table) if item.source_kind == "model" else "Report",
             "model_role": model_role,
@@ -4941,6 +5006,8 @@ def analyze(
             "calculation_groups": model_metadata.calculation_groups,
             "perspectives": sorted({member.perspective for member in model_metadata.perspective_members},
                                    key=str.casefold),
+            "cultures": sorted({translation.culture for translation in model_metadata.translations},
+                               key=str.casefold),
         },
         "items": results,
         "dependency_graphs": graphs,
@@ -5169,6 +5236,7 @@ def format_json_output(results: dict) -> str:
                 "reviewTriggers": r.get("review_triggers", []),
                 "analysisLimitationIds": r.get("analysis_limitation_ids", []),
                 "perspectives": [member["perspective"] for member in r.get("perspectives", [])],
+                "translations": [translation["culture"] for translation in r.get("translations", [])],
                 "modelRole": r.get("model_role", "") or None,
                 "tableDependents": r.get("table_dependents", []),
                 "brokenDaxRefs": r.get("broken_dax_refs", []),

@@ -1370,7 +1370,6 @@ def test_unsupported_metadata_areas_downgrade_safe_items_to_review(tmp_path):
         "DetailRowsTarget": "Detail rows",
         "FormatTarget": "Format string definitions",
         "CoverageTarget": "Data coverage definitions",
-        "TranslationTarget": "Cultures/translations",
     }
     for measure_name, area in expectations.items():
         item = _find_item(results, "Sales", measure_name, "Measure")
@@ -1384,6 +1383,14 @@ def test_unsupported_metadata_areas_downgrade_safe_items_to_review(tmp_path):
         "KPI target expression of measure 'KpiMetadata'[KpiCarrier] (definition/tables/KpiMetadata.tmdl:4)" in trigger
         for trigger in kpi_target["review_triggers"]
     )
+    # Linguistic metadata is an Analysis Limitation owned by the culture; its
+    # payload text never becomes an item reference (issue #93).
+    translation_target = _find_item(results, "Sales", "TranslationTarget", "Measure")
+    assert not any(trigger.startswith("Referenced by the ") for trigger in translation_target["review_triggers"])
+    linguistic = [limitation for limitation in results["analysis_limitations"]
+                  if limitation["area"] == "Cultures/translations"]
+    assert [(l["owner"], l["location"], l["targets"]) for l in linguistic] == [
+        ("culture en-US", "definition/cultures/en-US.tmdl:2", [])]
 
 
 def test_ordinary_unused_item_remains_safe_without_unsupported_metadata(tmp_path):
