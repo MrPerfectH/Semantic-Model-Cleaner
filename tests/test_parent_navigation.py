@@ -79,7 +79,7 @@ def test_unresolved_calculation_item_references_are_flagged_not_guessed(project)
 
 
 def test_item_header_offers_explicit_parent_actions_with_accurate_wording():
-    source = JS.read_text()
+    source = JS.read_text(encoding="utf-8")
     assert 'Inspect table source' not in source
     assert "'Open calculation group' : 'Open table'" in source
     assert 'data-object-action="definition">View definition tab' in source
@@ -89,7 +89,7 @@ def test_item_header_offers_explicit_parent_actions_with_accurate_wording():
 
 
 def test_detail_text_is_readable_at_normal_zoom():
-    css = CSS.read_text()
+    css = CSS.read_text(encoding="utf-8")
     readable = css[css.index('Readable, responsive object details'):]
     assert '.object-workspace { max-width:none; }' in readable
     for selector in ('.object-properties', '.object-crumbs', '.object-tabs button', '.object-workspace .detail-meta', '.object-child-table td'):
@@ -109,13 +109,13 @@ def run_js(tmp_path, code):
     if not node:
         pytest.skip('Node.js unavailable')
     harness = tmp_path / 'navigation.cjs'
-    harness.write_text("const assert = require('node:assert/strict');\n" + code)
+    harness.write_text("const assert = require('node:assert/strict');\n" + code, encoding="utf-8")
     result = subprocess.run([node, str(harness)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_parent_labels_follow_declared_table_kind_and_properties_allow_links(tmp_path):
-    source = JS.read_text()
+    source = JS.read_text(encoding="utf-8")
     run_js(tmp_path, """
 var tables={Sales:{name:'Sales'},Time:{name:'Time',isCalculationGroup:true}};
 function getTableByName(n){return tables[n]||null;}
@@ -131,7 +131,7 @@ assert.ok(html.includes('<dd>&lt;x&gt;</dd>'));
 
 
 def test_table_back_returns_to_originating_item_and_restores_inventory_scroll(tmp_path):
-    source = JS.read_text()
+    source = JS.read_text(encoding="utf-8")
     run_js(tmp_path, """
 var currentView='item',detailItemKey='Column:::Sales:::Amount',detailTableName=null,returnTo=null,tableReturnTo=null,tablesScroll=0,tableSearch='x',tableCleanup='';
 var calls=[];var focused=null;

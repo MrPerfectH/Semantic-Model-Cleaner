@@ -115,14 +115,17 @@ def test_baseline_output_cannot_overwrite_artifact_metadata(tmp_path, capsys, de
         excluded = tmp_path / "Unrelated.Report"
         excluded.mkdir()
         target = excluded / "definition.pbir"
-        target.write_text(json.dumps({"datasetReference": {"byPath": {"path": "../Unrelated.SemanticModel"}}}))
+        target.write_text(json.dumps({"datasetReference": {"byPath": {"path": "../Unrelated.SemanticModel"}}}), encoding="utf-8")
     else:
         target = report / "definition/report.json"
     original = target.read_bytes()
     output = target
     if destination == "symlink":
         output = tmp_path / "baseline-link.json"
-        output.symlink_to(target)
+        try:
+            output.symlink_to(target)
+        except OSError as exc:
+            pytest.skip(f"File symlinks unavailable on this platform: {exc}")
     assert main([str(tmp_path), "--write-baseline", str(output)]) == 2
     payload = json.loads(capsys.readouterr().out)
     assert "outside" in payload["errors"][0]

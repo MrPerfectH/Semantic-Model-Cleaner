@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -30,6 +31,23 @@ from .analysis_jobs import AnalysisJobs
 
 app = Flask(__name__)
 _analysis_jobs = AnalysisJobs()
+
+
+def configure_console_output() -> None:
+    """Keep a non-UTF-8 console (e.g. the Windows cp1252 default) from crashing
+    on startup text that includes non-ASCII characters. Reconfigures stdout and
+    stderr to UTF-8 where supported, falling back to escaping unencodable bytes
+    rather than raising."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (OSError, TypeError, ValueError):
+            # Tests and embedded hosts can expose a closed or fixed text stream.
+            continue
+
 
 def _invalidates_analysis(fn):
     @wraps(fn)
@@ -402,7 +420,7 @@ def configure_runtime(
 
 def print_startup_banner(host: str, port: int, *, debug: bool, mode: str = "web") -> None:
     print("\n  Semantic Model Cleaner")
-    print("  ─────────────────────")
+    print("  -----------------------")
     print(f"  Mode      : {mode}")
     print(f"  Workspace : {_state['workspace']}")
     if _state["model_search_roots"]:
@@ -2045,6 +2063,7 @@ def api_backup_info():
 
 
 def main():
+    configure_console_output()
     parser = argparse.ArgumentParser(
         description="Semantic Model Cleaner Web App (one semantic model, one or more reports)"
     )
@@ -2103,7 +2122,7 @@ def api_plans():
                 summary["changes"] = [{k: v for k, v in change.items() if k not in {"before", "after"}} for change in plan["changes"]]
                 plans.append(summary)
             for path in sorted(directory.glob("*.receipt.json"), reverse=True):
-                receipts.append(json.loads(path.read_text()))
+                receipts.append(json.loads(path.read_text(encoding="utf-8")))
             return jsonify({"plans": plans, "receipts": receipts})
         data = request.get_json(silent=True) or {}
         model_path, error = _cleanup_action_model_path(data)

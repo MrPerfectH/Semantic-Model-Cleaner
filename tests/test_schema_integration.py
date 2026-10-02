@@ -28,12 +28,12 @@ def test_plan_rejects_writer_schema_regression_without_touching_sources(tmp_path
         execute(operation, roots)
         staged_report = next(path for key, path in roots.items() if key != 'model')
         page = staged_report / 'definition/pages/SchemaProbe/page.json'
-        document = json.loads(page.read_text())
+        document = json.loads(page.read_text(encoding="utf-8"))
         if change == 'invalid_type':
             document['width'] = 'not a number'
         else:
             document.pop('$schema')
-        page.write_text(json.dumps(document))
+        page.write_text(json.dumps(document), encoding="utf-8")
 
     monkeypatch.setattr(plans, '_execute', faulty_writer)
     with pytest.raises(plans.PlanError, match='schema'):
@@ -44,9 +44,9 @@ def test_plan_rejects_writer_schema_regression_without_touching_sources(tmp_path
 def test_ci_schema_errors_remain_visible_under_baseline(tmp_path):
     model, report = project(tmp_path)
     page = declared_page(report)
-    document = json.loads(page.read_text())
+    document = json.loads(page.read_text(encoding="utf-8"))
     document['width'] = 'not a number'
-    page.write_text(json.dumps(document))
+    page.write_text(json.dumps(document), encoding="utf-8")
     _, first = run_check(model.parent.parent)
     baseline = {'schema_version': '1.0', 'fingerprints': [f['fingerprint'] for f in first['findings']]}
     code, output = run_check(model.parent.parent, baseline=baseline)
