@@ -15,7 +15,7 @@ BASE = 'https://developer.microsoft.com/json-schemas/fabric/item/report/definiti
 
 
 def fixture(name):
-    return json.loads((FIXTURES / name).read_text())
+    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
 def snapshot(document, path='report-1/definition/pages/Overview/page.json'):
@@ -28,7 +28,7 @@ def test_bundle_has_pinned_source_license_and_complete_local_references():
     assert info['schema_count'] == 97
     assert info['network_access'] is False
     assert info['format_assertions'] is False
-    assert 'Microsoft Corporation' in (metadata.BUNDLE_ROOT / 'LICENSE').read_text()
+    assert 'Microsoft Corporation' in (metadata.BUNDLE_ROOT / 'LICENSE').read_text(encoding="utf-8")
 
 
 def test_declared_page_and_transitive_visual_schema_pass_without_network(monkeypatch):
@@ -150,8 +150,8 @@ def test_absent_runtime_registry_reference_is_not_reported_as_valid(monkeypatch)
 def test_bundle_checksum_failure_is_explicit(tmp_path, monkeypatch):
     manifest = {'schemas': [{'path': 'schema.json', 'sha256': hashlib.sha256(b'original').hexdigest(),
                              'uri': BASE + 'fake', 'id': BASE + 'fake'}]}
-    (tmp_path / 'manifest.json').write_text(json.dumps(manifest))
-    (tmp_path / 'schema.json').write_text('{}')
+    (tmp_path / 'manifest.json').write_text(json.dumps(manifest), encoding="utf-8")
+    (tmp_path / 'schema.json').write_text('{}', encoding="utf-8")
     monkeypatch.setattr(metadata, 'BUNDLE_ROOT', tmp_path)
     metadata._bundle.cache_clear()
     try:

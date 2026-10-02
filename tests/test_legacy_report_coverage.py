@@ -7,13 +7,13 @@ def test_legacy_report_json_is_unsupported_and_never_safe(tmp_path):
     model = tmp_path / 'M.SemanticModel'
     tables = model / 'definition/tables'
     tables.mkdir(parents=True)
-    (tables / 'Sales.tmdl').write_text('table Sales\n\tmeasure Revenue = 1\n\tcolumn Spare\n')
+    (tables / 'Sales.tmdl').write_text('table Sales\n\tmeasure Revenue = 1\n\tcolumn Spare\n', encoding="utf-8")
     report = tmp_path / 'Legacy.Report'
     report.mkdir()
     # Even a coincidentally recognizable reference shape must not make this
     # unsupported legacy representation look like a complete PBIR scan.
     (report / 'report.json').write_text(json.dumps({'Column': {
-        'Expression': {'SourceRef': {'Entity': 'Sales'}}, 'Property': 'Spare'}}))
+        'Expression': {'SourceRef': {'Entity': 'Sales'}}, 'Property': 'Spare'}}), encoding="utf-8")
     result = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
     assert not result['coverage']['complete']
     assert len(result['report_issues']) == 1
@@ -30,7 +30,7 @@ def test_missing_definition_without_legacy_file_is_also_incomplete(tmp_path):
     model = tmp_path / 'M.SemanticModel'
     tables = model / 'definition/tables'
     tables.mkdir(parents=True)
-    (tables / 'Sales.tmdl').write_text('table Sales\n\tcolumn Spare\n')
+    (tables / 'Sales.tmdl').write_text('table Sales\n\tcolumn Spare\n', encoding="utf-8")
     report = tmp_path / 'Incomplete.Report'
     report.mkdir()
     result = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])

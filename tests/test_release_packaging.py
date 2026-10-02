@@ -40,7 +40,7 @@ def test_checksum_sidecar_round_trip_and_tamper_detection(tmp_path):
     artifact = tmp_path / "artifact with spaces.zip"
     artifact.write_bytes(b"public beta")
     sidecar = checksums.write(artifact)
-    assert sidecar.read_text() == f"{hashlib.sha256(b'public beta').hexdigest()}  {artifact.name}\n"
+    assert sidecar.read_text(encoding="utf-8") == f"{hashlib.sha256(b'public beta').hexdigest()}  {artifact.name}\n"
     checksums.verify(sidecar)
     artifact.write_bytes(b"tampered")
     with pytest.raises(ValueError, match="Checksum mismatch"):
