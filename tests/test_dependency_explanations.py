@@ -227,6 +227,138 @@ def test_deletion_guards_block_whole_group_and_allow_coordinated_final_state(tmp
     assert evaluate_deletion_policy(model, [report], coordinated)["ok"]
 
 
+# ── #91: coordinated whole-group deletion against the simulated final state ──
+
+GROUP_TABLE = [{"action": "delete", "table": "Time Intelligence", "name": "", "item_type": "table"}]
+CONSUMER_DELETES = [{"action": "delete", "table": "Sales", "name": consumer[len("Sales["):-1], "item_type": "Measure"}
+                    for consumer in CONSUMERS]
+GROUP_OWNERS = {
+    "calculation item 'Current' in 'Time Intelligence'",
+    "calculation item 'YTD' in 'Time Intelligence'",
+    "calculation item 'PY' in 'Time Intelligence'",
+}
+CURRENCY_GROUP = (
+    "table 'Currency Conversion'\n"
+    "\tcalculationGroup\n"
+    "\t\tprecedence: 20\n\n"
+    "\t\tcalculationItem Local = SELECTEDMEASURE()\n\n"
+    "\tcolumn Currency\n"
+    "\t\tdataType: string\n"
+    "\t\tsourceColumn: Name\n\n"
+    "\tpartition 'Currency Conversion' = calculationGroup\n"
+    "\t\tmode: import\n"
+    "\t\tsource = calculationGroup\n"
+)
+
+
+def standalone_group_copy(tmp_path, *, other_group=False):
+    """Copy the fixture without the item-specific facts that keep a delete at Review.
+
+    The shipped fixture deliberately uses Revenue Ignoring TI 01 in a visual, keeps
+    the selector in a perspective and hides Ordinal; those are separate guards
+    (SMC-D004/SMC-D005) unrelated to coverage, so the copy removes them.
+    """
+    import shutil
+
+    root = tmp_path / "workspace"
+    shutil.copytree(FIXTURE, root)
+    model = root / "Models" / "Synthetic Dependencies.SemanticModel"
+    report = root / "Reports" / "Executive.Report"
+    visual = report / "definition/pages/Overview/visuals/RevenueCard/visual.json"
+    data = json.loads(visual.read_text(encoding="utf-8"))
+    values = data["visual"]["query"]["queryState"]["Values"]
+    values["projections"] = [p for p in values["projections"] if p["queryRef"] == "Sales.Revenue"]
+    visual.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    perspective = model / "definition/perspectives/Executive.tmdl"
+    text = perspective.read_text(encoding="utf-8")
+    perspective.write_text(text.split("\tperspectiveTable 'Time Intelligence'")[0].rstrip() + "\n", encoding="utf-8")
+    group = model / "definition/tables/Time Intelligence.tmdl"
+    group.write_text(group.read_text(encoding="utf-8").replace("\t\tisHidden\n", ""), encoding="utf-8")
+    if other_group:
+        (model / "definition/tables/Currency Conversion.tmdl").write_text(CURRENCY_GROUP, encoding="utf-8")
+        definition = model / "definition/model.tmdl"
+        definition.write_text(definition.read_text(encoding="utf-8") + "ref table 'Currency Conversion'\n",
+                              encoding="utf-8")
+    return root, model, report
+
+
+def test_coordinated_group_deletion_clears_the_groups_own_coverage_gap():
+    policy = evaluate_deletion_policy(MODEL, [REPORT], GROUP_TABLE + CONSUMER_DELETES)
+    rules = {v["rule_id"] for v in policy["violations"]}
+    # In the final state the group file is gone and no retained item references it.
+    assert "SMC-D002" not in rules
+    assert "SMC-D006" not in rules
+    assert policy["scope"]["complete"] is True
+    assert {l["owner"] for l in policy["scope"]["cleared_limitations"]} == GROUP_OWNERS
+    assert len(policy["scope"]["cleared_limitations"]) == 4
+    assert all(l["cleared_reason"] == "Coverage gap owned by 'Time Intelligence' is cleared because the plan "
+               "removes the calculation group and every retained parent-table consumer."
+               for l in policy["scope"]["cleared_limitations"])
+    # Item-specific guards are unchanged: a used consumer, a perspective member and
+    # a hidden column still require review. The cleared gap and the group-structure
+    # reasons no longer appear among them.
+    remaining = {(v["rule_id"], v["table"], v["name"]): v["message"] for v in policy["violations"]}
+    assert set(remaining) == {
+        ("SMC-D004", "Sales", "Revenue Ignoring TI 01"),
+        ("SMC-D005", "Time Intelligence", "Name"),
+        ("SMC-D005", "Time Intelligence", "Ordinal"),
+    }
+    name = remaining[("SMC-D005", "Time Intelligence", "Name")]
+    ordinal = remaining[("SMC-D005", "Time Intelligence", "Ordinal")]
+    assert name == ("Review required for Time Intelligence[Name]: Member of perspective Executive "
+                    "(definition/perspectives/Executive.tmdl). Removing the item also removes this perspective "
+                    "member; membership alone does not prove a report executes it.")
+    assert ordinal == "Review required for Time Intelligence[Ordinal]: Item is hidden"
+
+
+def test_coordinated_group_deletion_is_allowed_when_no_item_guard_remains(tmp_path):
+    _, model, report = standalone_group_copy(tmp_path)
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    policy = evaluate_deletion_policy(model, [report], GROUP_TABLE + CONSUMER_DELETES)
+    assert policy["ok"], policy["errors"]
+    assert policy["scope"]["complete"] is True
+    assert {l["owner"] for l in policy["scope"]["cleared_limitations"]} == GROUP_OWNERS
+    # Deleting only the group stays Blocked by the parent-table guard, and its own
+    # coverage gap still counts because retained consumers keep referencing it.
+    blocked = evaluate_deletion_policy(model, [report], GROUP_TABLE)
+    assert not blocked["ok"]
+    assert len([v for v in blocked["violations"] if v["rule_id"] == "SMC-D006"]) == 10
+    assert any(v["rule_id"] == "SMC-D002" for v in blocked["violations"])
+    assert blocked["scope"]["cleared_limitations"] == []
+    # Deleting only the consumers keeps the group and its gap.
+    consumers_only = evaluate_deletion_policy(model, [report], CONSUMER_DELETES)
+    assert any(v["rule_id"] == "SMC-D002" for v in consumers_only["violations"])
+    assert {p: p.read_bytes() for p in before} == before
+
+
+def test_reviewed_plan_preview_explains_cleared_group_coverage(tmp_path):
+    from semantic_model_cleaner import change_plan
+
+    _, model, report = standalone_group_copy(tmp_path)
+    columns = [{"action": "delete", "table": "Time Intelligence", "name": name, "item_type": "Column"}
+               for name in ("Name", "Ordinal")]
+    plan = change_plan.create_plan(model, [report], [{"kind": "actions", "actions": columns + CONSUMER_DELETES}])
+    assert any(change["path"].endswith("tables/Time Intelligence.tmdl") and change["change"] == "deleted"
+               for change in plan["changes"])
+    assert plan["coverage"]["final_state"]["complete"] is True
+    assert ("Coverage gap owned by 'Time Intelligence' is cleared because the plan removes the calculation "
+            "group and every retained parent-table consumer.") in plan["validation"]["limitations"]
+
+
+def test_retained_other_group_still_blocks_coordinated_deletion(tmp_path):
+    _, model, report = standalone_group_copy(tmp_path, other_group=True)
+    policy = evaluate_deletion_policy(model, [report], GROUP_TABLE + CONSUMER_DELETES)
+    assert not policy["ok"]
+    coverage = [v["message"] for v in policy["violations"] if v["rule_id"] == "SMC-D002"]
+    assert coverage == ["Dependency checking is incomplete for the calculation item expression of calculation item "
+                        "'Local' in 'Currency Conversion' (definition/tables/Currency Conversion.tmdl:5)."]
+    assert policy["scope"]["complete"] is False
+    assert {l["owner"] for l in policy["scope"]["cleared_limitations"]} == GROUP_OWNERS
+    # The retained group's gap keeps the consumers at Review.
+    assert {v["name"] for v in policy["violations"] if v["rule_id"] == "SMC-D005"} >= {
+        consumer[len("Sales["):-1] for consumer in CONSUMERS}
+
+
 # ── #84: analysis limitations are a separate surface ─────────────────────────
 
 def test_limitation_counts_use_distinct_units(results, payload):
