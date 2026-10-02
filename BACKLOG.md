@@ -19,7 +19,7 @@ Last updated: 2026-09-22
 
 ## Medium-term
 
-- Complete calculation-group support and broader metadata/dynamic-reference coverage; groups, items, selectors and parent-table consumers are recognized, but item expressions are still analysis limitations that require review. Evaluating a coordinated deletion against a simulated final state (so removing a whole dynamic group can clear its own coverage guard) is a later slice.
+- Complete calculation-group support and broader metadata/dynamic-reference coverage; groups, items, selectors and parent-table consumers are recognized, but item expressions are still analysis limitations that require review.
 - Add BOM-safe TMDL writes with byte-preserving regression coverage before lifting the beta's write block for model scopes containing BOM-prefixed files.
 - Extend editing safety checks and recovery regression tests as additional model/report constructs become supported.
 
@@ -30,6 +30,7 @@ Last updated: 2026-09-22
 
 ## Completed recently
 
+- Evaluated coordinated whole-group deletion of a dynamic calculation group against the simulated final state ([#91](https://github.com/MrPerfectH/Semantic-Model-Cleaner/issues/91)): a plan that removes the group and every retained parent-table consumer no longer fails `SMC-D002` on the group's own coverage gap, and the plan preview names the cleared gap. Gaps owned by any retained object, and item-specific Review reasons, still block.
 - Detected Unsupported Metadata from TMDL declarations instead of name substrings ([#82](https://github.com/MrPerfectH/Semantic-Model-Cleaner/issues/82)), explained calculation-group and perspective dependencies on items and tables ([#83](https://github.com/MrPerfectH/Semantic-Model-Cleaner/issues/83)), and moved analysis limitations onto their own surface with distinct-limitation and affected-item counts ([#84](https://github.com/MrPerfectH/Semantic-Model-Cleaner/issues/84)). See `docs/adr/0002-analysis-limitations-are-not-report-health.md`.
 
 - Integrated the large-metadata scan performance fix and first-run model/comparison picker defaults for 0.4.0b2. Release publication remains gated by combined tests, fresh-wheel consumption and downloaded Windows ZIP browser verification.
