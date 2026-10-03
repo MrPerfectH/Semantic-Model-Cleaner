@@ -46,6 +46,10 @@ Repeat the audit probes against disposable plans and confirm unchanged source by
 - Merged the R04-integrated branch at `9a132ae` without conflicts, then reran the shared HTTP security/client, package-client, app API, analysis-jobs, classic-plan, review-policy, connected-scope, CI-check, and clean-stale suites: **278 passed, 1 skipped in 16.75 seconds**. Ruff and `git diff --check` passed after integration.
 - Validation limit: these are Flask route, real HTTP-client, and Node checks. T3's shared preview cannot reach the Windows loopback app in this session; no complete real-browser walkthrough or rebuilt Windows-package acceptance is claimed. Those checks remain pending for integration/R10.
 
+## Local browser follow-up on MSI
+
+The user authorized local browser automation. On source revision `7c145f3`, local Edge on MSI Summit E15 A11SCST completed the classic-layout demo/analyze, authenticated JSON/Excel downloads, reviewed Hide/apply, history verification, review/restore, and policy-decision save. All ten original project files restored byte-for-byte; policy save preserved their bytes; no page errors occurred. See [captures and exact limits](../../../audits/windows-ui-2026-10-03/r03-classic/README.md). Current v2 lifecycle, rendered cancellation, and rebuilt-package acceptance remain pending.
+
 ## Out of scope
 
 Cloud authentication, user accounts, hosted multi-user access, or publishing exploit details.

@@ -14,7 +14,8 @@ The original checkout was at `6d29ce2`, six commits behind local `origin/main`. 
 | R04 | `codex/r04-report-scope` | Integrated in `4721240`; consistent connected scope and exclusion evidence verified |
 | R05 | Existing Windows fix reused | Local Windows suite passed; Windows CI lane present; remote CI still pending |
 | R06 | `codex/r06-cli-contract` | Integrated in `0453888`; command guide/version, structured JSON errors and opt-in plan JSON mode |
-| R07–R09 | Pending human/visual work | Shared browser cannot reach Windows loopback; actual flow capture is still required |
+| R07 | `codex/r07-first-run` | Local Edge capture on MSI authorized; existing flow captured; implementation underway |
+| R08–R09 | Pending human/visual work | Follow R07 with sequential visual review |
 | R10–R12 | Pending | Package evidence and human release acceptance still required |
 | R13 | Deferred | Operations schema follows release gates |
 
@@ -29,11 +30,11 @@ Use the [approved plan](README.md) and its individual tickets for acceptance cri
 - R01 plan/baseline alias follow-up `2777546`, including R03/R04: **172 passed, 4 existing skips** across affected exports/check/plan/scope tests; Ruff passed.
 - R06 and naming-export companion, integrated in `0453888`: **229 targeted tests passed, 4 existing skips**. Both installed aliases and the module entry point passed captured UTF-8 help/version and JSON-contract tests.
 - **Final combined verification on `0453888`: 1,015 passed, 8 skipped in 91.57 seconds.** Ran `python -m pytest -q -ra` on Windows Python 3.13 with `PYTHONUTF8=0` and `PYTHONPATH` pointing to integration `src`. Seven skips are unavailable symbolic-link privileges and one is POSIX permission bits. Windows junction and hard-link tests passed. `python -m ruff check .` and `git diff --check` passed. The earlier asynchronous timeout did not recur; no test deadline was weakened. Subsequent integration changes only update these planning records.
-- Shared T3 preview cannot reach the Windows loopback app. A request to use local browser automation is pending; no alternative browser has been used and no visual acceptance has been claimed.
+- Shared T3 preview cannot reach the Windows loopback app. The user subsequently authorized local browser automation, preferring the MSI machine. `COMPUTERNAME=MSI`, manufacturer Micro-Star International, model Summit E15 A11SCST were verified locally. Edge runs on that machine in isolated browser contexts against disposable data. This enables UI capture; it does not constitute final human acceptance or packaged-EXE verification.
 
 ## Next session and remaining acceptance
 
-Start R07 from `codex/windows-beta-integration` after browser capture is available. Capture the existing first-run flow before changing it, then keep R08/R09 sequential with the agreed human review. The pending question offers local browser automation or a human walkthrough; elapsed time is not authorization to switch tools. T3's browser instructions require explicit user authorization before using an alternative browser in this situation.
+R07 started from `7c145f3` in `smc-r07-first-run`. Existing first-run captures confirm that the automatic scope drawer covers the welcome card and that demo setup immediately analyzes without a scope review step. The scoped change exposes Open Power BI Project/Try demo, proposes connected scope, and requires explicit Analyze. R08/R09 remain sequential with the agreed human review. Browser-tool authorization is now resolved and must not be requested again for this work.
 
 R03 still needs its rendered-browser walkthrough. R05 still needs remote Linux/Windows CI evidence, including symlinks on a capable runner. R10/R11 remain dependent on the settled UI, and R12 remains a human release decision. No Windows ZIP was rebuilt or published in these implementation sessions. R13 stays deferred.
 
