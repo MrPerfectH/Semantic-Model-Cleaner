@@ -1,6 +1,6 @@
 # R05 Run the full unit suite on Windows with portable fixtures
 
-Status: Breakdown approved on 2026-10-03; local ticket, not a published GitHub issue. Start only when assigned and dependencies are satisfied.
+Status: Existing implementation reused as `4631a9e`; R02 integrated as `30ecdba`. Local validation recorded below; remote CI and intermittent full-suite timing still require verification. Local ticket, not a published GitHub issue.
 Type: AFK — implementable from this specification once dependencies are satisfied.
 Priority: Release gate.
 
@@ -33,6 +33,12 @@ The audited Windows run had 694 passing, 13 failing, and 4 skipped tests. UTF-8 
 ## Verification
 
 Run the full local Windows suite and lint. Review or execute the Linux/Windows CI matrix when available, preserving evidence for any capability skips.
+
+## Implementation evidence (2026-10-03)
+
+Reused existing commit `d373113` rather than duplicating its Windows portability fixes. `.github/workflows/ci.yml` retains Ubuntu Python 3.11/3.13 and adds Windows Python 3.13, with lint and the complete unit suite. Ubuntu 3.11 retains distribution build and installed-wheel smoke checks. The separate Windows ZIP build/download/verification workflow is preserved.
+
+Fixture reads are explicit UTF-8; path comparisons use platform paths; symlink tests skip when creation is unavailable. The integration baseline passed **766 tests with 6 platform/privilege skips**. After R01/R02, with `PYTHONUTF8=0`, the full suite had **821 passes, 8 skips, and one three-second asynchronous job timeout**. All five job tests passed on focused rerun. Ruff passed. Remote Linux/Windows lanes and capable-environment symlink execution have not run in this session. A final combined suite remains required after integration.
 
 ## Out of scope
 

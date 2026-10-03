@@ -2,7 +2,7 @@
 
 Prepare Semantic Model Cleaner for a broader public beta aimed primarily at **Power BI developers on Windows**. Installation and the main cleanup flow should require no Python knowledge. CLI support remains a supported secondary workflow for automation and AI coding agents.
 
-The user requested planning and session-sized tickets before implementation. **No implementation is authorized by this plan alone.** The exploratory source edits started after the audit were removed. The user approved this breakdown on 2026-10-03: ticket sizes, dependencies, and AFK/HITL checkpoints are accepted. This package contains the approved plan and 13 local tickets; it has not created GitHub issues or a pull request.
+The user approved this breakdown on 2026-10-03 and then authorized execution with “Split work into sessions an go.” Implementation uses isolated ticket worktrees, preserving the agreed dependencies and human checkpoints. See [session execution and evidence](EXECUTION.md) for current status. This package contains 13 local tickets; it has not created GitHub issues or a pull request.
 
 The source evidence is the [release readiness audit](../../audits/release-readiness-2026-10-02.md) of revision `6d29ce2`. Its runtime findings are reproduced defects; its visual recommendations remain code-grounded proposals because the shared browser could not reach the Windows-hosted app. Every implementation session must recheck the current code and any existing GitHub issue before acting.
 
