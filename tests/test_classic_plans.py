@@ -47,7 +47,7 @@ const plan={id:'a'.repeat(32), scope:{model:'/M.SemanticModel','report-1':'/R.Re
 const context={console,Promise,Map,Set,Object,String,Array,Error,encodeURIComponent,
   document:{createElement(kind){return element(kind);},body:{appendChild(){}},getElementById:element,querySelector:element},
   chosenReports:[{path:'/R.Report',name:'R'}], getModelPath:()=>'/M.SemanticModel',
-  fetch:async (url,options)=>{requests.push({url,body:options&&options.body&&JSON.parse(options.body)});
+  smcFetch:async (url,options)=>{requests.push({url,body:options&&options.body&&JSON.parse(options.body)});
     const data=url==='/api/plans'?{ok:true,plan}:{ok:true,receipt:{status:'applied',plan_id:plan.id,changed_files:[]}};
     return {ok:true,json:async()=>data};},
   pendingActions:new Map(),selectedKeys:new Set(),selectedTableNames:new Set(),

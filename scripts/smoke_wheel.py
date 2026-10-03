@@ -148,10 +148,26 @@ def main() -> None:
             if b"Semantic Model Cleaner" not in html or b"0.4.0b3" not in html or b"beta-badge" not in html:
                 raise RuntimeError("Installed smc-web did not serve the public-beta UI")
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            for asset in ("detail-workspace.js", "analysis-jobs.js", "schema-evidence.js", "analysis-limitations.js"):
+            for asset in ("local-http.js", "detail-workspace.js", "analysis-jobs.js", "schema-evidence.js", "analysis-limitations.js"):
                 with opener.open(f"http://127.0.0.1:{port}/static/{asset}", timeout=5) as response:
                     if not response.read():
                         raise RuntimeError(f"Installed wheel did not serve {asset}")
+            base = f"http://127.0.0.1:{port}"
+            with opener.open(base + '/api/session', timeout=5) as response:
+                token = json.loads(response.read())['token']
+            protected = urllib.request.Request(base + '/api/discover', data=b'{}', headers={
+                'Content-Type': 'application/json', 'X-SMC-Token': token,
+            })
+            with opener.open(protected, timeout=5) as response:
+                if not json.loads(response.read()).get('models'):
+                    raise RuntimeError('Installed wheel authenticated discovery failed')
+            try:
+                opener.open(base + '/api/discover', timeout=5)
+            except urllib.error.HTTPError as exc:
+                if exc.code != 403:
+                    raise
+            else:
+                raise RuntimeError('Installed wheel accepted an API request without its launch token')
         finally:
             process.terminate()
             try:
