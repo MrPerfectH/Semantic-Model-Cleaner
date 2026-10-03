@@ -42,6 +42,8 @@ Fixture reads are explicit UTF-8; path comparisons use platform paths; symlink t
 
 After R04, full Windows Python 3.13 validation with `PYTHONUTF8=0` passed: **829 passed, 8 skipped** in 79.83 seconds on `1a02dd5`, integrated as `4721240`. The job timeout did not recur. This confirms local unit behavior; remote CI, wheel and packaged-EXE checks remain separate evidence.
 
+Final combined source revision `0453888`, including R01–R06: **1,015 passed, 8 skipped** in 91.57 seconds (`python -m pytest -q -ra`, Windows Python 3.13, `PYTHONUTF8=0`). Seven symbolic-link checks require privileges unavailable here; one test uses POSIX permission bits. Junction and hard-link coverage passed. Ruff and diff checks passed. No test deadline was increased to hide the earlier intermittent asynchronous-job timeout.
+
 ## Out of scope
 
 Replacing the test framework, weakening writer safety tests, or claiming packaged EXE coverage from unit tests.

@@ -1,6 +1,6 @@
 # R03 Protect local file operations from foreign browser requests
 
-Status: Implemented on 2026-10-03 in `codex/r03-protect-local-http`; automated verification complete, integration review and real-browser acceptance pending. Local ticket, not a published GitHub issue.
+Status: Implemented, reviewed and integrated as `e40a046`; automated verification complete, rendered-browser acceptance pending. Local ticket, not a published GitHub issue.
 Type: AFK — implementable from this specification once dependencies are satisfied.
 Priority: Release gate.
 

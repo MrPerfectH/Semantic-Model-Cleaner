@@ -1,6 +1,6 @@
 # R04 Use consistent connected Report selection across analysis and automation
 
-Status: Implemented and locally verified on 2026-10-03 in `codex/r04-report-scope`; awaiting integration review. Local ticket, not a published GitHub issue.
+Status: Implemented, reviewed and integrated as `4721240` on 2026-10-03. Local ticket, not a published GitHub issue.
 Type: AFK — implementable from this specification once dependencies are satisfied.
 Priority: Release gate.
 

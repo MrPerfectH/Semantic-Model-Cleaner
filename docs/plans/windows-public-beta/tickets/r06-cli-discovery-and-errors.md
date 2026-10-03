@@ -1,6 +1,6 @@
 # R06 Make the existing CLI discoverable and predictable for automation
 
-Status: Implemented and locally verified on 2026-10-03 in `codex/r06-cli-contract`; awaiting integration review. Local ticket, not a published GitHub issue.
+Status: Implemented, reviewed and integrated as `0453888` on 2026-10-03. Local ticket, not a published GitHub issue.
 Type: AFK — implementable from this specification once dependencies are satisfied.
 Priority: Release gate.
 

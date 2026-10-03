@@ -1,6 +1,6 @@
 # R01 Protect Semantic Model and Report files from analysis exports
 
-Status: Ordinary exports integrated in `c57f771`; plan/baseline alias follow-up implemented and locally verified in `codex/r01-output-alias-followup`, awaiting integration review. Local ticket, not a published GitHub issue.
+Status: Implemented, reviewed and integrated: ordinary exports `c57f771`, plan/baseline aliases `2777546`, naming exports `6e6ace9` (included in `0453888`). Local ticket, not a published GitHub issue.
 Type: AFK — implementable from this specification once dependencies are satisfied.
 Priority: Release gate.
 
