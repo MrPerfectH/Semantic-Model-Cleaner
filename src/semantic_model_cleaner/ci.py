@@ -105,11 +105,16 @@ def run_check(
                 issue.get("table", ""), issue.get("name", ""),
                 issue_type + ":" + issue.get("sourcePath", ""))
         for metadata in result.get("unsupported_metadata", []):
+            owner = f" of {metadata['owner']}" if metadata.get("owner") else ""
             add("SMC003", "error" if metadata["unresolved_targets"] else "warning",
-                f"Unsupported Metadata: {metadata['area']}; " +
-                ("dependency coverage is unresolved." if metadata["unresolved_targets"] else
-                 "review referenced items: " + ", ".join(metadata["targets"])),
-                _relative(model / metadata["source_file"], workspace), location=metadata["area"])
+                f"Analysis limitation ({metadata['area']}): dependency checking is incomplete for the "
+                f"{metadata.get('feature') or metadata['area']}{owner}; " +
+                ("coverage is unresolved, so no item in scope can be asserted Safe."
+                 if metadata["unresolved_targets"] else
+                 ("referenced items stay at Review: " + ", ".join(metadata["targets"])
+                  if metadata["targets"] else "it references no identifiable model item.")),
+                _relative(model / metadata["source_file"], workspace),
+                location=f"{metadata['area']}:{metadata.get('construct', '')}:{metadata.get('owner', '')}")
         for warning in result.get("warnings", []):
             add("SMC007", "warning", warning.get("message", "Analyzer warning"),
                 _relative(model, workspace), warning.get("table", ""), warning.get("name", ""), warning.get("code", ""))

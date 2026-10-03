@@ -7,8 +7,9 @@ workspace at `src/semantic_model_cleaner/demo_workspace`.
 Use it when checking trust-critical web workflows:
 
 - Cleanup Recommendations: `Safe`, `Review`, and `Blocked`
-- Report Health groups for stale Report References, broken model references, invalid PBIR JSON,
-  and Unsupported Metadata
+- Report Health groups for stale Report References, broken model references and invalid PBIR JSON
+- the separate Analysis limitations surface (the unreadable visual JSON is an analysis limitation,
+  not a report-side repair)
 - RLS `tablePermission` model-backed usage
 - Report Extension Measures
 - stale PBIR cleanup previews
@@ -24,7 +25,8 @@ semantic-model-cleaner-web examples/product-qa-workspace
 Highlights:
 
 - `Sales[Cleanup Note]` is a Safe cleanup candidate.
-- `Sales[Perspective Revenue]` is a Review candidate because a perspective references it.
+- `Sales[Perspective Revenue]` is a Review candidate because it is a member of the Executive
+  perspective; membership is shown as concrete evidence, not as Unsupported Metadata.
 - `Store[Store Code]` is Blocked by RLS metadata.
 - `Sales[Stale Margin]` appears only in stale PBIR metadata.
 - `Sales[Broken Forecast]` has broken model references.

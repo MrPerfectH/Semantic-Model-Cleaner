@@ -273,11 +273,16 @@ def _table_usage_status(table_summary: dict) -> str:
         return f"BROKEN ({count} field parameter {noun})"
     used_items = int(table_summary.get("used_item_count", 0) or 0)
     usage_refs = int(table_summary.get("usage_ref_count", 0) or 0)
+    external = table_summary.get("external_dax_dependents") or []
 
+    external_note = ""
+    if external:
+        count = len(external)
+        external_note = f"{count} DAX {'consumer' if count == 1 else 'consumers'} outside this table"
     if used_items == 0:
-        return "NOT USED"
+        return f"INDIRECT (via: {external_note})" if external_note else "NOT USED"
     if usage_refs == 0:
-        return "INDIRECT (via: model dependencies)"
+        return "INDIRECT (via: model dependencies" + (f"; {external_note}" if external_note else "") + ")"
     return "USED"
 
 
@@ -285,7 +290,9 @@ def _table_usage_state(table_summary: dict) -> str:
     used_items = int(table_summary.get("used_item_count", 0) or 0)
     usage_refs = int(table_summary.get("usage_ref_count", 0) or 0)
     if used_items == 0:
-        return "Unused"
+        # Retained DAX outside the table that references the table itself is a
+        # dependency even when no child item is used or indirectly used.
+        return "Indirect" if table_summary.get("external_dax_dependents") else "Unused"
     if usage_refs == 0:
         return "Indirect"
     return "Used"
@@ -451,6 +458,15 @@ def _highest_severity(items: list[dict]) -> str:
 _REPORT_HEALTH_PREVIEW_LIMIT = 5
 
 
+def _stale_cleanup_entry_key(detail: dict) -> tuple:
+    source_path = detail.get("sourcePath", "")
+    if detail.get("staleKind") == "bookmark_projection_entry":
+        source_path = re.sub(r"(\.singleVisual\.projections\.[^.]+\.\[\d+\]).*", r"\1", source_path)
+        return (detail.get("reportPath", ""), detail.get("staleKind", ""), detail.get("artifactPath", ""), source_path)
+    return (detail.get("reportPath", ""), detail.get("staleKind", ""), detail.get("artifactPath", ""),
+            detail.get("selectorValue") or source_path)
+
+
 def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
     groups: list[dict] = []
 
@@ -506,22 +522,36 @@ def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
     ]
     stale_count = sum(item["staleUsageCount"] for item in stale_items)
     if stale_count:
+        # Findings and cleanup entries differ: only usages the cleanup engine supports
+        # become entries, and the browser dedupes entries on this same key.
+        eligible_entries = {
+            _stale_cleanup_entry_key(detail)
+            for item in items
+            for detail in item.get("staleUsageDetails", [])
+            if detail.get("cleanupEligible") is True
+        }
+        entry_count = len(eligible_entries)
+        description = (
+            "Item-level stale references overlap report issues above and are not added to the total. "
+            "Stale PBIR selectors no longer match live visual or bookmark query fields. "
+        )
+        description += (
+            f"{entry_count} cleanup {'entry' if entry_count == 1 else 'entries'} can be previewed before applying repairs."
+            if entry_count else
+            "No supported cleanup action exists for these findings; review them in the report."
+        )
         groups.append(_group(
             "stale_report_references",
             label="Stale Report References",
             severity="warning",
             count=stale_count,
-            description=(
-                "Item-level stale references overlap report issues above and are not added to the total. "
-                "Stale PBIR selectors no longer match live visual or bookmark query fields. "
-                "Preview cleanup before applying repairs."
-            ),
+            description=description,
             group_items=stale_items,
             action={
                 "type": "cleanup_stale",
                 "label": "Preview stale cleanup",
-                "entryCount": stale_count,
-            },
+                "entryCount": entry_count,
+            } if entry_count else None,
         ))
 
     broken_items = [
@@ -545,40 +575,38 @@ def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
             group_items=broken_items,
         ))
 
-    unsupported_items = []
-    unsupported_count = 0
-    for item in items:
-        triggers = [
-            trigger for trigger in item.get("reviewTriggers", [])
-            if str(trigger).startswith("Unsupported Metadata:")
-        ]
-        if not triggers:
-            continue
-        unsupported_count += len(triggers)
-        unsupported_items.append({
-            "type": item.get("type", ""),
-            "table": item.get("table", ""),
-            "name": item.get("name", ""),
-            "reviewTriggers": triggers,
-        })
-    if unsupported_count:
-        groups.append(_group(
-            "unsupported_metadata",
-            label="Unsupported Metadata",
-            severity="warning",
-            count=unsupported_count,
-            description=(
-                "Cleanup recommendations were downgraded to Review because documented metadata "
-                "can hide dependencies the app does not fully analyze yet."
-            ),
-            group_items=unsupported_items,
-        ))
-
+    # Model analysis limitations (Unsupported Metadata, incomplete scans) are not
+    # report problems. They ship on the separate Analysis limitations surface.
     return {
         "totalIssueCount": len(report_issues),
-        "signalCounts": {"staleReferences": stale_count, "brokenModelReferences": broken_count,
-                         "unsupportedMetadata": unsupported_count},
+        "signalCounts": {"staleReferences": stale_count, "brokenModelReferences": broken_count},
         "groups": groups,
+    }
+
+
+def _build_analysis_limitations(results: dict, items: list[dict]) -> dict:
+    """Separate surface: distinct limitations with explicit units and affected items."""
+    limitations = [dict(limitation) for limitation in results.get("analysis_limitations", [])]
+    affected: dict[str, list[dict]] = {limitation["id"]: [] for limitation in limitations}
+    for item in items:
+        for limitation_id in item.get("analysisLimitationIds", []):
+            if limitation_id in affected:
+                affected[limitation_id].append({"type": item.get("type", ""), "table": item.get("table", ""),
+                                                "name": item.get("name", "")})
+    for limitation in limitations:
+        rows = affected.get(limitation["id"], [])
+        limitation["affectedItemCount"] = len(rows)
+        limitation["affectedItems"] = rows[:_REPORT_HEALTH_PREVIEW_LIMIT]
+    affected_items = {(item["type"], item["table"], item["name"], item.get("sourceFile"))
+                      for item in items if item.get("analysisLimitationIds")}
+    shared = [limitation for limitation in limitations if limitation.get("scope") == "shared"]
+    return {
+        "distinctCount": len(limitations),
+        "sharedCount": len(shared),
+        "targetedCount": len(limitations) - len(shared),
+        "affectedItemCount": len(affected_items),
+        "coverageComplete": not shared,
+        "limitations": limitations,
     }
 
 
@@ -863,6 +891,15 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             "statusDetail": status,
             "removalRisk": r.get("removal_risk", "") or None,
             "reviewTriggers": r.get("review_triggers", []),
+            "analysisLimitationIds": r.get("analysis_limitation_ids", []),
+            "perspectiveMemberships": [
+                {"perspective": member["perspective"], "sourceFile": member["source_file"]}
+                for member in r.get("perspectives", [])
+            ],
+            "tableKind": r.get("table_kind", "") or ("Report" if item.source_kind == "report" else "Table"),
+            "modelRole": r.get("model_role", "") or None,
+            "tableDependentItems": r.get("table_dependents", []),
+            "tableDependentCount": len(r.get("table_dependents", [])),
             "brokenDaxRefs": r.get("broken_dax_refs", []),
             "brokenDaxRefDetails": r.get("broken_dax_ref_details", []),
             "reportCount": len(report_paths_used),
@@ -929,6 +966,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
                     "selectorValue": u.selector_value or "",
                     "refType": u.ref_type,
                     "staleKind": u.stale_kind or "",
+                    "cleanupEligible": analyzer.stale_usage_cleanup_eligible(u),
                 }
                 for u in r.get("stale_usages", [])
             ],
@@ -1065,6 +1103,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
                 "selectorValue": u.selector_value or "",
                 "isStale": True,
                 "staleKind": u.stale_kind or "",
+                "cleanupEligible": analyzer.stale_usage_cleanup_eligible(u),
                 "status": status,
                 "usageState": display_state.get("usageState", "Unused"),
                 "issueState": display_state.get("issueState", _issue_state(status, r.get("broken_dax_refs", []), len(r.get("stale_usages", [])))),
@@ -1101,8 +1140,16 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
         table_usage_status = _table_usage_status(display_table)
         tables.append({
             "name": table["name"],
+            "isCalculationGroup": bool(table.get("is_calculation_group")),
+            "calculationGroupTargets": table.get("calculation_group_targets", []),
+            "calculationGroupUnresolved": bool(table.get("calculation_group_unresolved")),
             "roleLabel": table.get("role_label", ""),
             "roleReason": table.get("role_reason", ""),
+            "tableKind": table.get("table_kind", "Table"),
+            "calculationItems": table.get("calculation_items", []),
+            "perspectives": table.get("perspectives", []),
+            "cleanupRecommendation": table.get("cleanup_recommendation", ""),
+            "cleanupReason": table.get("cleanup_reason", ""),
             "usageStatus": table_usage_status,
             "usageState": _table_usage_state(display_table),
             "issueState": " / ".join(key for key, count in issue_counts.items() if count),
@@ -1169,6 +1216,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
         "warnings": results.get("warnings", []),
         "reportIssues": report_issues,
         "reportHealth": _build_report_health(report_issues, items),
+        "analysisLimitations": _build_analysis_limitations(results, items),
         "rootCauseGroups": _build_report_root_cause_groups(report_issues),
         "items": items,
         "references": references,

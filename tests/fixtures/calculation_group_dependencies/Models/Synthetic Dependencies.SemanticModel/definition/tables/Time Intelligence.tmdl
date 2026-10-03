@@ -1,0 +1,26 @@
+table 'Time Intelligence'
+	calculationGroup
+		precedence: 10
+
+		calculationItem Current = SELECTEDMEASURE()
+
+		calculationItem YTD = CALCULATE(SELECTEDMEASURE(), DATESYTD(Sales[Order Date]))
+			formatStringDefinition = SELECTEDMEASUREFORMATSTRING() & " YTD"
+			ordinal: 1
+
+		calculationItem PY = CALCULATE(SELECTEDMEASURE(), SAMEPERIODLASTYEAR(Sales[Order Date]))
+			ordinal: 2
+
+	column Name
+		dataType: string
+		sourceColumn: Name
+		sortByColumn: Ordinal
+
+	column Ordinal
+		dataType: int64
+		isHidden
+		sourceColumn: Ordinal
+
+	partition 'Time Intelligence' = calculationGroup
+		mode: import
+		source = calculationGroup
