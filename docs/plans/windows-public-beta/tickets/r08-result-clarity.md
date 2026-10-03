@@ -31,6 +31,10 @@ Improve the existing result entry point and item explanation. Present selected s
 
 Use the bundled demo and richer synthetic QA project. Capture scope/result/item/preview states and verify that classifications and mutation permissions have not changed.
 
+## Browser observations to assess
+
+Local MSI walkthroughs found a classic row still showing `Pending: Hide` after successful apply/restore, and v2 history lacking classic's visible Verify files action and restore preflight/diff. Both layouts restored original bytes correctly. Reproduce the status issue and assess review/history clarity within this ticket, coordinating recovery acceptance with R10. See [classic evidence](../../../audits/windows-ui-2026-10-03/r03-classic/README.md) and [v2 evidence](../../../audits/windows-ui-2026-10-03/r03-v2/README.md). These observations do not change analysis classifications or authorize bypassing recovery guards.
+
 ## Out of scope
 
 Changing analysis rules, renaming canonical domain concepts without a separate decision, or implementing automatic broken-reference repair.

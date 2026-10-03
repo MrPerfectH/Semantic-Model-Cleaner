@@ -48,7 +48,7 @@ Repeat the audit probes against disposable plans and confirm unchanged source by
 
 ## Local browser follow-up on MSI
 
-The user authorized local browser automation. On source revision `7c145f3`, local Edge on MSI Summit E15 A11SCST completed the classic-layout demo/analyze, authenticated JSON/Excel downloads, reviewed Hide/apply, history verification, review/restore, and policy-decision save. All ten original project files restored byte-for-byte; policy save preserved their bytes; no page errors occurred. See [captures and exact limits](../../../audits/windows-ui-2026-10-03/r03-classic/README.md). Current v2 lifecycle, rendered cancellation, and rebuilt-package acceptance remain pending.
+The user authorized local browser automation. On source revision `7c145f3`, local Edge on MSI Summit E15 A11SCST completed the classic-layout demo/analyze, authenticated JSON/Excel downloads, reviewed Hide/apply, history verification, review/restore, and policy-decision save. All ten original project files restored byte-for-byte; policy save preserved their bytes; no page errors occurred. See [classic captures and limits](../../../audits/windows-ui-2026-10-03/r03-classic/README.md). The R07 source also passed v2 demo/scope/analyze, authenticated downloads, preview cancellation without mutation, reviewed apply, and byte-exact restore; [v2 evidence](../../../audits/windows-ui-2026-10-03/r03-v2/README.md). Background-analysis cancellation, v2 policy save, and rebuilt-package acceptance remain pending. V2 recovery-review/verification parity is recorded for R08/R10 assessment.
 
 ## Out of scope
 
