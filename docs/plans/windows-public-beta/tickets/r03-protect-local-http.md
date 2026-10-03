@@ -43,6 +43,7 @@ Repeat the audit probes against disposable plans and confirm unchanged source by
 - `tests/test_local_http_client.py` executes the shared JavaScript in Node and verifies token headers, rejection of foreign origins/ports, bodyless DELETE headers, and blob downloads. Existing classic-plan and review-policy tests exercise legitimate protected calls.
 - Updated wheel and Windows package smoke clients. `test_packaged_http_client_bootstraps_and_calls_protected_api` ran the Windows smoke client's actual urllib bootstrap and protected demo/history calls against a real loopback HTTP server.
 - Full Windows suite on the R01/R02-integrated base `30ecdba` plus R03: **965 passed, 8 skipped in 81.81 seconds**. Ruff on source, tests, and changed smoke scripts: **passed**. Existing CLI tests passed without browser credentials. All destructive tests use disposable projects/user-state directories.
+- Merged the R04-integrated branch at `9a132ae` without conflicts, then reran the shared HTTP security/client, package-client, app API, analysis-jobs, classic-plan, review-policy, connected-scope, CI-check, and clean-stale suites: **278 passed, 1 skipped in 16.75 seconds**. Ruff and `git diff --check` passed after integration.
 - Validation limit: these are Flask route, real HTTP-client, and Node checks. T3's shared preview cannot reach the Windows loopback app in this session; no complete real-browser walkthrough or rebuilt Windows-package acceptance is claimed. Those checks remain pending for integration/R10.
 
 ## Out of scope
