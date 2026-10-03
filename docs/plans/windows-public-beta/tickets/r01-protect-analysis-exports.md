@@ -56,6 +56,7 @@ Keep this fix under R01: apply consistent alias/hard-link protection to these ex
 - Normal external overwrites and nested external plan destinations work. Error wording now refers to export output so it applies to all three callers; invalid destinations return input-error status 2 without source/input changes. Saved-plan digests and finding fingerprints are unchanged.
 - `pytest tests/test_automation_export_safety.py tests/test_analysis_exports.py tests/test_ci_check.py tests/test_change_plans.py tests/test_plan_write_boundaries.py tests/test_plan_review_regressions.py tests/test_connected_scope_entrypoints.py -q --tb=short` under Windows Python 3.13 with `PYTHONUTF8=0`: **172 passed, 4 skipped** in 21.01 seconds. Skips are existing symbolic-link privilege and POSIX-permission checks; hard links and junctions passed.
 - All **23** new automation-export cases pass, including byte/directory snapshots on refusal, operations hard links, normal existing external output, and missing-parent plan output. `ruff check src tests` and `git diff --check` pass.
+- Merged integration revision `e40a046` (R03 authenticated Flask boundary) and reran the affected command above: **172 passed, 4 skipped** in 20.05 seconds. Ruff passed on the combined sources/tests.
 
 ## Out of scope
 
