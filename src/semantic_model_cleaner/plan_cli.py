@@ -31,6 +31,7 @@ def main(argv=None):
     hist = sub.add_parser('history', help='List local operation receipts.')
     hist.add_argument('--journal-dir', default=str(_directory()))
     args = parser.parse_args(argv)
+    scope = None
     try:
         if args.command == 'plan':
             root = Path(args.project_path).resolve()
@@ -39,8 +40,13 @@ def main(argv=None):
                 raise change_plan.PlanError('Select exactly one semantic model with --model.')
             if args.report:
                 reports = [Path(p).resolve() for p in args.report]
+                scope = {"mode": "explicit", "reports": [
+                    analyzer.report_binding_status(report, models[0]) for report in reports]}
             else:
-                reports = analyzer.filter_reports_bound_to_model(analyzer.discover_reports([root]), models[0])
+                scope = analyzer.report_binding_scope(models[0], analyzer.discover_reports([root]))
+                reports = [Path(row['path']) for row in scope['selected']]
+                if not reports:
+                    raise change_plan.PlanError('No connected Reports found; inspect definition.pbir and selected scope.')
             target = Path(args.output).resolve()
             if any(target.is_relative_to(p.resolve()) for p in [*models, *reports, *analyzer.discover_models([root]), *analyzer.discover_reports([root])]) or target == Path(args.operations).resolve():
                 raise change_plan.PlanError('Plan output must be outside discovered or selected artifacts and must not replace the operations file.')
@@ -56,6 +62,7 @@ def main(argv=None):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(result, indent=2) + '\n', encoding="utf-8")
             print(json.dumps({'ok': True, 'plan_file': str(target), 'id': result['id'],
+                              'reportBinding': scope,
                               'changed_files': len(result['changes']), 'validation': result['validation']}))
         elif args.command == 'history':
             print(json.dumps({'receipts': [json.loads(p.read_text(encoding="utf-8")) for p in sorted(Path(args.journal_dir).glob('*.receipt.json'))]}, indent=2))
@@ -79,5 +86,8 @@ def main(argv=None):
             return 0 if result.get('ok') else 1
         return 0
     except (ValueError, OSError, KeyError, TypeError) as exc:
-        print(json.dumps({'ok': False, 'error': str(exc)}), file=sys.stderr)
+        error = {'ok': False, 'error': str(exc)}
+        if scope is not None:
+            error['reportBinding'] = scope
+        print(json.dumps(error), file=sys.stderr)
         return 2

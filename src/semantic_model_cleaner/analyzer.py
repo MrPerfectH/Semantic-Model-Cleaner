@@ -444,7 +444,7 @@ def report_binding_status(
     adds to its warning list, or None).
 
     Statuses: `connected`, `connected_by_name`, `remote`, `not_connected`,
-    `missing_definition`, `invalid_definition`, `missing_dataset_reference`,
+    `missing_definition`, `invalid_definition`, `ambiguous_definition`, `missing_dataset_reference`,
     and `unreadable` (definition.pbir could not be read at all; the UI reports
     that as a warning without a status row).
     """
@@ -487,6 +487,11 @@ def report_binding_status(
         return fail("invalid_definition", "Invalid definition.pbir JSON: expected a JSON object.")
 
     dataset_reference = definition.get("datasetReference", {})
+    if isinstance(dataset_reference, dict) and "byPath" in dataset_reference and "byConnection" in dataset_reference:
+        return fail(
+            "ambiguous_definition",
+            "definition.pbir contains both datasetReference.byPath and byConnection; select one binding.",
+        )
     if isinstance(dataset_reference, dict) and "byConnection" in dataset_reference:
         connection = dataset_reference.get("byConnection")
         published_name = ""
@@ -560,6 +565,42 @@ def filter_reports_bound_to_model(reports: list[Path], model_path: Path) -> list
     return partition_reports_by_binding(reports, model_path)[0]
 
 
+def report_binding_scope(model_path: Path, reports: list[Path]) -> dict:
+    """Return selected/excluded identities and evidence for default Report scope."""
+    scope = {"selected": [], "excluded": []}
+    names, label = model_name_candidates(model_path), model_label(model_path)
+    for report in _unique_sorted_paths(reports):
+        binding = report_binding_status(report, model_path, names=names, label=label)
+        binding.pop("scanned", None)
+        binding.pop("warning", None)
+        group = "selected" if binding["status"] in BOUND_REPORT_STATUSES else "excluded"
+        scope[group].append(binding)
+    return scope
+
+
+def record_report_scope(results: dict, scope: dict) -> None:
+    """Attach selection evidence separately from scan coverage/classification."""
+    results["report_binding"] = scope
+    results.setdefault("warnings", []).extend({
+        "code": "REPORT_SCOPE_EXCLUDED", "severity": "warning",
+        "message": f"Excluded {row['name']} from analysis: {row['message']}",
+        "artifactPath": row["definitionFile"],
+    } for row in scope["excluded"])
+
+
+def narrow_report_scope(scope: dict, reports: list[Path]) -> dict:
+    """Record an explicit name/interactive subset of eligible connected Reports."""
+    selected = {str(Path(path).resolve()) for path in reports}
+    return {
+        "selected": [row for row in scope["selected"] if row["path"] in selected],
+        "excluded": [*scope["excluded"], *[
+            {**row, "bindingStatus": row["status"], "status": "not_selected",
+             "message": "Connected Report excluded by name filter or interactive selection."}
+            for row in scope["selected"] if row["path"] not in selected
+        ]],
+    }
+
+
 def filter_models(models: list[Path], model_filters: Optional[list[str]]) -> list[Path]:
     if not model_filters:
         return models
@@ -609,20 +650,21 @@ def select_paths_interactively(label: str, paths: list[Path], formatter) -> list
     if not paths:
         return []
 
-    print(f"\nSelect {label} (comma list, range like 1-3, or 'all'):")
+    print(f"\nSelect {label} (comma list, range like 1-3, or 'all'):", file=sys.stderr)
     for idx, path in enumerate(paths, start=1):
-        print(f"{idx:>3}. {formatter(path)}")
+        print(f"{idx:>3}. {formatter(path)}", file=sys.stderr)
 
     while True:
-        raw = input(f"{label} selection [all]: ").strip()
+        print(f"{label} selection [all]: ", end="", file=sys.stderr, flush=True)
+        raw = input().strip()
         try:
             picks = _parse_selection_spec(raw, len(paths))
         except ValueError:
-            print("Invalid selection. Use e.g. 1,3-5 or all.")
+            print("Invalid selection. Use e.g. 1,3-5 or all.", file=sys.stderr)
             continue
         if picks:
             return [paths[i - 1] for i in picks]
-        print("No valid items selected. Try again.")
+        print("No valid items selected. Try again.", file=sys.stderr)
 
 
 def normalize_key(table: str, name: str) -> tuple[str, str]:
@@ -4411,12 +4453,17 @@ def analyze(
         models = discover_models(model_roots)
         models = filter_models(models, model_filters)
 
+    scope = None
     if report_paths is not None:
         reports = _unique_sorted_paths(report_paths)
     else:
         report_roots = report_search_roots or [workspace]
         reports = discover_reports(report_roots)
+        _require_single_model(models)
+        scope = report_binding_scope(models[0], reports)
+        reports = [Path(row["path"]) for row in scope["selected"]]
         reports = filter_reports(reports, report_filters)
+        scope = narrow_report_scope(scope, reports)
 
     if not models:
         roots = model_search_roots or [workspace]
@@ -4426,7 +4473,7 @@ def analyze(
     if not reports:
         roots = report_search_roots or [workspace]
         roots_display = ", ".join(str(p) for p in roots)
-        print(f"Error: No matching *.Report found under: {roots_display}", file=sys.stderr)
+        print(f"Error: No matching connected *.Report found under: {roots_display}. Check definition.pbir and report filters.", file=sys.stderr)
         sys.exit(1)
 
     # ── Parse model ──
@@ -4923,7 +4970,7 @@ def analyze(
     affected_item_ids = {
         item_identity(r["item"]) for r in results if r["analysis_limitation_ids"]
     }
-    return {
+    output = {
         "coverage": {"complete": not coverage_limitations, "limitations": coverage_limitations},
         "analysis_limitations": analysis_limitations,
         "analysis_limitation_summary": {
@@ -4951,6 +4998,9 @@ def analyze(
         "warnings": [_serialize_warning(w) for w in warnings],
         "report_issues": [_serialize_report_issue(issue) for issue in report_issues],
     }
+    if scope is not None:
+        record_report_scope(output, scope)
+    return output
 
 
 # ── Output Formatters ─────────────────────────────────────────────────────────
@@ -5142,6 +5192,7 @@ def format_unused(results: dict) -> str:
 
 def format_json_output(results: dict) -> str:
     output = {
+        "reportBinding": results.get("report_binding"),
         "summary": results["summary"],
         "tables": results.get("table_summaries", []),
         "warnings": results.get("warnings", []),
@@ -5983,7 +6034,6 @@ def main(argv: Optional[list[str]] = None):
     discovered_models = discover_models(model_roots)
     discovered_reports = discover_reports(report_roots)
     models = filter_models(discovered_models, args.model)
-    reports = filter_reports(discovered_reports, args.report)
 
     if args.interactive:
         if not sys.stdin.isatty():
@@ -5994,13 +6044,19 @@ def main(argv: Optional[list[str]] = None):
             models,
             lambda p: f"{p.name} ({p})",
         )
+    _require_single_model(models)
+    scope = report_binding_scope(models[0], discovered_reports)
+    reports = filter_reports([Path(row["path"]) for row in scope["selected"]], args.report)
+    if args.interactive:
         reports = select_paths_interactively(
             "reports",
             reports,
             lambda p: f"{report_display_name(p)} ({p})",
         )
 
-    _require_single_model(models)
+    scope = narrow_report_scope(scope, reports)
+    for row in scope["excluded"]:
+        print(f"Excluded {row['path']}: {row['message']}", file=sys.stderr)
 
     output_path = args.output
     if args.format == "xlsx" and not output_path:
@@ -6026,6 +6082,8 @@ def main(argv: Optional[list[str]] = None):
     except UnsupportedSemanticModelError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(2)
+
+    record_report_scope(results, scope)
 
     if args.format == "xlsx":
         format_xlsx(results, output_path)
