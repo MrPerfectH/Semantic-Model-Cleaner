@@ -183,6 +183,14 @@ A richer synthetic QA workspace is available under [`examples/product-qa-workspa
 
 Both web exports download the latest completed analysis without re-running it.
 
+CLI exports (`full`, `unused`, `json`, and `xlsx`) must be saved outside Semantic
+Model and Report artifact folders, including artifacts excluded from the analysis.
+This also applies to Excel's default output in the current directory. Use
+`--output` to choose an external directory; unsafe destinations return exit code 2
+without writing project files. Resolved symlink/junction aliases are checked, and
+existing files with multiple hard links are rejected; choose a new output file
+instead. Ordinary external export files can still be overwritten.
+
 ## Safety Notes
 
 - The workflow is intentionally `1 semantic model -> 1 or more reports`

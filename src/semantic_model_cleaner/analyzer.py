@@ -28,6 +28,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
 
+from semantic_model_cleaner.analysis_export import validate_export_destination
 from semantic_model_cleaner.reference_tokens import dax_tokens
 from semantic_model_cleaner.tmdl_identifiers import (
     parse_tmdl_dotted_ref,
@@ -5570,7 +5571,7 @@ def main(argv: Optional[list[str]] = None):
     )
     parser.add_argument(
         "-o", "--output",
-        help="Output file path. Required for xlsx format. For other formats, writes to file instead of stdout.",
+        help="Output file outside Semantic Model and Report folders. Excel defaults to <model>_usage_analysis.xlsx; other formats default to stdout.",
     )
     parser.add_argument(
         "--models-path",
@@ -5603,8 +5604,10 @@ def main(argv: Optional[list[str]] = None):
         args.workspace, args.models_path, args.reports_path
     )
 
-    models = filter_models(discover_models(model_roots), args.model)
-    reports = filter_reports(discover_reports(report_roots), args.report)
+    discovered_models = discover_models(model_roots)
+    discovered_reports = discover_reports(report_roots)
+    models = filter_models(discovered_models, args.model)
+    reports = filter_reports(discovered_reports, args.report)
 
     if args.interactive:
         if not sys.stdin.isatty():
@@ -5623,6 +5626,19 @@ def main(argv: Optional[list[str]] = None):
 
     _require_single_model(models)
 
+    output_path = args.output
+    if args.format == "xlsx" and not output_path:
+        model_name = models[0].name.replace(".SemanticModel", "")
+        output_path = f"{model_name}_usage_analysis.xlsx"
+    if output_path:
+        try:
+            output_path = validate_export_destination(
+                output_path, [*discovered_models, *discovered_reports, *models, *reports]
+            )
+        except (ValueError, OSError, RuntimeError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(2)
+
     try:
         results = analyze(
             workspace,
@@ -5636,10 +5652,6 @@ def main(argv: Optional[list[str]] = None):
         sys.exit(2)
 
     if args.format == "xlsx":
-        output_path = args.output
-        if not output_path:
-            model_name = models[0].name.replace(".SemanticModel", "") if models else "model"
-            output_path = f"{model_name}_usage_analysis.xlsx"
         format_xlsx(results, output_path)
     else:
         if args.format == "full":
@@ -5648,9 +5660,9 @@ def main(argv: Optional[list[str]] = None):
             text = format_unused(results)
         elif args.format == "json":
             text = format_json_output(results)
-        if args.output:
-            Path(args.output).write_text(text, encoding="utf-8")
-            print(f"Report saved to: {args.output}")
+        if output_path:
+            output_path.write_text(text, encoding="utf-8")
+            print(f"Report saved to: {output_path}")
         else:
             print(text)
 
