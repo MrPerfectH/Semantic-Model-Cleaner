@@ -1,6 +1,6 @@
 # R01 Protect Semantic Model and Report files from analysis exports
 
-Status: Implemented on 2026-10-03 in `codex/r01-protect-exports`; ready for integration review. Local ticket, not a published GitHub issue.
+Status: Ordinary exports integrated in `c57f771`. Review found a related plan/baseline hard-link gap; focused follow-up required before this release gate is complete. Local ticket, not a published GitHub issue.
 Type: AFK — implementable from this specification once dependencies are satisfied.
 Priority: Release gate.
 
@@ -42,6 +42,12 @@ Reproduce the original JSON overwrite attempt on a copy and compare a full byte 
 - After integrating the updated beta3 source and Windows portability fix (`4631a9e`), ran `python -m pytest tests/test_analysis_exports.py tests/test_clean_stale_cli.py tests/test_analyze_model_usage.py -q`: **112 passed, 2 skipped**. The two skips are file/directory symbolic-link creation, unavailable under this Windows account's privileges; junction and hard-link checks passed. These symbolic-link tests remain runnable on Linux or Windows with symlink privileges.
 - Ran Ruff on the changed Python files: **passed**. Used the shared virtual environment with `PYTHONPATH` set to this worktree's `src`; no real Power BI Projects were mutated.
 - Remaining validation: integration review and symbolic-link execution in a capable environment. No cleanup writers, analysis semantics, recovery machinery, or format contents changed.
+
+## Integration follow-up: plan and baseline aliases
+
+On integration revision `40275a4`, disposable demo probes showed that an external hard link to `Sales.tmdl` bypasses the separate plan/baseline output guards. `plan -o` returned 0 and overwrote the linked source; `check --write-baseline` returned the normal findings status 1 and also overwrote it. The ordinary analyzer guard correctly rejects this case.
+
+Keep this fix under R01: apply consistent alias/hard-link protection to these existing metadata-export destinations, preserve the plan command's supported creation of external parent directories, and preserve its prohibition on replacing the operations input. Check safety before creating output directories or writing files. Regression evidence must compare source/input bytes and show normal external outputs still work. This follow-up does not change plan digests, cleanup writers, or release-ticket ordering.
 
 ## Out of scope
 
