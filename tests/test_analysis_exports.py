@@ -36,6 +36,20 @@ def snapshot(root):
             for path in root.rglob("*")}
 
 
+def make_directory_alias(alias, target):
+    if os.name == "nt":
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "$ErrorActionPreference = 'Stop'; New-Item -ItemType Junction "
+             "-Path $env:SMC_TEST_ALIAS -Target $env:SMC_TEST_TARGET | Out-Null"],
+            env={**os.environ, "SMC_TEST_ALIAS": str(alias), "SMC_TEST_TARGET": str(target)},
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+    else:
+        alias.symlink_to(target, target_is_directory=True)
+
+
 def export(project, output, format="json", extra=()):
     args = [str(project[0]), "--model", "Sales", "--report", "Overview", "--format", format]
     if output is not None:
@@ -109,14 +123,7 @@ def test_alias_cannot_overwrite_artifact(project, tmp_path, kind):
     if kind == "junction":
         if os.name != "nt":
             pytest.skip("Windows junction test")
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-Command",
-             "$ErrorActionPreference = 'Stop'; New-Item -ItemType Junction "
-             "-Path $env:SMC_TEST_ALIAS -Target $env:SMC_TEST_TARGET | Out-Null"],
-            env={**os.environ, "SMC_TEST_ALIAS": str(alias), "SMC_TEST_TARGET": str(project[1])},
-            capture_output=True, text=True,
-        )
-        assert result.returncode == 0, result.stderr
+        make_directory_alias(alias, project[1])
         output = alias / "definition/tables/Sales.tmdl"
     else:
         source = project[1] if kind == "directory_symlink" else project[1] / "definition/tables/Sales.tmdl"
@@ -129,6 +136,33 @@ def test_alias_cannot_overwrite_artifact(project, tmp_path, kind):
     with pytest.raises(SystemExit) as error:
         export(project, output)
     assert error.value.code == 2
+    assert snapshot(project[0]) == before
+
+
+def test_discovered_excluded_alias_protects_unnamed_target(project, tmp_path):
+    target = tmp_path / "metadata storage"
+    target.mkdir()
+    output = target / "metadata.json"
+    output.write_text("original", encoding="utf-8")
+    make_directory_alias(project[0] / "Another.Report", target)
+    before = snapshot(tmp_path)
+    with pytest.raises(SystemExit) as error:
+        export(project, output)
+    assert error.value.code == 2
+    assert snapshot(tmp_path) == before
+
+
+def test_export_with_parent_traversal_to_external_directory_succeeds(project):
+    output = project[1] / ".." / "analysis.json"
+    export(project, output)
+    assert json.loads(output.read_text(encoding="utf-8"))["items"]
+
+
+def test_default_excel_external_directory_succeeds(project, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    before = snapshot(project[0])
+    export(project, None, "xlsx")
+    assert (tmp_path / "Sales_usage_analysis.xlsx").is_file()
     assert snapshot(project[0]) == before
 
 

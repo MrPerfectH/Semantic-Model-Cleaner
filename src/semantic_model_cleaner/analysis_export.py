@@ -17,6 +17,7 @@ def validate_export_destination(output: str, artifacts: list[Path]) -> Path:
     # .SemanticModel directory that itself aliases an otherwise unnamed folder.
     named_artifact = any(
         ancestor.name.casefold().endswith((".semanticmodel", ".report"))
+        and target.is_relative_to(ancestor.resolve())
         for path in (requested, target) for ancestor in path.parents
     )
     if inside_artifact or named_artifact:
