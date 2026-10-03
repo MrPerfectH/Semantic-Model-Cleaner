@@ -10,7 +10,7 @@ The original checkout was at `6d29ce2`, six commits behind local `origin/main`. 
 | --- | --- | --- |
 | R01 | `codex/r01-protect-exports`; `codex/r01-output-alias-followup` | Integrated ordinary exports (`c57f771`), plan/baseline aliases (`2777546`) and naming exports (`6e6ace9`) |
 | R02 | `codex/r02-windows-unicode` | Integrated in `30ecdba`; Unicode lifecycle and malformed-input checks verified |
-| R03 | `codex/r03-protect-local-http` | Integrated in `e40a046`; automated boundary/lifecycle checks pass; rendered-browser acceptance pending |
+| R03 | `codex/r03-protect-local-http` | Integrated in `e40a046`; automated checks and classic browser lifecycle pass; v2/cancellation/package evidence pending |
 | R04 | `codex/r04-report-scope` | Integrated in `4721240`; consistent connected scope and exclusion evidence verified |
 | R05 | Existing Windows fix reused | Local Windows suite passed; Windows CI lane present; remote CI still pending |
 | R06 | `codex/r06-cli-contract` | Integrated in `0453888`; command guide/version, structured JSON errors and opt-in plan JSON mode |
@@ -36,6 +36,6 @@ Use the [approved plan](README.md) and its individual tickets for acceptance cri
 
 R07 started from `7c145f3` in `smc-r07-first-run`. Existing first-run captures confirm that the automatic scope drawer covers the welcome card and that demo setup immediately analyzes without a scope review step. The scoped change exposes Open Power BI Project/Try demo, proposes connected scope, and requires explicit Analyze. R08/R09 remain sequential with the agreed human review. Browser-tool authorization is now resolved and must not be requested again for this work.
 
-R03 still needs its rendered-browser walkthrough. R05 still needs remote Linux/Windows CI evidence, including symlinks on a capable runner. R10/R11 remain dependent on the settled UI, and R12 remains a human release decision. No Windows ZIP was rebuilt or published in these implementation sessions. R13 stays deferred.
+R03's classic browser lifecycle passed on MSI, including authenticated downloads, reviewed apply, verification, byte-exact restore, and policy save; [evidence](../../audits/windows-ui-2026-10-03/r03-classic/README.md). Current v2 and rendered cancellation checks remain. R05 still needs remote Linux/Windows CI evidence, including symlinks on a capable runner. R10/R11 remain dependent on the settled UI, and R12 remains a human release decision. No Windows ZIP was rebuilt or published in these implementation sessions. R13 stays deferred.
 
 All implementation worktrees are siblings under `C:/Users/PrzemekHarazny/Projects/`: `smc-r01-protect-exports`, `smc-r02-windows-unicode`, `smc-r03-protect-local-http`, `smc-r04-report-scope`, `smc-r01-output-alias-followup`, and `smc-r06-cli-contract`. Their work has been integrated locally; original application source and unrelated `.claude` worktrees are preserved.
