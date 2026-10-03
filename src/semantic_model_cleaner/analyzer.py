@@ -30,6 +30,7 @@ from typing import Optional
 
 from semantic_model_cleaner.analysis_export import validate_export_destination
 from semantic_model_cleaner.reference_tokens import dax_tokens
+from semantic_model_cleaner.console import configure_console_output
 from semantic_model_cleaner.report_writer import STALE_CLEANUP_SUPPORTED_KINDS
 from semantic_model_cleaner.tmdl_declarations import (
     extract_feature_expressions,
@@ -5915,6 +5916,7 @@ def clean_stale_command(argv: list[str]) -> int:
 
 
 def main(argv: Optional[list[str]] = None):
+    configure_console_output()
     argv = list(sys.argv[1:] if argv is None else argv)
 
     # Subcommand dispatch is done by hand (rather than with argparse subparsers)
