@@ -13,3 +13,4 @@ dist/
 *_usage_analysis.xlsx
 *_usage_analysis.json
 *.SemanticModel_backup_*/
+.playwright-mcp/

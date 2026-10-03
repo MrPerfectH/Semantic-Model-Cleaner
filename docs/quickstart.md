@@ -7,8 +7,8 @@ no Power BI Desktop, Fabric connection, account, or paid service.
 
 ## Windows
 
-1. Open the [v0.4.0b2 prerelease](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b2).
-2. Download `semantic-model-cleaner-windows-x64-0.4.0b2.zip` and its
+1. Open the [v0.4.0b3 prerelease](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b3).
+2. Download `semantic-model-cleaner-windows-x64-0.4.0b3.zip` and its
    `.sha256` file. Compare the ZIP's SHA-256 value with the sidecar.
 3. Extract the complete ZIP and run `Semantic Model Cleaner.exe`.
 4. Choose your repository folder, select one semantic model and its connected
@@ -22,7 +22,7 @@ The beta is unsigned, so Windows may show a reputation prompt on first launch.
 ## Python
 
 ```bash
-python -m pip install semantic_model_cleaner-0.4.0b2-py3-none-any.whl
+python -m pip install semantic_model_cleaner-0.4.0b3-py3-none-any.whl
 smc /path/to/project --format full
 smc-web /path/to/project
 ```

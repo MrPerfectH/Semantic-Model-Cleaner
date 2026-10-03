@@ -15,7 +15,7 @@ def scope(tmp_path, monkeypatch):
     unrelated.mkdir(parents=True)
     (unrelated / 'definition.pbir').write_text(json.dumps({
         'datasetReference': {'byPath': {'path': '../../../Other.SemanticModel'}}
-    }))
+    }), encoding="utf-8")
     missing = tmp_path / 'Reports' / 'Missing.Report'
     missing.mkdir()
     previous = webapp._state.copy()
@@ -108,7 +108,7 @@ def test_hidden_usage_survives_serialization_and_compaction(scope):
 def test_relationship_omission_defaults_match_tom(scope, declarations, expected):
     model, _, _, _ = scope
     (model / 'definition' / 'relationships.tmdl').write_text(
-        'relationship R\n\tfromColumn: Sales.Amount\n\ttoColumn: Date.Id\n' + declarations
+        'relationship R\n\tfromColumn: Sales.Amount\n\ttoColumn: Date.Id\n' + declarations, encoding="utf-8"
     )
     relationship, = analyzer.parse_relationship_details(model)
     assert (relationship.from_cardinality, relationship.to_cardinality) == expected
@@ -119,23 +119,23 @@ def test_report_health_total_does_not_double_count_stale_or_model_signals():
     items = [{'staleUsageCount': 5, 'brokenDaxRefs': ['A[B]', 'C[D]']}]
     health = webapp._build_report_health(issues, items)
     assert health['totalIssueCount'] == len(issues)
-    assert health['signalCounts'] == {'staleReferences': 5, 'brokenModelReferences': 2, 'unsupportedMetadata': 0}
+    assert health['signalCounts'] == {'staleReferences': 5, 'brokenModelReferences': 2}
 
 
 def test_async_analysis_rejects_platform_binding_changed_during_scan(scope, monkeypatch):
     model, report, _, _ = scope
     platform = model / '.platform'
-    platform.write_text(json.dumps({'metadata': {'displayName': 'Published Sales'}}))
+    platform.write_text(json.dumps({'metadata': {'displayName': 'Published Sales'}}), encoding="utf-8")
     (report / 'definition.pbir').write_text(json.dumps({
         'datasetReference': {'byConnection': {'connectionString': 'Initial Catalog=Published Sales'}}
-    }))
+    }), encoding="utf-8")
     previous_results = object()
     webapp._state['last_results'] = previous_results
     analyze = analyzer.analyze
 
     def change_binding(**kwargs):
         result = analyze(**kwargs)
-        platform.write_text(json.dumps({'metadata': {'displayName': 'Unrelated'}}))
+        platform.write_text(json.dumps({'metadata': {'displayName': 'Unrelated'}}), encoding="utf-8")
         return result
 
     monkeypatch.setattr(analyzer, 'analyze', change_binding)

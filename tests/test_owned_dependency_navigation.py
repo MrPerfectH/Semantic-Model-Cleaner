@@ -19,7 +19,7 @@ def js_function(source, name):
 @pytest.mark.parametrize('layout', ['index.html', 'index_v2.html'])
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js unavailable')
 def test_dependency_navigation_uses_exact_report_owner(tmp_path, layout):
-    source = (ROOT / 'src/semantic_model_cleaner/templates' / layout).read_text()
+    source = (ROOT / 'src/semantic_model_cleaner/templates' / layout).read_text(encoding="utf-8")
     names = ['isReportItem', 'itemKey', 'parseItemRefText', 'getItemsByRefText', 'formatLinkedRef', 'bindDetailLinks']
     harness = tmp_path / 'navigation.cjs'
     harness.write_text("const assert = require('node:assert/strict');\nfunction esc(x){return String(x);}\n"
@@ -41,7 +41,7 @@ const link={dataset:{itemKey:itemKey(allItems[1])}};
 bindDetailLinks({querySelectorAll(selector){return selector==='.detail-item-link'?[link]:[];}});
 link.onclick({preventDefault(){}});
 assert.equal(opened,itemKey(allItems[1]));
-''')
+''', encoding="utf-8")
     result = subprocess.run([shutil.which('node'), str(harness)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'item.dependencyItems ||' in source

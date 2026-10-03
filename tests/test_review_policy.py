@@ -13,10 +13,10 @@ def project(tmp_path):
     report = tmp_path / "R.Report"
     tables = model / "definition/tables"
     tables.mkdir(parents=True)
-    (tables / "Sales.tmdl").write_text("table Sales\n\tmeasure TotalRevenue = SUM(Sales[Amount])\n\tcolumn Amount\n\tcolumn Spare\n")
+    (tables / "Sales.tmdl").write_text("table Sales\n\tmeasure TotalRevenue = SUM(Sales[Amount])\n\tcolumn Amount\n\tcolumn Spare\n", encoding="utf-8")
     (report / "definition").mkdir(parents=True)
-    (report / "definition/report.json").write_text('{}')
-    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}))
+    (report / "definition/report.json").write_text('{}', encoding="utf-8")
+    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}), encoding="utf-8")
     return tmp_path, model, report
 
 
@@ -50,7 +50,7 @@ def test_expired_and_stale_decisions_do_not_suppress(project):
     assert not finding(project)[1]["suppressed"]
     record(project)
     source = project[1] / "definition/tables/Sales.tmdl"
-    source.write_text(source.read_text() + "\n// subsequent edit\n")
+    source.write_text(source.read_text() + "\n// subsequent edit\n", encoding="utf-8")
     assert finding(project)[1]["review_status"] == "stale"
     assert not finding(project)[1]["suppressed"]
 
@@ -60,7 +60,7 @@ def test_scope_change_invalidates_decision(project):
     record(project)
     second = root / "Second.Report"
     (second / "definition").mkdir(parents=True)
-    (second / "definition/report.json").write_text('{}')
+    (second / "definition/report.json").write_text('{}', encoding="utf-8")
     (second / "definition.pbir").write_bytes((report / "definition.pbir").read_bytes())
     checked = policy.review_findings(root, model, [report, second])
     row = next(row for row in checked["findings"] if row["name"] == "Spare")
@@ -69,7 +69,7 @@ def test_scope_change_invalidates_decision(project):
 
 def test_decision_cannot_suppress_coverage_or_authorize_deletion(project):
     root, model, report = project
-    (report / "definition/report.json").write_text('{invalid')
+    (report / "definition/report.json").write_text('{invalid', encoding="utf-8")
     checked = policy.review_findings(root, model, [report])
     row = next(row for row in checked["findings"] if row["rule_id"] == "SMC002")
     policy.add_decision(root, row, checked["scope"], disposition="accept", reason="Investigating", owner="Team", expires_on="2099-01-01")
@@ -90,7 +90,7 @@ def test_save_detects_concurrent_edit_and_rejects_artifact_paths(project):
         policy.save_policy(root, first)
     with pytest.raises(policy.PolicyError, match="outside"):
         policy.save_policy(root, first, report / "definition/report.json")
-    assert (report / "definition/report.json").read_text() == '{}'
+    assert (report / "definition/report.json").read_text(encoding="utf-8") == '{}'
 
 
 def test_canonical_finding_required_and_stale_client_rejected(project):
@@ -100,7 +100,7 @@ def test_canonical_finding_required_and_stale_client_rejected(project):
         policy.add_decision(project[0], row, checked["scope"], disposition="keep", reason="x", owner="x", expires_on="2099-01-01")
     checked, row = finding(project)
     source = project[1] / "definition/tables/Sales.tmdl"
-    source.write_text(source.read_text() + "\n// changed\n")
+    source.write_text(source.read_text() + "\n// changed\n", encoding="utf-8")
     with pytest.raises(policy.PolicyError, match="changed"):
         policy.add_decision(project[0], row, checked["scope"], disposition="keep", reason="x", owner="x", expires_on="2099-01-01")
 
@@ -132,7 +132,7 @@ def test_naming_preview_is_reviewable_and_preserves_inputs(project):
 
 def test_naming_collisions_and_unstable_rules_are_blocked(project):
     source = project[1] / "definition/tables/Sales.tmdl"
-    source.write_text(source.read_text() + "\tmeasure 'Total Revenue' = 1\n")
+    source.write_text(source.read_text() + "\tmeasure 'Total Revenue' = 1\n", encoding="utf-8")
     result = policy.naming_preview(project[0], project[1], [project[2]], naming_config())
     assert not result["ok"] and result["plan"] is None and result["conflicts"]
     result = policy.naming_proposals(project[1], naming_config(case="preserve", find="Total", replace="Total Total"))
@@ -146,7 +146,7 @@ def test_prefix_is_idempotent_and_naming_findings_join_ci(project):
     code, checked = ci.run_check(root)
     assert code == 0 and any(row["rule_id"] == "SMC009" for row in checked["findings"])
     source = model / "definition/tables/Sales.tmdl"
-    source.write_text(source.read_text().replace("TotalRevenue", "m_TotalRevenue"))
+    source.write_text(source.read_text().replace("TotalRevenue", "m_TotalRevenue"), encoding="utf-8")
     assert policy.naming_proposals(model, config)["proposals"] == []
 
 
@@ -166,7 +166,7 @@ def test_table_column_and_measure_rules_apply_through_existing_plan(project):
     visual = report / "definition/pages/P/visuals/V/visual.json"
     visual.parent.mkdir(parents=True)
     visual.write_text(json.dumps({"visual": {"query": {"Measure": {
-        "Expression": {"SourceRef": {"Entity": "Sales"}}, "Property": "TotalRevenue"}}}}))
+        "Expression": {"SourceRef": {"Entity": "Sales"}}, "Property": "TotalRevenue"}}}}), encoding="utf-8")
     config = {**policy.empty_policy(), "naming_rules": [
         {"id": "tables", "item_type": "Table", "prefix": "f_"},
         {"id": "measures", "item_type": "Measure", "prefix": "m_"},
@@ -184,7 +184,7 @@ def test_table_column_and_measure_rules_apply_through_existing_plan(project):
 
 def test_invalid_policy_fails_ci_and_cli_naming_output_is_contained(project, capsys):
     root, model, report = project
-    (root / policy.POLICY_FILENAME).write_text('{invalid')
+    (root / policy.POLICY_FILENAME).write_text('{invalid', encoding="utf-8")
     assert ci.run_check(root)[0] == 2
     (root / policy.POLICY_FILENAME).unlink()
     policy.save_policy(root, naming_config())

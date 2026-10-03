@@ -14,16 +14,13 @@ from . import webapp
 
 def _configure_console_output() -> None:
     """Keep redirected Windows console output from crashing on Unicode text."""
+    webapp.configure_console_output()
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is None:
             continue
         try:
-            reconfigure(
-                errors="backslashreplace",
-                line_buffering=True,
-                write_through=True,
-            )
+            reconfigure(line_buffering=True, write_through=True)
         except (OSError, TypeError, ValueError):
             # Tests and embedded hosts can expose a closed or fixed text stream.
             continue

@@ -16,13 +16,20 @@
   var tableSort = { key: 'name', direction: 1 };
   var returnTo = null;
   var inventoryScroll = 0;
+  var tableReturnTo = null;
+  var tablesScroll = 0;
   function card(title, content) { return '<section class="detail-card"><h4>' + esc(title) + '</h4>' + content + '</section>'; }
   function empty(text) { return '<p class="detail-empty">' + esc(text) + '</p>'; }
   function properties(entries) {
     return '<dl class="object-properties">' + entries.filter(function (e) { return e[1] !== undefined && e[1] !== null && e[1] !== ''; }).map(function (e) {
-      return '<dt>' + esc(e[0]) + '</dt><dd>' + esc(String(e[1])) + '</dd>';
+      return '<dt>' + esc(e[0]) + '</dt><dd>' + (e[2] === 'html' ? String(e[1]) : esc(String(e[1]))) + '</dd>';
     }).join('') + '</dl>';
   }
+  // Parent navigation labels follow the table's declared kind; the analyzer owns classification.
+  function isCalculationGroupTable(name) { var table = getTableByName(name); return !!(table && table.isCalculationGroup); }
+  function parentKindLabel(name) { return isCalculationGroupTable(name) ? 'calculation group' : 'table'; }
+  function parentActionLabel(name) { return (isCalculationGroupTable(name) ? 'Open calculation group' : 'Open table') + ': ' + name; }
+  function parentLink(name, text, className) { return '<button type="button" class="' + (className || 'object-link') + ' detail-table-link" data-table-name="' + esc(name) + '">' + esc(text) + '</button>'; }
   function createTabs(kind, root) {
     var nav = document.createElement('div'); nav.className = 'object-tabs'; nav.setAttribute('role', 'tablist'); nav.setAttribute('aria-label', kind === 'item' ? 'Item details' : 'Table details');
     nav.innerHTML = tabs.map(function (name) { var key = name.toLowerCase(); return '<button type="button" role="tab" id="' + kind + '-tab-' + key + '" aria-controls="' + kind + '-pane-' + key + '" aria-selected="false" tabindex="-1" data-object-tab="' + key + '">' + name + '</button>'; }).join('');
@@ -55,6 +62,7 @@
     layout.appendChild(panes);
     var context = document.createElement('aside'); context.id = 'objectItemProperties'; context.className = 'object-stack'; context.setAttribute('aria-label', 'Context properties'); layout.appendChild(context); section.appendChild(layout);
     $('item-pane-overview').innerHTML = '<div class="object-stack" id="objectItemPrimary"></div>';
+    section.querySelector('.detail-header-main').insertAdjacentHTML('beforeend', '<div class="object-parent-actions" id="objectItemParent"></div>');
     section.querySelector('.detail-header').insertAdjacentHTML('beforeend', '<button type="button" class="btn btn-primary" data-object-action="changes">Review change…</button>');
     $('detailReportMeasureInfo').insertAdjacentHTML('afterend', '<div class="object-promotion-fields"><label for="objectPromotionName">Target measure name</label><input id="objectPromotionName" readonly><label for="objectPromotionTable">Target home table</label><input id="objectPromotionTable" readonly><p class="object-note">Promotion preserves the current identity. Rename or move the model measure after promotion.</p><label class="object-check"><input type="checkbox" id="objectPromotionDependencies"><span>Include required report-only dependencies<br><small>The preview checks the complete dependency set and metadata preservation. This choice is never selected automatically.</small></span></label><div id="objectPromotionInputs"></div></div>');
     $('detailBtnMigrateReportMeasure').textContent = 'Preview promotion';
@@ -96,34 +104,46 @@
     if (!$('objectItemPrimary')) return;
     if (!item) {
       $('objectItemPrimary').innerHTML = empty('Select a measure or column from Items.');
-      ['objectItemBreadcrumb', 'objectItemSummary', 'objectItemProperties', 'item-pane-dependencies', 'objectPromotionInputs'].forEach(function (id) { $(id).innerHTML = ''; });
+      ['objectItemBreadcrumb', 'objectItemSummary', 'objectItemProperties', 'item-pane-dependencies', 'objectPromotionInputs', 'objectItemParent'].forEach(function (id) { $(id).innerHTML = ''; });
       $('objectPromotionName').value = ''; $('objectPromotionTable').value = ''; $('objectPromotionDependencies').checked = false;
       return;
     }
     var type = item.type || 'Item';
     if (lastItemType !== type) { lastItemType = type; selectTab('item', itemTabByType[type] || 'overview'); }
-    $('objectItemBreadcrumb').innerHTML = '<button type="button" data-back-items>Items</button><span>/</span><button type="button" class="detail-table-link" data-table-name="' + esc(item.table) + '">' + esc(item.table) + '</button><span>/</span><span aria-current="page">' + esc(item.name) + '</span>';
+    var parentKind = parentKindLabel(item.table);
+    $('objectItemBreadcrumb').innerHTML = '<button type="button" data-back-items>Items</button><span>/</span><button type="button" class="detail-table-link" data-table-name="' + esc(item.table) + '" title="Open ' + parentKind + ' ' + esc(item.table) + '">' + esc(item.table) + '</button><span>/</span><span aria-current="page">' + esc(item.name) + '</span>';
     $('objectItemBreadcrumb').querySelector('[data-back-items]').onclick = function () { returnTo = null; backFromItem(); };
     $('detailTitle').textContent = item.name;
-    $('detailMeta').textContent = (isReportItem(item) ? 'Report Extension Measure' : type) + ' · ' + item.table + ' · ' + sourceSummary(item) + (item.isHidden ? ' · Hidden' : '');
+    $('detailMeta').textContent = (isReportItem(item) ? 'Report Extension Measure' : type) + ' · ' + (parentKind === 'calculation group' ? 'Calculation group: ' : 'Table: ') + item.table + ' · ' + sourceSummary(item) + (item.isHidden ? ' · Hidden' : '');
+    $('objectItemParent').innerHTML = parentLink(item.table, parentActionLabel(item.table), 'btn btn-secondary btn-sm object-parent-action');
     var cleanup = deleteSafetyValue(item); var cleanupLabel = cleanup === 'Blocked' ? 'Deletion blocked' : cleanup === 'Keep' ? 'Keep · Required by the model' : 'Cleanup: ' + cleanup;
     $('objectItemSummary').classList.toggle('object-summary-warning', cleanup === 'Review');
-    $('objectItemSummary').innerHTML = '<div class="detail-status-row">' + usageBadge(item) + '<strong>' + esc(cleanupLabel) + '</strong>' + (issueValue(item) ? issueBadge(item) : '') + '</div><p>' + esc(detailDecisionCopy(item)) + '</p>';
+    var summaryCopy = (!isReportItem(item) && (cleanup === 'Review' || (cleanup === 'Blocked' && reviewTriggers(item).length)) && window.smcCleanupExplanationHtml)
+      ? window.smcCleanupExplanationHtml(item)
+      : '<p>' + esc(detailDecisionCopy(item)) + '</p>';
+    $('objectItemSummary').innerHTML = '<div class="detail-status-row">' + usageBadge(item) + '<strong>' + esc(cleanupLabel) + '</strong>' + (issueValue(item) ? issueBadge(item) : '') + (item.modelRole ? '<span class="badge badge-muted">' + esc(item.modelRole) + '</span>' : '') + '</div>' + summaryCopy;
     var counts = detailCounts(item);
+    var parentConsumers = item.tableDependentItems || [];
     var source = item.type === 'Measure' || item.type === 'Calculated Column'
       ? '<section class="detail-card object-definition"><div class="object-card-head"><h4>DAX expression</h4><div><button type="button" class="btn btn-secondary btn-sm" data-object-action="copy">Copy</button> <button type="button" class="btn btn-secondary btn-sm" data-object-action="definition">' + (isReportItem(item) ? 'View definition' : 'Edit DAX') + '</button></div></div>' + formatCodeBlock(item.daxExpression, 'Expression unavailable in this analysis.') + '<div class="object-source-foot">' + esc(item.sourceFile || 'Source file not recorded') + '</div></section>'
-      : card('Column source', properties([['Source column', item.sourceColumn || 'Not recorded'], ['Data type', item.dataType || 'Not recorded']]) + '<button type="button" class="object-link" data-object-action="definition">Inspect table source →</button>') + card('Structural roles', formatDetailList(roles(item)) + '<p class="object-note">' + esc(usageHelpText(item)) + '</p>');
-    var brief = '<div class="object-overview-brief"><div><strong>' + counts.reports + '</strong> direct reports</div><div><strong>' + counts.dependents + '</strong> DAX consumers</div><div><strong>' + counts.staleRefs + '</strong> stale references</div></div>';
+      : card('Column source', properties([['Source column', item.sourceColumn || 'Not recorded'], ['Data type', item.dataType || 'Not recorded']]) + '<div class="object-parent-actions"><button type="button" class="object-link" data-object-action="definition">View definition tab →</button>' + parentLink(item.table, parentActionLabel(item.table) + ' →') + '</div>') + card('Structural roles', formatDetailList(roles(item)) + '<p class="object-note">' + esc(usageHelpText(item)) + '</p>');
+    var brief = '<div class="object-overview-brief"><div><strong>' + counts.reports + '</strong> direct reports</div><div><strong>' + counts.dependents + '</strong> DAX consumers</div>' + (parentConsumers.length || item.tableKind === 'Calculation group' ? '<div><strong>' + parentConsumers.length + '</strong> parent-table consumers</div>' : '') + '<div><strong>' + counts.staleRefs + '</strong> stale references</div></div>';
     var evidence = '<section class="detail-card object-evidence"><h4>Follow the evidence</h4><div class="object-evidence-row"><div>Selected report references<small>Exact report, page and visual locations</small></div><button type="button" class="btn btn-secondary btn-sm" data-object-action="references">View references →</button></div><div class="object-evidence-row"><div>Model dependencies<small>Consumers and inputs, with direction</small></div><button type="button" class="btn btn-secondary btn-sm" data-object-action="dependencies">View dependencies →</button></div></section>';
     var issues = issueValue(item) ? card('Issues to review', '<p class="object-note">' + esc(issueValue(item)) + '</p>' + formatBrokenRefDetails(item.brokenDaxRefDetails || [], item.brokenDaxRefs || [])) : '';
     $('objectItemPrimary').innerHTML = brief + source + issues + evidence;
     var evidenceReports = analyzedScope ? analyzedScope.reports : [];
-    $('objectItemProperties').innerHTML = card('Properties', properties([['Type', isReportItem(item) ? 'Report Extension Measure' : type], ['Home table', item.table], ['Display folder', item.displayFolder || 'None'], ['Format string', item.formatString], ['Visibility', item.isHidden ? 'Hidden' : 'Visible'], ['Description', item.description]])) + card('Analysis scope', '<p class="object-note"><strong>' + evidenceReports.length + ' selected report(s)</strong></p><div class="object-scope-reports">' + evidenceReports.map(function (report) { return '<p>' + esc(report.name || report.path) + '<small>' + esc(report.path) + '</small></p>'; }).join('') + '</div><p class="object-note">Unselected reports are outside this conclusion. Runtime behavior is not evaluated.</p>' + (allWarnings.length ? '<p class="object-scope-warning">' + allWarnings.length + ' analysis warning(s). Review the scope warnings before changing items.</p>' : '')) + '<section class="object-review-rail"><strong>Changes for this item</strong><p>Prepare a draft, inspect exact files and validation, then apply.</p><button type="button" class="btn btn-primary" data-object-action="changes">' + (isReportItem(item) ? 'Review promotion…' : 'Review change…') + '</button></section>';
+    $('objectItemProperties').innerHTML = card('Properties', properties([['Type', isReportItem(item) ? 'Report Extension Measure' : type], [parentKind === 'calculation group' ? 'Calculation group' : 'Home table', parentLink(item.table, item.table), 'html'], ['Table type', isReportItem(item) ? '' : item.tableKind || 'Table'], ['Model role', item.modelRole || ''], ['Perspectives', (item.perspectiveMemberships || []).map(function (member) { return member.perspective; }).join(', ')], ['Display folder', item.displayFolder || 'None'], ['Format string', item.formatString], ['Visibility', item.isHidden ? 'Hidden' : 'Visible'], ['Description', item.description]])) + card('Analysis scope', '<p class="object-note"><strong>' + evidenceReports.length + ' selected report(s)</strong></p><div class="object-scope-reports">' + evidenceReports.map(function (report) { return '<p>' + esc(report.name || report.path) + '<small>' + esc(report.path) + '</small></p>'; }).join('') + '</div><p class="object-note">Unselected reports are outside this conclusion. Runtime behavior is not evaluated.</p>' + (allWarnings.length ? '<p class="object-scope-warning">' + allWarnings.length + ' analysis warning(s). Review the scope warnings before changing items.</p>' : '')) + '<section class="object-review-rail"><strong>Changes for this item</strong><p>Prepare a draft, inspect exact files and validation, then apply.</p><button type="button" class="btn btn-primary" data-object-action="changes">' + (isReportItem(item) ? 'Review promotion…' : 'Review change…') + '</button></section>';
     $('objectPromotionName').value = item.name;
     $('objectPromotionTable').value = item.table;
     $('objectPromotionInputs').innerHTML = isReportItem(item) ? '<p class="object-note">Reported inputs to this measure</p>' + formatDetailList(item.dependencyItems || (item.dependsOnMeasures || []).concat(item.dependsOnColumns || []), {linkItems:true}) : '';
     var dependencies = (item.dependencyItems || (item.dependsOnMeasures || []).concat(item.dependsOnColumns || [])).concat(item.dependsOnTables || []);
-    $('item-pane-dependencies').innerHTML = '<div class="object-stack">' + card('Depends on — inputs to this item', formatDetailList(dependencies, { linkItems: true })) + card('Used by — downstream consumers', formatDetailList(item.dependentItems || item.usedByItems || [], { linkItems: true })) + card('Model role and retention', '<p class="object-note">' + esc(usageHelpText(item)) + '</p>' + formatDetailList(roles(item))) + card('Reference problems', formatBrokenRefDetails(item.brokenDaxRefDetails || [], item.brokenDaxRefs || [])) + '</div>';
+    var parentCard = parentConsumers.length || item.tableKind === 'Calculation group'
+      ? card('Parent-table consumers — DAX outside ' + item.table + ' that references the table itself', '<p class="object-note">' + (parentConsumers.length ? parentConsumers.length + ' retained item(s) reference the parent table by name (for example ALL or REMOVEFILTERS). They are not direct consumers of this item and not Report References, but they block deleting the whole table.' : 'No DAX outside this table references the table itself.') + '</p>' + formatDetailList(parentConsumers, { linkItems: true }))
+      : '';
+    var perspectiveCard = (item.perspectiveMemberships || []).length
+      ? card('Perspective membership — metadata evidence', '<p class="object-note">Membership keeps the item in a curated perspective; it does not prove a report executes it.</p>' + formatDetailList(item.perspectiveMemberships.map(function (member) { return member.perspective + ' (' + member.sourceFile + ')'; })))
+      : '';
+    $('item-pane-dependencies').innerHTML = '<div class="object-stack">' + card('Depends on — inputs to this item', formatDetailList(dependencies, { linkItems: true })) + card('Used by — downstream consumers', formatDetailList(item.dependentItems || item.usedByItems || [], { linkItems: true })) + parentCard + perspectiveCard + card('Model role and retention', '<p class="object-note">' + esc(usageHelpText(item)) + '</p>' + formatDetailList(roles(item))) + card('Reference problems', formatBrokenRefDetails(item.brokenDaxRefDetails || [], item.brokenDaxRefs || [])) + '</div>';
     $('detailSharedActions').classList.toggle('hidden', isReportItem(item));
     var canRenameColumn = !isReportItem(item) && (item.type === 'Column' || item.type === 'Calculated Column');
     $('objectColumnRenameGroup').classList.toggle('hidden', !canRenameColumn);
@@ -198,14 +218,15 @@
     var tableContext = document.createElement('aside'); tableContext.id = 'objectTableProperties'; tableContext.className = 'object-stack'; tableContext.setAttribute('aria-label', 'Table context properties'); tableLayout.appendChild(tableContext); root.appendChild(tableLayout);
     $('tableDetailTitle').insertAdjacentHTML('beforebegin', '<button type="button" class="btn btn-primary object-table-review" data-table-review>Review table change…</button>');
     root.addEventListener('click', function (event) { if (event.target.closest('[data-table-review]')) { selectTab('table', 'changes'); $('table-tab-changes').focus(); } });
-    var overview = $('table-pane-overview'); overview.innerHTML = '<div id="objectTableSummary" class="object-summary"></div><section class="detail-card"><div class="object-card-head"><h4>Items in this table</h4><input class="object-search" id="objectTableSearch" type="search" aria-label="Search items in this table" placeholder="Search name, type or state…"><label class="object-child-filter">Cleanup <select id="objectTableCleanup"><option value="">All</option><option>Safe</option><option>Review</option><option>Keep</option><option value="Blocked">Deletion blocked</option></select></label></div><div id="objectTableCount" class="object-note" aria-live="polite"></div><div class="object-grid-scroll" id="objectTableGrid"></div></section>';
+    root.querySelector('.detail-pagenav button').onclick = function () { backFromTable(); };
+    var overview = $('table-pane-overview'); overview.innerHTML = '<div id="objectTableSummary" class="object-summary"></div><div id="objectTableKind"></div><section class="detail-card"><div class="object-card-head"><h4>Items in this table</h4><input class="object-search" id="objectTableSearch" type="search" aria-label="Search items in this table" placeholder="Search name, type or state…"><label class="object-child-filter">Cleanup <select id="objectTableCleanup"><option value="">All</option><option>Safe</option><option>Review</option><option>Keep</option><option value="Blocked">Deletion blocked</option></select></label></div><div id="objectTableCount" class="object-note" aria-live="polite"></div><div class="object-grid-scroll" id="objectTableGrid"></div></section>';
     root.insertBefore($('objectTableSummary'), root.querySelector('.object-tabs'));
     function moveCard(id, pane) { var node = $(id); if (node) $(pane).appendChild(node.closest('.detail-card')); }
     moveCard('tableDetailUsage', 'table-pane-references');
     moveCard('tableDetailRelationshipList', 'table-pane-dependencies'); moveCard('tableDetailRole', 'table-pane-dependencies'); moveCard('tableDetailRelatedTables', 'table-pane-dependencies');
     moveCard('tableActionStatus', 'table-pane-changes');
     ['tableDetailSignals', 'tableDetailFieldParameterIssues'].forEach(function (id) { moveCard(id, 'table-pane-overview'); });
-    ['tableDetailRelationships', 'tableDetailRelationshipOnly', 'tableDetailSingleColumnMeasures'].forEach(function (id) { moveCard(id, 'table-pane-dependencies'); });
+    ['tableDetailRelationships', 'tableDetailRelationshipOnly', 'tableDetailSingleColumnMeasures', 'tableDetailExternalConsumers'].forEach(function (id) { moveCard(id, 'table-pane-dependencies'); });
     $('table-pane-definition').innerHTML = '<section class="detail-card"><h4>Table source</h4><div id="objectTableSource"></div></section>';
     $('tableDetailGroupInput').value = '';
     $('objectTableCleanup').onchange = function () { tableCleanup = this.value; renderChildGrid(); };
@@ -226,7 +247,7 @@
   renderTableDetails = function () {
     oldRenderTable(); if (!$('objectTableSummary')) return;
     if (!detailTableName) {
-      ['objectTableSummary', 'objectTableProperties', 'objectTableSource', 'objectTableGrid', 'objectTableCount'].forEach(function (id) { $(id).innerHTML = ''; });
+      ['objectTableSummary', 'objectTableProperties', 'objectTableSource', 'objectTableGrid', 'objectTableCount', 'objectTableKind'].forEach(function (id) { $(id).innerHTML = ''; });
       return;
     }
     var table = getTableByName(detailTableName); if (!table) return;
@@ -235,18 +256,34 @@
     var tableDraft = drafts.get(lastRenderedTableKey) || {};
     Object.keys(tableDraft).forEach(function (id) { if ($(id)) $(id).value = tableDraft[id]; });
     var children = getItemsByTableName(table.name); var broken = children.filter(function (i) { return issueValue(i).includes('Broken'); }).length; var stale = children.filter(function (i) { return issueValue(i).includes('Stale'); }).length;
-    $('tableDetailMeta').textContent = 'Table · ' + children.length + ' items · ' + (table.reportCount || 0) + ' selected reports';
-    $('objectTableSummary').innerHTML = '<div class="detail-status-row">' + tableStatusBadge(table) + '<span class="badge badge-muted">' + (table.columnCount || 0) + ' columns</span><span class="badge badge-muted">' + (table.measureCount || 0) + ' measures</span>' + (broken ? '<span class="badge badge-caution">' + broken + ' broken items</span>' : '') + (stale ? '<span class="badge badge-warning">' + stale + ' stale items</span>' : '') + '</div><p>' + esc(table.roleReason || 'Inspect child items and model relationships before changing this table.') + '</p>';
+    var calcGroup = !!table.isCalculationGroup;
+    $('tableDetailMeta').textContent = (calcGroup ? 'Calculation group · ' : 'Table · ') + children.length + ' items · ' + (table.reportCount || 0) + ' selected reports';
+    $('objectTableKind').innerHTML = calcGroup ? calculationGroupCard(table, children) : '';
+    var consumers = table.externalDaxDependents || [];
+    var groupLabel = table.cleanupRecommendation ? (table.cleanupRecommendation === 'Blocked' ? 'Whole-table deletion blocked' : 'Whole-table deletion: ' + table.cleanupRecommendation) : '';
+    $('objectTableSummary').classList.toggle('object-summary-warning', table.cleanupRecommendation === 'Review');
+    $('objectTableSummary').innerHTML = '<div class="detail-status-row">' + tableStatusBadge(table) + (table.tableKind && table.tableKind !== 'Table' ? '<span class="badge role-calculation-group">' + esc(table.tableKind) + '</span>' : '') + (groupLabel ? '<strong>' + esc(groupLabel) + '</strong>' : '') + '<span class="badge badge-muted">' + (table.columnCount || 0) + ' columns</span><span class="badge badge-muted">' + (table.measureCount || 0) + ' measures</span>' + (consumers.length ? '<span class="badge badge-review">' + consumers.length + ' parent-table consumers</span>' : '') + (broken ? '<span class="badge badge-caution">' + broken + ' broken items</span>' : '') + (stale ? '<span class="badge badge-warning">' + stale + ' stale items</span>' : '') + '</div><p>' + esc(table.cleanupReason || table.roleReason || 'Inspect child items and model relationships before changing this table.') + (table.cleanupReason && table.roleReason ? ' ' + esc(table.roleReason) : '') + '</p>';
     var mix = {}; children.forEach(function (item) { var key = deleteSafetyValue(item); mix[key] = (mix[key] || 0) + 1; });
     var evidenceReports = analyzedScope ? analyzedScope.reports : [];
-    $('objectTableProperties').innerHTML = card('Table properties', properties([['Type', 'Model table'], ['Items', children.length], ['Columns', table.columnCount || 0], ['Measures', table.measureCount || 0], ['Hidden items', table.hiddenItemCount || 0], ['Relationships', table.relationshipCount || 0], ['Role', table.roleLabel || 'See model dependencies']])) + card('Cleanup recommendations', properties(Object.keys(mix).map(function (key) { return [key === 'Blocked' ? 'Deletion blocked' : key, mix[key]]; }))) + card('Analysis scope', '<p class="object-note">' + evidenceReports.length + ' selected report(s)</p><div class="object-scope-reports">' + evidenceReports.map(function (report) { return '<p>' + esc(report.name || report.path) + '<small>' + esc(report.path) + '</small></p>'; }).join('') + '</div><p class="object-note">Child recommendations cover this analysis scope. Runtime behavior is not evaluated.</p>') + '<section class="object-review-rail"><strong>Changes for this table</strong><p>Review child items and relationship impacts before changing the table.</p><button type="button" class="btn btn-primary" data-table-review>Review table change…</button></section>';
+    $('objectTableProperties').innerHTML = card('Table properties', properties([['Type', table.tableKind || 'Model table'], ['Calculation items', (table.calculationItems || []).join(', ')], ['Perspectives', (table.perspectives || []).join(', ')], ['Items', children.length], ['Columns', table.columnCount || 0], ['Measures', table.measureCount || 0], ['Hidden items', table.hiddenItemCount || 0], ['Relationships', table.relationshipCount || 0], ['Parent-table DAX consumers', consumers.length], ['Role', table.roleLabel || 'See model dependencies']])) + card('Cleanup recommendations', (table.cleanupRecommendation ? '<p class="object-note"><strong>Whole table: ' + esc(table.cleanupRecommendation === 'Blocked' ? 'Deletion blocked' : table.cleanupRecommendation) + '</strong> — ' + esc(table.cleanupReason || '') + '</p>' : '') + properties(Object.keys(mix).map(function (key) { return [key === 'Blocked' ? 'Deletion blocked' : key, mix[key]]; }))) + card('Analysis scope', '<p class="object-note">' + evidenceReports.length + ' selected report(s)</p><div class="object-scope-reports">' + evidenceReports.map(function (report) { return '<p>' + esc(report.name || report.path) + '<small>' + esc(report.path) + '</small></p>'; }).join('') + '</div><p class="object-note">Child recommendations cover this analysis scope. Runtime behavior is not evaluated.</p>') + '<section class="object-review-rail"><strong>Changes for this table</strong><p>Review child items and relationship impacts before changing the table.</p><button type="button" class="btn btn-primary" data-table-review>Review table change…</button></section>';
     var sourceItem = children.find(function (i) { return i.mSourceDetails; });
     $('objectTableSource').innerHTML = formatCodeBlock(sourceItem && sourceItem.mSourceDetails, 'No table-level source was recorded in this analysis.');
     var virtual = children.length && children.every(isReportItem);
     ['tableBtnDelete', 'tableBtnRename', 'tableBtnMoveToTableGroup'].forEach(function (id) { $(id).disabled = !!virtual; });
     if (virtual) $('tableDetailMeta').textContent = 'Report-only virtual table · model table edits unavailable';
     renderChildGrid();
+    bindDetailLinks($('objectTableKind'));
   };
+  // Calculation items are unsupported metadata; the card surfaces the selector
+  // columns and the analyzer's recorded evidence without changing classification.
+  function calculationGroupCard(table, children) {
+    var selectors = children.filter(function (child) { return child.type !== 'Measure'; });
+    var targets = table.calculationGroupTargets || [];
+    var coverage = table.calculationGroupUnresolved
+      ? '<p class="object-scope-warning">Some calculation item references could not be resolved to model items. Dependency coverage for this calculation group is incomplete.</p>'
+      : targets.length ? '' : '<p class="object-note">No calculation item references to model items were recorded in this analysis.</p>';
+    return card('Calculation group', '<p class="object-note">Calculation items apply through the selector column(s) below. Known references from calculation expressions are listed below. Review Analysis limitations for any parts the analyzer cannot fully check.</p><h5 class="object-subhead">Selector columns</h5>' + formatDetailList(selectors, { linkItems: true }) + '<h5 class="object-subhead">Items the calculation items can reference</h5>' + formatDetailList(targets, { linkItems: true }) + coverage);
+  }
   var oldSwitch = switchView;
   switchView = function (view) { oldSwitch(view); document.body.classList.toggle('object-view', view === 'item' || view === 'table'); document.querySelectorAll('.view-tab').forEach(function (button) { button.setAttribute('aria-current', button.dataset.view === view || (view === 'item' && button.dataset.view === 'details') || (view === 'table' && button.dataset.view === 'tables') ? 'page' : 'false'); }); };
   var oldOpenItem = openItemDetails;
@@ -254,7 +291,7 @@
   function backFromItem() {
     var destination = returnTo; var sourceKey = detailItemKey; returnTo = null;
     if (destination && destination.table) {
-      openTableDetails(destination.table);
+      openTableDetails(destination.table, { restoring: true });
       var child = Array.from($('objectTableGrid').querySelectorAll('[data-child-key]')).find(function (button) { return button.dataset.childKey === sourceKey; });
       (child || $('tableDetailTitle')).focus({preventScroll:true});
     } else if (destination && destination.item) {
@@ -266,9 +303,43 @@
     }
   }
 
+  function backFromTable() {
+    var destination = tableReturnTo; var sourceTable = detailTableName; tableReturnTo = null;
+    if (destination && destination.item && getItemByKey(destination.item)) {
+      oldOpenItem(destination.item);
+      var parent = $('objectItemParent').querySelector('[data-table-name]');
+      (parent || $('detailTitle')).focus({preventScroll:true});
+      return;
+    }
+    switchView('tables'); $('mainArea').scrollTop = tablesScroll;
+    var link = Array.from($('tablesOverviewSection').querySelectorAll('[data-table-name]')).find(function (button) { return button.dataset.tableName === sourceTable; });
+    if (link) link.focus({preventScroll:true}); else $('tabTables').focus({preventScroll:true});
+  }
   var oldOpenTable = openTableDetails;
-  openTableDetails = function (name) { if (name !== detailTableName) { tableSearch = ''; tableCleanup = ''; $('objectTableSearch').value = ''; $('objectTableCleanup').value = ''; } oldOpenTable(name); $('mainArea').scrollTop = 0; $('tableDetailTitle').tabIndex = -1; $('tableDetailTitle').focus({preventScroll:true}); };
+  openTableDetails = function (name, options) {
+    options = options || {};
+    if (currentView === 'tables') tablesScroll = $('mainArea').scrollTop;
+    if (currentView === 'item' && detailItemKey && returnTo && returnTo.table === name) { backFromItem(); return; }
+    if (currentView === 'item' && detailItemKey && !options.restoring) tableReturnTo = { item: detailItemKey };
+    else if (currentView !== 'table' && !options.restoring) tableReturnTo = null;
+    if (name !== detailTableName) { tableSearch = ''; tableCleanup = ''; $('objectTableSearch').value = ''; $('objectTableCleanup').value = ''; }
+    oldOpenTable(name);
+    var back = tableReturnTo && tableReturnTo.item ? getItemByKey(tableReturnTo.item) : null;
+    $('tableDetailSection').querySelector('.detail-pagenav button').textContent = back ? '← Back to ' + back.name : '← Tables';
+    $('mainArea').scrollTop = 0; $('tableDetailTitle').tabIndex = -1; $('tableDetailTitle').focus({preventScroll:true});
+  };
   initItem(); initTable();
+  // Global analyzer notices stay discoverable in object views without pushing
+  // the selected object below the fold: collapsed by default, expanded on demand.
+  (function () {
+    var banner = $('warningBanner'); if (!banner) return;
+    var heading = banner.querySelector('h3'); if (!heading) return;
+    heading.insertAdjacentHTML('beforeend', '<span class="object-notice-count" id="objectNoticeCount"></span><button type="button" class="btn btn-secondary btn-sm object-notice-toggle" id="objectNoticeToggle" aria-expanded="false" aria-controls="warningList">Show details</button>');
+    $('objectNoticeToggle').onclick = function () { var open = banner.classList.toggle('object-notice-open'); this.setAttribute('aria-expanded', String(open)); this.textContent = open ? 'Hide details' : 'Show details'; };
+    var originalRenderWarnings = renderWarnings;
+    renderWarnings = function () { originalRenderWarnings(); $('objectNoticeCount').textContent = allWarnings.length ? allWarnings.length + ' warning(s)' : ''; };
+    renderWarnings();
+  })();
   var scopeStrip = document.createElement('div'); scopeStrip.className = 'object-scope-strip'; scopeStrip.setAttribute('aria-label', 'Selected analysis scope');
   scopeStrip.appendChild($('scopeChip')); scopeStrip.insertAdjacentHTML('beforeend', '<span id="objectScopeState" role="status"></span>'); $('mainArea').parentElement.insertBefore(scopeStrip, $('mainArea'));
 

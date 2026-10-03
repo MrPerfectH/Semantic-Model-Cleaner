@@ -24,7 +24,7 @@ def test_naming_drafts_survive_refresh_reopen_and_keep_saved_policy_separate():
     if not node:
         pytest.skip('Node required for browser draft contract')
     path = Path(webapp.__file__).parent / 'static/policy-workspace.js'
-    script = path.read_text()
+    script = path.read_text(encoding="utf-8")
     start = script.index('  function describeRule(')
     helpers = script[start:script.index('  var storage;', start)]
     harness = '''

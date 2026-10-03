@@ -21,13 +21,13 @@ checksums = _load("release_checksums", ROOT / "scripts/release_checksums.py")
 
 
 def test_public_beta_release_identity_is_consistent():
-    release = identity.verify("v0.4.0b2")
+    release = identity.verify("v0.4.0b3")
     assert release == {
         "name": "semantic-model-cleaner",
-        "version": "0.4.0b2",
+        "version": "0.4.0b3",
         "channel": "beta",
-        "tag": "v0.4.0b2",
-        "windows_archive": "semantic-model-cleaner-windows-x64-0.4.0b2.zip",
+        "tag": "v0.4.0b3",
+        "windows_archive": "semantic-model-cleaner-windows-x64-0.4.0b3.zip",
     }
 
 
@@ -40,7 +40,7 @@ def test_checksum_sidecar_round_trip_and_tamper_detection(tmp_path):
     artifact = tmp_path / "artifact with spaces.zip"
     artifact.write_bytes(b"public beta")
     sidecar = checksums.write(artifact)
-    assert sidecar.read_text() == f"{hashlib.sha256(b'public beta').hexdigest()}  {artifact.name}\n"
+    assert sidecar.read_text(encoding="utf-8") == f"{hashlib.sha256(b'public beta').hexdigest()}  {artifact.name}\n"
     checksums.verify(sidecar)
     artifact.write_bytes(b"tampered")
     with pytest.raises(ValueError, match="Checksum mismatch"):

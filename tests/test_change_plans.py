@@ -137,7 +137,7 @@ def test_nested_source_path_cannot_escape_stage(tmp_path):
     model, report = project(tmp_path)
     op = hide_operation(model)
     outside = tmp_path / 'outside.tmdl'
-    outside.write_text('table Sales\n\tmeasure Revenue = 1\n')
+    outside.write_text('table Sales\n\tmeasure Revenue = 1\n', encoding="utf-8")
     op['actions'][0]['source_file'] = str(outside)
     original = outside.read_bytes()
     with pytest.raises(plans.PlanError, match='outside staged'):
@@ -152,7 +152,7 @@ def test_live_lock_recovery_refused(tmp_path):
     journal = tmp_path / 'journal'
     assert plans.apply_plan(plan, journal)['ok']
     lock = journal / (plans._digest(str(model.resolve()).encode()) + '.lock')
-    lock.write_text(json.dumps({'pid': os.getpid(), 'model': str(model.resolve())}))
+    lock.write_text(json.dumps({'pid': os.getpid(), 'model': str(model.resolve())}), encoding="utf-8")
     with pytest.raises(plans.PlanError, match='still running|POSIX'):
         plans.recover_interrupted_lock(plan, journal)
     assert lock.exists()

@@ -189,13 +189,18 @@ def test_default_model_browse_root_falls_back_when_users_directory_is_missing(
 
 
 def test_index_exposes_first_time_model_browse_root(monkeypatch):
-    monkeypatch.setattr(web_app, "_default_model_browse_root", lambda: Path("/Users"))
+    # Path("/Users") is platform-dependent: it renders as "\\Users" on Windows
+    # and "/Users" on POSIX, so the expected JSON fragment must match str()
+    # rather than hardcoding the POSIX spelling.
+    browse_root = Path("/Users")
+    monkeypatch.setattr(web_app, "_default_model_browse_root", lambda: browse_root)
     client = web_app.app.test_client()
 
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b'modelBrowseRoot: "/Users"' in response.data
+    expected = f"modelBrowseRoot: {json.dumps(str(browse_root))}".encode()
+    assert expected in response.data
 
 
 def test_index_shows_beta_banner_when_runtime_enabled():
@@ -270,14 +275,14 @@ def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
     (model_path / "definition").mkdir(parents=True)
-    (model_path / "definition/model.tmdl").write_text("model Model\n")
+    (model_path / "definition/model.tmdl").write_text("model Model\n", encoding="utf-8")
     report_path.mkdir()
 
     monkeypatch.setattr(web_app.analyzer, "analyze", lambda **_: _fake_results())
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -368,7 +373,7 @@ def test_api_analyze_returns_report_issues_for_selected_reports(tmp_path):
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -616,11 +621,10 @@ def test_serialize_results_marks_stale_only_usage_and_stale_details():
 
 def test_api_serialization_groups_report_health_workflow():
     results = _fake_results()
-    unsupported_reason = (
-        "Unsupported Metadata: Perspectives in definition/perspectives/Executive.tmdl "
-        "can reference Sales[Revenue]. Hidden dependency: perspective membership may "
-        "keep this field available outside scanned report visuals. User harm: deleting "
-        "it could break curated perspective views."
+    perspective_reason = (
+        "Member of perspective Executive (definition/perspectives/Executive.tmdl). "
+        "Removing the item also removes this perspective member; membership alone "
+        "does not prove a report executes it."
     )
     results["report_issues"] = [
         {
@@ -645,7 +649,7 @@ def test_api_serialization_groups_report_health_workflow():
         },
     ]
     results["items"][0]["removal_risk"] = "Review"
-    results["items"][0]["review_triggers"] = [unsupported_reason]
+    results["items"][0]["review_triggers"] = [perspective_reason]
     results["items"][0]["stale_usages"] = [
         analyzer.UsageRef(
             table="Sales",
@@ -669,12 +673,13 @@ def test_api_serialization_groups_report_health_workflow():
 
     health = payload["reportHealth"]
     assert health["totalIssueCount"] == 2  # Item signals must not inflate report issue totals.
+    # Model analysis limitations are not Report Health groups.
     assert [group["key"] for group in health["groups"]] == [
         "invalid_pbir_json",
         "report_extension_metadata",
         "stale_report_references",
-        "unsupported_metadata",
     ]
+    assert "unsupportedMetadata" not in health["signalCounts"]
     stale_group = next(group for group in health["groups"] if group["key"] == "stale_report_references")
     assert stale_group["count"] == 1
     assert stale_group["action"] == {
@@ -682,8 +687,11 @@ def test_api_serialization_groups_report_health_workflow():
         "label": "Preview stale cleanup",
         "entryCount": 1,
     }
-    unsupported_group = next(group for group in health["groups"] if group["key"] == "unsupported_metadata")
-    assert unsupported_group["items"][0]["reviewTriggers"] == [unsupported_reason]
+    assert payload["items"][0]["reviewTriggers"] == [perspective_reason]
+    assert payload["analysisLimitations"] == {
+        "distinctCount": 0, "sharedCount": 0, "targetedCount": 0,
+        "affectedItemCount": 0, "coverageComplete": True, "limitations": [],
+    }
 
 
 def test_build_report_root_cause_groups_collapses_by_target():
@@ -770,7 +778,11 @@ def test_report_health_groups_truncate_previews_for_large_issue_sets():
             "table": "T",
             "name": f"C{i}",
             "staleUsageCount": 3,
-            "staleUsageDetails": [{"report": "R", "page": "P"}] * 3,
+            "staleUsageDetails": [
+                {"report": "R", "page": "P", "reportPath": "R", "artifactPath": f"v{i}.json",
+                 "selectorValue": f"s{n}", "cleanupEligible": True}
+                for n in range(3)
+            ],
             "brokenDaxRefs": [],
             "reviewTriggers": [],
         }
@@ -818,14 +830,14 @@ def test_api_analyze_includes_review_triggers(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
     (model_path / "definition").mkdir(parents=True)
-    (model_path / "definition/model.tmdl").write_text("model Model\n")
+    (model_path / "definition/model.tmdl").write_text("model Model\n", encoding="utf-8")
     report_path.mkdir()
 
     monkeypatch.setattr(web_app.analyzer, "analyze", lambda **_: _fake_review_results())
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -843,13 +855,12 @@ def test_api_analyze_includes_review_triggers(monkeypatch, tmp_path):
     assert payload["references"][0]["reviewTriggers"] == ["Item is hidden"]
 
 
-def test_api_serialization_preserves_unsupported_metadata_review_reason():
+def test_api_serialization_preserves_perspective_review_reason():
     results = _fake_results()
     reason = (
-        "Unsupported Metadata: Perspectives in definition/perspectives/Executive.tmdl "
-        "can reference Sales[Revenue]. Hidden dependency: perspective membership may "
-        "keep this field available outside scanned report visuals. User harm: deleting "
-        "it could break curated perspective views."
+        "Member of perspective Executive (definition/perspectives/Executive.tmdl). "
+        "Removing the item also removes this perspective member; membership alone "
+        "does not prove a report executes it."
     )
     results["items"][0]["removal_risk"] = "Review"
     results["items"][0]["review_triggers"] = [reason]
@@ -886,7 +897,7 @@ def test_api_analyze_returns_report_health_issues(tmp_path):
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -925,9 +936,17 @@ def test_api_analyze_product_qa_workspace_exposes_report_health_groups():
     assert {
         "stale_report_references",
         "broken_model_references",
-        "unsupported_metadata",
         "invalid_pbir_json",
     } <= health_keys
+    assert "unsupported_metadata" not in health_keys
+    limitations = payload["analysisLimitations"]
+    assert limitations["distinctCount"] == len(limitations["limitations"]) >= 1
+    assert all(limitation["kind"] == "invalid_report_json" for limitation in limitations["limitations"])
+    assert limitations["affectedItemCount"] >= 1
+    perspective_item = next(item for item in payload["items"] if item["name"] == "Perspective Revenue")
+    assert perspective_item["perspectiveMemberships"] == [
+        {"perspective": "Executive", "sourceFile": "definition/perspectives/Executive.tmdl"}
+    ]
     assert any(
         item["table"] == "Report Metrics"
         and item["name"] == "Report Margin"
@@ -953,7 +972,7 @@ def test_api_analyze_rejects_tmsl_model_bim_with_clear_message(tmp_path):
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -1408,7 +1427,7 @@ def test_api_analyze_exposes_table_permission_rls_usage(tmp_path):
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -1449,7 +1468,7 @@ def test_api_analyze_returns_model_item_source_file(tmp_path):
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -1490,7 +1509,7 @@ def test_api_analyze_includes_m_source_details_for_regular_columns(monkeypatch, 
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(

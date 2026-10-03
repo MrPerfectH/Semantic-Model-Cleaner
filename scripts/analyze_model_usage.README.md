@@ -112,7 +112,11 @@ Passing no subcommand keeps the historical behaviour: `analyze_model_usage.py . 
 
 - Matching is case-insensitive
 - Field parameters backed by `NAMEOF(...)` are supported
-- Calculation groups are not modeled yet
+- Calculation groups are recognized from their `calculationGroup` declaration; calculation item
+  expressions are reported as analysis limitations (`analysisLimitations` in JSON) and keep unused
+  items at Review
+- Unsupported Metadata is detected from actual TMDL declarations only, never from words in names,
+  descriptions, comments or expressions
 - Broader metadata indirection is not fully covered yet
 - Invalid or malformed JSON files are skipped
 - Unsupported or unresolved `NAMEOF(...)` patterns are surfaced as warnings
