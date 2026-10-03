@@ -27,9 +27,11 @@ from flask import Flask, jsonify, render_template, request, send_file
 from . import __version__, analyzer, experiments, model_compare, report_writer, tmdl_writer
 from . import change_plan, cleanup_policy
 from .analysis_jobs import AnalysisJobs
+from .local_http import install_local_http_boundary, loopback_host
 from .console import configure_console_output
 
 app = Flask(__name__)
+install_local_http_boundary(app)
 _analysis_jobs = AnalysisJobs()
 
 
@@ -1291,6 +1293,7 @@ def index():
     template = "index_v2.html" if requested_ui == "v2" else "index.html"
     response = app.make_response(render_template(
         template,
+        local_request_token=app.config['SMC_LOCAL_TOKEN'],
         build_stamp=_build_stamp(),
         default_root=_state.get("workspace") or str(_default_workspace_root()),
         model_browse_root=str(_default_model_browse_root()),
@@ -2059,8 +2062,8 @@ def main():
                         help="Path(s) to search for .Report directories")
     parser.add_argument("--port", type=int, default=5001,
                         help="Port to run on (default: 5001)")
-    parser.add_argument("--host", default="127.0.0.1",
-                        help="Host to bind to (default: 127.0.0.1)")
+    parser.add_argument("--host", default="127.0.0.1", type=loopback_host,
+                        help="Local bind address: 127.0.0.1 or localhost (default: 127.0.0.1)")
     parser.add_argument("--debug", action="store_true",
                         help="Enable Flask debug mode and auto-reload")
     parser.add_argument(

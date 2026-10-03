@@ -10,6 +10,7 @@ import time
 import webbrowser
 
 from . import webapp
+from .local_http import loopback_host
 
 
 def _configure_console_output() -> None:
@@ -73,8 +74,8 @@ def main() -> None:
                         help="Path(s) to search for .Report directories")
     parser.add_argument("--port", type=int, default=5001,
                         help="Preferred port to use (default: 5001)")
-    parser.add_argument("--host", default="127.0.0.1",
-                        help="Host to bind to (default: 127.0.0.1)")
+    parser.add_argument("--host", default="127.0.0.1", type=loopback_host,
+                        help="Local bind address: 127.0.0.1 or localhost (default: 127.0.0.1)")
     parser.add_argument("--no-open-browser", action="store_true",
                         help="Start the local server without opening the browser automatically")
     args = parser.parse_args()

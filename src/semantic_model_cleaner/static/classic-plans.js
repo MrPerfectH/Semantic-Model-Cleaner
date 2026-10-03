@@ -19,7 +19,7 @@
   function status(text) { el('classicPlanStatus').textContent = text; }
   async function request(url, body) {
     var options = body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)};
-    var response = await fetch(url, options), data = await response.json();
+    var response = await smcFetch(url, options), data = await response.json();
     if (!response.ok || data.error || data.ok === false) {
       var receipt = data.receipt || {};
       throw new Error(data.error || receipt.error || 'Operation ' + (receipt.status || 'failed') + '. Inspect Changes & history for recovery.');
@@ -212,7 +212,7 @@
     setBusy(true);
     try {
       if (command === 'verify') {
-        var response = await fetch('/api/plans/' + encodeURIComponent(id) + '/verify', {method: 'POST', headers: {'Content-Type':'application/json'}, body:'{}'});
+        var response = await smcFetch('/api/plans/' + encodeURIComponent(id) + '/verify', {method: 'POST', headers: {'Content-Type':'application/json'}, body:'{}'});
         var verification = await response.json();
         if (verification.error) throw new Error(verification.error);
         status('Files: ' + verification.state + ((verification.changed_since_plan || []).length ? '. Changed paths: ' + verification.changed_since_plan.join(', ') : '.'));

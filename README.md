@@ -160,7 +160,7 @@ Optional flags:
 
 ```bash
 semantic-model-cleaner-web . --port 8080
-semantic-model-cleaner-web . --host 0.0.0.0
+semantic-model-cleaner-web . --host localhost
 semantic-model-cleaner-web . --debug
 ```
 
@@ -169,6 +169,13 @@ Module entrypoint:
 ```bash
 python3 -m semantic_model_cleaner.web .
 ```
+
+The web app is local-only: both launchers accept `127.0.0.1` or `localhost`, and
+remote binding is disabled. Both layouts handle the per-launch request token
+automatically. Local scripted HTTP clients must first read `/api/session`, then
+send its token in the `X-SMC-Token` header; use JSON for changes. CLI file-based
+commands need no HTTP token. See [local HTTP access](docs/local-http-security.md)
+for the supported client protocol and browser boundary.
 
 ## Demo Workspace
 

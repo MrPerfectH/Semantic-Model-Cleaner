@@ -25,6 +25,7 @@ import zipfile
 
 ASSETS_BY_LAYOUT = {
     "v2": (
+        "local-http.js",
         "detail-workspace.js",
         "detail-workspace.css",
         "analysis-jobs.js",
@@ -32,6 +33,7 @@ ASSETS_BY_LAYOUT = {
         "schema-evidence.js",
     ),
     "classic": (
+        "local-http.js",
         "classic-plans.js",
         "classic-plans.css",
         "analysis-jobs.js",
@@ -138,7 +140,7 @@ def _wait_for_url(log_path: Path, process: subprocess.Popen, timeout: float) -> 
 def _browser_json(page, path: str, body: dict | None = None) -> dict:
     result = page.evaluate(
         """async ({path, body}) => {
-          const response = await fetch(path, body === null ? undefined : {
+          const response = await smcFetch(path, body === null ? undefined : {
             method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
           });
           const text = await response.text();
@@ -165,6 +167,13 @@ def _require_completed_analysis(payload: dict) -> dict:
     return job
 
 
+def _browser_headers(page) -> dict:
+    token = page.locator('meta[name="smc-local-token"]').get_attribute('content')
+    if not token:
+        raise RuntimeError('The local UI did not provide its request token')
+    return {'X-SMC-Token': token}
+
+
 def _run_browser_analysis(page, trigger, timeout: float) -> dict:
     timeout_ms = int(timeout * 1000)
     with page.expect_response(
@@ -189,7 +198,7 @@ def _run_browser_analysis(page, trigger, timeout: float) -> dict:
     status_url = start_response.url.rstrip("/") + "/" + identity
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        final_response = page.request.get(status_url, timeout=timeout_ms)
+        final_response = page.request.get(status_url, timeout=timeout_ms, headers=_browser_headers(page))
         if not final_response.ok:
             raise RuntimeError(
                 f"Could not read final analysis status: HTTP {final_response.status} {final_response.text()}"
@@ -283,10 +292,17 @@ def _exercise_option_b_workspace(page, evidence_dir: Path) -> dict:
 
 def _url_request(base: str):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    token = None
 
     def request(path: str, body: dict | None = None) -> bytes:
+        nonlocal token
         data = None if body is None else json.dumps(body).encode()
         headers = {} if data is None else {"Content-Type": "application/json"}
+        if path.startswith('/api/'):
+            if token is None:
+                with opener.open(base + '/api/session', timeout=10) as response:
+                    token = json.loads(response.read())['token']
+            headers['X-SMC-Token'] = token
         req = urllib.request.Request(base + path, data=data, headers=headers)
         with opener.open(req, timeout=10) as response:
             return response.read()
@@ -417,7 +433,7 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
                 report["option_b_workspace"] = _exercise_option_b_workspace(page, evidence_dir)
                 report["checks"].append("browser Option B real-item tabs at 1280x800")
 
-                export = page.request.get(base + "/api/export?format=json")
+                export = page.request.get(base + "/api/export?format=json", headers=_browser_headers(page))
                 if not export.ok or not json.loads(export.body()).get("items"):
                     raise RuntimeError("Browser JSON export failed after demo analysis")
                 report["checks"].append("browser JSON export")

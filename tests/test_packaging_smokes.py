@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import socket
+import threading
 
 import pytest
 
@@ -82,10 +83,14 @@ def test_browser_analysis_polls_started_job_until_completed():
     class Page:
         def __init__(self):
             self.request = type('API', (), {
-                'get': lambda _self, url, timeout: (
-                    requested.append((url, timeout)) or next(responses)
+                'get': lambda _self, url, timeout, headers: (
+                    requested.append((url, timeout, headers)) or next(responses)
                 ),
             })()
+
+        def locator(self, selector):
+            assert selector == 'meta[name="smc-local-token"]'
+            return type('Meta', (), {'get_attribute': lambda _self, name: 'launch-token'})()
 
         def expect_response(self, predicate, timeout):
             started = Response({'job': {'id': 'job-1', 'status': 'queued'}}, method='POST')
@@ -103,8 +108,8 @@ def test_browser_analysis_polls_started_job_until_completed():
     assert triggered == [True]
     assert waited == [200]
     assert requested == [
-        ('http://127.0.0.1:61234/api/analysis-jobs/job-1', 1000),
-        ('http://127.0.0.1:61234/api/analysis-jobs/job-1', 1000),
+        ('http://127.0.0.1:61234/api/analysis-jobs/job-1', 1000, {'X-SMC-Token': 'launch-token'}),
+        ('http://127.0.0.1:61234/api/analysis-jobs/job-1', 1000, {'X-SMC-Token': 'launch-token'}),
     ]
 
 
@@ -126,6 +131,25 @@ def option_b_state():
 def test_option_b_workspace_requires_real_item_tabs_and_laptop_layout():
     state = option_b_state()
     assert smoke._require_option_b_workspace(state) is state
+
+
+def test_packaged_http_client_bootstraps_and_calls_protected_api(tmp_path, monkeypatch):
+    from werkzeug.serving import make_server
+    from semantic_model_cleaner import webapp
+
+    monkeypatch.setenv('SMC_USER_DIR', str(tmp_path / 'user state'))
+    server = make_server('127.0.0.1', 0, webapp.app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        request = smoke._url_request(f'http://127.0.0.1:{server.server_port}')
+        result = json.loads(request('/api/demo', {}))
+        assert result['models'] and result['reports']
+        plans = json.loads(request('/api/plans'))
+        assert plans == {'plans': [], 'receipts': []}
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
 
 
 @pytest.mark.parametrize('break_state', [

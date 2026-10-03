@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Semantic Model Cleaner</title>
+<meta name="smc-local-token" content="{{ local_request_token }}">
+<script src="{{ url_for('static', filename='local-http.js') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='classic-plans.css') }}">
 <style>
 :root {
@@ -1651,7 +1653,7 @@ function renderCompareResults(data) {
 
 function exportCompareResults(format) {
   if (!compareResults) return;
-  window.location.href = '/api/compare/export?format=' + encodeURIComponent(format);
+  smcDownload('/api/compare/export?format=' + encodeURIComponent(format));
 }
 
 async function runSemanticModelCompare() {
@@ -2750,14 +2752,14 @@ function pruneActionState() {
   });
 }
 
-async function apiGet(url) { var r = await fetch(url); return r.json(); }
+async function apiGet(url) { var r = await smcFetch(url); return r.json(); }
 async function apiPost(url, body) {
   var mutationRoutes = ['/api/action', '/api/dax', '/api/model/rename', '/api/measure/move', '/api/report-measure/migrate', '/api/report/repair-references', '/api/report/cleanup-stale', '/api/report/issues/apply'];
   if (mutationRoutes.indexOf(url) >= 0) {
     if (!window.ClassicPlans) throw new Error('Change review is unavailable. Reload before changing files.');
     return window.ClassicPlans.post(url, body || {});
   }
-  var r = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+  var r = await smcFetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
   return r.json();
 }
 
@@ -3163,8 +3165,8 @@ async function findConnectedReports() {
     $('btnBrowseConnectedReportRoot').disabled = false;
   }
 }
-$('btnExportJson').onclick = function() { window.location.href = '/api/export?format=json'; };
-$('btnExportExcel').onclick = function() { window.location.href = '/api/export?format=xlsx'; };
+$('btnExportJson').onclick = function() { smcDownload('/api/export?format=json'); };
+$('btnExportExcel').onclick = function() { smcDownload('/api/export?format=xlsx'); };
 $('btnAutoSizeColumns').onclick = function() { fitCurrentTableColumnsToScreen(); };
 $('pageSizeSelect').value = String(readPageSizePreference());
 $('pageSizeSelect').onchange = function() {

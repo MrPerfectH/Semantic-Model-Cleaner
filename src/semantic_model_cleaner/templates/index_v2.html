@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Semantic Model Cleaner</title>
+<meta name="smc-local-token" content="{{ local_request_token }}">
+<script src="{{ url_for('static', filename='local-http.js') }}"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1733,7 +1735,7 @@ function renderCompareResults(data) {
 
 function exportCompareResults(format) {
   if (!compareResults) return;
-  window.location.href = '/api/compare/export?format=' + encodeURIComponent(format);
+  smcDownload('/api/compare/export?format=' + encodeURIComponent(format));
 }
 
 async function runSemanticModelCompare() {
@@ -2833,9 +2835,9 @@ function pruneActionState() {
   });
 }
 
-async function apiGet(url) { var r = await fetch(url); return r.json(); }
+async function apiGet(url) { var r = await smcFetch(url); return r.json(); }
 async function apiPost(url, body) {
-  var r = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+  var r = await smcFetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
   return r.json();
 }
 
@@ -3241,8 +3243,8 @@ async function findConnectedReports() {
     $('btnBrowseConnectedReportRoot').disabled = false;
   }
 }
-$('btnExportJson').onclick = function() { window.location.href = '/api/export?format=json'; };
-$('btnExportExcel').onclick = function() { window.location.href = '/api/export?format=xlsx'; };
+$('btnExportJson').onclick = function() { smcDownload('/api/export?format=json'); };
+$('btnExportExcel').onclick = function() { smcDownload('/api/export?format=xlsx'); };
 $('btnAutoSizeColumns').onclick = function() { fitCurrentTableColumnsToScreen(); };
 $('pageSizeSelect').value = String(readPageSizePreference());
 $('pageSizeSelect').onchange = function() {
