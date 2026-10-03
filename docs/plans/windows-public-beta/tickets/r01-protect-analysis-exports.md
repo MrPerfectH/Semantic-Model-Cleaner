@@ -57,6 +57,7 @@ Keep this fix under R01: apply consistent alias/hard-link protection to these ex
 - `pytest tests/test_automation_export_safety.py tests/test_analysis_exports.py tests/test_ci_check.py tests/test_change_plans.py tests/test_plan_write_boundaries.py tests/test_plan_review_regressions.py tests/test_connected_scope_entrypoints.py -q --tb=short` under Windows Python 3.13 with `PYTHONUTF8=0`: **172 passed, 4 skipped** in 21.01 seconds. Skips are existing symbolic-link privilege and POSIX-permission checks; hard links and junctions passed.
 - All **23** new automation-export cases pass, including byte/directory snapshots on refusal, operations hard links, normal existing external output, and missing-parent plan output. `ruff check src tests` and `git diff --check` pass.
 - Merged integration revision `e40a046` (R03 authenticated Flask boundary) and reran the affected command above: **172 passed, 4 skipped** in 20.05 seconds. Ruff passed on the combined sources/tests.
+- CLI discovery review found the same boundary gap in `naming preview -o`. Its two new hard-link regressions first reproduced overwrites of model metadata and policy JSON. Naming plan exports now share the validator while preserving their output shape, policy-input protection, and external parent creation. `pytest tests/test_review_policy.py tests/test_automation_export_safety.py -q --tb=short`: **40 passed**; targeted Ruff passed. This companion fix is separate from R06's CLI contract work.
 
 ## Out of scope
 
