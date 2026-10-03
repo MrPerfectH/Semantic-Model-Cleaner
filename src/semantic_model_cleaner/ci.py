@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from . import analyzer
+from .analysis_export import validate_export_destination
 
 SCHEMA_VERSION = "1.0"
 # Coverage failures cannot be suppressed by baselines.
@@ -193,25 +194,17 @@ def main(argv: list[str] | None = None) -> int:
         code, payload = run_check(root, policy=repository_policy, model_path=(root / args.model) if args.model else None,
                                   report_filters=args.report, baseline=baseline, fail_on=args.fail_on)
         if args.write_baseline and code != 2:
-            target = args.write_baseline.resolve()
             artifact_roots = [
                 *(path.resolve() for path in analyzer.discover_models([root])),
                 *(path.resolve() for path in analyzer.discover_reports([root])),
                 (root / payload["scope"]["model"]).resolve(),
             ]
-            # Include explicit artifacts outside discovery roots and resolved
-            # symlink destinations. A baseline must never become model/report
-            # metadata merely because an output path was entered incorrectly.
-            if any(target == artifact or target.is_relative_to(artifact) for artifact in artifact_roots) or any(
-                parent.name.casefold().endswith((".semanticmodel", ".report"))
-                for parent in target.parents
-            ):
-                raise ValueError("Baseline output must be outside Semantic Model and Report artifact folders.")
-            args.write_baseline.write_text(json.dumps({
+            target = validate_export_destination(args.write_baseline, artifact_roots)
+            target.write_text(json.dumps({
                 "schema_version": SCHEMA_VERSION,
                 "fingerprints": sorted(f["fingerprint"] for f in payload["findings"] if f["rule_id"] not in COVERAGE_RULES),
             }, indent=2) + "\n", encoding="utf-8")
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         code, payload = 2, {"schema_version": SCHEMA_VERSION, "command": "check", "ok": False,
                             "scope": {}, "findings": [], "summary": {}, "errors": [str(exc)]}
     if args.format == "json":

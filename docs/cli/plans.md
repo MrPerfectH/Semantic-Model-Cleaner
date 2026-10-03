@@ -61,6 +61,7 @@ Apply records a recovery journal automatically. There is no `--no-backup` option
 - The model must have a TMDL `definition` directory; reports must have PBIR `definition` directories. Artifact roots must be distinct and cannot contain one another. Symlinks within the selected scope are rejected.
 - The snapshot covers `.tmdl`, `.json`, `.pbir` and `.pbism` metadata. Other project files are outside its fingerprint and recovery scope.
 - Plan output must be outside discovered or selected model/report folders and must not overwrite the operations file.
+- Resolved aliases and folders named `.SemanticModel` or `.Report` are protected even outside discovery. Existing output files with multiple hard links are refused, including aliases of the operations input. Choose a new external filename; ordinary external files can still be overwritten. Missing external parent directories are created only after destination validation and successful plan generation.
 - Journals default to `~/.semantic-model-cleaner/plans`. Setting `SMC_USER_DIR` changes the default to `<SMC_USER_DIR>/plans`. `apply`, `verify`, `restore`, `recover-lock` and `history` accept `--journal-dir`; verification itself reads the plan and files, not the journal.
 - Use the same journal directory for operations on the same model. The per-model lock resides there; separate journal directories do not provide a shared lock. Keep journals outside selected artifacts and retain them until recovery is no longer needed.
 

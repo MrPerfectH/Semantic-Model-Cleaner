@@ -22,6 +22,12 @@ Exit codes:
 
 Argparse syntax errors and `--help` follow normal CLI behavior (stderr usage with exit 2, help with exit 0). Runtime failures in JSON mode return a JSON envelope with `ok: false` and `errors`.
 
+`--write-baseline` requires an existing external output directory. Selected,
+discovered, and named Semantic Model/Report folders are protected, including
+resolved aliases and excluded artifacts. Existing output files with multiple
+hard links are refused because they may alias project metadata; choose a new
+external filename. Ordinary external baseline files can still be overwritten.
+
 By default only error findings fail the check. `--fail-on warning` also fails on warnings, including items with no found usage. A pass does not mean the model has no unused items or that every possible consumer was inspected.
 
 ## JSON contract, version 1.0

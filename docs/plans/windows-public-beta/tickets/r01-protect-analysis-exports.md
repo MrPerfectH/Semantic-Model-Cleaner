@@ -1,6 +1,6 @@
 # R01 Protect Semantic Model and Report files from analysis exports
 
-Status: Ordinary exports integrated in `c57f771`. Review found a related plan/baseline hard-link gap; focused follow-up required before this release gate is complete. Local ticket, not a published GitHub issue.
+Status: Ordinary exports integrated in `c57f771`; plan/baseline alias follow-up implemented and locally verified in `codex/r01-output-alias-followup`, awaiting integration review. Local ticket, not a published GitHub issue.
 Type: AFK — implementable from this specification once dependencies are satisfied.
 Priority: Release gate.
 
@@ -48,6 +48,14 @@ Reproduce the original JSON overwrite attempt on a copy and compare a full byte 
 On integration revision `40275a4`, disposable demo probes showed that an external hard link to `Sales.tmdl` bypasses the separate plan/baseline output guards. `plan -o` returned 0 and overwrote the linked source; `check --write-baseline` returned the normal findings status 1 and also overwrote it. The ordinary analyzer guard correctly rejects this case.
 
 Keep this fix under R01: apply consistent alias/hard-link protection to these existing metadata-export destinations, preserve the plan command's supported creation of external parent directories, and preserve its prohibition on replacing the operations input. Check safety before creating output directories or writing files. Regression evidence must compare source/input bytes and show normal external outputs still work. This follow-up does not change plan digests, cleanup writers, or release-ticket ordering.
+
+### Follow-up evidence (2026-10-03)
+
+- On starting revision `4721240`, 10 regression cases failed: hard-linked outputs to selected/excluded Semantic Model and Report metadata were overwritten by both commands; plan output also created a named but undiscovered Report directory and could overwrite a hard-link alias of operations JSON. Thirteen existing-safe and external-success cases passed.
+- Both plan and baseline outputs now use the shared export boundary. It rejects resolved artifact aliases and multiply-linked destinations, including excluded artifacts and named artifact folders. Plan validates before staged generation or parent creation and retains operations-input protection. It alone opts into missing external parent directories; baseline/ordinary exports still require an existing parent.
+- Normal external overwrites and nested external plan destinations work. Error wording now refers to export output so it applies to all three callers; invalid destinations return input-error status 2 without source/input changes. Saved-plan digests and finding fingerprints are unchanged.
+- `pytest tests/test_automation_export_safety.py tests/test_analysis_exports.py tests/test_ci_check.py tests/test_change_plans.py tests/test_plan_write_boundaries.py tests/test_plan_review_regressions.py tests/test_connected_scope_entrypoints.py -q --tb=short` under Windows Python 3.13 with `PYTHONUTF8=0`: **172 passed, 4 skipped** in 21.01 seconds. Skips are existing symbolic-link privilege and POSIX-permission checks; hard links and junctions passed.
+- All **23** new automation-export cases pass, including byte/directory snapshots on refusal, operations hard links, normal existing external output, and missing-parent plan output. `ruff check src tests` and `git diff --check` pass.
 
 ## Out of scope
 

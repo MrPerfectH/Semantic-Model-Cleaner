@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 
 from . import analyzer, change_plan, model_compare
+from .analysis_export import validate_export_destination
 
 
 def _directory():
@@ -47,9 +48,11 @@ def main(argv=None):
                 reports = [Path(row['path']) for row in scope['selected']]
                 if not reports:
                     raise change_plan.PlanError('No connected Reports found; inspect definition.pbir and selected scope.')
-            target = Path(args.output).resolve()
-            if any(target.is_relative_to(p.resolve()) for p in [*models, *reports, *analyzer.discover_models([root]), *analyzer.discover_reports([root])]) or target == Path(args.operations).resolve():
-                raise change_plan.PlanError('Plan output must be outside discovered or selected artifacts and must not replace the operations file.')
+            target = validate_export_destination(args.output, [
+                *models, *reports, *analyzer.discover_models([root]), *analyzer.discover_reports([root])
+            ], allow_missing_parent=True)
+            if target == Path(args.operations).resolve():
+                raise change_plan.PlanError('Plan output must not replace the operations file. Choose a separate external output file.')
             try:
                 raw = json.loads(Path(args.operations).read_text(encoding="utf-8-sig"))
             except UnicodeDecodeError as exc:
@@ -85,7 +88,7 @@ def main(argv=None):
             print(json.dumps(result, indent=2))
             return 0 if result.get('ok') else 1
         return 0
-    except (ValueError, OSError, KeyError, TypeError) as exc:
+    except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
         error = {'ok': False, 'error': str(exc)}
         if scope is not None:
             error['reportBinding'] = scope
