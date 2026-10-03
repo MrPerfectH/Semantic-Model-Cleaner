@@ -67,6 +67,18 @@ Apply records a recovery journal automatically. There is no `--no-backup` option
 
 The operations file accepts either an array or an object containing `operations`. The array must be nonempty. Operations run in order on staged copies, so later operations must use identities established by earlier ones.
 
+Save operations JSON as **UTF-8**, with or without a UTF-8 BOM. Other encodings,
+including UTF-16 and Windows legacy code pages, are rejected when their bytes are
+not valid UTF-8; the error identifies the file and asks you to save it again.
+Generated plan and journal JSON uses UTF-8 without a BOM. This JSON input policy
+does not change the beta restriction on writing BOM-prefixed TMDL files.
+
+CLI, web, and desktop entry points emit UTF-8 on stdout/stderr, including when
+redirected to a file or pipe. Automation should decode captured bytes as UTF-8
+rather than the system code page. No `PYTHONUTF8` setting or console-code-page
+change is needed. JSON uses either literal Unicode or standard JSON Unicode
+escapes; parsing it preserves non-English and non-BMP characters.
+
 | Kind | Fields | Effect |
 | --- | --- | --- |
 | `actions` | `actions` array | Display folder, hidden state, deletion, or table-group changes through the existing action engine |

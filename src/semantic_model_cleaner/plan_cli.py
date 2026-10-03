@@ -19,7 +19,7 @@ def main(argv=None):
     plan.add_argument('project_path', nargs='?', default='.')
     plan.add_argument('--model', help='Exact .SemanticModel folder; otherwise discover one under project_path.')
     plan.add_argument('--report', action='append', default=[], help='Explicit .Report folder; repeat for each report.')
-    plan.add_argument('--operations', required=True, help='JSON file containing an operations array or {operations:[...]}.')
+    plan.add_argument('--operations', required=True, help='UTF-8 JSON file (optional BOM) containing an operations array or {operations:[...]}.')
     plan.add_argument('-o', '--output', required=True, help='Reviewable local plan JSON.')
     for name in ('apply', 'verify', 'restore', 'recover-lock'):
         cmd = sub.add_parser(name)
@@ -44,7 +44,13 @@ def main(argv=None):
             target = Path(args.output).resolve()
             if any(target.is_relative_to(p.resolve()) for p in [*models, *reports, *analyzer.discover_models([root]), *analyzer.discover_reports([root])]) or target == Path(args.operations).resolve():
                 raise change_plan.PlanError('Plan output must be outside discovered or selected artifacts and must not replace the operations file.')
-            raw = json.loads(Path(args.operations).read_text(encoding="utf-8"))
+            try:
+                raw = json.loads(Path(args.operations).read_text(encoding="utf-8-sig"))
+            except UnicodeDecodeError as exc:
+                raise change_plan.PlanError(
+                    f'Cannot read operations file {args.operations!r}: save it as UTF-8 '
+                    '(with or without a UTF-8 BOM), then retry.'
+                ) from exc
             operations = raw.get('operations') if isinstance(raw, dict) else raw
             result = change_plan.create_plan(models[0], reports, operations)
             target.parent.mkdir(parents=True, exist_ok=True)

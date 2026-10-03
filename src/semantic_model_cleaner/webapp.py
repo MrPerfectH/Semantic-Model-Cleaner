@@ -20,7 +20,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -28,25 +27,10 @@ from flask import Flask, jsonify, render_template, request, send_file
 from . import __version__, analyzer, experiments, model_compare, report_writer, tmdl_writer
 from . import change_plan, cleanup_policy
 from .analysis_jobs import AnalysisJobs
+from .console import configure_console_output
 
 app = Flask(__name__)
 _analysis_jobs = AnalysisJobs()
-
-
-def configure_console_output() -> None:
-    """Keep a non-UTF-8 console (e.g. the Windows cp1252 default) from crashing
-    on startup text that includes non-ASCII characters. Reconfigures stdout and
-    stderr to UTF-8 where supported, falling back to escaping unencodable bytes
-    rather than raising."""
-    for stream in (sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is None:
-            continue
-        try:
-            reconfigure(encoding="utf-8", errors="backslashreplace")
-        except (OSError, TypeError, ValueError):
-            # Tests and embedded hosts can expose a closed or fixed text stream.
-            continue
 
 
 def _invalidates_analysis(fn):
