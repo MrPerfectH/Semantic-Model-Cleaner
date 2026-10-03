@@ -58,7 +58,10 @@ def test_check_bound_report_scope_excludes_other_model(tmp_path):
     code, output = run_check(tmp_path)
     assert code == 1
     assert output["scope"]["reports"] == ["R.Report"]
-    assert output["scope"]["bindings"][0] == {"path": "Other.Report", "status": "not_connected", "selected": False}
+    assert output["scope"]["bindings"][0] == {
+        "path": "Other.Report", "status": "not_connected", "selected": False,
+        "message": "definition.pbir references a different local Semantic Model.",
+    }
 
 
 def test_unverified_discovered_binding_is_a_nonsuppressible_failure(tmp_path):

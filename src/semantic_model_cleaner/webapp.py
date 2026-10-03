@@ -355,30 +355,11 @@ def _valid_model_scope(models: list[Path]) -> tuple[list[Path], list[dict]]:
 
 def _report_binding_scope(model_path, report_paths) -> dict:
     """Use the same binding evidence for initial selection and every web analysis."""
-    scope = {"selected": [], "excluded": []}
-    names = analyzer.model_name_candidates(Path(model_path))
-    label = analyzer.model_label(Path(model_path))
-    seen = set()
-    for report in report_paths:
-        path = str(Path(report).resolve())
-        if path in seen:
-            continue
-        seen.add(path)
-        binding = analyzer.report_binding_status(Path(path), Path(model_path), names=names, label=label)
-        binding.pop("scanned", None)
-        binding.pop("warning", None)
-        group = "selected" if binding["status"] in analyzer.BOUND_REPORT_STATUSES else "excluded"
-        scope[group].append(binding)
-    return scope
+    return analyzer.report_binding_scope(Path(model_path), [Path(p) for p in report_paths])
 
 
 def _record_report_scope(results, scope):
-    results["report_binding"] = scope
-    results.setdefault("warnings", []).extend({
-        "code": "REPORT_SCOPE_EXCLUDED", "severity": "warning",
-        "message": f"Excluded {row['name']} from analysis: {row['message']}",
-        "artifactPath": row["definitionFile"],
-    } for row in scope["excluded"])
+    analyzer.record_report_scope(results, scope)
 
 
 def configure_runtime(

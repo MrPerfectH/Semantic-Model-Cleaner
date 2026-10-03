@@ -1,6 +1,6 @@
 # R02 Preserve Unicode through Windows startup and reviewed CLI changes
 
-Status: Implemented and locally verified on 2026-10-03 in `codex/r02-windows-unicode`; awaiting integration review. Local ticket, not a published GitHub issue.
+Status: Implemented and locally verified on 2026-10-03; integrated as `30ecdba`. Combined export/Unicode regressions passed (56 passed, 2 symlink-privilege skips). Local ticket, not a published GitHub issue.
 Type: AFK — implementable from this specification once dependencies are satisfied.
 Priority: Release gate.
 

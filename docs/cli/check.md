@@ -34,6 +34,12 @@ Paths in successful result scope and findings are relative to the project direct
 
 `scan_complete` means no detected unreadable report file or unresolved unsupported model metadata in the selected scan. It does not claim exhaustive format conformance. Unsupported metadata with resolved target names still produces a warning.
 
+Each `scope.bindings` row includes its classification `message`. Binding evidence
+is retained when discovery succeeds but the selected Report set is empty or
+unusable, so invalid-scope responses can still explain the exclusions. A
+definition containing both `byPath` and `byConnection` is `ambiguous_definition`
+and excluded consistently with the app and ordinary analysis.
+
 | Rule | Default severity | Meaning |
 |---|---|---|
 | SMC001 | error | Broken DAX reference in a model or report extension item. |

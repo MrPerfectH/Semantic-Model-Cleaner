@@ -1,6 +1,6 @@
 # R05 Run the full unit suite on Windows with portable fixtures
 
-Status: Breakdown approved on 2026-10-03; local ticket, not a published GitHub issue. Start only when assigned and dependencies are satisfied.
+Status: Existing implementation reused as `4631a9e`; R02 integrated as `30ecdba`. Full local Windows validation passed after R04; remote CI remains pending. Local ticket, not a published GitHub issue.
 Type: AFK — implementable from this specification once dependencies are satisfied.
 Priority: Release gate.
 
@@ -19,12 +19,12 @@ The audited Windows run had 694 passing, 13 failing, and 4 skipped tests. UTF-8 
 ## Acceptance criteria
 
 - [ ] The existing Linux coverage remains and at least one supported Python version runs the complete suite on Windows.
-- [ ] Source fixtures and JavaScript files are read with explicit encodings where applicable.
-- [ ] Logical path comparisons work on Windows and POSIX without hiding real path-identity bugs.
+- [x] Source fixtures and JavaScript files are read with explicit encodings where applicable.
+- [x] Logical path comparisons work on Windows and POSIX without hiding real path-identity bugs.
 - [ ] Symlink tests use capability-aware skips only when the platform cannot create the link, and still run in a CI environment that supports it.
-- [ ] The normal Windows test run passes without globally enabling UTF-8 mode to hide the original regressions.
+- [x] The normal Windows test run passes without globally enabling UTF-8 mode to hide the original regressions.
 - [ ] Ruff and packaging/wheel checks continue running on their intended platforms; shell/glob behavior works in each lane.
-- [ ] Record the Python/OS matrix and distinguish executed checks from remote CI checks not yet run.
+- [x] Record the Python/OS matrix and distinguish executed checks from remote CI checks not yet run.
 
 ## Blocked by
 
@@ -33,6 +33,14 @@ The audited Windows run had 694 passing, 13 failing, and 4 skipped tests. UTF-8 
 ## Verification
 
 Run the full local Windows suite and lint. Review or execute the Linux/Windows CI matrix when available, preserving evidence for any capability skips.
+
+## Implementation evidence (2026-10-03)
+
+Reused existing commit `d373113` rather than duplicating its Windows portability fixes. `.github/workflows/ci.yml` retains Ubuntu Python 3.11/3.13 and adds Windows Python 3.13, with lint and the complete unit suite. Ubuntu 3.11 retains distribution build and installed-wheel smoke checks. The separate Windows ZIP build/download/verification workflow is preserved.
+
+Fixture reads are explicit UTF-8; path comparisons use platform paths; symlink tests skip when creation is unavailable. The integration baseline passed **766 tests with 6 platform/privilege skips**. After R01/R02, with `PYTHONUTF8=0`, the full suite had **821 passes, 8 skips, and one three-second asynchronous job timeout**. All five job tests passed on focused rerun. Ruff passed. Remote Linux/Windows lanes and capable-environment symlink execution have not run in this session. A final combined suite remains required after integration.
+
+After R04, full Windows Python 3.13 validation with `PYTHONUTF8=0` passed: **829 passed, 8 skipped** in 79.83 seconds on `1a02dd5`, integrated as `4721240`. The job timeout did not recur. This confirms local unit behavior; remote CI, wheel and packaged-EXE checks remain separate evidence.
 
 ## Out of scope
 

@@ -57,6 +57,7 @@ Apply records a recovery journal automatically. There is no `--no-backup` option
 - `plan [project_path]` defaults to the current directory. Without `--model`, it must discover exactly one model beneath that path.
 - For this command, `--model` and each repeated `--report` are exact folder paths, unlike the analyzer's name filters. Relative paths resolve from the current working directory.
 - Without explicit `--report` arguments, planning selects discovered reports bound to the chosen model. At least one report is required. Refactoring additionally requires supported report bindings and complete supported scan coverage.
+- Plan command JSON includes `reportBinding` selection/exclusion evidence, including when default discovery finds no connected Reports. Explicit `--report` uses `mode: explicit` with a binding row per requested Report; this is not proof of a verified connection. The saved plan's existing scope and coverage record the reviewed selection. Non-reference metadata edits retain their existing explicit-scope behavior, while refactoring/deletion still rejects unverified bindings.
 - The model must have a TMDL `definition` directory; reports must have PBIR `definition` directories. Artifact roots must be distinct and cannot contain one another. Symlinks within the selected scope are rejected.
 - The snapshot covers `.tmdl`, `.json`, `.pbir` and `.pbism` metadata. Other project files are outside its fingerprint and recovery scope.
 - Plan output must be outside discovered or selected model/report folders and must not overwrite the operations file.

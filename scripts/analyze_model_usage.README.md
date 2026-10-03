@@ -43,6 +43,32 @@ Filter by model and report name:
 python3 scripts/analyze_model_usage.py . --model Sales Finance --report Executive Regional --format unused
 ```
 
+## Report selection shared with the app
+
+Ordinary analysis, `smc check`, and default `smc plan` select Reports whose
+`definition.pbir` points to the chosen Semantic Model. Supported live connections
+can match the published model name (`connected_by_name`); this is a name match,
+not verification of remote identity. Missing, malformed, ambiguous (both binding
+forms), and unrelated bindings are excluded. No selection proves all external
+consumers were checked.
+
+`--reports-path` supplies search roots, including direct Report folders; it does
+not bypass connection checks. Name filters and interactive selection narrow the
+eligible connected set. An empty selection fails with guidance to check bindings
+and filters. Prompts and CLI exclusion messages go to stderr, keeping JSON stdout
+parseable. Ordinary JSON includes `reportBinding.selected` and `.excluded` with
+absolute identities and reasons; a connected Report omitted by a filter is
+`not_selected` with its original `bindingStatus`. Other text output includes the
+exclusion warnings. `smc check` exposes checkout-relative identities and reasons
+in `scope.bindings`.
+
+For Python diagnostics, explicitly passing `analyze(..., report_paths=[...])`
+continues to inspect those exact Reports, including malformed or unrelated
+bindings. `clean-stale --all-reports` is the existing CLI diagnostic override.
+Neither override relaxes reviewed-plan refactoring/deletion checks. Implicit
+`analyze(project)` follows connected selection. Normal analysis still requires
+one Semantic Model and at least one selected Report.
+
 ## clean-stale subcommand
 
 Bulk-removes dead PBIR metadata: stale visual selectors, stale bookmark projections and stale formatting rules — the `warning` issues the analyzer emits with a `clean_stale` suggestion because the reference is not part of the live visual query. Broken `missing_table` / `missing_column` / `missing_measure` references (severity `error`) are never removed.
