@@ -28,7 +28,7 @@ def main(argv=None) -> int:
     naming.add_argument("--file", help="Policy path inside the project.")
     naming.add_argument("--model", help="Model path relative to project_path.")
     naming.add_argument("--report", action="append", help="Exact report path relative to project_path.")
-    naming.add_argument("-o", "--output", help="Optional existing change-plan JSON for smc diff/apply.")
+    naming.add_argument("-o", "--output", help="Save the generated change-plan JSON; output path is relative to CWD.")
     args = parser.parse_args(argv)
     root = Path(args.project_path).resolve()
     try:

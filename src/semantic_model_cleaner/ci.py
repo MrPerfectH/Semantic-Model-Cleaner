@@ -1,12 +1,13 @@
 """Deterministic, read-only CI checks over the same local analyzer as the UI."""
-import argparse
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 
 from . import analyzer
 from .analysis_export import validate_export_destination
+from .cli_contract import ArgumentParser, CLIUsageError, json_requested
 
 SCHEMA_VERSION = "1.0"
 # Coverage failures cannot be suppressed by baselines.
@@ -172,7 +173,9 @@ def run_check(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="smc check", description="Read-only, local model/report CI checks.")
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = ArgumentParser(prog="smc check", description="Read-only, local model/report CI checks.",
+                            json_errors=json_requested(argv, default=True))
     parser.add_argument("project_path", nargs="?", default=".")
     parser.add_argument("--model", help="Semantic Model path (relative to project_path).")
     parser.add_argument("--report", action="append", help="Report-name substring filter; repeat to select reports.")
@@ -181,7 +184,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--policy", type=Path, help="Repository review policy JSON (default: project/.smc-policy.json).")
     parser.add_argument("--baseline", type=Path, help="Suppress matching existing findings, except incomplete coverage.")
     parser.add_argument("--write-baseline", type=Path, help="Write current baseline; exit code still reflects this check.")
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except CLIUsageError as exc:
+        print(json.dumps({"schema_version": SCHEMA_VERSION, "command": "check", "ok": False,
+                          "scope": {}, "findings": [], "summary": {}, "errors": [str(exc)]}))
+        return 2
     root = Path(args.project_path)
     baseline = None
     try:

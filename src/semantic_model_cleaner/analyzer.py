@@ -22,6 +22,7 @@ import os
 import re
 import sys
 import tempfile
+from contextlib import redirect_stderr
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
@@ -29,6 +30,10 @@ from pathlib import Path
 from typing import Optional
 
 from semantic_model_cleaner.analysis_export import validate_export_destination
+from semantic_model_cleaner import __version__
+from semantic_model_cleaner.cli_contract import (
+    ArgumentParser, COMMAND_GUIDE, DiagnosticCapture, emit_json, json_requested,
+)
 from semantic_model_cleaner.reference_tokens import dax_tokens
 from semantic_model_cleaner.console import configure_console_output
 from semantic_model_cleaner.report_writer import STALE_CLEANUP_SUPPORTED_KINDS
@@ -5192,6 +5197,7 @@ def format_unused(results: dict) -> str:
 
 def format_json_output(results: dict) -> str:
     output = {
+        "schema_version": "1.0", "command": "analyze", "ok": True,
         "reportBinding": results.get("report_binding"),
         "summary": results["summary"],
         "tables": results.get("table_summaries", []),
@@ -5969,6 +5975,23 @@ def clean_stale_command(argv: list[str]) -> int:
 def main(argv: Optional[list[str]] = None):
     configure_console_output()
     argv = list(sys.argv[1:] if argv is None else argv)
+    if not json_requested(argv) or (argv and argv[0] == "clean-stale"):
+        return _analysis_cli(argv)
+    diagnostics = DiagnosticCapture(sys.stderr)
+    try:
+        with redirect_stderr(diagnostics):
+            return _analysis_cli(argv)
+    except SystemExit as exc:
+        if not exc.code:
+            raise
+        message = ''.join(diagnostics.parts).strip() or f'Analysis failed (exit {exc.code}).'
+    except Exception as exc:
+        message = str(exc) or type(exc).__name__
+    emit_json('analyze', {'ok': False, 'error': message})
+    raise SystemExit(2)
+
+
+def _analysis_cli(argv):
 
     # Subcommand dispatch is done by hand (rather than with argparse subparsers)
     # so the historical no-subcommand invocation -- `smc . --format unused` --
@@ -5976,14 +5999,14 @@ def main(argv: Optional[list[str]] = None):
     if argv and argv[0] == "clean-stale":
         sys.exit(clean_stale_command(argv[1:]))
 
-    parser = argparse.ArgumentParser(
+    parser = ArgumentParser(
+        prog="smc",
         description="Analyze one TMDL semantic model against one or more PBIR reports",
-        epilog=(
-            "Subcommand: smc clean-stale <project_path> [--kind ...] "
-            "-- preview stale PBIR metadata; use smc plan for reviewed changes "
-            "(see `smc clean-stale --help`)."
-        ),
+        epilog=COMMAND_GUIDE,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        json_errors=json_requested(argv),
     )
+    parser.add_argument('--version', action='version', version=f'Semantic Model Cleaner {__version__}')
     parser.add_argument(
         "workspace",
         nargs="?",
@@ -6096,7 +6119,10 @@ def main(argv: Optional[list[str]] = None):
             text = format_json_output(results)
         if output_path:
             output_path.write_text(text, encoding="utf-8")
-            print(f"Report saved to: {output_path}")
+            if args.format == "json":
+                emit_json('analyze', {'output_file': str(output_path)})
+            else:
+                print(f"Report saved to: {output_path}")
         else:
             print(text)
 

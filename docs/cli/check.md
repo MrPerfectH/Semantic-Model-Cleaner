@@ -20,7 +20,7 @@ Exit codes:
 | 1 | Findings meet the failure threshold. |
 | 2 | Invalid arguments, invalid baseline, unusable input scope, or analysis failure. |
 
-Argparse syntax errors and `--help` follow normal CLI behavior (stderr usage with exit 2, help with exit 0). Runtime failures in JSON mode return a JSON envelope with `ok: false` and `errors`.
+In JSON mode (the default), argument syntax and runtime failures return the existing JSON envelope on stdout with `ok: false`, `errors`, and exit 2. `--format text` keeps argparse usage errors on stderr. `--help` always prints text and exits 0. See the [CLI contract](README.md) for stream and compatibility details.
 
 `--write-baseline` requires an existing external output directory. Selected,
 discovered, and named Semantic Model/Report folders are protected, including

@@ -82,6 +82,10 @@ Packaged runtime behavior:
 
 ### CLI
 
+Run `smc --help` for the complete command guide and `smc --version` for the
+installed version. The [CLI automation contract](docs/cli/README.md) documents
+JSON output, exit codes, path/filter differences, and a disposable reviewed-change workflow.
+
 Run the analyzer from a workspace root:
 
 ```bash

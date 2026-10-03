@@ -6,6 +6,11 @@ Use plans generated locally from files you trust. A plan contains absolute paths
 
 Legacy mutation HTTP routes and `smc clean-stale --apply` cannot bypass this workflow in the beta. Their direct-write requests are rejected with guidance to prepare and apply a saved plan.
 
+For automation, add `--format json` after any plan-family subcommand to receive
+versioned JSON on stdout for both successful responses and errors, including
+argument errors and saved-plan diffs. Omitting the flag preserves existing
+JSON results, text diffs, and JSON errors on stderr. See the [CLI contract](README.md).
+
 ## First change
 
 Create `operations.json` outside discovered or selected model/report folders:
@@ -171,7 +176,7 @@ Prefer generating these from reviewed analyzer/UI evidence rather than guessing 
 | `smc restore PLAN [--journal-dir DIR]` | Restore matching reviewed changes using the journal and original bytes |
 | `smc recover-lock PLAN [--journal-dir DIR]` | On POSIX, remove an abandoned lock only after checking that its recorded process has exited |
 
-Exit `0` means the command succeeded. For `verify`, that specifically means the selected metadata matches the planned outputs (`state: applied`). Exit `1` means an operation returned `ok: false`, including verification states `original` or `changed`, a rolled-back apply, or recovery requiring attention. Exit `2` covers handled input, plan-validation, I/O or parsing errors, reported as error JSON on stderr where handled by the command; argparse usage errors also use `2` and plain usage text. These codes are specific to the plan commands; `check` and `clean-stale` have their own contracts.
+Exit `0` means the command succeeded. For `verify`, that specifically means the selected metadata matches the planned outputs (`state: applied`). Exit `1` means an operation returned `ok: false`, including verification states `original` or `changed`, a rolled-back apply, or recovery requiring attention. Exit `2` covers handled input, plan-validation, I/O or parsing errors. With `--format json`, all these errors, including argument syntax errors, use the versioned JSON response on stdout. Without that flag, handled errors retain JSON on stderr and argparse usage errors retain text on stderr. These codes are specific to the plan commands; `check` and `clean-stale` have their own contracts.
 
 Verification does not re-run DAX or a new semantic analysis. It verifies fingerprints and returns the validation recorded during planning. A no-op plan has identical input/output fingerprints and can therefore verify as `applied` without any file writes.
 

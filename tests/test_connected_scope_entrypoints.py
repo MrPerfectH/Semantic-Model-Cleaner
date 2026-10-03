@@ -119,8 +119,9 @@ def test_unrelated_report_cannot_change_unused_recommendation(scope_project):
 def test_filters_and_interactive_selection_see_only_connected_reports(scope_project, monkeypatch, capsys):
     root, _, reports = scope_project
     run = cli(root, "--report", "unrelated", "--format", "json", cwd=root)
-    assert run.returncode != 0
-    assert not run.stdout
+    assert run.returncode == 2
+    error = json.loads(run.stdout)
+    assert not error["ok"] and "No matching connected" in error["errors"][0]
     assert "No matching connected" in run.stderr.decode("utf-8")
     seen = []
     def choose(kind, paths, _label):
@@ -148,7 +149,9 @@ def test_empty_connected_scope_returns_exclusion_evidence(scope_project, tmp_pat
     for key in ("local", "live"):
         (reports[key] / "definition.pbir").write_text("{}", encoding="utf-8")
     run = cli(root, "--format", "json", cwd=root)
-    assert run.returncode != 0 and not run.stdout
+    assert run.returncode == 2
+    error = json.loads(run.stdout)
+    assert not error["ok"] and "No matching connected" in error["errors"][0]
     assert "No matching connected" in run.stderr.decode("utf-8")
     assert "ambiguous.Report" in run.stderr.decode("utf-8")
     code, checked = ci.run_check(root)
