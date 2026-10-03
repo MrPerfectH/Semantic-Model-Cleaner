@@ -54,12 +54,6 @@ def run_check(
         bindings = [(report, analyzer.report_binding_status(report, model)) for report in discovered]
         bound = [report for report, binding in bindings if binding["status"] in analyzer.BOUND_REPORT_STATUSES]
         reports = sorted({Path(path).resolve() for path in report_paths}) if report_paths is not None else analyzer.filter_reports(bound, report_filters)
-        if any(report not in bound for report in reports):
-            raise ValueError("Every explicitly selected report must be bound to the Semantic Model.")
-        if not reports:
-            raise ValueError("No selected reports are bound to the Semantic Model; inspect definition.pbir or report filters.")
-        if any(not (report / "definition").is_dir() for report in reports):
-            raise ValueError("Selected reports require the supported PBIR definition directory.")
         payload["scope"] = {
             "model": _relative(model, workspace),
             "reports": [_relative(report, workspace) for report in reports],
@@ -68,8 +62,15 @@ def run_check(
             "external_consumers_verified": False,
             "unverified_report_count": sum(binding["status"] not in {"connected", "connected_by_name", "not_connected"} for _, binding in bindings),
             "bindings": [{"path": _relative(report, workspace), "status": binding["status"],
+                          "message": binding["message"],
                           "selected": report in reports} for report, binding in bindings],
         }
+        if any(report not in bound for report in reports):
+            raise ValueError("Every explicitly selected report must be bound to the Semantic Model.")
+        if not reports:
+            raise ValueError("No selected reports are bound to the Semantic Model; inspect definition.pbir or report filters.")
+        if any(not (report / "definition").is_dir() for report in reports):
+            raise ValueError("Selected reports require the supported PBIR definition directory.")
         result = analyzer.analyze(workspace, model_paths=[model], report_paths=reports)
         payload["scope"]["scan_complete"] = result.get("coverage", {}).get("complete", False)
         findings: list[dict] = []
