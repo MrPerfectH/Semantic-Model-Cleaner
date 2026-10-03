@@ -2590,7 +2590,7 @@ def test_index_renders_empty_selection_state():
     assert "function readExplorerDefaultPath(mode) {" in html
     assert "function writeExplorerDefaultPath(mode, path) {" in html
     assert "function updateExplorerDefaultUI() {" in html
-    assert "var savedDefault = mode === 'folder' ? '' : readExplorerDefaultPath(mode);" in html
+    assert "var savedDefault = (mode === 'folder' || mode === 'project') ? '' : readExplorerDefaultPath(mode);" in html
     assert "return initialConfig.modelBrowseRoot || initialConfig.defaultRoot || '';" in html
     assert "Search folder is based on the selected model" in html
     assert "Searching definition.pbir files under " in html
@@ -2647,7 +2647,7 @@ def test_index_renders_demo_workspace_button():
 
     assert response.status_code == 200
     assert b"btnLoadDemo" in response.data
-    assert b"Try the demo workspace" in response.data
+    assert b"Try demo" in response.data
 
 
 def _snapshot_workspace_state():

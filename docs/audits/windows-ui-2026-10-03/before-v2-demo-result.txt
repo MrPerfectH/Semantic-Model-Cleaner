@@ -1,0 +1,139 @@
+Semantic Model Cleaner
+BETA
+Changes & history
+Re-analyze
+Export JSON
+Export Excel
+Classic layout
+v0.4.0b3 | commit 7c145f3 | clean
+Items
+(9/9)
+Tables
+(3/3)
+Report health
+(5/5)
+References
+(9/9)
+Compare
+BETA
+Changes & history
+Review policy
+CLEANUP
+Safe
+6
+Review
+0
+Blocked
+3
+Keep
+0
+INVENTORY
+Total items
+9
+Used
+3
+Not used
+6
+Measures
+3
+Columns
+6
+Analyzer warnings
+Action log
+TestModel
+1 report
+Edit scope ▾
+Beta channel enabled
+
+This build can expose prerelease UI and experimental behavior. Stable users should stay on standard releases.
+
+How to read these results
+Summary cards, filters, status badges, issue states, and cleanup recommendations.
+Report Health (5)
+Report Metadata Issues: 5
+Filters ▾
+9 of 9 items match
+Rows
+50
+100
+250
+500
+Prev
+1-9 of 9
+Next
+Wrap long text
+Fit all columns
+Columns
+	NAME
+	USAGE
+	ISSUES
+	REPORTS
+	CLEANUP
+
+	
+Metric Fields
+Metric Parameter · Column
+	Unused	None	0	Safe
+	
+order_id
+Orders · Column
+	Unused	None	0	Safe
+	
+order_amount
+Orders · Column
+	Unused	None	0	Safe
+	
+order_qty
+Orders · Column
+	Unused	None	0	Safe
+	
+order_date
+Orders · Column
+	Unused	None	0	Safe
+	
+Total Orders
+Orders · Measure
+	Unused	None	0	Safe
+	
+Metric
+Metric Parameter · Column
+	Used	None	1	Blocked
+	
+Revenue
+Sales · Measure
+	Used	None	1	Blocked
+	
+Margin %
+Sales · Measure
+	Used	None	1	Blocked
+0 selected
+Select all Safe
+Select all visible
+Deselect all
+Move to display folder
+Hide
+Unhide
+Delete
+Apply
+Analysis scope
+What gets scanned — and what counts as “used”.
+✕
+SEMANTIC MODEL
+1
+TestModel
+×
+Choose model...
+REPORTS
+1
+TestReport
+×
+Browse for reports...
+Find connected reports...
+Search includes all report subfolders beneath the chosen folder. Hidden folders are excluded.
+Items used only by reports outside this scope will count as Unused.
+OPTIONS
+Auto-refresh analysis after apply
+Confirm delete
+Show action log
+New here? Try the demo workspace — a small sample model and report you can safely analyze and clean. Demo workspace copied to C:\Users\PrzemekHarazny\Projects\smc-r07-first-run\.playwright-mcp\user\demo-workspace
+Analyze

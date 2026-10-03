@@ -336,7 +336,7 @@ def _discover_initial_artifacts() -> tuple[list[Path], list[Path]]:
 
 
 def _default_model_selection(models: list[Path]) -> list[Path]:
-    if not models:
+    if len(models) != 1:
         return []
     return [models[0]]
 
@@ -1279,6 +1279,8 @@ def index():
         default_root=_state.get("workspace") or str(_default_workspace_root()),
         model_browse_root=str(_default_model_browse_root()),
         runtime=_state.get("runtime") or experiments.runtime_config(),
+        available_models=[{"path": str(m), "name": m.name.replace(".SemanticModel", "")} for m in models],
+        available_reports=[{"path": str(r), "name": analyzer.report_display_name(r)} for r in reports],
         initial_models=[{"path": str(m), "name": m.name.replace(".SemanticModel", "")} for m in selected_models],
         initial_reports=[{"path": str(r), "name": analyzer.report_display_name(r)} for r in selected_reports],
         initial_report_binding=report_binding,
@@ -1360,6 +1362,24 @@ def api_discover():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/scope", methods=["POST"])
+def api_scope():
+    """Preview binding evidence without analyzing or changing the active scope."""
+    data = request.get_json(silent=True) or {}
+    try:
+        models = data.get("model_paths", [])
+        reports = data.get("report_paths", [])
+        if not isinstance(models, list) or len(models) != 1 or not isinstance(reports, list):
+            raise ValueError("Choose one Semantic Model to review its connected Reports.")
+        model = Path(models[0])
+        error = analyzer._unsupported_semantic_model_error(model)
+        if error:
+            raise ValueError(error)
+        return jsonify({"reportBinding": _report_binding_scope(model, reports)})
+    except (ValueError, TypeError, OSError) as exc:
+        return jsonify({"error": str(exc)}), 400
 
 
 @app.route("/api/reports/find-connected", methods=["POST"])
