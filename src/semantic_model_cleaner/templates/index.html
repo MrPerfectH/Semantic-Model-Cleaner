@@ -128,6 +128,7 @@ body.app-flow-cleanup #compareFlow { display: none !important; }
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .summary-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; text-align: center; }
 .summary-card .value { font-size: 28px; font-weight: 700; color: var(--primary); }
+.summary-card .summary-split { margin-top: 4px; font-size: 11px; color: var(--text-light); }
 .summary-card .label { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 11px; color: var(--text-light); margin-top: 2px; text-transform: uppercase; letter-spacing: .5px; }
 .kpi-help { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #94a3b8; border-radius: 999px; background: #fff; color: var(--text-light); font-size: 10px; font-weight: 700; line-height: 1; cursor: help; text-transform: none; }
 .kpi-help::before,
@@ -756,7 +757,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="summary-card"><div class="value" id="sumMeasures">0</div><div class="label">Measures <span class="kpi-help" tabindex="0" data-tooltip="Count of model measures plus report-level measures found in the selected artifacts." aria-label="Explain measures">?</span></div></div>
     <div class="summary-card"><div class="value" id="sumColumns">0</div><div class="label">Columns <span class="kpi-help" tabindex="0" data-tooltip="Count of semantic-model columns found in the selected artifacts." aria-label="Explain columns">?</span></div></div>
     <div class="summary-card"><div class="value" id="sumSafe">0</div><div class="label">Safe <span class="kpi-help" tabindex="0" data-tooltip="Items that look low-risk to clean up." aria-label="Explain safe">?</span></div></div>
-    <div class="summary-card"><div class="value" id="sumReview">0</div><div class="label">Review <span class="kpi-help" tabindex="0" data-tooltip="Items that may be removable, but still need a manual check first." aria-label="Explain review">?</span></div></div>
+    <div class="summary-card"><div class="value" id="sumReview">0</div><div class="label">Review <span class="kpi-help" tabindex="0" data-tooltip="Items that may be removable, but still need a manual check first." aria-label="Explain review">?</span></div><div class="summary-split" title="By entity type: unused calculation groups and field parameters this tool always asks you to confirm. Because of evidence: concrete facts that need a manual check."><span id="sumReviewEntity">0</span> by entity type · <span id="sumReviewEvidence">0</span> because of evidence</div></div>
     <div class="summary-card"><div class="value" id="sumCaution">0</div><div class="label">Blocked <span class="kpi-help" tabindex="0" data-tooltip="Items that still have direct or indirect dependencies and should not be deleted now." aria-label="Explain blocked">?</span></div></div>
     <div class="summary-card"><div class="value" id="sumKeep">0</div><div class="label">Keep <span class="kpi-help" tabindex="0" data-tooltip="Items retained for required model structure." aria-label="Explain keep">?</span></div></div>
   </div>
@@ -3427,6 +3428,11 @@ function updateSummary(s) {
   $('sumColumns').textContent = s.total_columns;
   $('sumSafe').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Safe'; }).length;
   $('sumReview').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Review'; }).length;
+  // Review by entity type (calculation group / field parameter rule) vs Review because of evidence (#103).
+  var reviewItems = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Review'; });
+  var entityReview = reviewItems.filter(function(i) { return i.reviewBasis === 'entity_type'; }).length;
+  $('sumReviewEntity').textContent = entityReview;
+  $('sumReviewEvidence').textContent = reviewItems.length - entityReview;
   $('sumCaution').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Blocked'; }).length;
   $('sumKeep').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Keep'; }).length;
 }

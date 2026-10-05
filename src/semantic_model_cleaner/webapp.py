@@ -890,6 +890,8 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             "statusDetail": status,
             "removalRisk": r.get("removal_risk", "") or None,
             "reviewTriggers": r.get("review_triggers", []),
+            "reviewBasis": r.get("review_basis", "") or None,
+            "entityKind": r.get("entity_kind", "") or None,
             "analysisLimitationIds": r.get("analysis_limitation_ids", []),
             "perspectiveMemberships": [
                 {"perspective": member["perspective"], "sourceFile": member["source_file"]}
@@ -1153,6 +1155,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
                              for translation in table.get("translations", [])],
             "cleanupRecommendation": table.get("cleanup_recommendation", ""),
             "cleanupReason": table.get("cleanup_reason", ""),
+            "reviewBasis": table.get("review_basis", "") or None,
             "usageStatus": table_usage_status,
             "usageState": _table_usage_state(display_table),
             "issueState": " / ".join(key for key, count in issue_counts.items() if count),

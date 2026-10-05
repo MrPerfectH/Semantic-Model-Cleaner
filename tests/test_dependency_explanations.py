@@ -300,12 +300,13 @@ CURRENCY_GROUP = (
 )
 
 
-def standalone_group_copy(tmp_path, *, other_group=False):
+def standalone_group_copy(tmp_path, *, other_group=False, keep_hidden=False):
     """Copy the fixture without the item-specific facts that keep a delete at Review.
 
     The shipped fixture deliberately uses Revenue Ignoring TI 01 in a visual, keeps
     the selector in a perspective and hides Ordinal; those are separate guards
     (SMC-D004/SMC-D005) unrelated to coverage, so the copy removes them.
+    ``keep_hidden`` keeps the always-hidden Ordinal column of a real group (#103).
     """
     import shutil
 
@@ -321,8 +322,9 @@ def standalone_group_copy(tmp_path, *, other_group=False):
     perspective = model / "definition/perspectives/Executive.tmdl"
     text = perspective.read_text(encoding="utf-8")
     perspective.write_text(text.split("\tperspectiveTable 'Time Intelligence'")[0].rstrip() + "\n", encoding="utf-8")
-    group = model / "definition/tables/Time Intelligence.tmdl"
-    group.write_text(group.read_text(encoding="utf-8").replace("\t\tisHidden\n", ""), encoding="utf-8")
+    if not keep_hidden:
+        group = model / "definition/tables/Time Intelligence.tmdl"
+        group.write_text(group.read_text(encoding="utf-8").replace("\t\tisHidden\n", ""), encoding="utf-8")
     if other_group:
         (model / "definition/tables/Currency Conversion.tmdl").write_text(CURRENCY_GROUP, encoding="utf-8")
         definition = model / "definition/model.tmdl"
@@ -343,15 +345,11 @@ def test_coordinated_group_deletion_clears_the_groups_own_coverage_gap():
     assert all(l["cleared_reason"] == "Coverage gap owned by 'Time Intelligence' is cleared because the plan "
                "removes the calculation group and every retained parent-table consumer."
                for l in policy["scope"]["cleared_limitations"])
-    # Item-specific guards are unchanged: a used consumer and a hidden column still
-    # require review. Perspective membership is informational and no longer a guard.
-    remaining = {(v["rule_id"], v["table"], v["name"]): v["message"] for v in policy["violations"]}
-    assert set(remaining) == {
-        ("SMC-D004", "Sales", "Revenue Ignoring TI 01"),
-        ("SMC-D005", "Time Intelligence", "Ordinal"),
-    }
-    ordinal = remaining[("SMC-D005", "Time Intelligence", "Ordinal")]
-    assert ordinal == "Review required for Time Intelligence[Ordinal]: Item is hidden"
+    # Item-specific guards are unchanged: a used consumer still requires review. The
+    # cleared gap, the group-structure reasons, perspective membership and the hidden
+    # flag of the group's own Ordinal column no longer appear.
+    remaining = {(v["rule_id"], v["table"], v["name"]) for v in policy["violations"]}
+    assert remaining == {("SMC-D004", "Sales", "Revenue Ignoring TI 01")}
 
 
 def test_coordinated_group_deletion_is_allowed_when_no_item_guard_remains(tmp_path):
@@ -400,6 +398,202 @@ def test_retained_other_group_still_blocks_coordinated_deletion(tmp_path):
     # The retained group's gap keeps the consumers at Review.
     assert {v["name"] for v in policy["violations"] if v["rule_id"] == "SMC-D005"} >= {
         consumer[len("Sales["):-1] for consumer in CONSUMERS}
+
+
+# ── #103: whole tool-entity deletion, Review by entity type ──────────────────
+
+TI_CONFIRMATION = ("Entity type requires confirmation: 'Time Intelligence' is a calculation group, which this "
+                   "tool always asks you to confirm before deletion. Nothing that remains after this plan in the "
+                   "model or the selected reports uses it.")
+
+
+def synthetic_project(tmp_path, tables: dict[str, str]):
+    model = tmp_path / "M.SemanticModel"
+    report = tmp_path / "R.Report"
+    (model / "definition/tables").mkdir(parents=True)
+    for name, text in tables.items():
+        (model / "definition/tables" / f"{name}.tmdl").write_text(text, encoding="utf-8")
+    (report / "definition").mkdir(parents=True)
+    (report / "definition/report.json").write_text("{}", encoding="utf-8")
+    (report / "definition.pbir").write_text(
+        json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}), encoding="utf-8")
+    return model, report
+
+
+SCENARIO_GROUP = (
+    "table Scenario\n"
+    "\tcalculationGroup\n"
+    "\t\tprecedence: 5\n\n"
+    "\t\tcalculationItem Actual = SELECTEDMEASURE()\n\n"
+    "\tcolumn Scenario\n"
+    "\t\tdataType: string\n"
+    "\t\tsourceColumn: Name\n"
+    "\t\tsortByColumn: Ordinal\n\n"
+    "\tcolumn Ordinal\n"
+    "\t\tdataType: int64\n"
+    "\t\tisHidden\n"
+    "\t\tsourceColumn: Ordinal\n\n"
+    "\tpartition Scenario = calculationGroup\n"
+    "\t\tmode: import\n"
+    "\t\tsource = calculationGroup\n"
+)
+METRIC_PARAMETER = (
+    "table Parameter\n"
+    "\tcolumn Parameter\n"
+    "\t\tdataType: string\n"
+    "\t\tsourceColumn: [Value1]\n"
+    "\t\tsortByColumn: 'Parameter Order'\n\n"
+    "\tcolumn 'Parameter Fields'\n"
+    "\t\tdataType: string\n"
+    "\t\tisHidden\n"
+    "\t\tsourceColumn: [Value2]\n\n"
+    "\tcolumn 'Parameter Order'\n"
+    "\t\tdataType: int64\n"
+    "\t\tisHidden\n"
+    "\t\tsourceColumn: [Value3]\n\n"
+    "\tpartition Parameter = calculated\n"
+    "\t\tsource =\n"
+    "\t\t\t{ (\"Target\", NAMEOF('Sales'[Target]), 0) }\n"
+)
+SALES = "table Sales\n\tmeasure Existing = 1\n\tmeasure Target = 2\n"
+
+
+def column_deletes(table, names):
+    return [{"action": "delete", "table": table, "name": name, "item_type": "Column"} for name in names]
+
+
+def assert_no_hidden_reason(policy):
+    assert not any("hidden" in v["message"].casefold() for v in policy["violations"])
+    assert not any("hidden" in c["message"].casefold() for c in policy["confirmations"])
+
+
+def test_whole_group_plan_gives_one_entity_type_confirmation_and_no_hidden_trigger(tmp_path):
+    # #91 fixture variant without perspective membership (#101) and without the
+    # used consumer, keeping the always-hidden Ordinal column of a real group.
+    _, model, report = standalone_group_copy(tmp_path, keep_hidden=True)
+    policy = evaluate_deletion_policy(model, [report], GROUP_TABLE + CONSUMER_DELETES)
+    assert policy["ok"], policy["errors"]
+    assert policy["violations"] == []
+    assert policy["confirmations"] == [{"kind": "entity_type", "table": "Time Intelligence",
+                                        "message": TI_CONFIRMATION}]
+    assert_no_hidden_reason(policy)
+    assert "used" not in TI_CONFIRMATION.casefold()
+    # Selecting every group column instead of the table action is the same plan.
+    columns = column_deletes("Time Intelligence", ["Name", "Ordinal"])
+    assert evaluate_deletion_policy(model, [report], columns + CONSUMER_DELETES)["confirmations"] == \
+        policy["confirmations"]
+
+
+def test_whole_group_plan_preview_asks_for_entity_type_confirmation(tmp_path):
+    from semantic_model_cleaner import change_plan
+
+    _, model, report = standalone_group_copy(tmp_path, keep_hidden=True)
+    columns = column_deletes("Time Intelligence", ["Name", "Ordinal"])
+    plan = change_plan.create_plan(model, [report], [{"kind": "actions", "actions": columns + CONSUMER_DELETES}])
+    assert plan["validation"]["confirmations"] == [TI_CONFIRMATION]
+    assert any(change["path"].endswith("tables/Time Intelligence.tmdl") and change["change"] == "deleted"
+               for change in plan["changes"])
+
+
+def test_partial_group_plan_keeps_item_alone_review_reasons(tmp_path):
+    _, model, report = standalone_group_copy(tmp_path, keep_hidden=True)
+    analysis = analyzer.analyze(model.parent, model_paths=[model], report_paths=[report])
+    ordinal = row(analysis, "Time Intelligence", "Ordinal")
+    # Retained consumers exist, so the analysis view keeps today's reasons.
+    assert ordinal["review_triggers"] == ordinal["standalone_review_triggers"]
+    assert ordinal["review_basis"] == "evidence"
+    for actions in (column_deletes("Time Intelligence", ["Ordinal"]),
+                    column_deletes("Time Intelligence", ["Ordinal"]) + CONSUMER_DELETES):
+        policy = evaluate_deletion_policy(model, [report], actions)
+        assert not policy["ok"]
+        assert policy["confirmations"] == []
+        messages = {v["name"]: v["message"] for v in policy["violations"] if v["rule_id"] == "SMC-D005"}
+        assert messages["Ordinal"] == ("Review required for Time Intelligence[Ordinal]: "
+                                       + "; ".join(ordinal["review_triggers"]))
+        assert "Item is hidden" in messages["Ordinal"]
+        assert "Delete the whole group through a reviewed table plan" in messages["Ordinal"]
+
+
+def test_unused_calculation_group_is_review_by_entity_type(tmp_path):
+    model, report = synthetic_project(tmp_path, {"Scenario": SCENARIO_GROUP, "Sales": SALES})
+    analysis = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
+    trigger = ("Entity type requires confirmation: 'Scenario' is a calculation group, which this tool always asks "
+               "you to confirm before deletion. Nothing in the model or the selected reports uses it.")
+    for name in ("Scenario", "Ordinal"):
+        group_row = row(analysis, "Scenario", name)
+        assert group_row["removal_risk"] == "Review"
+        assert group_row["review_triggers"] == [trigger]
+        assert group_row["review_basis"] == "entity_type"
+    assert "Item is hidden" in row(analysis, "Scenario", "Ordinal")["standalone_review_triggers"]
+    table = next(t for t in analysis["table_summaries"] if t["name"] == "Scenario")
+    assert (table["cleanup_recommendation"], table["cleanup_reason"], table["review_basis"]) == (
+        "Review", trigger, "entity_type")
+    assert analysis["summary"]["review_entity_type"] == 2
+    browser = webapp._serialize_results(analysis, model_paths=[str(model)])
+    ordinal = item(browser, "Scenario", "Ordinal")
+    assert (ordinal["reviewBasis"], ordinal["entityKind"], ordinal["reviewTriggers"]) == (
+        "entity_type", "calculation group", [trigger])
+    assert next(t for t in browser["tables"] if t["name"] == "Scenario")["cleanupReason"] == trigger
+
+    whole = evaluate_deletion_policy(model, [report], column_deletes("Scenario", ["Scenario", "Ordinal"]))
+    assert whole["ok"], whole["errors"]
+    assert [c["table"] for c in whole["confirmations"]] == ["Scenario"]
+    assert_no_hidden_reason(whole)
+    partial = evaluate_deletion_policy(model, [report], column_deletes("Scenario", ["Ordinal"]))
+    assert not partial["ok"] and partial["confirmations"] == []
+    assert any(v["rule_id"] == "SMC-D005" and v["name"] == "Ordinal" and "Item is hidden" in v["message"]
+               for v in partial["violations"])
+
+
+def test_unused_field_parameter_is_review_by_entity_type(tmp_path):
+    from semantic_model_cleaner import change_plan
+
+    model, report = synthetic_project(tmp_path, {"Parameter": METRIC_PARAMETER, "Sales": SALES})
+    analysis = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
+    trigger = ("Entity type requires confirmation: 'Parameter' is a field parameter, which this tool always asks "
+               "you to confirm before deletion. Nothing in the model or the selected reports uses it.")
+    names = ["Parameter", "Parameter Fields", "Parameter Order"]
+    for name in names:
+        parameter_row = row(analysis, "Parameter", name)
+        assert (parameter_row["removal_risk"], parameter_row["review_triggers"]) == ("Review", [trigger])
+    # Guards outside the entity are unchanged: the NAMEOF target stays Caution.
+    assert row(analysis, "Sales", "Target")["removal_risk"] == "Caution"
+    assert row(analysis, "Sales", "Existing")["removal_risk"] == "Safe"
+    assert analysis["summary"]["review_entity_type"] == 3
+    assert analysis["summary"]["review_evidence"] == 0
+
+    whole = evaluate_deletion_policy(model, [report], column_deletes("Parameter", names))
+    assert whole["ok"], whole["errors"]
+    assert whole["confirmations"] == [{"kind": "entity_type", "table": "Parameter", "message": trigger.replace(
+        "Nothing in the model", "Nothing that remains after this plan in the model")}]
+    assert_no_hidden_reason(whole)
+    plan = change_plan.create_plan(model, [report], [{"kind": "actions",
+                                                     "actions": column_deletes("Parameter", names)}])
+    assert plan["validation"]["confirmations"] == [whole["confirmations"][0]["message"]]
+    # Partial plans keep today's item-alone behaviour.
+    hidden_only = evaluate_deletion_policy(model, [report], column_deletes("Parameter", ["Parameter Fields"]))
+    assert [v["message"] for v in hidden_only["violations"]] == [
+        "Review required for Parameter[Parameter Fields]: Item is hidden"]
+    assert hidden_only["confirmations"] == []
+    assert evaluate_deletion_policy(model, [report], column_deletes("Parameter", ["Parameter"]))["ok"]
+    # Deleting the NAMEOF target together with the parameter stays guarded.
+    target = [{"action": "delete", "table": "Sales", "name": "Target", "item_type": "Measure"}]
+    assert any(v["rule_id"] == "SMC-D006" for v in evaluate_deletion_policy(
+        model, [report], column_deletes("Parameter", names) + target)["violations"])
+
+
+def test_used_field_parameter_is_not_review_by_entity_type(tmp_path):
+    model, report = synthetic_project(tmp_path, {"Parameter": METRIC_PARAMETER, "Sales": SALES})
+    analysis = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
+    assert analysis["summary"]["review_entity_type"] == 3
+    # A retained measure that references the parameter table keeps evidence-based reasons.
+    (model / "definition/tables/Sales.tmdl").write_text(
+        SALES + "\tmeasure Picked = SELECTEDVALUE(Parameter[Parameter])\n", encoding="utf-8")
+    analysis = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
+    assert analysis["summary"]["review_entity_type"] == 0
+    fields = row(analysis, "Parameter", "Parameter Fields")
+    assert fields["review_triggers"] == ["Item is hidden"]
+    assert fields["review_basis"] == "evidence"
 
 
 # ── #84: analysis limitations are a separate surface ─────────────────────────

@@ -35,6 +35,7 @@
     return '<p>' + (restoring ? 'Restore the original bytes for these reviewed changes. Later edits are protected.' : 'Review the exact changes below. Applying uses this saved preview and refuses files changed since preview.') + '</p>'
       + scopeHtml(plan) + '<p><strong>' + plan.changes.length + ' changed file(s)</strong> · ' + escape(plan.validation.reference_integrity) + '</p>'
       + (plan.validation.pbir_schema ? '<p>Declared PBIR schemas: ' + plan.validation.pbir_schema.after.valid + ' valid · ' + plan.validation.pbir_schema.after.invalid + ' existing invalid · ' + plan.validation.pbir_schema.after.not_validated + ' not validated. Changed JSON coverage: ' + (plan.validation.pbir_schema.comparison_complete ? 'no unvalidated JSON changes' : 'incomplete') + '.</p>' : '')
+      + ((plan.validation.confirmations || []).length ? '<div class="classic-plan-confirm"><strong>Confirm before applying</strong><ul>' + plan.validation.confirmations.map(function (text) { return '<li>' + escape(text) + '</li>'; }).join('') + '</ul></div>' : '')
       + '<ul class="classic-plan-limits">' + (plan.validation.limitations || []).map(function (text) { return '<li>' + escape(text) + '</li>'; }).join('') + '</ul>'
       + plan.changes.map(function (change) {
         return '<details open><summary>' + escape(change.change) + ' · ' + escape(change.path) + '</summary><pre tabindex="0">' + escape(change.diff || 'No text difference') + '</pre></details>';

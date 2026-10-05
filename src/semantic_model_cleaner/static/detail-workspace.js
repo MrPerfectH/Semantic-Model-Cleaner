@@ -370,7 +370,9 @@
     var rows = Object.keys(labels).filter(function (key) { return validation[key] !== undefined; }).map(function (key) { return '<dt>' + labels[key] + '</dt><dd>' + esc(String(validation[key])) + '</dd>'; }).join('');
     if (validation.pbir_schema) { var schema = validation.pbir_schema; var counts = schema.after; rows += '<dt>Declared PBIR schemas</dt><dd>' + counts.valid + ' valid · ' + counts.invalid + ' existing invalid · ' + counts.not_validated + ' not validated</dd><dt>Changed JSON coverage</dt><dd>' + (schema.comparison_complete ? 'No unvalidated JSON changes' : 'Incomplete — review unvalidated files') + '</dd>'; }
     var limitations = Array.isArray(validation.limitations) ? validation.limitations : [];
-    return '<section class="object-validation"><h3>Validation</h3><dl class="object-properties">' + rows + '</dl>' + (limitations.length ? '<ul class="object-note">' + limitations.map(function (text) { return '<li>' + esc(text) + '</li>'; }).join('') + '</ul>' : '<p class="object-note">Static checks cover selected files. Power BI runtime results are not verified.</p>') + '</section>';
+    var confirmations = Array.isArray(validation.confirmations) ? validation.confirmations : [];
+    var confirmHtml = confirmations.length ? '<div class="object-confirmations"><strong>Confirm before applying</strong><ul>' + confirmations.map(function (text) { return '<li>' + esc(text) + '</li>'; }).join('') + '</ul></div>' : '';
+    return '<section class="object-validation"><h3>Validation</h3>' + confirmHtml + '<dl class="object-properties">' + rows + '</dl>' + (limitations.length ? '<ul class="object-note">' + limitations.map(function (text) { return '<li>' + esc(text) + '</li>'; }).join('') + '</ul>' : '<p class="object-note">Static checks cover selected files. Power BI runtime results are not verified.</p>') + '</section>';
   }
   function scopeHtml(scope) {
     scope = scope || {};

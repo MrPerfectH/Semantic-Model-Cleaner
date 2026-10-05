@@ -32,6 +32,7 @@
     if (cleanup === 'Safe') return 'Next: queue a reviewed delete if the item is not needed elsewhere.';
     if (cleanup === 'Blocked') return 'Next: keep the item; update or remove its consumers first.';
     if (cleanup === 'Keep') return 'Next: treat as required model structure.';
+    if (item && item.reviewBasis === 'entity_type') return 'Next: confirm the whole ' + (item.entityKind || 'entity') + ' is no longer needed, then delete all of its items in one reviewed plan.';
     if (item && item.modelRole === 'Calculation group selector') return 'Next: review the whole calculation group through a table plan.';
     return 'Next: inspect the evidence below, then decide with a reviewed plan.';
   }
@@ -72,7 +73,7 @@
     var html = '<div class="cleanup-lead">' + text(explanation.lead) + '</div><div class="cleanup-next">' + text(explanation.next) + '</div>';
     var details = '';
     if (explanation.triggers.length) {
-      details += '<p class="object-note">' + plural(explanation.specific.length, 'item-specific reason') + (explanation.shared.length ? ' · shared coverage gap collapsed into one line' : '') + '</p>';
+      details += '<p class="object-note">' + (item && item.reviewBasis === 'entity_type' ? 'Review by entity type, not because of evidence' : plural(explanation.specific.length, 'item-specific reason')) + (explanation.shared.length ? ' · shared coverage gap collapsed into one line' : '') + '</p>';
       details += '<ul class="detail-list cleanup-triggers">' + explanation.triggers.map(function (trigger) { return '<li>' + text(trigger) + '</li>'; }).join('') + '</ul>';
     }
     if (explanation.limitations.length) {

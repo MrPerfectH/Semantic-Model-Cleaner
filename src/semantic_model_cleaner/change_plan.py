@@ -355,7 +355,9 @@ def create_plan(model_path, report_paths, operations):
                                            'bundle_commit': schema_after['bundle'].get('commit')},
                            'limitations': ['Static analysis of selected TMDL/PBIR only.',
                                            'Only supported declared PBIR schemas are validated; TMDL/DAX engine validation is not performed.']
-                                          + sorted({entry['cleared_reason'] for entry in cleared})}}
+                                          + sorted({entry['cleared_reason'] for entry in cleared}),
+                           # Tool entities (#103) are deleted only after the user confirms them here.
+                           'confirmations': [entry['message'] for entry in policy.get('confirmations', [])]}}
     plan['digest'] = _seal(plan)
     return plan
 

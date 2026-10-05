@@ -1269,6 +1269,82 @@ def _calculation_group_triggers(
     return triggers
 
 
+ENTITY_TYPE_TRIGGER_PREFIX = "Entity type requires confirmation: "
+
+
+def entity_type_trigger(kind: str, table: str, *, after_plan: bool = False) -> str:
+    """The single Review reason for an unused tool entity (issue #103).
+
+    Calculation groups and field parameters are always confirmed by a human; the
+    reason states that and must not cite hidden flags or imply usage.
+    """
+    scope = ("Nothing that remains after this plan in the model or the selected reports uses it."
+             if after_plan else "Nothing in the model or the selected reports uses it.")
+    return (f"{ENTITY_TYPE_TRIGGER_PREFIX}'{table}' is a {kind}, which this tool always asks you "
+            f"to confirm before deletion. {scope}")
+
+
+_RETAINED_DECLARATION_PREFIXES = ("Sort column required by retained ", "Column belongs to retained hierarchy ")
+
+
+def _apply_tool_entity_review(
+    results: list[dict],
+    entity_kinds: dict[str, str],
+    dependents: dict,
+    table_dependents_by_table: dict[str, list[str]],
+    coverage_limitations: list[dict],
+) -> None:
+    """Explain unused calculation groups and field parameters by entity type.
+
+    Every unused row of a tool entity records the entity-type reason and the
+    reasons that whole-entity deletion makes irrelevant (the hidden flag of its
+    internal columns, calculation-group structure, sort/hierarchy declarations
+    inside the entity). When nothing outside the entity uses or references it,
+    the displayed recommendation is Review with that one reason instead of the
+    internal ones. ``standalone_*`` keeps the item-alone view for partial plans.
+    """
+    rows_by_table: dict[str, list[dict]] = defaultdict(list)
+    for row in results:
+        item = row["item"]
+        if item.source_kind == "model" and item.table.casefold() in entity_kinds:
+            rows_by_table[item.table.casefold()].append(row)
+    for table_key, rows in rows_by_table.items():
+        table = rows[0]["item"].table
+        trigger = entity_type_trigger(entity_kinds[table_key], table)
+        own = {item_identity(row["item"]) for row in rows}
+        unused = (all(row["status"] == "NOT USED" and not row["item"].is_inferred for row in rows)
+                  and not table_dependents_by_table.get(table_key)
+                  and not any(dependents.get(identity, set()) - own for identity in own))
+        # The entity's own shared gaps (dynamic calculation items) vanish with it.
+        own_coverage = bool(coverage_limitations) and all(
+            limitation.get("kind") == "unsupported_metadata" and limitation.get("owner")
+            and str(limitation.get("table") or "").casefold() == table_key
+            for limitation in coverage_limitations)
+        for row in rows:
+            if row["status"] != "NOT USED" or row["item"].is_inferred:
+                continue
+            internal = [t for t in row["review_triggers"]
+                        if t == "Item is hidden" or t in row["calculation_group_triggers"]
+                        or t.startswith(_RETAINED_DECLARATION_PREFIXES)
+                        or (own_coverage and t == row["shared_limitation_trigger"])]
+            row["entity_kind"] = entity_kinds[table_key]
+            row["entity_type_trigger"] = trigger
+            row["entity_internal_triggers"] = internal
+            row["standalone_review_triggers"] = list(row["review_triggers"])
+            row["standalone_removal_risk"] = row["removal_risk"]
+            if unused:
+                row["review_triggers"] = [trigger] + [t for t in row["review_triggers"] if t not in internal]
+                row["removal_risk"] = "Review"
+
+
+def review_basis(row: dict) -> str:
+    """'entity_type' when Review rests only on the tool-entity rule, else 'evidence'."""
+    if row.get("removal_risk") != "Review":
+        return ""
+    trigger = row.get("entity_type_trigger")
+    return "entity_type" if trigger and row.get("review_triggers") == [trigger] else "evidence"
+
+
 def _find_nameof_close_paren(text: str, start: int) -> int:
     """Find the closing paren of a NAMEOF(...) argument, skipping parens that
     appear inside 'quoted table names' or [bracketed object names]."""
@@ -4175,6 +4251,7 @@ def build_table_summaries(
                 "status": status,
                 "removal_risk": row.get("removal_risk", "") or None,
                 "review_triggers": row.get("review_triggers", []),
+                "review_basis": row.get("review_basis", ""),
                 "broken_dax_refs": row.get("broken_dax_refs", []),
                 "broken_dax_ref_details": row.get("broken_dax_ref_details", []),
                 "usage_count": len(row["usages"]),
@@ -4312,6 +4389,12 @@ def build_table_summaries(
         else:
             cleanup_recommendation = "Safe"
             cleanup_reason = "No use was found in the selected scope for any item in this table."
+        table_review_basis = ""
+        if cleanup_recommendation == "Review":
+            table_review_basis = ("entity_type" if rows and all(row.get("review_basis") == "entity_type"
+                                                                for row in rows) else "evidence")
+            if table_review_basis == "entity_type":
+                cleanup_reason = rows[0]["entity_type_trigger"]
 
         if single_column_measures:
             count = len(single_column_measures)
@@ -4360,6 +4443,7 @@ def build_table_summaries(
             "translations": translations,
             "cleanup_recommendation": cleanup_recommendation,
             "cleanup_reason": cleanup_reason,
+            "review_basis": table_review_basis,
             "items": items_in_table,
         })
 
@@ -4893,6 +4977,12 @@ def analyze(
                                  if item.source_kind == "model" else []),
         })
 
+    entity_kinds = {table.casefold(): "calculation group" for table in model_metadata.calculation_groups}
+    entity_kinds.update({info.table.casefold(): "field parameter" for info, _ in all_field_parameters})
+    _apply_tool_entity_review(results, entity_kinds, dependents, table_dependents_by_table, coverage_limitations)
+    for row in results:
+        row["review_basis"] = review_basis(row)
+
     checkpoint("Building table summaries")
     # ── Table-level summary ──
     field_parameter_issues_by_table: dict[str, list[str]] = defaultdict(list)
@@ -4977,6 +5067,9 @@ def analyze(
         "indirect": sum(1 for r in results if r["status"].startswith("INDIRECT")),
         "broken": sum(1 for r in results if r["status"].startswith("BROKEN")),
         "not_used": sum(1 for r in results if r["status"] == "NOT USED"),
+        # Review split (#103): the tool-entity rule alone versus concrete evidence.
+        "review_entity_type": sum(1 for r in results if r.get("review_basis") == "entity_type"),
+        "review_evidence": sum(1 for r in results if r.get("review_basis") == "evidence"),
         "total_usage_refs": len(all_usages),
         "models": [m.name for m in models],
         "reports": [report_display_name(r) for r in reports],
@@ -5239,6 +5332,7 @@ def format_json_output(results: dict) -> str:
             "status": r["status"],
             "removalRisk": r.get("removal_risk", "") or None,
                 "reviewTriggers": r.get("review_triggers", []),
+                "reviewBasis": r.get("review_basis", "") or None,
                 "analysisLimitationIds": r.get("analysis_limitation_ids", []),
                 "perspectives": [member["perspective"] for member in r.get("perspectives", [])],
                 "translations": [translation["culture"] for translation in r.get("translations", [])],

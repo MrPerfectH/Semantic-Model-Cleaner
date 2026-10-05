@@ -89,3 +89,15 @@ Two detection faults made it worse (issues #82 and #83):
   calculation groups and items, calculation-item format strings, selection
   expressions, KPI target/status/trend expressions, detail rows, format string
   definitions, data coverage definitions and culture/translation files.
+- Calculation groups and field parameters are tool entities (issue #103).
+  An unused entity, with no retained consumer outside it, stays at Review
+  with exactly one reason, "Entity type requires confirmation", instead of
+  the hidden flag, group-structure or internal sort reasons of its own
+  columns. Items report `review_basis` (`entity_type` or `evidence`) and the
+  summary splits the Review count accordingly. That split sits with the
+  cleanup counts, not in Report Health, which stays limited to report-side
+  problems. A plan that removes the whole entity, with nothing remaining
+  that uses it, waives those internal reasons and returns one `confirmations`
+  entry, shown in the plan preview, rather than an `SMC-D005` violation.
+  Partial plans keep the item-alone reasons, and every guard on objects
+  outside the entity still applies.
