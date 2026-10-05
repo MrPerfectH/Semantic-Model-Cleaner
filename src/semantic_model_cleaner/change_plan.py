@@ -279,6 +279,13 @@ def create_plan(model_path, report_paths, operations):
         _validate_json(before)
         if any(binding['status'] not in analyzer.BOUND_REPORT_STATUSES for binding in bindings):
             raise PlanError('Refactoring requires reports bound to the selected model; verify definition.pbir and selected scope.')
+    if any(op.get('kind') == 'rename' or any(action.get('action') == 'delete'
+           for action in op.get('actions', [])) for op in operations):
+        from .membership_writer import MembershipError, validate_membership_files
+        try:
+            validate_membership_files(originals['model'])
+        except MembershipError as exc:
+            raise PlanError(str(exc)) from exc
     from .cleanup_policy import evaluate_deletion_policy
     actions = [a for op in operations if op.get('kind') == 'actions' for a in op.get('actions', [])]
     policy = evaluate_deletion_policy(originals['model'], list(originals.values())[1:], actions)
