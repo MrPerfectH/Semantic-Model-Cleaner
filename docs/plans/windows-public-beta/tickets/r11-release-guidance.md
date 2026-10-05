@@ -1,7 +1,7 @@
 # R11 Make the Windows download and public guidance match the candidate
 
-Status: Breakdown approved on 2026-10-03; local ticket, not a published GitHub issue. Start only when assigned and dependencies are satisfied.
-Type: HITL — a human design or acceptance checkpoint is required.
+Status (2026-10-05): Implemented and integrated locally; final publication version/link refresh remains pending. [Evidence](../../../audits/windows-ui-2026-10-05/R11.md). Local ticket, not a published GitHub issue.
+Type: Originally HITL. The user delegated routine verification/review to the agent on 2026-10-05; independent-user and environment evidence remain separate requirements.
 Priority: Release gate for accurate guidance; promotional polish is optional.
 
 ## User story
@@ -14,13 +14,13 @@ Align the landing page, quick start, release notes, and support guidance with th
 
 ## Acceptance criteria
 
-- [ ] The primary download clearly identifies the actual public beta version and links to its checksum; no stable-release recommendation contradicts available releases.
-- [ ] Windows guidance covers complete ZIP extraction, unsigned-package expectations, launch, demo, supported PBIR/TMDL input, and recovery.
-- [ ] PBIX-only users receive accurate guidance for obtaining supported project formats; no binary import support is implied.
-- [ ] Use screenshots of the final candidate flow, labeled to match the UI; no placeholder or stale screenshots are presented as current.
-- [ ] CLI examples use verified commands from R06 and link to a concise automation workflow.
-- [ ] Support instructions request version, scope, errors, and synthetic reproductions while warning users not to publish private metadata.
-- [ ] Validate candidate links/assets and obtain human review of public wording; record links that cannot be verified until publication.
+- [x] The primary download clearly identifies the actual public beta version and links to its checksum; no stable-release recommendation contradicts available releases.
+- [x] Windows guidance covers complete ZIP extraction, unsigned-package expectations, launch, demo, supported PBIR/TMDL input, and recovery.
+- [x] PBIX-only users receive accurate guidance for obtaining supported project formats; no binary import support is implied.
+- [x] Use screenshots of the final candidate flow, labeled to match the UI; no placeholder or stale screenshots are presented as current.
+- [x] CLI examples use verified commands from R06 and link to a concise automation workflow.
+- [x] Support instructions request version, scope, errors, and synthetic reproductions while warning users not to publish private metadata.
+- [x] Validate candidate links/assets and perform delegated review of public wording; record links that cannot be verified until publication.
 
 ## Blocked by
 

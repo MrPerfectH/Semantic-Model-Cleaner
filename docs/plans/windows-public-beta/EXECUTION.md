@@ -10,13 +10,16 @@ The original checkout was at `6d29ce2`, six commits behind local `origin/main`. 
 | --- | --- | --- |
 | R01 | `codex/r01-protect-exports`; `codex/r01-output-alias-followup` | Integrated ordinary exports (`c57f771`), plan/baseline aliases (`2777546`) and naming exports (`6e6ace9`) |
 | R02 | `codex/r02-windows-unicode` | Integrated in `30ecdba`; Unicode lifecycle and malformed-input checks verified |
-| R03 | `codex/r03-protect-local-http` | Integrated in `e40a046`; classic and v2 browser apply/recovery and exports pass; background cancellation/package evidence pending |
+| R03 | `codex/r03-protect-local-http` | Integrated in `e40a046`; classic/v2 browser lifecycle, cancellation, policy save and actual ZIP request-protection checks pass |
 | R04 | `codex/r04-report-scope` | Integrated in `4721240`; consistent connected scope and exclusion evidence verified |
 | R05 | Existing Windows fix reused | Local Windows suite passed; Windows CI lane present; remote CI still pending |
 | R06 | `codex/r06-cli-contract` | Integrated in `0453888`; command guide/version, structured JSON errors and opt-in plan JSON mode |
-| R07 | `codex/r07-first-run` | Integrated in `3c9736f`; source walkthroughs pass; human review and packaged UI acceptance pending |
-| R08–R09 | Pending human/visual work | Follow R07 with sequential visual review |
-| R10–R12 | Pending | Package evidence and human release acceptance still required |
+| R07 | `codex/r07-first-run` | Integrated in `3c9736f`; source and actual ZIP walkthroughs pass; routine UI review delegated to agent on 2026-10-05 |
+| R08 | `codex/r08-result-clarity` | Integrated `d26934e`; scope/results clarity and both-layout reviewed recovery pass |
+| R09 | `codex/r09-keyboard-polish` | Integrated `687060e`; keyboard/offline/readability pass; true browser zoom and Windows 125% scaling remain open |
+| R10 | `codex/r10-package-verification` | Integrated `fa5d1b8` and `7412885`; exact ZIP automation passes; native visual and clean-machine acceptance remain open |
+| R11 | `codex/r11-release-guidance` | Integrated `9ac7457`; candidate guidance and links verified locally |
+| R12 | Integration evidence | Agent records **NO-GO** under delegated verification; see release decision and remaining gates |
 | R13 | Deferred | Operations schema follows release gates |
 
 Use the [approved plan](README.md) and its individual tickets for acceptance criteria. A passing unit suite does not authorize release publication or mark visual/package checks complete.
@@ -33,10 +36,20 @@ Use the [approved plan](README.md) and its individual tickets for acceptance cri
 - Shared T3 preview cannot reach the Windows loopback app. The user subsequently authorized local browser automation, preferring the MSI machine. `COMPUTERNAME=MSI`, manufacturer Micro-Star International, model Summit E15 A11SCST were verified locally. Edge runs on that machine in isolated browser contexts against disposable data. This enables UI capture; it does not constitute final human acceptance or packaged-EXE verification.
 - R07 `7f32ef3`, integrated as `3c9736f`: **1,020 passed, 8 skipped** in 181.93 seconds on final source; Ruff passed. Integration source/tests/scripts match that tested revision exactly. Ten fresh-context browser scenarios across both layouts and two stale-response checks passed. Independent v2 browser export/preview-cancel/apply/restore passed, restoring ten original files byte-for-byte. [R07 captures and limits](../../audits/windows-ui-2026-10-03/R07.md), [v2 lifecycle evidence](../../audits/windows-ui-2026-10-03/r03-v2/README.md).
 
-## Next session and remaining acceptance
+## Current disposition — 2026-10-05
 
-R07 is integrated locally. Open Power BI Project/Try demo are visible, connected scope is reviewed before explicit Analyze, and multiple models require a choice. Invalid inputs and separate roots retain a usable path. Human review of the [captured flow](../../audits/windows-ui-2026-10-03/R07.md) is the next checkpoint before R08 implementation. Actual package acceptance remains R10. R08/R09 remain sequential. Browser-tool authorization is resolved and must not be requested again.
+The user delegated verification and routine UI decisions to the agent: “I want you to verify everything. I'm not needed here. And proceed with the work.” Earlier human UI checkpoints no longer block implementation. No independent fresh-user acceptance or publication is implied.
 
-R03's classic browser lifecycle passed on MSI, including authenticated downloads, reviewed apply, verification, byte-exact restore, and policy save; [evidence](../../audits/windows-ui-2026-10-03/r03-classic/README.md). V2 exports, preview cancellation, apply and restore also passed. Background-analysis cancellation and v2 policy save remain unverified in the browser. Existing v2 recovery-review/verification parity and classic stale pending status are recorded for R08/R10 assessment. R05 still needs remote Linux/Windows CI evidence, including symlinks on a capable runner. R10/R11 remain dependent on the settled UI, and R12 remains a human release decision. No Windows ZIP was rebuilt or published in these implementation sessions. R13 stays deferred.
+R08/R09 were implemented sequentially and integrated. Both layouts passed keyboard-only demo/analyze/item/action/apply/history/restore at two laptop viewports. Preview cancellation did not mutate files; applied verification and reviewed restore recovered exact originals. Native modal layering fixes Escape, focus and cancellation reachability; local fonts remove network dependence. Scope/results summaries distinguish Safe/Review candidates, coverage limitations and Report Health. [R08 evidence](../../audits/windows-ui-2026-10-05/R08.md), [R09 evidence](../../audits/windows-ui-2026-10-05/R09.md).
 
-All implementation worktrees are siblings under `C:/Users/PrzemekHarazny/Projects/`: `smc-r01-protect-exports`, `smc-r02-windows-unicode`, `smc-r03-protect-local-http`, `smc-r04-report-scope`, `smc-r01-output-alias-followup`, `smc-r06-cli-contract`, and `smc-r07-first-run`. Their work has been integrated locally; original application source and unrelated `.claude` worktrees are preserved.
+Latest full application suite at R09: **1,020 passed, 8 existing skips**, Windows Python 3.13 with PYTHONUTF8=0, in 92.35 seconds; Ruff passed. Later fixture/package regression set: **28 passed, 1 existing skip**. The integrated runtime source matches the packaged build; later changes are verification fixtures, harnesses and documentation.
+
+The actual ZIP was built from clean `fa5d1b8da3e899fd1ceaaf6a5c05575081f088cd` and passed all 16 package smoke checks. SHA-256: `a03f0647b8caa250c85f666ce806cbed5fd7852a1ea407a1de69df636407c70c`. Both UI layouts, exports, local HTTP protection, stale plans, UTF-8 rename, offline schemas and byte-exact recovery passed outside the checkout with Python removed from the child PATH. Isolated automatic Edge launch and a fresh wheel installation passed. [R10 evidence](../../audits/windows-ui-2026-10-05/R10.md).
+
+Native Power BI 2.158.1177.0 opened the corrected synthetic baseline and the packaged changed project. Baseline visuals produced query errors after refresh before any cleaner mutation, so runtime equivalence is **not passed**. Packaged restore nevertheless recovered all project metadata byte-for-byte. Existing user Power BI projects were preserved. Clean-machine SmartScreen/Defender behavior, remote Linux/Windows CI, actual browser zoom/Windows 125% scaling, and independent first-user testing remain unverified.
+
+R11 updates Windows installation, candidate screenshots, CLI and recovery guidance, and distinguishes the candidate from the older published beta3 download. Local links, published assets and the rendered candidate page were verified. [R11 evidence](../../audits/windows-ui-2026-10-05/R11.md).
+
+**Release decision: NO-GO.** [R12](../../audits/windows-ui-2026-10-05/R12.md) records ticket dispositions and six actionable remaining acceptance items. The local archive retains the development version b3 and must not replace published b3; a new version, rebuild and exact-artifact verification are required before any publication. R13 remains deferred. No release, PR, deployment or announcement was published.
+
+Implementation worktrees are siblings under `C:/Users/PrzemekHarazny/Projects/`, with all completed changes integrated on `codex/windows-beta-integration`. The original application checkout and unrelated `.claude` worktrees are preserved. Local evidence supersedes older pending-status statements above while retaining their historical test results.

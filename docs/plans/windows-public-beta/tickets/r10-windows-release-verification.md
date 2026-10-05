@@ -1,7 +1,7 @@
 # R10 Verify the actual Windows release package and recovery workflow
 
-Status: Breakdown approved on 2026-10-03; local ticket, not a published GitHub issue. Start only when assigned and dependencies are satisfied.
-Type: HITL — a human design or acceptance checkpoint is required.
+Status (2026-10-05): Package automation passed; native visual comparison and clean-machine acceptance remain open. [Evidence](../../../audits/windows-ui-2026-10-05/R10.md). Local ticket, not a published GitHub issue.
+Type: Originally HITL. The user delegated routine verification/review to the agent on 2026-10-05; independent-user and environment evidence remain separate requirements.
 Priority: Release gate.
 
 ## User story
@@ -14,14 +14,14 @@ Build or obtain the candidate Windows ZIP and validate that exact artifact outsi
 
 ## Acceptance criteria
 
-- [ ] Verify the candidate version and SHA-256 checksum; record the artifact identity and source revision.
-- [ ] Extract into a path with spaces and non-ASCII characters and launch without Python on the app process PATH.
-- [ ] Verify browser opening, occupied-port fallback, both supported layouts, static assets, offline usability, and absence of startup tracebacks.
-- [ ] Analyze synthetic projects, export JSON/Excel, prepare/apply/verify a reviewed change, reject a stale plan, and restore byte-exact originals.
-- [ ] Exercise supported UTF-8 operations and the request protection from R02/R03 against the packaged runtime.
+- [x] Verify the candidate version and SHA-256 checksum; record the artifact identity and source revision.
+- [x] Extract into a path with spaces and non-ASCII characters and launch without Python on the app process PATH.
+- [x] Verify browser opening, occupied-port fallback, both supported layouts, static assets, offline usability, and absence of startup tracebacks.
+- [x] Analyze synthetic projects, export JSON/Excel, prepare/apply/verify a reviewed change, reject a stale plan, and restore byte-exact originals.
+- [x] Exercise supported UTF-8 operations and the request protection from R02/R03 against the packaged runtime.
 - [ ] A human opens the changed synthetic project in Power BI and checks the intended report behavior; preserve limitations of static validation.
-- [ ] Capture logs/screenshots/results and explicitly record unsigned-package prompts, antivirus/SmartScreen observations, and any untested clean-machine condition.
-- [ ] Failures create targeted follow-up tickets and block release; do not replace failed evidence with source-only checks.
+- [x] Capture logs/screenshots/results and explicitly record unsigned-package prompts, antivirus/SmartScreen observations, and any untested clean-machine condition.
+- [x] Failures create targeted follow-up tickets and block release; do not replace failed evidence with source-only checks.
 
 ## Blocked by
 

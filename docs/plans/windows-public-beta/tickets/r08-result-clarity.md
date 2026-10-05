@@ -1,7 +1,7 @@
 # R08 Make analysis results explain coverage and the next Cleanup Action
 
-Status: Breakdown approved on 2026-10-03; local ticket, not a published GitHub issue. Start only when assigned and dependencies are satisfied.
-Type: HITL — a human design or acceptance checkpoint is required.
+Status (2026-10-05): Implemented and integrated; delegated review passed. [Evidence](../../../audits/windows-ui-2026-10-05/R08.md). Local ticket, not a published GitHub issue.
+Type: Originally HITL. The user delegated routine verification/review to the agent on 2026-10-05; independent-user and environment evidence remain separate requirements.
 Priority: Launch target; reduce scope if release gates need time.
 
 ## User story
@@ -14,13 +14,13 @@ Improve the existing result entry point and item explanation. Present selected s
 
 ## Acceptance criteria
 
-- [ ] Capture the current analyzed UI and review the intended hierarchy before changing it.
-- [ ] The result entry point identifies the selected Semantic Model, checked Reports, and material coverage limitations.
-- [ ] A user can distinguish found usage, Cleanup Recommendation, and Report Health without interpreting color alone.
-- [ ] Safe is visibly defined relative to supported scanned metadata and selected scope; no copy promises universal deletion safety or runtime equivalence.
-- [ ] A user can open one candidate, inspect dependency/evidence details, prepare a change, and locate Changes & history.
-- [ ] Report issue grouping remains presentation-only under the accepted ADR; no inferred rename or group repair is introduced.
-- [ ] Human review covers normal results, incomplete coverage, no candidates, and a project with broken references.
+- [x] Capture the current analyzed UI and review the intended hierarchy before changing it.
+- [x] The result entry point identifies the selected Semantic Model, checked Reports, and material coverage limitations.
+- [x] A user can distinguish found usage, Cleanup Recommendation, and Report Health without interpreting color alone.
+- [x] Safe is visibly defined relative to supported scanned metadata and selected scope; no copy promises universal deletion safety or runtime equivalence.
+- [x] A user can open one candidate, inspect dependency/evidence details, prepare a change, and locate Changes & history.
+- [x] Report issue grouping remains presentation-only under the accepted ADR; no inferred rename or group repair is introduced.
+- [x] Delegated agent review covers normal results, incomplete coverage, no candidates, and a project with broken references.
 
 ## Blocked by
 

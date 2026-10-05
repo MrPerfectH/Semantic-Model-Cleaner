@@ -1,7 +1,7 @@
 # R12 Record the release candidate decision and remaining limitations
 
-Status: Breakdown approved on 2026-10-03; local ticket, not a published GitHub issue. Start only when assigned and dependencies are satisfied.
-Type: HITL — a human design or acceptance checkpoint is required.
+Status (2026-10-05): Delegated decision recorded: NO-GO; public release remains blocked. [Evidence](../../../audits/windows-ui-2026-10-05/R12.md). Local ticket, not a published GitHub issue.
+Type: Originally HITL. The user delegated routine verification/review to the agent on 2026-10-05; independent-user and environment evidence remain separate requirements.
 Priority: Release gate.
 
 ## User story
@@ -14,13 +14,13 @@ Assemble the final candidate evidence, ticket dispositions, known limitations, a
 
 ## Acceptance criteria
 
-- [ ] All release-gate acceptance criteria are complete or the release is explicitly blocked; no unresolved file-safety issue is waived silently.
-- [ ] Record source revision, candidate artifact hashes, Windows and Linux checks, package/browser evidence, and manual Power BI acceptance.
-- [ ] Label each deferred target as deferred, with a reason and follow-up; dependencies are revisited rather than silently skipped.
-- [ ] Verify the selected audience, supported formats, Unicode/BOM restrictions, dynamic-metadata limits, unsigned packaging, and recovery behavior are accurately described.
+- [x] All release-gate acceptance criteria are complete or the release is explicitly blocked; no unresolved file-safety issue is waived silently.
+- [x] Record source revision, candidate artifact hashes, Windows and Linux checks, package/browser evidence, and manual Power BI acceptance.
+- [x] Label each deferred target as deferred, with a reason and follow-up; dependencies are revisited rather than silently skipped.
+- [x] Verify the selected audience, supported formats, Unicode/BOM restrictions, dynamic-metadata limits, unsigned packaging, and recovery behavior are accurately described.
 - [ ] A small fresh-user walkthrough confirms users can locate demo/open, understand scope, inspect one finding, and find recovery; report sample size and limitations.
-- [ ] Provide a go/no-go recommendation and, if needed, an explicit analysis-only or delayed-launch fallback.
-- [ ] Obtain the maintainer's release decision. Tagging, uploading, deployment, announcements, or other publication require a separate explicit instruction.
+- [x] Provide a go/no-go recommendation and, if needed, an explicit analysis-only or delayed-launch fallback.
+- [x] Record the delegated release decision (NO-GO). Tagging, uploading, deployment, announcements, or other publication require a separate explicit instruction.
 
 ## Blocked by
 
