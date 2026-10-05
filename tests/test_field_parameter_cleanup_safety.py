@@ -13,14 +13,14 @@ def project(tmp_path, item_type="Measure", reference="'Sales'[Target]", call="NA
     tables = model / "definition/tables"
     tables.mkdir(parents=True)
     target = "measure Target = 2" if item_type == "Measure" else "column Target"
-    (tables / "Sales.tmdl").write_text("table Sales\n\tmeasure Existing = 1\n\t" + target + "\n")
+    (tables / "Sales.tmdl").write_text("table Sales\n\tmeasure Existing = 1\n\t" + target + "\n", encoding="utf-8")
     expression = '{ ("Target", ' + call + "(" + reference + "), 0) }"
     (tables / "Parameter.tmdl").write_text(
         "table Parameter\n\tcolumn Label\n\tcolumn Fields\n\tpartition Parameter = calculated\n"
-        "\t\tsource =\n" + "".join("\t\t\t" + line + "\n" for line in expression.splitlines()))
+        "\t\tsource =\n" + "".join("\t\t\t" + line + "\n" for line in expression.splitlines()), encoding="utf-8")
     (report / "definition").mkdir(parents=True)
-    (report / "definition/report.json").write_text("{}")
-    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}))
+    (report / "definition/report.json").write_text("{}", encoding="utf-8")
+    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}), encoding="utf-8")
     return model, report
 
 
@@ -103,7 +103,7 @@ def test_scalar_literal_and_commented_nameof_do_not_block_unrelated_cleanup(tmp_
     model, report = project(tmp_path)
     (model / "definition/tables/Parameter.tmdl").unlink()
     source = model / "definition/tables/Sales.tmdl"
-    source.write_text(source.read_text() + "\tmeasure Spare = 0\n\tmeasure Witness = " + expression + "\n")
+    source.write_text(source.read_text() + "\tmeasure Spare = 0\n\tmeasure Witness = " + expression + "\n", encoding="utf-8")
     assert analyzer.parse_field_parameters(model) == []
     actions = [delete("Sales", "Spare")]
     assert evaluate_deletion_policy(model, [report], actions)["ok"]
@@ -113,7 +113,7 @@ def test_scalar_literal_and_commented_nameof_do_not_block_unrelated_cleanup(tmp_
     assert change_plan._inventory(roots) == before
     journal = tmp_path / "journal"
     assert change_plan.apply_plan(plan, journal)["ok"]
-    assert "measure Witness = " + expression + "\n" in source.read_text()
+    assert "measure Witness = " + expression + "\n" in source.read_text(encoding="utf-8")
     assert change_plan.verify_plan(plan)["ok"]
     assert change_plan.restore_plan(plan, journal)["ok"]
     assert change_plan._inventory(roots) == before

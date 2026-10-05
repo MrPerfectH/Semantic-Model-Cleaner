@@ -189,13 +189,18 @@ def test_default_model_browse_root_falls_back_when_users_directory_is_missing(
 
 
 def test_index_exposes_first_time_model_browse_root(monkeypatch):
-    monkeypatch.setattr(web_app, "_default_model_browse_root", lambda: Path("/Users"))
+    # Path("/Users") is platform-dependent: it renders as "\\Users" on Windows
+    # and "/Users" on POSIX, so the expected JSON fragment must match str()
+    # rather than hardcoding the POSIX spelling.
+    browse_root = Path("/Users")
+    monkeypatch.setattr(web_app, "_default_model_browse_root", lambda: browse_root)
     client = web_app.app.test_client()
 
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b'modelBrowseRoot: "/Users"' in response.data
+    expected = f"modelBrowseRoot: {json.dumps(str(browse_root))}".encode()
+    assert expected in response.data
 
 
 def test_index_shows_beta_banner_when_runtime_enabled():
@@ -270,14 +275,14 @@ def test_api_analyze_allows_cleanup_for_single_model(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
     (model_path / "definition").mkdir(parents=True)
-    (model_path / "definition/model.tmdl").write_text("model Model\n")
+    (model_path / "definition/model.tmdl").write_text("model Model\n", encoding="utf-8")
     report_path.mkdir()
 
     monkeypatch.setattr(web_app.analyzer, "analyze", lambda **_: _fake_results())
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -368,7 +373,7 @@ def test_api_analyze_returns_report_issues_for_selected_reports(tmp_path):
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -821,14 +826,14 @@ def test_api_analyze_includes_review_triggers(monkeypatch, tmp_path):
     model_path = tmp_path / "Sales.SemanticModel"
     report_path = tmp_path / "Executive.Report"
     (model_path / "definition").mkdir(parents=True)
-    (model_path / "definition/model.tmdl").write_text("model Model\n")
+    (model_path / "definition/model.tmdl").write_text("model Model\n", encoding="utf-8")
     report_path.mkdir()
 
     monkeypatch.setattr(web_app.analyzer, "analyze", lambda **_: _fake_review_results())
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -884,7 +889,7 @@ def test_api_analyze_returns_report_health_issues(tmp_path):
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -959,7 +964,7 @@ def test_api_analyze_rejects_tmsl_model_bim_with_clear_message(tmp_path):
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -1414,7 +1419,7 @@ def test_api_analyze_exposes_table_permission_rls_usage(tmp_path):
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -1455,7 +1460,7 @@ def test_api_analyze_returns_model_item_source_file(tmp_path):
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -1496,7 +1501,7 @@ def test_api_analyze_includes_m_source_details_for_regular_columns(monkeypatch, 
 
     (report_path / "definition.pbir").write_text(json.dumps({
         "datasetReference": {"byPath": {"path": str(model_path)}}
-    }))
+    }), encoding="utf-8")
 
     client = web_app.app.test_client()
     response = client.post(
@@ -2577,7 +2582,7 @@ def test_index_renders_empty_selection_state():
     assert "function readExplorerDefaultPath(mode) {" in html
     assert "function writeExplorerDefaultPath(mode, path) {" in html
     assert "function updateExplorerDefaultUI() {" in html
-    assert "var savedDefault = mode === 'folder' ? '' : readExplorerDefaultPath(mode);" in html
+    assert "var savedDefault = (mode === 'folder' || mode === 'project') ? '' : readExplorerDefaultPath(mode);" in html
     assert "return initialConfig.modelBrowseRoot || initialConfig.defaultRoot || '';" in html
     assert "Search folder is based on the selected model" in html
     assert "Searching definition.pbir files under " in html
@@ -2634,7 +2639,7 @@ def test_index_renders_demo_workspace_button():
 
     assert response.status_code == 200
     assert b"btnLoadDemo" in response.data
-    assert b"Try the demo workspace" in response.data
+    assert b"Try demo" in response.data
 
 
 def _snapshot_workspace_state():

@@ -12,13 +12,13 @@ TEMPLATE = ROOT / 'src/semantic_model_cleaner/templates/index.html'
 
 
 def test_classic_loads_guarded_review_before_analysis_adapter():
-    html = TEMPLATE.read_text()
+    html = TEMPLATE.read_text(encoding="utf-8")
     assert html.index("filename='classic-plans.js'") < html.index("filename='analysis-jobs.js'")
     assert "if (!window.ClassicPlans) throw new Error" in html
     assert "return window.ClassicPlans.post(url, body || {});" in html
     assert "matches.length > 1) return null" in html
     assert "':::report:::' + (item.sourceFile" in html
-    js = SCRIPT.read_text()
+    js = SCRIPT.read_text(encoding="utf-8")
     ids = set(re.findall(r"el\('([^']+)'\)", js))
     generated = set(re.findall(r'id=\\?"([^"\\]+)', js))
     template_ids = set(re.findall(r'id="([^"]+)"', html))
@@ -47,7 +47,7 @@ const plan={id:'a'.repeat(32), scope:{model:'/M.SemanticModel','report-1':'/R.Re
 const context={console,Promise,Map,Set,Object,String,Array,Error,encodeURIComponent,
   document:{createElement(kind){return element(kind);},body:{appendChild(){}},getElementById:element,querySelector:element},
   chosenReports:[{path:'/R.Report',name:'R'}], getModelPath:()=>'/M.SemanticModel',
-  fetch:async (url,options)=>{requests.push({url,body:options&&options.body&&JSON.parse(options.body)});
+  smcFetch:async (url,options)=>{requests.push({url,body:options&&options.body&&JSON.parse(options.body)});
     const data=url==='/api/plans'?{ok:true,plan}:{ok:true,receipt:{status:'applied',plan_id:plan.id,changed_files:[]}};
     return {ok:true,json:async()=>data};},
   pendingActions:new Map(),selectedKeys:new Set(),selectedTableNames:new Set(),
@@ -91,14 +91,14 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
       assert.equal(context.ClassicPlans.operationForLegacy(route,{}).kind,kind);
   }
 })().catch(error=>{console.error(error);process.exitCode=1;});
-''')
+''', encoding="utf-8")
     result = subprocess.run([shutil.which('node'), str(harness), str(SCRIPT)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js unavailable')
 def test_classic_same_named_report_mutations_and_keys_use_exact_owner(tmp_path):
-    html = TEMPLATE.read_text()
+    html = TEMPLATE.read_text(encoding="utf-8")
     functions = []
     for name in ('getReportPathByName', 'getReportPathForReference', 'reportIssueKey', 'itemKey'):
         match = re.search(r'function ' + name + r'\([^)]*\) \{.*?\n\}', html, re.S)
@@ -114,6 +114,6 @@ def test_classic_same_named_report_mutations_and_keys_use_exact_owner(tmp_path):
         "assert.equal(getReportPathForReference({report:'Same',reportPath:'/outside/Same.Report'}),null);\n"
         "assert.notEqual(reportIssueKey({report:'Same',reportPath:'/A/Same.Report'}),reportIssueKey({report:'Same',reportPath:'/B/Same.Report'}));\n"
         "var item={sourceKind:'report',type:'Measure',table:'Sales',name:'Local'};\n"
-        "assert.notEqual(itemKey({...item,sourceFile:'/A/Same.Report/definition/reportExtensions.json'}),itemKey({...item,sourceFile:'/B/Same.Report/definition/reportExtensions.json'}));\n")
+        "assert.notEqual(itemKey({...item,sourceFile:'/A/Same.Report/definition/reportExtensions.json'}),itemKey({...item,sourceFile:'/B/Same.Report/definition/reportExtensions.json'}));\n", encoding="utf-8")
     result = subprocess.run([shutil.which('node'), str(harness)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

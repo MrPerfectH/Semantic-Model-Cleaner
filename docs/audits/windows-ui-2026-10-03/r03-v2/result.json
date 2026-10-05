@@ -1,0 +1,15 @@
+{
+  "source": "R07 worktree based on 7c145f3, final code before commit",
+  "machine": "MSI Summit E15 A11SCST",
+  "browser": "153.0.4234.32",
+  "layout": "v2",
+  "viewport": "1366x768",
+  "json_items": 9,
+  "excel_workbook": true,
+  "preview_cancel_preserved_bytes": true,
+  "apply_changed_source": true,
+  "byte_exact_restore": true,
+  "source_files_compared": 10,
+  "page_errors": [],
+  "packaged_exe": false
+}

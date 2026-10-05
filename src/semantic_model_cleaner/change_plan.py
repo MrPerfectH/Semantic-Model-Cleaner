@@ -287,7 +287,14 @@ def create_plan(model_path, report_paths, operations):
     from . import metadata_validation
     schema_before = metadata_validation.validate_metadata(before)
     baseline = _analyze(originals)
-    if strict and not baseline.get('coverage', {}).get('complete', True):
+    # Pure cleanup-action plans are judged against the simulated final state
+    # (#91): a gap owned by a table the plan removes with all its consumers no
+    # longer blocks. Rename/move/DAX propagation still needs complete coverage now.
+    final_state_complete = (all(op.get('kind') == 'actions' for op in operations)
+                            and policy['scope'].get('complete') is True)
+    cleared = [{key: entry.get(key) for key in ('id', 'owner', 'table', 'source_file', 'line', 'cleared_reason')}
+               for entry in policy['scope'].get('cleared_limitations', [])]
+    if strict and not baseline.get('coverage', {}).get('complete', True) and not final_state_complete:
         raise PlanError('Refactoring requires complete supported scan coverage. Resolve metadata limitations first.')
     with tempfile.TemporaryDirectory(prefix='smc-plan-') as temp:
         staged = {k: Path(temp).resolve() / k / p.name for k, p in originals.items()}
@@ -333,7 +340,10 @@ def create_plan(model_path, report_paths, operations):
             'created_at': datetime.now(timezone.utc).isoformat(),
             'scope': {k: str(p) for k, p in originals.items()},
             'coverage': {'reports': [{k: b.get(k) for k in ('name', 'status', 'message')} for b in bindings],
-                         'analysis': baseline.get('coverage', {})}, 'operations': operations,
+                         'analysis': baseline.get('coverage', {}),
+                         'final_state': {'complete': final_state_complete
+                                         or bool(baseline.get('coverage', {}).get('complete', False)),
+                                         'cleared_limitations': cleared}}, 'operations': operations,
             'inputs': _hashes(before), 'outputs': _hashes(after), 'changes': changes,
             'validation': {'json_syntax': 'passed' if strict else 'changed files passed',
                            'reference_integrity': 'no new unresolved references',
@@ -344,7 +354,8 @@ def create_plan(model_path, report_paths, operations):
                                            'changed_not_validated': schema_comparison['changed_not_validated'],
                                            'bundle_commit': schema_after['bundle'].get('commit')},
                            'limitations': ['Static analysis of selected TMDL/PBIR only.',
-                                           'Only supported declared PBIR schemas are validated; TMDL/DAX engine validation is not performed.']}}
+                                           'Only supported declared PBIR schemas are validated; TMDL/DAX engine validation is not performed.']
+                                          + sorted({entry['cleared_reason'] for entry in cleared})}}
     plan['digest'] = _seal(plan)
     return plan
 
@@ -374,7 +385,7 @@ def save_plan(plan, directory):
 
 
 def load_plan(path):
-    plan = json.loads(Path(path).read_text())
+    plan = json.loads(Path(path).read_text(encoding="utf-8"))
     _check(plan)
     return plan
 
@@ -421,7 +432,7 @@ def _lock(roots, directory):
     except FileExistsError as exc:
         raise PlanError(f'Another operation is active or interrupted. Inspect the journal and lock before retrying: {path}') from exc
     try:
-        with os.fdopen(fd, 'w') as handle:
+        with os.fdopen(fd, 'w', encoding="utf-8") as handle:
             json.dump({'pid': os.getpid(), 'model': str(roots['model']), 'created_at': datetime.now(timezone.utc).isoformat()}, handle)
             handle.flush()
             os.fsync(handle.fileno())
@@ -486,7 +497,7 @@ def restore_plan(plan, directory):
     with _lock(roots, directory):
         if not journal.exists():
             raise PlanError('No apply receipt exists for this plan.')
-        receipt = json.loads(journal.read_text())
+        receipt = json.loads(journal.read_text(encoding="utf-8"))
         if receipt['status'] not in {'applied', 'applying', 'recovery_required', 'restoring'}:
             raise PlanError('This operation is not awaiting restoration.')
         pending = []
@@ -532,14 +543,14 @@ def recover_interrupted_lock(plan, directory):
     if os.name != 'posix':
         raise PlanError('Automatic abandoned-lock recovery is available on POSIX only. On Windows verify the recorded process has exited before removing the lock, then use restore.')
     try:
-        data = json.loads(lock.read_text())
+        data = json.loads(lock.read_text(encoding="utf-8"))
         pid = int(data['pid'])
         if pid <= 0 or data.get('model') != str(roots['model']):
             raise PlanError('Invalid lock owner record; inspect it manually.')
         os.kill(pid, 0)
     except ProcessLookupError:
         # Do not remove a lock replaced since inspection.
-        if json.loads(lock.read_text()) != data:
+        if json.loads(lock.read_text(encoding="utf-8")) != data:
             raise PlanError('Lock changed during recovery.')
         lock.unlink()
         return {'ok': True, 'state': 'lock_recovered', 'next': 'Inspect the receipt, then restore the original files.'}

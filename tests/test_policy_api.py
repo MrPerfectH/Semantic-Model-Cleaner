@@ -45,7 +45,7 @@ def test_browser_rejects_decision_when_source_changed(project, monkeypatch):
     result = client.post('/api/review-findings', json={}).get_json()
     finding = next(f for f in result['findings'] if f['name'] == 'Spare')
     source = model / 'definition/tables/Sales.tmdl'
-    source.write_text(source.read_text() + '\n// external change\n')
+    source.write_text(source.read_text() + '\n// external change\n', encoding="utf-8")
     response = client.post('/api/review-policy/decisions', json={
         'finding': finding, 'scope': result['scope'], 'disposition': 'keep',
         'reason': 'Planned release', 'owner': 'Team', 'expires_on': '2099-01-01'})

@@ -26,9 +26,9 @@ def generate_fixture(output: Path, *, items: int = 2000, reports: int = 5,
     model = output / "Scale.SemanticModel"
     tables = model / "definition/tables"
     tables.mkdir(parents=True)
-    (model / "definition.pbism").write_text(json.dumps({"version": "4.0", "settings": {}}))
+    (model / "definition.pbism").write_text(json.dumps({"version": "4.0", "settings": {}}), encoding="utf-8")
     (model / "definition/model.tmdl").write_text("model Model\n\tculture: en-US\n\n" +
-        "\n".join(f"ref table Table{index:03d}" for index in range(table_count)) + "\n")
+        "\n".join(f"ref table Table{index:03d}" for index in range(table_count)) + "\n", encoding="utf-8")
     for table_no in range(table_count):
         name = f"Table{table_no:03d}"
         lines = [f"table {name}"]
@@ -54,16 +54,16 @@ def generate_fixture(output: Path, *, items: int = 2000, reports: int = 5,
     (model / "definition/relationships.tmdl").write_text("\n".join(
         f"relationship Relationship{index:03d}\n\tfromColumn: Table{index:03d}.Column00\n"
         "\ttoColumn: Table000.Column00\n\tfromCardinality: many\n\ttoCardinality: one\n"
-        for index in range(1, table_count)))
+        for index in range(1, table_count)), encoding="utf-8")
     roles = model / "definition/roles"
     roles.mkdir()
-    (roles / "Synthetic.tmdl").write_text("role Synthetic\n\tmodelPermission: read\n\ttablePermission Table001 = Table001[Column01] >= 0\n")
+    (roles / "Synthetic.tmdl").write_text("role Synthetic\n\tmodelPermission: read\n\ttablePermission Table001 = Table001[Column01] >= 0\n", encoding="utf-8")
     for report_no in range(reports):
         report = output / f"Report{report_no:03d}.Report"
         for page_no in range(pages_per_report):
             page = report / "definition/pages" / f"Page{page_no:03d}"
             page.mkdir(parents=True)
-            (page / "page.json").write_text(json.dumps({"name": page.name, "displayName": f"Page {page_no}", "displayOption": "FitToPage", "height": 720, "width": 1280}))
+            (page / "page.json").write_text(json.dumps({"name": page.name, "displayName": f"Page {page_no}", "displayOption": "FitToPage", "height": 720, "width": 1280}), encoding="utf-8")
             for visual_no in range(visuals_per_page):
                 table_no = (report_no * pages_per_report + page_no + visual_no) % table_count
                 measure = (page_no * 5 + visual_no) % 50
@@ -74,9 +74,9 @@ def generate_fixture(output: Path, *, items: int = 2000, reports: int = 5,
                 visual.mkdir(parents=True)
                 (visual / "visual.json").write_text(json.dumps({"name": visual.name,
                     "position": {"x": visual_no * 10, "y": 0, "z": visual_no, "width": 300, "height": 200},
-                    "visual": {"visualType": "tableEx", "query": {"queryState": {"Values": {"projections": projections}}}}}))
-        (report / "definition/report.json").write_text(json.dumps({"themeCollection": {}, "layoutOptimization": "None"}))
-        (report / "definition.pbir").write_text(json.dumps({"version": "4.0", "datasetReference": {"byPath": {"path": "../Scale.SemanticModel"}}}))
+                    "visual": {"visualType": "tableEx", "query": {"queryState": {"Values": {"projections": projections}}}}}), encoding="utf-8")
+        (report / "definition/report.json").write_text(json.dumps({"themeCollection": {}, "layoutOptimization": "None"}), encoding="utf-8")
+        (report / "definition.pbir").write_text(json.dumps({"version": "4.0", "datasetReference": {"byPath": {"path": "../Scale.SemanticModel"}}}), encoding="utf-8")
     return {"items": items, "tables": table_count, "measures": items // 2,
             "columns": items // 2, "calculated_columns": table_count * 5,
             "relationships": table_count - 1, "roles": 1, "reports": reports,

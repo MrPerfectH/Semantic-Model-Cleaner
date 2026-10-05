@@ -30,6 +30,8 @@
   apiPost = async function (url, data) {
     if (url !== '/api/analyze') return originalPost(url, data);
     if (active) return {error: 'Analysis is already running. Cancel it or wait for completion.'};
+    var dialogs = document.querySelectorAll('dialog[open]');
+    (dialogs.length ? dialogs[dialogs.length - 1] : document.body).appendChild(panel);
     active = true; panel.hidden = false; cancel.disabled = true; status.textContent = 'Starting analysis…';
     try {
       var response = await originalPost('/api/analysis-jobs', data);
@@ -38,12 +40,12 @@
       cancel.onclick = async function () {
         cancel.disabled = true; status.textContent = 'Cancelling after current scan step…';
         try {
-          var stopped = await fetch('/api/analysis-jobs/' + encodeURIComponent(id), {method: 'DELETE'});
+          var stopped = await smcFetch('/api/analysis-jobs/' + encodeURIComponent(id), {method: 'DELETE'});
           if (!stopped.ok) throw new Error('Cancellation request failed.');
         } catch (err) { cancel.disabled = false; status.textContent = err.message; }
       };
       for (;;) {
-        var poll = await fetch('/api/analysis-jobs/' + encodeURIComponent(id));
+        var poll = await smcFetch('/api/analysis-jobs/' + encodeURIComponent(id));
         var payload = await poll.json(); var job = payload.job;
         if (!poll.ok || !job) return {error: payload.error || 'Analysis status unavailable.'};
         if (job.status === 'completed') {
