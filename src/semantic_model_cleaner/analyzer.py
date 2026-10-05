@@ -1124,15 +1124,6 @@ def _unsupported_metadata_review_trigger(
     )
 
 
-def _perspective_review_trigger(member: PerspectiveMembership) -> str:
-    """Perspective membership is metadata evidence, not proof of runtime use."""
-    return (
-        f"Member of perspective {member.perspective} ({member.source_file}). "
-        f"Removing the item also removes this perspective member; membership alone "
-        f"does not prove a report executes it."
-    )
-
-
 def _translation_review_trigger(translation: TranslationMembership) -> str:
     """Translation Membership is metadata evidence, not proof of report use."""
     return (
@@ -4850,9 +4841,6 @@ def analyze(
                         table_dependents_by_table.get(item.table.casefold(), []),
                     )
                     review_triggers.extend(group_triggers)
-                review_triggers.extend(
-                    _perspective_review_trigger(member) for member in perspective_index.get(nkey, [])
-                )
                 review_triggers.extend(
                     _translation_review_trigger(translation)
                     for translation in translation_index.get(nkey, [])

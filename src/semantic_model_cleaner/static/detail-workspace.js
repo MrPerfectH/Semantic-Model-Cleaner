@@ -141,7 +141,7 @@
       ? card('Parent-table consumers — DAX outside ' + item.table + ' that references the table itself', '<p class="object-note">' + (parentConsumers.length ? parentConsumers.length + ' retained item(s) reference the parent table by name (for example ALL or REMOVEFILTERS). They are not direct consumers of this item and not Report References, but they block deleting the whole table.' : 'No DAX outside this table references the table itself.') + '</p>' + formatDetailList(parentConsumers, { linkItems: true }))
       : '';
     var perspectiveCard = (item.perspectiveMemberships || []).length
-      ? card('Perspective membership — metadata evidence', '<p class="object-note">Membership keeps the item in a curated perspective; it does not prove a report executes it.</p>' + formatDetailList(item.perspectiveMemberships.map(function (member) { return member.perspective + ' (' + member.sourceFile + ')'; })))
+      ? card('Perspective membership — metadata evidence', '<p class="object-note">Informational only: a perspective is a view over the model, so membership never blocks deletion or makes the item count as used. Deleting the item also removes it from these perspectives.</p>' + formatDetailList(item.perspectiveMemberships.map(function (member) { return member.perspective + ' (' + member.sourceFile + ')'; })))
       : '';
     var translationCard = (item.translationMemberships || []).length
       ? card('Translation membership — metadata evidence', '<p class="object-note">Removing the item also removes its translation; a translation does not prove report use.</p>' + formatDetailList(item.translationMemberships.map(function (translation) { return translation.culture + ' (' + translation.location + ')'; })))

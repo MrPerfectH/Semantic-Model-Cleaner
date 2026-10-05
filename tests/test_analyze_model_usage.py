@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from semantic_model_cleaner import analyzer
+from semantic_model_cleaner import analyzer, webapp
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -245,12 +245,12 @@ def test_product_qa_workspace_exercises_trust_workflows():
     assert cleanup_note["analysis_limitation_ids"]
     assert all(limitation["kind"] == "invalid_report_json" for limitation in results["coverage"]["limitations"])
     assert perspective_revenue["status"] == "NOT USED"
+    # Review only because of the fixture's shared unreadable-JSON limitation; perspective
+    # membership is informational evidence and never a review trigger (#101).
     assert perspective_revenue["removal_risk"] == "Review"
-    # Perspective membership is concrete metadata evidence, not an analysis gap.
-    assert any(
-        trigger.startswith("Member of perspective Executive")
-        for trigger in perspective_revenue["review_triggers"]
-    )
+    assert len(perspective_revenue["review_triggers"]) == 1
+    assert "unreadable PBIR JSON file" in perspective_revenue["review_triggers"][0]
+    assert not any("perspective" in trigger.lower() for trigger in perspective_revenue["review_triggers"])
     assert not any("Unsupported Metadata" in trigger for trigger in perspective_revenue["review_triggers"])
     assert perspective_revenue["perspectives"][0]["perspective"] == "Executive"
     assert store_code["status"] == "USED (RLS: Store Role)"
@@ -1264,7 +1264,7 @@ def test_unused_hidden_column_includes_review_triggers(tmp_path):
     assert payload_item["reviewTriggers"] == ["Item is hidden"]
 
 
-def test_unused_item_is_review_when_perspective_membership_is_known(tmp_path):
+def test_unused_item_stays_safe_when_perspective_membership_is_known(tmp_path):
     workspace = tmp_path / "Workspace"
     model = workspace / "Models" / "Sales.SemanticModel"
     report = workspace / "Reports" / "Executive.Report"
@@ -1294,14 +1294,8 @@ def test_unused_item_is_review_when_perspective_membership_is_known(tmp_path):
     revenue = _find_item(results, "Sales", "Revenue", "Measure")
 
     assert revenue["status"] == "NOT USED"
-    assert revenue["removal_risk"] == "Review"
-    assert revenue["review_triggers"] == [
-        (
-            "Member of perspective Executive (definition/perspectives/Executive.tmdl). "
-            "Removing the item also removes this perspective member; membership alone "
-            "does not prove a report executes it."
-        )
-    ]
+    assert revenue["removal_risk"] == "Safe"
+    assert revenue["review_triggers"] == []
     assert revenue["perspectives"] == [
         {"perspective": "Executive", "source_file": "definition/perspectives/Executive.tmdl", "line": 3}
     ]
@@ -1311,15 +1305,24 @@ def test_unused_item_is_review_when_perspective_membership_is_known(tmp_path):
 
     payload = json.loads(analyzer.format_json_output(results))
     payload_item = next(item for item in payload["items"] if item["table"] == "Sales" and item["name"] == "Revenue")
-    assert payload_item["removalRisk"] == "Review"
-    assert payload_item["reviewTriggers"] == revenue["review_triggers"]
+    assert payload_item["removalRisk"] == "Safe"
+    assert payload_item["reviewTriggers"] == []
+    assert payload_item["perspectives"] == ["Executive"]
+    browser_item = next(
+        item for item in webapp._serialize_results(results)["items"]
+        if item["table"] == "Sales" and item["name"] == "Revenue"
+    )
+    assert browser_item["deleteSafety"] == "Safe"
+    assert browser_item["perspectiveMemberships"] == [
+        {"perspective": "Executive", "sourceFile": "definition/perspectives/Executive.tmdl"}
+    ]
 
     workbook = load_workbook(BytesIO(analyzer.create_xlsx_bytes(results)))
     detail_sheet = workbook["Details"]
     headers = [cell.value for cell in detail_sheet[1]]
     trigger_col = headers.index("Review Triggers") + 1
     revenue_row = next(row for row in detail_sheet.iter_rows(min_row=2) if row[2].value == "Revenue")
-    assert revenue_row[trigger_col - 1].value == revenue["review_triggers"][0]
+    assert not revenue_row[trigger_col - 1].value
 
 
 def test_unsupported_metadata_areas_downgrade_safe_items_to_review(tmp_path):

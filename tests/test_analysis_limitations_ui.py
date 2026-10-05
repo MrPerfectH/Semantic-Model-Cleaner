@@ -85,6 +85,12 @@ const kpi = context.window.smcCleanupExplanation(data.kpiSelector);
 assert.equal(kpi.specific.length, 0);
 assert.equal(kpi.shared.length, 1);
 assert.ok(!kpi.triggers.join(' ').includes('KPI target'));
+// Perspective membership is informational: it adds no review lead and no perspective-specific next step.
+const safeMember = context.window.smcCleanupExplanation({ deleteSafety: 'Safe', reviewTriggers: [], perspectiveMemberships: [{ perspective: 'Executive', sourceFile: 'definition/perspectives/Executive.tmdl' }] });
+assert.equal(safeMember.next, 'Next: queue a reviewed delete if the item is not needed elsewhere.');
+assert.ok(!/stays at Review/i.test(safeMember.lead + safeMember.next));
+const reviewMember = context.window.smcCleanupExplanation({ deleteSafety: 'Review', reviewTriggers: ['Item is hidden'], perspectiveMemberships: [{ perspective: 'Executive' }] });
+assert.equal(reviewMember.next, 'Next: inspect the evidence below, then decide with a reviewed plan.');
 // Unused wording distinguishes scope from global non-use when coverage is incomplete.
 assert.ok(context.window.smcUnusedScopeNote().includes('not proof of global non-use'));
 context.allAnalysisLimitations = { distinctCount: 0, sharedCount: 0, targetedCount: 0, affectedItemCount: 0, coverageComplete: true, limitations: [] };

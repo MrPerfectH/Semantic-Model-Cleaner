@@ -234,9 +234,7 @@ def test_perspective_membership_is_concrete_evidence_not_runtime_use(results, pa
     goal = row(results, "Sales", "Revenue Goal")
     assert goal["perspectives"] == [
         {"perspective": "Executive", "source_file": "definition/perspectives/Executive.tmdl", "line": 4}]
-    assert any(t == ("Member of perspective Executive (definition/perspectives/Executive.tmdl). Removing the "
-                     "item also removes this perspective member; membership alone does not prove a report "
-                     "executes it.") for t in goal["review_triggers"])
+    assert not any("perspective" in t.lower() for t in goal["review_triggers"])
     assert goal["status"] == "NOT USED"
     assert not any(limitation["area"] == "Perspectives" for limitation in results["analysis_limitations"])
     browser = item(payload, "Sales", "Revenue Goal")
@@ -345,20 +343,14 @@ def test_coordinated_group_deletion_clears_the_groups_own_coverage_gap():
     assert all(l["cleared_reason"] == "Coverage gap owned by 'Time Intelligence' is cleared because the plan "
                "removes the calculation group and every retained parent-table consumer."
                for l in policy["scope"]["cleared_limitations"])
-    # Item-specific guards are unchanged: a used consumer, a perspective member and
-    # a hidden column still require review. The cleared gap and the group-structure
-    # reasons no longer appear among them.
+    # Item-specific guards are unchanged: a used consumer and a hidden column still
+    # require review. Perspective membership is informational and no longer a guard.
     remaining = {(v["rule_id"], v["table"], v["name"]): v["message"] for v in policy["violations"]}
     assert set(remaining) == {
         ("SMC-D004", "Sales", "Revenue Ignoring TI 01"),
-        ("SMC-D005", "Time Intelligence", "Name"),
         ("SMC-D005", "Time Intelligence", "Ordinal"),
     }
-    name = remaining[("SMC-D005", "Time Intelligence", "Name")]
     ordinal = remaining[("SMC-D005", "Time Intelligence", "Ordinal")]
-    assert name == ("Review required for Time Intelligence[Name]: Member of perspective Executive "
-                    "(definition/perspectives/Executive.tmdl). Removing the item also removes this perspective "
-                    "member; membership alone does not prove a report executes it.")
     assert ordinal == "Review required for Time Intelligence[Ordinal]: Item is hidden"
 
 
