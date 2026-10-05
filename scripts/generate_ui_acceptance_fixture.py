@@ -86,13 +86,24 @@ def generate_fixture(output: Path) -> dict:
            'relationship SalesDate\n\tfromColumn: Sales.DateKey\n\ttoColumn: Date.DateKey\n'
            '\tfromCardinality: many\n\ttoCardinality: one\n')
     _write(model / 'definition.pbism', {'version': '4.0', 'settings': {}})
-    _write(model / '.platform', {'metadata': {'type': 'SemanticModel', 'displayName': 'Synthetic Acceptance'}})
+    _write(model / '.platform', {
+        '$schema': 'https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json',
+        'metadata': {'type': 'SemanticModel', 'displayName': 'Synthetic Acceptance'},
+        'config': {'version': '2.0', 'logicalId': 'a8148bac-ff71-4fd3-96c5-47ea733bad1b'},
+    })
     for report_index, report_name in enumerate(REPORTS):
         report = output / report_name
         _write(report / 'definition.pbir', {'$schema': SCHEMA + 'definitionProperties/2.0.0/schema.json',
                'version': '4.0', 'datasetReference': {'byPath': {'path': '../' + MODEL}}})
         _write(report / 'definition/report.json', {'$schema': SCHEMA + 'definition/report/3.3.0/schema.json',
                'themeCollection': {}})
+        _write(report / 'definition/version.json', {
+            '$schema': SCHEMA + 'definition/versionMetadata/1.0.0/schema.json', 'version': '2.0.0',
+        })
+        _write(report / 'definition/pages/pages.json', {
+            '$schema': SCHEMA + 'definition/pagesMetadata/1.1.0/schema.json',
+            'pageOrder': ['Page1', 'Page2'], 'activePageName': 'Page1',
+        })
         for page_index, page_name in enumerate(('Overview', 'Hidden Diagnostics')):
             page = report / 'definition/pages' / f'Page{page_index + 1}'
             page_json = {'$schema': SCHEMA + 'definition/page/2.1.0/schema.json',
