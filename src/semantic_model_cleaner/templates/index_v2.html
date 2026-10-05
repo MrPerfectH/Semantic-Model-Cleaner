@@ -6,9 +6,6 @@
 <title>Semantic Model Cleaner</title>
 <meta name="smc-local-token" content="{{ local_request_token }}">
 <script src="{{ url_for('static', filename='local-http.js') }}"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg: #f7f8fa; --card: #fff; --border: #e2e8f0; --border-soft: #eef1f5;
@@ -613,6 +610,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
 </style>
 <link rel="stylesheet" href="{{ url_for('static', filename='detail-workspace.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='result-overview.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='accessibility.css') }}">
 </head>
 <body class="app-flow-cleanup">
 <div class="header">
@@ -7294,7 +7292,6 @@ setAppFlow('cleanup');
     window.smcUpdateScopeChip();
   }
   if (vt) new MutationObserver(smcSync).observe(vt, { attributes: true, attributeFilter: ['class'] });
-  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') window.smcCloseScope(); });
   smcSync();
 
 })();
@@ -7306,5 +7303,6 @@ setAppFlow('cleanup');
 <script src="{{ url_for('static', filename='policy-workspace.js') }}"></script>
 <script src="{{ url_for('static', filename='first-run.js') }}"></script>
 <script src="{{ url_for('static', filename='result-overview.js') }}"></script>
+<script src="{{ url_for('static', filename='accessible-layers.js') }}"></script>
 </body>
 </html>

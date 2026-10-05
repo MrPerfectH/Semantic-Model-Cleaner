@@ -500,6 +500,7 @@
           if (!dialog.open || dialog.dataset.requestId !== recoveryRequest) return;
           if (!saved.ok || !saved.plan || verification.error || !verification.state) throw new Error(saved.error || verification.error || 'Recovery preview unavailable.');
           $('objectReviewTitle').textContent = 'Review restoration';
+          $('objectReviewBody').scrollTop = 0;
           $('objectReviewBody').innerHTML = '<p>Restore reverses the saved differences below using the original bytes. Later file edits are protected.</p>' + planHtml(saved.plan);
           $('objectReviewStatus').textContent = 'Current files: ' + verification.state + '. Restore checks the files again before writing.';
           $('objectReviewApply').textContent = 'Restore original files'; $('objectReviewApply').hidden = false; $('objectReviewApply').disabled = verification.state === 'original';

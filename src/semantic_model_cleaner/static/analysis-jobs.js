@@ -30,6 +30,8 @@
   apiPost = async function (url, data) {
     if (url !== '/api/analyze') return originalPost(url, data);
     if (active) return {error: 'Analysis is already running. Cancel it or wait for completion.'};
+    var dialogs = document.querySelectorAll('dialog[open]');
+    (dialogs.length ? dialogs[dialogs.length - 1] : document.body).appendChild(panel);
     active = true; panel.hidden = false; cancel.disabled = true; status.textContent = 'Starting analysis…';
     try {
       var response = await originalPost('/api/analysis-jobs', data);
