@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0",
+  "operations": [{
+    "kind": "actions",
+    "actions": [{"action": "move_to_folder", "table": "Sales", "name": "Revenue", "item_type": "Measure", "folder": "Reviewed metrics"}]
+  }]
+}

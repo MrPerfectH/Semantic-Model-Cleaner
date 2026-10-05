@@ -8,6 +8,7 @@ import sys
 from . import analyzer, change_plan, model_compare
 from .analysis_export import validate_export_destination
 from .cli_contract import ArgumentParser, emit_json, json_requested
+from .operations_contract import parse_operations
 
 
 def _directory():
@@ -73,7 +74,7 @@ def main(argv=None):
                     f'Cannot read operations file {args.operations!r}: save it as UTF-8 '
                     '(with or without a UTF-8 BOM), then retry.'
                 ) from exc
-            operations = raw.get('operations') if isinstance(raw, dict) else raw
+            operations = parse_operations(raw)
             result = change_plan.create_plan(models[0], reports, operations)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(result, indent=2) + '\n', encoding="utf-8")
