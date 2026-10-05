@@ -1,6 +1,6 @@
 # R09 Make the core desktop flow keyboard accessible and readable
 
-Status (2026-10-05): Implemented and integrated; remaining browser zoom/Windows 125% checks are open. [Evidence](../../../audits/windows-ui-2026-10-05/R09.md). Local ticket, not a published GitHub issue.
+Status (2026-10-05): Complete: keyboard, contrast, offline, real browser zoom and native Windows 125%/150% verified. [Final evidence](../../../audits/windows-ui-2026-10-05/R12.md). Local ticket, not a published GitHub issue.
 Type: Originally HITL. The user delegated routine verification/review to the agent on 2026-10-05; independent-user and environment evidence remain separate requirements.
 Priority: Release gate for keyboard access and core-flow readability.
 
@@ -22,7 +22,7 @@ The scope drawer open/close functions only toggle a body class; its markup is an
 - [x] Escape closes the topmost applicable layer without accidentally dismissing underlying work; controls have useful accessible names.
 - [x] Keyboard users can open a project/demo, analyze, inspect evidence, review/apply a disposable change, and reach recovery.
 - [x] Essential text, labels, focus indicators, and statuses have measured adequate contrast; color is not the only signal.
-- [ ] Check at representative 1280x800 and 1366x768 laptop viewports, browser zoom, and actual Windows 125/150 percent display scaling where available; no core controls become unreachable.
+- [x] Check at representative 1280x800 and 1366x768 laptop viewports, browser zoom, and actual Windows 125/150 percent display scaling where available; no core controls become unreachable.
 - [x] Offline startup remains usable with intentional typography; if fonts are bundled, preserve license notices.
 - [x] Save current screenshots and keyboard/scale observations for human acceptance, explicitly separating tested behavior from remaining screen-reader or OS-scaling gaps.
 

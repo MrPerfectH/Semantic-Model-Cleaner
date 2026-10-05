@@ -1,6 +1,6 @@
 # R11 Make the Windows download and public guidance match the candidate
 
-Status (2026-10-05): Implemented and integrated locally; final publication version/link refresh remains pending. [Evidence](../../../audits/windows-ui-2026-10-05/R11.md). Local ticket, not a published GitHub issue.
+Status (2026-10-05): Complete candidate guidance; beta4 notes prepared and public links retain published beta3 until publication. [Final evidence](../../../audits/windows-ui-2026-10-05/R12.md). Local ticket, not a published GitHub issue.
 Type: Originally HITL. The user delegated routine verification/review to the agent on 2026-10-05; independent-user and environment evidence remain separate requirements.
 Priority: Release gate for accurate guidance; promotional polish is optional.
 

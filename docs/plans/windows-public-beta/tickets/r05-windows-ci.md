@@ -1,6 +1,6 @@
 # R05 Run the full unit suite on Windows with portable fixtures
 
-Status: Existing implementation reused as `4631a9e`; R02 integrated as `30ecdba`. Full local Windows validation passed after R04; remote CI remains pending. Local ticket, not a published GitHub issue.
+Status (2026-10-05): Complete. Windows/Linux CI and local Windows/Linux pass at 3462246. [Evidence](../../../audits/windows-ui-2026-10-05/R12.md). Local ticket, not a published GitHub issue.
 Type: AFK — implementable from this specification once dependencies are satisfied.
 Priority: Release gate.
 
@@ -18,12 +18,12 @@ The audited Windows run had 694 passing, 13 failing, and 4 skipped tests. UTF-8 
 
 ## Acceptance criteria
 
-- [ ] The existing Linux coverage remains and at least one supported Python version runs the complete suite on Windows.
+- [x] The existing Linux coverage remains and at least one supported Python version runs the complete suite on Windows.
 - [x] Source fixtures and JavaScript files are read with explicit encodings where applicable.
 - [x] Logical path comparisons work on Windows and POSIX without hiding real path-identity bugs.
-- [ ] Symlink tests use capability-aware skips only when the platform cannot create the link, and still run in a CI environment that supports it.
+- [x] Symlink tests use capability-aware skips only when the platform cannot create the link, and still run in a CI environment that supports it.
 - [x] The normal Windows test run passes without globally enabling UTF-8 mode to hide the original regressions.
-- [ ] Ruff and packaging/wheel checks continue running on their intended platforms; shell/glob behavior works in each lane.
+- [x] Ruff and packaging/wheel checks continue running on their intended platforms; shell/glob behavior works in each lane.
 - [x] Record the Python/OS matrix and distinguish executed checks from remote CI checks not yet run.
 
 ## Blocked by

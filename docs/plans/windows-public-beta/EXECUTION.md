@@ -12,14 +12,14 @@ The original checkout was at `6d29ce2`, six commits behind local `origin/main`. 
 | R02 | `codex/r02-windows-unicode` | Integrated in `30ecdba`; Unicode lifecycle and malformed-input checks verified |
 | R03 | `codex/r03-protect-local-http` | Integrated in `e40a046`; classic/v2 browser lifecycle, cancellation, policy save and actual ZIP request-protection checks pass |
 | R04 | `codex/r04-report-scope` | Integrated in `4721240`; consistent connected scope and exclusion evidence verified |
-| R05 | Existing Windows fix reused | Local Windows suite passed; Windows CI lane present; remote CI still pending |
+| R05 | Existing Windows fix reused | Complete: Windows/Linux CI and local Windows/Linux suites pass at 3462246 |
 | R06 | `codex/r06-cli-contract` | Integrated in `0453888`; command guide/version, structured JSON errors and opt-in plan JSON mode |
 | R07 | `codex/r07-first-run` | Integrated in `3c9736f`; source and actual ZIP walkthroughs pass; routine UI review delegated to agent on 2026-10-05 |
 | R08 | `codex/r08-result-clarity` | Integrated `d26934e`; scope/results clarity and both-layout reviewed recovery pass |
-| R09 | `codex/r09-keyboard-polish` | Integrated `687060e`; keyboard/offline/readability pass; true browser zoom and Windows 125% scaling remain open |
-| R10 | `codex/r10-package-verification` | Integrated `fa5d1b8` and `7412885`; exact ZIP automation passes; native visual and clean-machine acceptance remain open |
+| R09 | `codex/r09-keyboard-polish` | Integrated `687060e`; keyboard/offline/readability, real browser zoom and native Windows 125%/150% pass |
+| R10 | `codex/r10-package-verification` | Integrated `fa5d1b8` and `7412885`; beta4 exact ZIP, native Power BI and separate Windows runner acceptance pass; consumer reputation unverified |
 | R11 | `codex/r11-release-guidance` | Integrated `9ac7457`; candidate guidance and links verified locally |
-| R12 | Integration evidence | Agent records **NO-GO** under delegated verification; see release decision and remaining gates |
+| R12 | Integration evidence | Scoped beta recommended; delegated engineering verification complete; see release decision |
 | R13 | Deferred | Operations schema follows release gates |
 
 Use the [approved plan](README.md) and its individual tickets for acceptance criteria. A passing unit suite does not authorize release publication or mark visual/package checks complete.
@@ -38,18 +38,12 @@ Use the [approved plan](README.md) and its individual tickets for acceptance cri
 
 ## Current disposition — 2026-10-05
 
-The user delegated verification and routine UI decisions to the agent: “I want you to verify everything. I'm not needed here. And proceed with the work.” Earlier human UI checkpoints no longer block implementation. No independent fresh-user acceptance or publication is implied.
+**Implementation and delegated engineering verification are complete.** [PR #104](https://github.com/MrPerfectH/Semantic-Model-Cleaner/pull/104) contains the integrated work. [R12](../../audits/windows-ui-2026-10-05/R12.md) supersedes the earlier no-go, identifies the exact beta4 archive, and recommends the scoped public beta. No release has been published.
 
-R08/R09 were implemented sequentially and integrated. Both layouts passed keyboard-only demo/analyze/item/action/apply/history/restore at two laptop viewports. Preview cancellation did not mutate files; applied verification and reviewed restore recovered exact originals. Native modal layering fixes Escape, focus and cancellation reachability; local fonts remove network dependence. Scope/results summaries distinguish Safe/Review candidates, coverage limitations and Report Health. [R08 evidence](../../audits/windows-ui-2026-10-05/R08.md), [R09 evidence](../../audits/windows-ui-2026-10-05/R09.md).
+Runtime source `346224661467a3e4da11c329d372466b9c689fbe`, version `0.4.0b4`, passes Windows CI (1,038 tests), Linux CI on Python 3.11/3.13 (1,039 each), local Windows (1,033), and non-root Linux Python 3.12 (1,039). Platform/privilege skips are recorded in the evidence. Fresh wheel installation and all 16 actual ZIP checks pass locally and on separate CI runners.
 
-Latest full application suite at R09: **1,020 passed, 8 existing skips**, Windows Python 3.13 with PYTHONUTF8=0, in 92.35 seconds; Ruff passed. Later fixture/package regression set: **28 passed, 1 existing skip**. The integrated runtime source matches the packaged build; later changes are verification fixtures, harnesses and documentation.
+Native Power BI full refresh and deterministic DAX results pass before/after the intended change and after byte-exact restoration. Both layouts pass keyboard-only recovery at actual browser zoom 125%/150% and Windows scaling 125%/150%; original display settings were restored. History ordering, IPv6 host validation and cross-drive analysis failures found during acceptance are fixed and covered by regressions.
 
-The actual ZIP was built from clean `fa5d1b8da3e899fd1ceaaf6a5c05575081f088cd` and passed all 16 package smoke checks. SHA-256: `a03f0647b8caa250c85f666ce806cbed5fd7852a1ea407a1de69df636407c70c`. Both UI layouts, exports, local HTTP protection, stale plans, UTF-8 rename, offline schemas and byte-exact recovery passed outside the checkout with Python removed from the child PATH. Isolated automatic Edge launch and a fresh wheel installation passed. [R10 evidence](../../audits/windows-ui-2026-10-05/R10.md).
+The unsigned archive remains subject to consumer SmartScreen/reputation behavior not established by CI. Zero independent users participated; a first-use feedback round is a research follow-up, not claimed evidence. R13's optional operation schema remains deferred. Existing CLI discovery, JSON contracts and reviewed plans are supported.
 
-Native Power BI 2.158.1177.0 opened the corrected synthetic baseline and the packaged changed project. Baseline visuals produced query errors after refresh before any cleaner mutation, so runtime equivalence is **not passed**. Packaged restore nevertheless recovered all project metadata byte-for-byte. Existing user Power BI projects were preserved. Clean-machine SmartScreen/Defender behavior, remote Linux/Windows CI, actual browser zoom/Windows 125% scaling, and independent first-user testing remain unverified.
-
-R11 updates Windows installation, candidate screenshots, CLI and recovery guidance, and distinguishes the candidate from the older published beta3 download. Local links, published assets and the rendered candidate page were verified. [R11 evidence](../../audits/windows-ui-2026-10-05/R11.md).
-
-**Release decision: NO-GO.** [R12](../../audits/windows-ui-2026-10-05/R12.md) records ticket dispositions and six actionable remaining acceptance items. The local archive retains the development version b3 and must not replace published b3; a new version, rebuild and exact-artifact verification are required before any publication. R13 remains deferred. No release, PR, deployment or announcement was published.
-
-Implementation worktrees are siblings under `C:/Users/PrzemekHarazny/Projects/`, with all completed changes integrated on `codex/windows-beta-integration`. The original application checkout and unrelated `.claude` worktrees are preserved. Local evidence supersedes older pending-status statements above while retaining their historical test results.
+Implementation worktrees remain isolated from the original checkout. Disposable verification data was restored; existing user Power BI projects were preserved. Merging, tagging and publishing are separate actions.

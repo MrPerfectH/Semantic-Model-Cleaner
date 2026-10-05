@@ -1,0 +1,29 @@
+{
+  "result": [
+    {
+      "index": 0,
+      "device": "\\\\.\\DISPLAY1",
+      "primary": true,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 3840,
+        "bottom": 2160,
+        "width": 3840,
+        "height": 2160
+      },
+      "work_area": {
+        "left": 0,
+        "top": 0,
+        "right": 3840,
+        "bottom": 2088,
+        "width": 3840,
+        "height": 2088
+      },
+      "resolution": "3840x2160",
+      "orientation": "landscape",
+      "effective_dpi": 144,
+      "scale": 1.5
+    }
+  ]
+}
