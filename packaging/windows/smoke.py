@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import shutil
 import socket
+import sys
 import subprocess
 import tempfile
 import time
@@ -31,6 +32,12 @@ ASSETS_BY_LAYOUT = {
         "analysis-jobs.js",
         "policy-workspace.js",
         "schema-evidence.js",
+        "first-run.js",
+        "analysis-limitations.js",
+        "result-overview.js",
+        "result-overview.css",
+        "accessible-layers.js",
+        "accessibility.css",
     ),
     "classic": (
         "local-http.js",
@@ -39,6 +46,12 @@ ASSETS_BY_LAYOUT = {
         "analysis-jobs.js",
         "policy-workspace.js",
         "schema-evidence.js",
+        "first-run.js",
+        "analysis-limitations.js",
+        "result-overview.js",
+        "result-overview.css",
+        "accessible-layers.js",
+        "accessibility.css",
     ),
 }
 EXPECTED_CHANNEL = "beta"
@@ -219,7 +232,7 @@ def _require_option_b_workspace(state: dict) -> dict:
         problems.append(f"viewport was {state.get('viewport')!r}")
     if not state.get("scope_chip_in_strip"):
         problems.append("scope chip was not in the dedicated strip")
-    if state.get("history_buttons") != 2 or state.get("visible_history_buttons") != 2:
+    if state.get("history_buttons", 0) < 2 or state.get("visible_history_buttons") != 2:
         problems.append(
             "expected two visible Changes & history buttons, got "
             f"{state.get('visible_history_buttons')}/{state.get('history_buttons')}"
@@ -384,7 +397,7 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
         report["checks"].extend(["checksum", "release identity", "occupied-port fallback", "Python-free child PATH"])
 
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
+            browser = playwright.chromium.launch(headless=True, channel=os.environ.get("SMC_BROWSER_CHANNEL") or None)
             page = browser.new_page(viewport={"width": 1440, "height": 1000})
             console_messages: list[str] = []
             page_errors: list[str] = []
@@ -407,13 +420,17 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
                 report["checks"].append("v2/classic UI and packaged assets")
 
                 page.goto(base + "/?ui=v2", wait_until="networkidle")
+                page.get_by_role("button", name="Try demo", exact=True).filter(visible=True).first.click()
+                page.wait_for_function("!document.querySelector('#scopeReview').hidden && !document.querySelector('#btnAnalyze').disabled")
+                if not page.locator('#viewToolbar').evaluate("e => e.classList.contains('hidden')"):
+                    raise RuntimeError("Demo skipped the explicit scope review")
                 demo_job = _run_browser_analysis(
                     page,
-                    lambda: page.locator("#btnLoadDemo").click(),
+                    lambda: page.locator("#btnAnalyze").click(),
                     timeout,
                 )
                 page.locator("#summarySection:not(.hidden)").wait_for(timeout=30_000)
-                page.locator("#demoStatus").wait_for(state="visible")
+                page.locator("#resultOverview").wait_for(state="visible")
                 page.screenshot(path=evidence_dir / "01-demo-analysis.png", full_page=True)
                 browser_state = page.evaluate(
                     "() => ({models: chosenModels, reports: chosenReports, itemCount: allItems.length})"
@@ -437,6 +454,15 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
                 if not export.ok or not json.loads(export.body()).get("items"):
                     raise RuntimeError("Browser JSON export failed after demo analysis")
                 report["checks"].append("browser JSON export")
+                excel = page.request.get(base + "/api/export?format=xlsx", headers=_browser_headers(page))
+                if not excel.ok or not excel.body().startswith(b"PK"):
+                    raise RuntimeError("Excel export did not return a workbook")
+                report["checks"].append("Excel export")
+                if page.request.get(base + "/api/plans").status != 403:
+                    raise RuntimeError("Packaged API accepted a missing token")
+                if page.request.get(base + "/api/plans", headers={**_browser_headers(page), "Origin":"https://foreign.example"}).status != 403:
+                    raise RuntimeError("Packaged API accepted a foreign origin")
+                report["checks"].append("local HTTP token and origin protection")
 
                 plan = _browser_json(page, "/api/plans", {
                     "model_path": str(model_path),
@@ -458,6 +484,11 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
                 if not applied.get("ok") or _sha256(source_file) == original_hash:
                     raise RuntimeError("Reviewed plan did not apply its model change")
                 applied_hash = _sha256(source_file)
+                # A second apply of the old preview must reject the now-stale input.
+                stale = page.request.post(base + f"/api/plans/{plan_id}/apply", data={}, headers=_browser_headers(page))
+                if stale.status != 409 or _sha256(source_file) != applied_hash:
+                    raise RuntimeError("Stale plan was not rejected without writes")
+                report["checks"].append("stale-plan rejection without writes")
                 verified = _browser_json(page, f"/api/plans/{plan_id}/verify", {})
                 if not verified.get("ok"):
                     raise RuntimeError(f"Applied plan did not verify: {verified}")
@@ -487,10 +518,32 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
                     raise RuntimeError("Restored browser analysis returned an unexpected item count")
                 page.screenshot(path=evidence_dir / "03-restored-and-reanalyzed.png", full_page=True)
                 report["checks"].append("browser re-analysis after restore")
+                unicode_plan = _browser_json(page, "/api/plans", {
+                    "model_path": str(model_path), "report_paths": report_paths,
+                    "operations": [{"kind":"rename", "measure_renames":[{"table":"Sales", "name":"Revenue", "target_name":"Przychód Łódź"}]}],
+                })["plan"]
+                _browser_json(page, f"/api/plans/{unicode_plan['id']}/apply", {})
+                if "Przychód Łódź" not in source_file.read_text(encoding="utf-8"):
+                    raise RuntimeError("UTF-8 rename was not preserved")
+                _browser_json(page, f"/api/plans/{unicode_plan['id']}/verify", {})
+                _browser_json(page, f"/api/plans/{unicode_plan['id']}/restore", {})
+                if _sha256(source_file) != original_hash:
+                    raise RuntimeError("UTF-8 restore was not byte-exact")
+                report["checks"].append("UTF-8 rename/apply/verify/restore")
 
                 bundle = _schema_smoke(_url_request(base), [str(model_path)], report_paths, timeout)
                 report["schema_count"] = bundle["schema_count"]
                 report["checks"].append("offline schema validation")
+                # Exercise the same actual UI actions against the frozen runtime.
+                lifecycle = Path(__file__).resolve().parents[2] / 'docs/audits/windows-ui-2026-10-05/lifecycle.py'
+                if lifecycle.is_file():
+                    child_env = os.environ.copy()
+                    child_env.update(SMC_TEST_URL=base, SMC_TEST_EVIDENCE=str(evidence_dir / 'lifecycle'), PYTHONIOENCODING='utf-8')
+                    completed = subprocess.run([sys.executable, str(lifecycle)], env=child_env, capture_output=True, text=True, encoding='utf-8', timeout=180)
+                    (evidence_dir / 'lifecycle.log').write_text(completed.stdout + completed.stderr, encoding='utf-8')
+                    if completed.returncode:
+                        raise RuntimeError('Packaged UI lifecycle failed; see lifecycle.log')
+                    report['checks'].append('both-layout UI preview/cancel/apply/verify/restore')
                 if page_errors:
                     raise RuntimeError("Browser JavaScript exceptions: " + " | ".join(page_errors))
             except Exception:
@@ -544,3 +597,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

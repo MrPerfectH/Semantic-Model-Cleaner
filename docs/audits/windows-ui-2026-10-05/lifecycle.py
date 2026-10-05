@@ -3,13 +3,13 @@ from pathlib import Path
 import hashlib, json, os
 from playwright.sync_api import sync_playwright
 BASE=os.environ.get('SMC_TEST_URL','http://127.0.0.1:5108')
-OUT=Path('docs/audits/windows-ui-2026-10-05'); OUT.mkdir(parents=True,exist_ok=True)
+OUT=Path(os.environ.get('SMC_TEST_EVIDENCE','docs/audits/windows-ui-2026-10-05')); OUT.mkdir(parents=True,exist_ok=True)
 def hashes(paths):
  return {str(f):hashlib.sha256(f.read_bytes()).hexdigest() for path in paths for f in Path(path).rglob('*') if f.is_file()}
 def shot(page,name):
  page.wait_for_timeout(350);page.screenshot(path=str(OUT/(name+'.png')))
 with sync_playwright() as p:
- browser=p.chromium.launch(channel='msedge',headless=True); results=[]
+ browser=p.chromium.launch(channel=os.environ.get('SMC_BROWSER_CHANNEL') or 'msedge',headless=True); results=[]
  for layout in ('v2','classic'):
   context=browser.new_context(viewport={'width':1366,'height':768});page=context.new_page();errors=[]
   page.on('pageerror',lambda e:errors.append(str(e)))
