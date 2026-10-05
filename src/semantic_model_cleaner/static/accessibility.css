@@ -1,0 +1,24 @@
+/* Shared desktop readability and native-layer geometry, including offline use. */
+:root { --text-light:#526079; --text-faint:#526079; --object-muted:#526079; --sans:"Segoe UI",system-ui,sans-serif; --mono:Consolas,ui-monospace,monospace; }
+:focus-visible { outline:3px solid #1d4ed8 !important; outline-offset:3px; }
+dialog:not([open]) { display:none !important; }
+dialog::backdrop { background:rgba(15,23,42,.45); }
+dialog.scope-drawer { margin:0 0 0 auto; padding:0; border:0; max-height:100%; height:100%; color:var(--text); transform:none; }
+dialog.modal-overlay { margin:0; padding:12px; border:0; width:100%; height:100%; max-width:100%; max-height:100%; background:transparent; color:var(--text); }
+.scope-overlay { display:none !important; }
+.modal { max-height:90vh; overflow:auto; }
+.btn-sm,.badge,.object-workspace .detail-meta,.object-crumbs,.inventory-identity-meta,.inventory-count-note,.build-stamp { font-size:12px !important; }
+.object-workspace .detail-meta,.object-crumbs,.object-tabs button,.inventory-identity-meta,.inventory-count-note { color:#526079; }
+.beta-badge { color:#78350f; background:#fef3c7; }
+.btn-warning { color:#713f12; background:#fef3c7; }
+.btn-warning:hover { color:#713f12; background:#fde68a; }
+.explorer-footer { flex-wrap:wrap; gap:12px; }
+.explorer-footer > div { flex-wrap:wrap; }
+.object-review-body,.classic-plan-body { overscroll-behavior:contain; }
+@media(max-width:1100px) {
+  .header { height:auto; min-height:57px; flex-wrap:wrap; padding:10px 16px; gap:10px; }
+  .topbar-right { flex-wrap:wrap; margin-left:0; }
+  .build-stamp { display:none; }
+  .container { padding:16px; }
+  .action-bar { flex-wrap:wrap; max-height:35vh; overflow:auto; }
+}

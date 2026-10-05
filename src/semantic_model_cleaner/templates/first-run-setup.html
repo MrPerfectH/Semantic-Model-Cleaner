@@ -1,0 +1,13 @@
+<div class="setup-block" style="margin-bottom:16px">
+  <div class="setup-btn-row" style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-primary btn-sm" type="button" onclick="smcOpenProject()">Open Power BI Project</button>
+    <button class="btn btn-secondary btn-sm" type="button" id="btnLoadDemo" onclick="smcLoadDemo()">Try demo</button>
+  </div>
+  <p style="font-size:12px;margin:10px 0;color:var(--text-light)">Choose a folder containing .SemanticModel and .Report folders. For separate locations, use the model and report controls below.</p>
+  <div id="projectStatus" class="editor-status" role="status" style="overflow-wrap:anywhere"></div>
+  <div id="projectModelChoice" hidden style="margin-top:10px">
+    <label for="projectModelSelect">Choose one Semantic Model</label>
+    <select id="projectModelSelect" style="display:block;width:100%;margin-top:6px;padding:8px;border:1px solid var(--border);border-radius:8px;background:white;color:var(--text);font:inherit"></select>
+  </div>
+</div>
+<div id="scopeReview" class="setup-block" aria-live="polite" style="font-size:12px;overflow-wrap:anywhere" hidden></div>

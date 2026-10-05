@@ -20,13 +20,13 @@ def run_js(tmp_path, code):
     if not node:
         pytest.skip('Node.js unavailable')
     harness = tmp_path / 'workspace.cjs'
-    harness.write_text("const assert = require('node:assert/strict');\n" + code)
+    harness.write_text("const assert = require('node:assert/strict');\n" + code, encoding="utf-8")
     result = subprocess.run([node, str(harness)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_roving_tabs_hide_inactive_panels_and_preserve_type_preference(tmp_path):
-    source = JS.read_text()
+    source = JS.read_text(encoding="utf-8")
     run_js(tmp_path, """
 var tabs=['Overview','Definition','References','Dependencies','Changes'];
 var activeTabs={item:'overview'},itemTabByType={},lastItemType='Measure';
@@ -43,7 +43,7 @@ selectTab('item','missing');assert.equal(activeTabs.item,'overview');
 
 
 def test_independent_drafts_and_explicit_promotion_dependency_choice(tmp_path):
-    source = JS.read_text()
+    source = JS.read_text(encoding="utf-8")
     operation = next(line for line in source.splitlines() if line.strip().startswith('migrateCurrentReportMeasure ='))
     run_js(tmp_path, """
 var drafts=new Map(),lastRenderedKey='Measure:::Sales:::Revenue',draftFieldIds=['detailDaxEditor','objectPromotionDependencies'];
@@ -64,7 +64,7 @@ fields.objectPromotionDependencies.checked=true;assert.equal(migrateCurrentRepor
 
 
 def test_table_children_search_cleanup_and_empty_results(tmp_path):
-    source = JS.read_text()
+    source = JS.read_text(encoding="utf-8")
     run_js(tmp_path, """
 var detailTableName='Sales',tableSearch='',tableCleanup='Safe',tableSort={key:'name',direction:1};
 var children=[{name:'Revenue',type:'Measure',deleteSafety:'Blocked'},{name:'Old Amount',type:'Column',deleteSafety:'Safe'},{name:'DateKey',type:'Column',deleteSafety:'Keep'}];
@@ -78,7 +78,7 @@ tableSearch='unknown';renderChildGrid();assert(nodes.objectTableGrid.innerHTML.i
 
 
 def test_live_and_stale_evidence_keep_hidden_labels_and_source_identity(tmp_path):
-    source = TEMPLATE.read_text()
+    source = TEMPLATE.read_text(encoding="utf-8")
     names = ['usageLocationKey', 'usageLocatorKey', 'summarizeUsageLocation', 'renderUsageDetails', 'renderStaleUsageDetails']
     run_js(tmp_path, """
 function esc(s){return String(s||'');}function reportReferenceId(r){return r.reportPath;}
@@ -94,7 +94,7 @@ def test_draft_identity_includes_model_and_selected_report_scope(tmp_path):
     run_js(tmp_path, """
 var model='/A/Retail.SemanticModel';var chosenReports=[{path:'/Reports/B.Report'},{path:'/Reports/A.Report'}];
 function getModelPath(){return model;}var analyzedScope=null;
-""" + function(JS.read_text(), 'selectedScope') + function(JS.read_text(), 'draftKeyForItem') + """
+""" + function(JS.read_text(encoding="utf-8"), 'selectedScope') + function(JS.read_text(encoding="utf-8"), 'draftKeyForItem') + """
 const item='Measure:::Sales:::Revenue',first=draftKeyForItem(item);
 chosenReports.reverse();assert.equal(draftKeyForItem(item),first);
 model='/B/Retail.SemanticModel';assert.notEqual(draftKeyForItem(item),first);
@@ -103,7 +103,7 @@ model='/A/Retail.SemanticModel';chosenReports.pop();assert.notEqual(draftKeyForI
 
 
 def test_successful_unrelated_plan_does_not_consume_item_dax_draft(tmp_path):
-    run_js(tmp_path, function(JS.read_text(), 'consumedDraftFields') + """
+    run_js(tmp_path, function(JS.read_text(encoding="utf-8"), 'consumedDraftFields') + """
 const item={table:'Sales',name:'Revenue',sourceFile:'/model/Sales.tmdl'};
 assert.deepEqual(consumedDraftFields([{kind:'actions',actions:[{table:'Sales',name:'Other',action:'hide'}]}],item,null),[]);
 assert.deepEqual(consumedDraftFields([{kind:'clean_stale'}],item,null),[]);
@@ -113,7 +113,7 @@ assert.deepEqual(consumedDraftFields([{kind:'rename',measure_renames:[{table:'Sa
 
 
 def test_refresh_reports_cancellation_without_claiming_fresh_results(tmp_path):
-    source = TEMPLATE.read_text()
+    source = TEMPLATE.read_text(encoding="utf-8")
     run_js(tmp_path, """
 var chosenModels=[{path:'/Model'}],chosenReports=[{path:'/Report'}],loaded=false;
 function logEntry(){}function setResultsData(){loaded=true;}function showPostRefreshDisclaimer(){}
@@ -124,7 +124,7 @@ async function apiPost(){return {error:'Analysis cancelled. Previous results are
 
 
 def test_history_refresh_reveals_results_before_first_analysis_and_preserves_pending_state(tmp_path):
-    source = TEMPLATE.read_text()
+    source = TEMPLATE.read_text(encoding="utf-8")
     run_js(tmp_path, """
 var chosenModels=[{path:'/Model'}],chosenReports=[{path:'/Report'}],currentView='details';
 var pendingActions=new Map([['draft',{action:'hide'}]]),preserved=[],shown=new Set(),switched=null;
@@ -144,7 +144,7 @@ function showPostRefreshDisclaimer(){}async function apiPost(){return {items:[],
 
 
 def test_refresh_navigates_away_from_removed_identity_without_guessing_replacement(tmp_path):
-    source = JS.read_text()
+    source = JS.read_text(encoding="utf-8")
     start = source.index('  setResultsData = function (data, preserve) {')
     assigned = source[start:source.index('\n  };', start) + 5]
     run_js(tmp_path, """

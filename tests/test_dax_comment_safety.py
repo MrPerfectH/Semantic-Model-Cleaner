@@ -45,13 +45,13 @@ def test_cleanup_and_reviewed_plan_protect_dependency_after_literal_comment_mark
     source.parent.mkdir(parents=True)
     formula_lines = expression.splitlines()
     source.write_text("table Sales\n\tmeasure Revenue = 1\n\tmeasure Label = " + formula_lines[0]
-                      + "".join("\n\t\t\t" + line for line in formula_lines[1:]) + "\n")
+                      + "".join("\n\t\t\t" + line for line in formula_lines[1:]) + "\n", encoding="utf-8")
     visual = report / "definition/pages/P/visuals/V/visual.json"
     visual.parent.mkdir(parents=True)
     visual.write_text(json.dumps({"visual": {"query": {"Measure": {
-        "Expression": {"SourceRef": {"Entity": "Sales"}}, "Property": "Label"}}}}))
-    (report / "definition/report.json").write_text("{}")
-    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}))
+        "Expression": {"SourceRef": {"Entity": "Sales"}}, "Property": "Label"}}}}), encoding="utf-8")
+    (report / "definition/report.json").write_text("{}", encoding="utf-8")
+    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}), encoding="utf-8")
     actions = [{"action": "delete", "table": "Sales", "name": "Revenue", "item_type": "Measure"}]
     roots = change_plan._roots(model, [report])
     before = change_plan._inventory(roots)

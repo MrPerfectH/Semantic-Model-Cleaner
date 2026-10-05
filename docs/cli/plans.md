@@ -6,6 +6,11 @@ Use plans generated locally from files you trust. A plan contains absolute paths
 
 Legacy mutation HTTP routes and `smc clean-stale --apply` cannot bypass this workflow in the beta. Their direct-write requests are rejected with guidance to prepare and apply a saved plan.
 
+For automation, add `--format json` after any plan-family subcommand to receive
+versioned JSON on stdout for both successful responses and errors, including
+argument errors and saved-plan diffs. Omitting the flag preserves existing
+JSON results, text diffs, and JSON errors on stderr. See the [CLI contract](README.md).
+
 ## First change
 
 Create `operations.json` outside discovered or selected model/report folders:
@@ -57,15 +62,29 @@ Apply records a recovery journal automatically. There is no `--no-backup` option
 - `plan [project_path]` defaults to the current directory. Without `--model`, it must discover exactly one model beneath that path.
 - For this command, `--model` and each repeated `--report` are exact folder paths, unlike the analyzer's name filters. Relative paths resolve from the current working directory.
 - Without explicit `--report` arguments, planning selects discovered reports bound to the chosen model. At least one report is required. Refactoring additionally requires supported report bindings and complete supported scan coverage.
+- Plan command JSON includes `reportBinding` selection/exclusion evidence, including when default discovery finds no connected Reports. Explicit `--report` uses `mode: explicit` with a binding row per requested Report; this is not proof of a verified connection. The saved plan's existing scope and coverage record the reviewed selection. Non-reference metadata edits retain their existing explicit-scope behavior, while refactoring/deletion still rejects unverified bindings.
 - The model must have a TMDL `definition` directory; reports must have PBIR `definition` directories. Artifact roots must be distinct and cannot contain one another. Symlinks within the selected scope are rejected.
 - The snapshot covers `.tmdl`, `.json`, `.pbir` and `.pbism` metadata. Other project files are outside its fingerprint and recovery scope.
 - Plan output must be outside discovered or selected model/report folders and must not overwrite the operations file.
+- Resolved aliases and folders named `.SemanticModel` or `.Report` are protected even outside discovery. Existing output files with multiple hard links are refused, including aliases of the operations input. Choose a new external filename; ordinary external files can still be overwritten. Missing external parent directories are created only after destination validation and successful plan generation.
 - Journals default to `~/.semantic-model-cleaner/plans`. Setting `SMC_USER_DIR` changes the default to `<SMC_USER_DIR>/plans`. `apply`, `verify`, `restore`, `recover-lock` and `history` accept `--journal-dir`; verification itself reads the plan and files, not the journal.
 - Use the same journal directory for operations on the same model. The per-model lock resides there; separate journal directories do not provide a shared lock. Keep journals outside selected artifacts and retain them until recovery is no longer needed.
 
 ## Operation format
 
 The operations file accepts either an array or an object containing `operations`. The array must be nonempty. Operations run in order on staged copies, so later operations must use identities established by earlier ones.
+
+Save operations JSON as **UTF-8**, with or without a UTF-8 BOM. Other encodings,
+including UTF-16 and Windows legacy code pages, are rejected when their bytes are
+not valid UTF-8; the error identifies the file and asks you to save it again.
+Generated plan and journal JSON uses UTF-8 without a BOM. This JSON input policy
+does not change the beta restriction on writing BOM-prefixed TMDL files.
+
+CLI, web, and desktop entry points emit UTF-8 on stdout/stderr, including when
+redirected to a file or pipe. Automation should decode captured bytes as UTF-8
+rather than the system code page. No `PYTHONUTF8` setting or console-code-page
+change is needed. JSON uses either literal Unicode or standard JSON Unicode
+escapes; parsing it preserves non-English and non-BMP characters.
 
 | Kind | Fields | Effect |
 | --- | --- | --- |
@@ -157,7 +176,7 @@ Prefer generating these from reviewed analyzer/UI evidence rather than guessing 
 | `smc restore PLAN [--journal-dir DIR]` | Restore matching reviewed changes using the journal and original bytes |
 | `smc recover-lock PLAN [--journal-dir DIR]` | On POSIX, remove an abandoned lock only after checking that its recorded process has exited |
 
-Exit `0` means the command succeeded. For `verify`, that specifically means the selected metadata matches the planned outputs (`state: applied`). Exit `1` means an operation returned `ok: false`, including verification states `original` or `changed`, a rolled-back apply, or recovery requiring attention. Exit `2` covers handled input, plan-validation, I/O or parsing errors, reported as error JSON on stderr where handled by the command; argparse usage errors also use `2` and plain usage text. These codes are specific to the plan commands; `check` and `clean-stale` have their own contracts.
+Exit `0` means the command succeeded. For `verify`, that specifically means the selected metadata matches the planned outputs (`state: applied`). Exit `1` means an operation returned `ok: false`, including verification states `original` or `changed`, a rolled-back apply, or recovery requiring attention. Exit `2` covers handled input, plan-validation, I/O or parsing errors. With `--format json`, all these errors, including argument syntax errors, use the versioned JSON response on stdout. Without that flag, handled errors retain JSON on stderr and argparse usage errors retain text on stderr. These codes are specific to the plan commands; `check` and `clean-stale` have their own contracts.
 
 Verification does not re-run DAX or a new semantic analysis. It verifies fingerprints and returns the validation recorded during planning. A no-op plan has identical input/output fingerprints and can therefore verify as `applied` without any file writes.
 

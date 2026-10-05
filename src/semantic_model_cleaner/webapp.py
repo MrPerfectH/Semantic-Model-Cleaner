@@ -27,9 +27,13 @@ from flask import Flask, jsonify, render_template, request, send_file
 from . import __version__, analyzer, experiments, model_compare, report_writer, tmdl_writer
 from . import change_plan, cleanup_policy
 from .analysis_jobs import AnalysisJobs
+from .local_http import install_local_http_boundary, loopback_host
+from .console import configure_console_output
 
 app = Flask(__name__)
+install_local_http_boundary(app)
 _analysis_jobs = AnalysisJobs()
+
 
 def _invalidates_analysis(fn):
     @wraps(fn)
@@ -332,7 +336,7 @@ def _discover_initial_artifacts() -> tuple[list[Path], list[Path]]:
 
 
 def _default_model_selection(models: list[Path]) -> list[Path]:
-    if not models:
+    if len(models) != 1:
         return []
     return [models[0]]
 
@@ -351,30 +355,11 @@ def _valid_model_scope(models: list[Path]) -> tuple[list[Path], list[dict]]:
 
 def _report_binding_scope(model_path, report_paths) -> dict:
     """Use the same binding evidence for initial selection and every web analysis."""
-    scope = {"selected": [], "excluded": []}
-    names = analyzer.model_name_candidates(Path(model_path))
-    label = analyzer.model_label(Path(model_path))
-    seen = set()
-    for report in report_paths:
-        path = str(Path(report).resolve())
-        if path in seen:
-            continue
-        seen.add(path)
-        binding = analyzer.report_binding_status(Path(path), Path(model_path), names=names, label=label)
-        binding.pop("scanned", None)
-        binding.pop("warning", None)
-        group = "selected" if binding["status"] in analyzer.BOUND_REPORT_STATUSES else "excluded"
-        scope[group].append(binding)
-    return scope
+    return analyzer.report_binding_scope(Path(model_path), [Path(p) for p in report_paths])
 
 
 def _record_report_scope(results, scope):
-    results["report_binding"] = scope
-    results.setdefault("warnings", []).extend({
-        "code": "REPORT_SCOPE_EXCLUDED", "severity": "warning",
-        "message": f"Excluded {row['name']} from analysis: {row['message']}",
-        "artifactPath": row["definitionFile"],
-    } for row in scope["excluded"])
+    analyzer.record_report_scope(results, scope)
 
 
 def configure_runtime(
@@ -402,7 +387,7 @@ def configure_runtime(
 
 def print_startup_banner(host: str, port: int, *, debug: bool, mode: str = "web") -> None:
     print("\n  Semantic Model Cleaner")
-    print("  ─────────────────────")
+    print("  -----------------------")
     print(f"  Mode      : {mode}")
     print(f"  Workspace : {_state['workspace']}")
     if _state["model_search_roots"]:
@@ -735,6 +720,20 @@ def _build_report_root_cause_groups(report_issues: list[dict]) -> dict:
     }
 
 
+def _serialize_translation(translation: dict) -> dict:
+    """Translation Membership for the browser: owner, culture and file:line evidence."""
+    line = translation.get("line") or 0
+    return {
+        "culture": translation["culture"],
+        "owner": translation["owner"],
+        "kind": translation["kind"],
+        "properties": translation.get("properties", []),
+        "sourceFile": translation["source_file"],
+        "line": line,
+        "location": f"{translation['source_file']}:{line}" if line else translation["source_file"],
+    }
+
+
 def _serialize_results(results: dict, model_paths=None) -> dict:
     """Serialize analyzer results for JSON API responses."""
     def _issue_state(status: str, broken_refs: list[str] | None, stale_usage_count: int = 0) -> str:
@@ -898,6 +897,8 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
                 {"perspective": member["perspective"], "sourceFile": member["source_file"]}
                 for member in r.get("perspectives", [])
             ],
+            "translationMemberships": [_serialize_translation(translation)
+                                       for translation in r.get("translations", [])],
             "tableKind": r.get("table_kind", "") or ("Report" if item.source_kind == "report" else "Table"),
             "modelRole": r.get("model_role", "") or None,
             "tableDependentItems": r.get("table_dependents", []),
@@ -1150,6 +1151,8 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             "tableKind": table.get("table_kind", "Table"),
             "calculationItems": table.get("calculation_items", []),
             "perspectives": table.get("perspectives", []),
+            "translations": [_serialize_translation(translation)
+                             for translation in table.get("translations", [])],
             "cleanupRecommendation": table.get("cleanup_recommendation", ""),
             "cleanupReason": table.get("cleanup_reason", ""),
             "reviewBasis": table.get("review_basis", "") or None,
@@ -1292,10 +1295,13 @@ def index():
     template = "index_v2.html" if requested_ui == "v2" else "index.html"
     response = app.make_response(render_template(
         template,
+        local_request_token=app.config['SMC_LOCAL_TOKEN'],
         build_stamp=_build_stamp(),
         default_root=_state.get("workspace") or str(_default_workspace_root()),
         model_browse_root=str(_default_model_browse_root()),
         runtime=_state.get("runtime") or experiments.runtime_config(),
+        available_models=[{"path": str(m), "name": m.name.replace(".SemanticModel", "")} for m in models],
+        available_reports=[{"path": str(r), "name": analyzer.report_display_name(r)} for r in reports],
         initial_models=[{"path": str(m), "name": m.name.replace(".SemanticModel", "")} for m in selected_models],
         initial_reports=[{"path": str(r), "name": analyzer.report_display_name(r)} for r in selected_reports],
         initial_report_binding=report_binding,
@@ -1377,6 +1383,24 @@ def api_discover():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/scope", methods=["POST"])
+def api_scope():
+    """Preview binding evidence without analyzing or changing the active scope."""
+    data = request.get_json(silent=True) or {}
+    try:
+        models = data.get("model_paths", [])
+        reports = data.get("report_paths", [])
+        if not isinstance(models, list) or len(models) != 1 or not isinstance(reports, list):
+            raise ValueError("Choose one Semantic Model to review its connected Reports.")
+        model = Path(models[0])
+        error = analyzer._unsupported_semantic_model_error(model)
+        if error:
+            raise ValueError(error)
+        return jsonify({"reportBinding": _report_binding_scope(model, reports)})
+    except (ValueError, TypeError, OSError) as exc:
+        return jsonify({"error": str(exc)}), 400
 
 
 @app.route("/api/reports/find-connected", methods=["POST"])
@@ -2048,6 +2072,7 @@ def api_backup_info():
 
 
 def main():
+    configure_console_output()
     parser = argparse.ArgumentParser(
         description="Semantic Model Cleaner Web App (one semantic model, one or more reports)"
     )
@@ -2059,8 +2084,8 @@ def main():
                         help="Path(s) to search for .Report directories")
     parser.add_argument("--port", type=int, default=5001,
                         help="Port to run on (default: 5001)")
-    parser.add_argument("--host", default="127.0.0.1",
-                        help="Host to bind to (default: 127.0.0.1)")
+    parser.add_argument("--host", default="127.0.0.1", type=loopback_host,
+                        help="Local bind address: 127.0.0.1 or localhost (default: 127.0.0.1)")
     parser.add_argument("--debug", action="store_true",
                         help="Enable Flask debug mode and auto-reload")
     parser.add_argument(
@@ -2106,7 +2131,12 @@ def api_plans():
                 summary["changes"] = [{k: v for k, v in change.items() if k not in {"before", "after"}} for change in plan["changes"]]
                 plans.append(summary)
             for path in sorted(directory.glob("*.receipt.json"), reverse=True):
-                receipts.append(json.loads(path.read_text()))
+                receipts.append(json.loads(path.read_text(encoding="utf-8")))
+            # Plan filenames are random identities, not chronological order.
+            # ISO UTC timestamps are emitted by the plan/receipt writers.
+            plans.sort(key=lambda plan: (str(plan.get("created_at") or ""), plan["id"]), reverse=True)
+            receipts.sort(key=lambda receipt: (str(receipt.get("updated_at") or ""),
+                                                str(receipt.get("plan_id") or receipt.get("id") or "")), reverse=True)
             return jsonify({"plans": plans, "receipts": receipts})
         data = request.get_json(silent=True) or {}
         model_path, error = _cleanup_action_model_path(data)

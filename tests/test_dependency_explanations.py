@@ -88,6 +88,51 @@ def test_scanner_keeps_expression_continuations_out_of_the_tree():
     assert declarations[1].expression == "VAR kpi = 1\nRETURN kpi"
 
 
+def _parse_items(tmp_path, text):
+    tables = tmp_path / "M.SemanticModel" / "definition" / "tables"
+    tables.mkdir(parents=True)
+    (tables / "T.tmdl").write_text(text, encoding="utf-8")
+    return {parsed.name: parsed for parsed in analyzer.parse_model_items(tmp_path / "M.SemanticModel")}
+
+
+def test_kpi_child_object_is_not_folded_into_the_measure_dax_body():
+    target = next(i for i in analyzer.parse_model_items(MODEL) if i.table == "Targets" and i.name == "Target")
+    assert target.dax_body == "1000"
+
+
+def test_item_dax_body_stops_at_nested_child_objects_but_keeps_continuations(tmp_path):
+    items = _parse_items(tmp_path, (
+        "table T\n"
+        "\t/// Multi-line\n\t/// description\n"
+        "\tmeasure Multi =\n\t\t\tVAR x = [A]\n\t\t\tRETURN x\n"
+        "\t\tformatString: 0\n"
+        "\t\tdisplayFolder: KPIs\n"
+        "\t\tkpi\n\t\t\ttargetExpression = [Goal]\n\t\t\tstatusExpression =\n\t\t\t\t\t[Status]\n"
+        "\t\tchangedProperty = Name\n"
+        "\t\textendedProperty Ext =\n\t\t\t\t{ \"ref\": \"[Ext]\" }\n"
+        "\t\tannotation Note = [Annotated]\n\n"
+        "\tmeasure Fenced = ```\n\t\t\tVAR y = [B]\n\n\t\t\tRETURN y\n\t\t\t```\n"
+        "\t\tkpi\n\t\t\ttrendExpression = [Trend]\n"
+        "\t\tformatStringDefinition = [FormatRef]\n"
+        "\t\tisHidden\n\n"
+        "\tcolumn Calc = [C] + 1\n\t\tdataType: int64\n\t\tchangedProperty = DataType\n"
+        "\t\tannotation Note =\n\t\t\t\t[ColumnAnnotation]\n"
+        "\t\tisHidden\n\t\tisKey\n\t\tsortByColumn: 'Sort Key'\n\n"
+        "\tcolumn Plain\n\t\tdataType: string\n\t\tsourceColumn: Plain\n\t\tisNameInferred\n"
+    ))
+    multi = items["Multi"]
+    assert (multi.dax_body, multi.description, multi.format_string, multi.display_folder) == (
+        "VAR x = [A]\nRETURN x", "Multi-line\ndescription", "0", "KPIs")
+    fenced = items["Fenced"]
+    assert (fenced.dax_body, fenced.is_hidden) == ("VAR y = [B]\nRETURN y\n[FormatRef]", True)
+    calc = items["Calc"]
+    assert (calc.item_type, calc.dax_body, calc.data_type, calc.is_hidden, calc.is_key, calc.sort_by_column) == (
+        "Calculated Column", "[C] + 1", "int64", True, True, "Sort Key")
+    plain = items["Plain"]
+    assert (plain.item_type, plain.dax_body, plain.source_column, plain.is_inferred) == (
+        "Column", "", "Plain", True)
+
+
 def test_perspective_members_come_from_declarations_only():
     members = extract_perspective_members(
         "perspective Exec\n\t// perspectiveMeasure Ghost\n\tperspectiveTable Sales\n\t\tperspectiveMeasure Revenue\n")
@@ -109,14 +154,19 @@ def test_kpi_selector_table_creates_no_kpi_limitation(results, payload):
     assert not any("KPI Selector.tmdl" in trigger for trigger in browser_triggers)
 
 
-def test_genuine_kpi_reference_is_evidence_on_the_referenced_item(results):
+def test_genuine_kpi_reference_is_evidence_on_the_referenced_item(results, payload):
     goal = row(results, "Sales", "Revenue Goal")
     assert goal["status"] == "NOT USED"
     assert goal["removal_risk"] == "Review"
-    assert any(
-        trigger.startswith("Referenced by the KPI target expression of measure 'Targets'[Target] "
-                           "(definition/tables/Targets.tmdl:4)")
-        for trigger in goal["review_triggers"])
+    # The KPI target is evidence, not a DAX dependency of the owning measure (#92):
+    # the item stays Unused with exactly one targeted KPI trigger.
+    kpi_triggers = [trigger for trigger in goal["review_triggers"] if "KPI" in trigger]
+    assert len(kpi_triggers) == 1
+    assert kpi_triggers[0].startswith("Referenced by the KPI target expression of measure 'Targets'[Target] "
+                                      "(definition/tables/Targets.tmdl:4)")
+    browser = item(payload, "Sales", "Revenue Goal")
+    assert browser["usageState"] == "Unused"
+    assert browser["deleteSafety"] == "Review"
     # Sales[Revenue] is used directly; the KPI reference must not downgrade it.
     assert row(results, "Sales", "Revenue")["status"] == "USED"
 
@@ -184,15 +234,14 @@ def test_perspective_membership_is_concrete_evidence_not_runtime_use(results, pa
     goal = row(results, "Sales", "Revenue Goal")
     assert goal["perspectives"] == [
         {"perspective": "Executive", "source_file": "definition/perspectives/Executive.tmdl", "line": 4}]
-    assert any(t == ("Member of perspective Executive (definition/perspectives/Executive.tmdl). Removing the "
-                     "item also removes this perspective member; membership alone does not prove a report "
-                     "executes it.") for t in goal["review_triggers"])
+    assert not any("perspective" in t.lower() for t in goal["review_triggers"])
     assert goal["status"] == "NOT USED"
     assert not any(limitation["area"] == "Perspectives" for limitation in results["analysis_limitations"])
     browser = item(payload, "Sales", "Revenue Goal")
     assert browser["perspectiveMemberships"] == [
         {"perspective": "Executive", "sourceFile": "definition/perspectives/Executive.tmdl"}]
     assert browser["usageCount"] == 0  # membership never counts as a Report Reference
+    assert browser["usageState"] == "Unused"
     assert browser["deleteSafety"] == "Review"
 
 
@@ -218,8 +267,8 @@ def test_deletion_guards_block_whole_group_and_allow_coordinated_final_state(tmp
     (model / "definition/tables/Sales.tmdl").write_text(
         "table Sales\n\tmeasure Rows = COUNTROWS(Sales)\n\tmeasure Outside = CALCULATE([Rows], ALL('Dim'))\n",
         encoding="utf-8")
-    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../Plain.SemanticModel"}}}))
-    (report / "definition/report.json").write_text("{}")
+    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../Plain.SemanticModel"}}}), encoding="utf-8")
+    (report / "definition/report.json").write_text("{}", encoding="utf-8")
     whole_table = [{"action": "delete", "table": "Dim", "name": "", "item_type": "table"}]
     blocked = evaluate_deletion_policy(model, [report], whole_table)
     assert [v["message"] for v in blocked["violations"]] == ["Table Dim is required by retained Sales[Outside]."]
@@ -296,18 +345,11 @@ def test_coordinated_group_deletion_clears_the_groups_own_coverage_gap():
     assert all(l["cleared_reason"] == "Coverage gap owned by 'Time Intelligence' is cleared because the plan "
                "removes the calculation group and every retained parent-table consumer."
                for l in policy["scope"]["cleared_limitations"])
-    # Item-specific guards are unchanged: a used consumer and a perspective member
-    # still require review. The cleared gap, the group-structure reasons and, since
-    # #103, the hidden flag of the group's own Ordinal column no longer appear.
-    remaining = {(v["rule_id"], v["table"], v["name"]): v["message"] for v in policy["violations"]}
-    assert set(remaining) == {
-        ("SMC-D004", "Sales", "Revenue Ignoring TI 01"),
-        ("SMC-D005", "Time Intelligence", "Name"),
-    }
-    name = remaining[("SMC-D005", "Time Intelligence", "Name")]
-    assert name == ("Review required for Time Intelligence[Name]: Member of perspective Executive "
-                    "(definition/perspectives/Executive.tmdl). Removing the item also removes this perspective "
-                    "member; membership alone does not prove a report executes it.")
+    # Item-specific guards are unchanged: a used consumer still requires review. The
+    # cleared gap, the group-structure reasons, perspective membership and the hidden
+    # flag of the group's own Ordinal column no longer appear.
+    remaining = {(v["rule_id"], v["table"], v["name"]) for v in policy["violations"]}
+    assert remaining == {("SMC-D004", "Sales", "Revenue Ignoring TI 01")}
 
 
 def test_coordinated_group_deletion_is_allowed_when_no_item_guard_remains(tmp_path):

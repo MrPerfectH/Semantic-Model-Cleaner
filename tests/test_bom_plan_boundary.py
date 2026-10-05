@@ -12,11 +12,11 @@ def project(tmp_path, newline='\n'):
     tables = model / 'definition/tables'
     tables.mkdir(parents=True)
     (tables / 'Sales.tmdl').write_bytes(('\ufefftable Sales' + newline + '\tmeasure Idle = 1' + newline).encode())
-    (tables / 'Other.tmdl').write_text('table Other\n\tmeasure Constant = 1\n')
-    (model / 'definition/model.tmdl').write_text('model Model\n\tref table Sales\n\tref table Other\n')
+    (tables / 'Other.tmdl').write_text('table Other\n\tmeasure Constant = 1\n', encoding="utf-8")
+    (model / 'definition/model.tmdl').write_text('model Model\n\tref table Sales\n\tref table Other\n', encoding="utf-8")
     (report / 'definition').mkdir(parents=True)
-    (report / 'definition/report.json').write_text('{}')
-    (report / 'definition.pbir').write_text(json.dumps({'datasetReference': {'byPath': {'path': '../M.SemanticModel'}}}))
+    (report / 'definition/report.json').write_text('{}', encoding="utf-8")
+    (report / 'definition.pbir').write_text(json.dumps({'datasetReference': {'byPath': {'path': '../M.SemanticModel'}}}), encoding="utf-8")
     return model, report
 
 

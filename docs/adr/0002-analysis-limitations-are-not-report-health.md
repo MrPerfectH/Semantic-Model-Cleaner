@@ -34,11 +34,15 @@ Two detection faults made it worse (issues #82 and #83):
    descriptions, comments, string literals and DAX bodies never produce a
    finding. Each finding carries the owning object and `file:line`.
 2. **Evidence is not a limitation.** Perspective membership and
-   calculation-group structure are concrete metadata facts. They appear as
-   item-specific Review reasons that name the perspective, the member, the group
-   and its retained parent-table consumers. Membership alone never counts as a
-   Report Reference or proof of runtime use; the existing reviewed-change policy
-   (Review) still applies.
+   calculation-group structure are concrete metadata facts. Calculation-group
+   structure appears as item-specific Review reasons that name the group and its
+   retained parent-table consumers. Perspective membership is informational
+   evidence naming the perspective and the member: a perspective is a view over
+   the model, not a consumer, so membership never counts as a Report Reference or
+   proof of runtime use and never changes the Cleanup Recommendation (an unused
+   member stays Safe; deleting it also removes the member). Owner decision
+   2026-10-05, issue #101; this supersedes the earlier wording that listed
+   membership among the Review reasons.
 3. **Analysis limitations get their own surface.** The analyzer returns a
    distinct `analysis_limitations` list. Each entry states the feature, owning
    object, source location, what was checked, what remains unchecked and the

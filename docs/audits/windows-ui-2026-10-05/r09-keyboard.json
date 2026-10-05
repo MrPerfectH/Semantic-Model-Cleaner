@@ -1,0 +1,42 @@
+[
+  {
+    "layout": "v2",
+    "viewport": [
+      1366,
+      768
+    ],
+    "keyboard_roundtrip": true,
+    "external_requests": [],
+    "errors": []
+  },
+  {
+    "layout": "v2",
+    "viewport": [
+      1280,
+      800
+    ],
+    "keyboard_roundtrip": true,
+    "external_requests": [],
+    "errors": []
+  },
+  {
+    "layout": "classic",
+    "viewport": [
+      1366,
+      768
+    ],
+    "keyboard_roundtrip": true,
+    "external_requests": [],
+    "errors": []
+  },
+  {
+    "layout": "classic",
+    "viewport": [
+      1280,
+      800
+    ],
+    "keyboard_roundtrip": true,
+    "external_requests": [],
+    "errors": []
+  }
+]

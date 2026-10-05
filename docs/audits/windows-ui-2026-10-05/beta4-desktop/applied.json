@@ -1,0 +1,19 @@
+{
+  "measures": [
+    "Revenue",
+    "Unused Base",
+    "Unused Derived",
+    "Broken Revenue",
+    "Hidden Forecast",
+    "Report Target",
+    "Revenue vs Target"
+  ],
+  "powerbi_process": 37300,
+  "visual_errors": [],
+  "query_rows": [
+    {
+      "Rows": 1,
+      "Revenue": 1.0
+    }
+  ]
+}

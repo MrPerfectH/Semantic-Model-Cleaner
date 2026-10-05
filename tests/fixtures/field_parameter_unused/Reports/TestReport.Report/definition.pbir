@@ -1,0 +1,7 @@
+{
+  "datasetReference": {
+    "byPath": {
+      "path": "../../Models/TestModel.SemanticModel"
+    }
+  }
+}

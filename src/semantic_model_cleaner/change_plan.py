@@ -387,7 +387,7 @@ def save_plan(plan, directory):
 
 
 def load_plan(path):
-    plan = json.loads(Path(path).read_text())
+    plan = json.loads(Path(path).read_text(encoding="utf-8"))
     _check(plan)
     return plan
 
@@ -434,7 +434,7 @@ def _lock(roots, directory):
     except FileExistsError as exc:
         raise PlanError(f'Another operation is active or interrupted. Inspect the journal and lock before retrying: {path}') from exc
     try:
-        with os.fdopen(fd, 'w') as handle:
+        with os.fdopen(fd, 'w', encoding="utf-8") as handle:
             json.dump({'pid': os.getpid(), 'model': str(roots['model']), 'created_at': datetime.now(timezone.utc).isoformat()}, handle)
             handle.flush()
             os.fsync(handle.fileno())
@@ -499,7 +499,7 @@ def restore_plan(plan, directory):
     with _lock(roots, directory):
         if not journal.exists():
             raise PlanError('No apply receipt exists for this plan.')
-        receipt = json.loads(journal.read_text())
+        receipt = json.loads(journal.read_text(encoding="utf-8"))
         if receipt['status'] not in {'applied', 'applying', 'recovery_required', 'restoring'}:
             raise PlanError('This operation is not awaiting restoration.')
         pending = []
@@ -545,14 +545,14 @@ def recover_interrupted_lock(plan, directory):
     if os.name != 'posix':
         raise PlanError('Automatic abandoned-lock recovery is available on POSIX only. On Windows verify the recorded process has exited before removing the lock, then use restore.')
     try:
-        data = json.loads(lock.read_text())
+        data = json.loads(lock.read_text(encoding="utf-8"))
         pid = int(data['pid'])
         if pid <= 0 or data.get('model') != str(roots['model']):
             raise PlanError('Invalid lock owner record; inspect it manually.')
         os.kill(pid, 0)
     except ProcessLookupError:
         # Do not remove a lock replaced since inspection.
-        if json.loads(lock.read_text()) != data:
+        if json.loads(lock.read_text(encoding="utf-8")) != data:
             raise PlanError('Lock changed during recovery.')
         lock.unlink()
         return {'ok': True, 'state': 'lock_recovered', 'next': 'Inspect the receipt, then restore the original files.'}

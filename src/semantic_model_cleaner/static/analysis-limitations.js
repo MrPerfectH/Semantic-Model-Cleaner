@@ -34,7 +34,6 @@
     if (cleanup === 'Keep') return 'Next: treat as required model structure.';
     if (item && item.reviewBasis === 'entity_type') return 'Next: confirm the whole ' + (item.entityKind || 'entity') + ' is no longer needed, then delete all of its items in one reviewed plan.';
     if (item && item.modelRole === 'Calculation group selector') return 'Next: review the whole calculation group through a table plan.';
-    if (item && item.perspectiveMemberships && item.perspectiveMemberships.length) return 'Next: confirm the perspective no longer needs this member, then use a reviewed plan.';
     return 'Next: inspect the evidence below, then decide with a reviewed plan.';
   }
 

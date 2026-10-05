@@ -48,7 +48,7 @@ setResultsData({items:[]});assert.match(headings[0].textContent,/unavailable/);
 @pytest.mark.parametrize('layout', ['index.html', 'index_v2.html'])
 def test_both_layouts_load_shared_evidence(layout):
     template = Path(webapp.__file__).parent / 'templates' / layout
-    text = template.read_text()
+    text = template.read_text(encoding="utf-8")
     assert text.index("filename='analysis-jobs.js'") < text.index("filename='schema-evidence.js'")
     response = webapp.app.test_client().get('/static/schema-evidence.js')
     assert response.status_code == 200

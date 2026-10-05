@@ -30,8 +30,8 @@ def project(tmp_path):
     report = tmp_path / 'R.Report'
     tables = model / 'definition/tables'
     tables.mkdir(parents=True)
-    (tables / 'Sales.tmdl').write_text('table Sales\n\tcolumn Amount\n\tmeasure Revenue = SUM(Sales[Amount])\n')
-    (tables / 'Measures.tmdl').write_text('table Measures\n\tmeasure Constant = 1\n')
+    (tables / 'Sales.tmdl').write_text('table Sales\n\tcolumn Amount\n\tmeasure Revenue = SUM(Sales[Amount])\n', encoding="utf-8")
+    (tables / 'Measures.tmdl').write_text('table Measures\n\tmeasure Constant = 1\n', encoding="utf-8")
     visual = report / 'definition/pages/P/visuals/V/visual.json'
     visual.parent.mkdir(parents=True)
     visual.write_text(json.dumps({'visual': {
@@ -40,12 +40,12 @@ def project(tmp_path):
             {'field': {'Column': {'Expression': {'SourceRef': {'Entity': 'Legacy Sales'}}, 'Property': 'Amount'}}},
         ]}}},
         'objects': {'labels': [{'selector': {'metadata': 'Sales.Gone'}}]},
-    }}))
-    (report / 'definition/report.json').write_text('{}')
-    (report / 'definition.pbir').write_text(json.dumps({'datasetReference': {'byPath': {'path': '../M.SemanticModel'}}}))
+    }}), encoding="utf-8")
+    (report / 'definition/report.json').write_text('{}', encoding="utf-8")
+    (report / 'definition.pbir').write_text(json.dumps({'datasetReference': {'byPath': {'path': '../M.SemanticModel'}}}), encoding="utf-8")
     (report / 'definition/reportExtensions.json').write_text(json.dumps({'name': 'extension', 'entities': [
         {'name': 'Sales', 'measures': [{'name': 'Local', 'expression': '[Revenue] + 1'}]},
-    ]}))
+    ]}), encoding="utf-8")
     entry = {'report_path': str(report), 'artifact_path': 'definition/pages/P/visuals/V/visual.json'}
     operations = {
         'actions': {'actions': [{'action': 'hide', 'table': 'Sales', 'name': 'Revenue', 'item_type': 'Measure'}]},
@@ -116,7 +116,7 @@ def test_saved_api_plan_still_previews_applies_verifies_receipts_and_restores(tm
     assert snapshot(tmp_path / 'project') != original
     assert client.post(url + '/verify').json['state'] == 'applied'
     receipt_file = tmp_path / 'state/plans' / (plan['id'] + '.receipt.json')
-    assert json.loads(receipt_file.read_text())['status'] == 'applied'
+    assert json.loads(receipt_file.read_text(encoding="utf-8"))['status'] == 'applied'
     restored = client.post(url + '/restore')
     assert restored.status_code == 200, restored.json
     assert client.post(url + '/verify').json['state'] == 'original'
@@ -146,9 +146,9 @@ def test_cli_public_dispatch_withholds_apply_even_without_backup(tmp_path):
 def test_cli_public_dispatch_uses_clean_findings_error_exit_codes(tmp_path, case, expected):
     _, report, _ = project(tmp_path)
     if case == 'clean':
-        (report / 'definition/pages/P/visuals/V/visual.json').write_text('{}')
+        (report / 'definition/pages/P/visuals/V/visual.json').write_text('{}', encoding="utf-8")
     elif case == 'invalid_json':
-        (report / 'definition/pages/P/visuals/V/visual.json').write_text('{')
+        (report / 'definition/pages/P/visuals/V/visual.json').write_text('{', encoding="utf-8")
     selected = tmp_path / 'missing' if case == 'missing' else tmp_path
     original = snapshot(tmp_path)
     completed = subprocess.run([sys.executable, '-c',
@@ -167,7 +167,7 @@ def test_cli_public_plan_workflow_cleans_then_restores_exact_report_bytes(tmp_pa
     model, report, operations = project(tmp_path / 'project')
     original = snapshot(tmp_path / 'project')
     source = tmp_path / 'operations.json'
-    source.write_text(json.dumps([{'kind': 'clean_stale', **operations['clean_stale']}]))
+    source.write_text(json.dumps([{'kind': 'clean_stale', **operations['clean_stale']}]), encoding="utf-8")
     target = tmp_path / 'reviewed.plan.json'
     journal = tmp_path / 'journal'
 
@@ -180,7 +180,7 @@ def test_cli_public_plan_workflow_cleans_then_restores_exact_report_bytes(tmp_pa
 
     invoke('plan', tmp_path / 'project', '--model', model, '--report', report,
            '--operations', source, '-o', target)
-    plan = json.loads(target.read_text())
+    plan = json.loads(target.read_text(encoding="utf-8"))
     assert plan['changes']
     assert snapshot(tmp_path / 'project') == original
     assert invoke('verify', target, expected=1)['state'] == 'original'

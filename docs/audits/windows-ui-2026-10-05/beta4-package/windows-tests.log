@@ -1,0 +1,25 @@
+..........................................ss............................ [  6%]
+........................................................................ [ 13%]
+........................................................................ [ 20%]
+........................................s...........s................... [ 27%]
+........................................................................ [ 34%]
+........................................................................ [ 41%]
+........................................................................ [ 48%]
+........................................................................ [ 55%]
+........................................................................ [ 62%]
+........................................................................ [ 69%]
+........................................................................ [ 76%]
+.............ss......................................................s.. [ 82%]
+.......................................s................................ [ 89%]
+........................................................................ [ 96%]
+.................................                                        [100%]
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_analysis_exports.py:133: Symlinks unavailable: [WinError 1314] A required privilege is not held by the client: 'C:\\Users\\PrzemekHarazny\\AppData\\Local\\Temp\\pytest-of-PrzemekHarazny\\pytest-114\\test_alias_cannot_overwrite_ar0\\Power BI Project\\Sales.SemanticModel\\definition\\tables\\Sales.tmdl' -> 'C:\\Users\\PrzemekHarazny\\AppData\\Local\\Temp\\pytest-of-PrzemekHarazny\\pytest-114\\test_alias_cannot_overwrite_ar0\\alias'
+SKIPPED [1] tests\test_analysis_exports.py:133: Symlinks unavailable: [WinError 1314] A required privilege is not held by the client: 'C:\\Users\\PrzemekHarazny\\AppData\\Local\\Temp\\pytest-of-PrzemekHarazny\\pytest-114\\test_alias_cannot_overwrite_ar1\\Power BI Project\\Sales.SemanticModel' -> 'C:\\Users\\PrzemekHarazny\\AppData\\Local\\Temp\\pytest-of-PrzemekHarazny\\pytest-114\\test_alias_cannot_overwrite_ar1\\alias'
+SKIPPED [1] tests\test_change_plans.py:190: POSIX permission bits
+SKIPPED [1] tests\test_ci_check.py:131: File symlinks unavailable on this platform: [WinError 1314] A required privilege is not held by the client: 'C:\\Users\\PrzemekHarazny\\AppData\\Local\\Temp\\pytest-of-PrzemekHarazny\\pytest-114\\test_baseline_output_cannot_ov3\\R.Report\\definition\\report.json' -> 'C:\\Users\\PrzemekHarazny\\AppData\\Local\\Temp\\pytest-of-PrzemekHarazny\\pytest-114\\test_baseline_output_cannot_ov3\\baseline-link.json'
+SKIPPED [1] tests\test_report_mutation_scope.py:26: Directory symlinks unavailable on this platform: [WinError 1314] A required privilege is not held by the client: 'C:\\Users\\PrzemekHarazny\\AppData\\Local\\Temp\\pytest-of-PrzemekHarazny\\pytest-114\\test_report_actions_refuse_cro4\\second\\Same.Report' -> 'C:\\Users\\PrzemekHarazny\\AppData\\Local\\Temp\\pytest-of-PrzemekHarazny\\pytest-114\\test_report_actions_refuse_cro4\\first\\Same.Report\\linked'
+SKIPPED [1] tests\test_report_mutation_scope.py:26: Directory symlinks unavailable on this platform: [WinError 1314] A required privilege is not held by the client: 'C:\\Users\\PrzemekHarazny\\AppData\\Local\\Temp\\pytest-of-PrzemekHarazny\\pytest-114\\test_report_actions_refuse_cro5\\second\\Same.Report' -> 'C:\\Users\\PrzemekHarazny\\AppData\\Local\\Temp\\pytest-of-PrzemekHarazny\\pytest-114\\test_report_actions_refuse_cro5\\first\\Same.Report\\linked'
+SKIPPED [1] tests\test_scale_scripts.py:48: Symlinks unavailable on this platform: [WinError 1314] A required privilege is not held by the client: 'C:\\Users\\PrzemekHarazny\\AppData\\Local\\Temp\\pytest-of-PrzemekHarazny\\pytest-114\\test_generator_refuses_existin0\\missing' -> 'C:\\Users\\PrzemekHarazny\\AppData\\Local\\Temp\\pytest-of-PrzemekHarazny\\pytest-114\\test_generator_refuses_existin0\\linked'
+SKIPPED [1] tests\test_ui_acceptance_fixture.py:123: This host does not allow creating directory symlinks.
+1033 passed, 8 skipped in 330.44s (0:05:30)

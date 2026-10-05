@@ -89,8 +89,12 @@ A Review recommendation that rests only on the Tool Entity rule, as opposed to R
 _Avoid_: Soft review, default review
 
 **Perspective Membership**:
-Concrete model metadata stating that a table, measure, column, or hierarchy belongs to a named perspective. It is evidence for a reviewed change, not proof that a report executes the item, and not an Analysis Limitation.
+Concrete model metadata stating that a table, measure, column, or hierarchy belongs to a named perspective. A perspective is a view over the model, not a consumer: membership is informational evidence shown so the user sees which perspectives lose a member when the item is deleted. It never changes a Cleanup Recommendation, does not block Safe, is not proof that a report executes the item, and is not an Analysis Limitation.
 _Avoid_: Perspective usage, perspective dependency
+
+**Translation Membership**:
+Concrete culture metadata stating that a table, measure, column, or hierarchy has a translated caption, description, or display folder in a named culture, read from the `translations` block of a culture TMDL file with its source location. It is informational evidence only: it tells the user which translations are removed together with the item, but a translation is just a translation, never a reason to keep an item, so it does not change the Cleanup Recommendation. It is not proof that a report uses the item and not an Analysis Limitation. A culture's `linguisticMetadata` payload is not Translation Membership; it remains an Analysis Limitation owned by the culture.
+_Avoid_: Translation usage, translation reference, culture dependency
 
 **Report Health**:
 The product surface that explains PBIR problems, stale references, invalid report JSON, and repair opportunities. Model Analysis Limitations are not part of it.

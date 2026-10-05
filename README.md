@@ -8,6 +8,8 @@ It is designed for local use against files on your machine. Version `0.4.0b3`
 is the public beta for Power BI practitioners who already work with PBIR
 and TMDL.
 
+> This branch contains an **unpublished Windows candidate** with additional protection, first-run, recovery and keyboard improvements. The linked 0.4.0b3 download predates those changes. See the [candidate notes](docs/releases/windows-candidate.md).
+
 ## Current Status
 
 - Project maturity: public beta `0.4.0b3`
@@ -33,7 +35,8 @@ and TMDL.
 
 ## Requirements
 
-- Python `3.11+`
+- Windows ZIP: Windows x64; no Python installation required.
+- CLI or source install: Python `3.11+`.
 
 ## Install
 
@@ -80,7 +83,15 @@ Packaged runtime behavior:
 
 ## Quick Start
 
+### Windows candidate
+
+Open **Try demo** or **Open Power BI Project**, review the selected Semantic Model and connected Reports, then choose **Analyze**. Inspect one item’s Usage and dependencies before preparing changes. Review the exact file diff before apply. **Changes & history** provides file verification and guarded restore. See the [Windows walkthrough](docs/quickstart.md).
+
 ### CLI
+
+Run `smc --help` for the complete command guide and `smc --version` for the
+installed version. The [CLI automation contract](docs/cli/README.md) documents
+JSON output, exit codes, path/filter differences, and a disposable reviewed-change workflow.
 
 Run the analyzer from a workspace root:
 
@@ -160,7 +171,7 @@ Optional flags:
 
 ```bash
 semantic-model-cleaner-web . --port 8080
-semantic-model-cleaner-web . --host 0.0.0.0
+semantic-model-cleaner-web . --host localhost
 semantic-model-cleaner-web . --debug
 ```
 
@@ -169,6 +180,13 @@ Module entrypoint:
 ```bash
 python3 -m semantic_model_cleaner.web .
 ```
+
+The web app is local-only: both launchers accept `127.0.0.1` or `localhost`, and
+remote binding is disabled. Both layouts handle the per-launch request token
+automatically. Local scripted HTTP clients must first read `/api/session`, then
+send its token in the `X-SMC-Token` header; use JSON for changes. CLI file-based
+commands need no HTTP token. See [local HTTP access](docs/local-http-security.md)
+for the supported client protocol and browser boundary.
 
 ## Demo Workspace
 
@@ -183,6 +201,14 @@ A richer synthetic QA workspace is available under [`examples/product-qa-workspa
 
 Both web exports download the latest completed analysis without re-running it.
 
+CLI exports (`full`, `unused`, `json`, and `xlsx`) must be saved outside Semantic
+Model and Report artifact folders, including artifacts excluded from the analysis.
+This also applies to Excel's default output in the current directory. Use
+`--output` to choose an external directory; unsafe destinations return exit code 2
+without writing project files. Resolved symlink/junction aliases are checked, and
+existing files with multiple hard links are rejected; choose a new output file
+instead. Ordinary external export files can still be overwritten.
+
 ## Safety Notes
 
 - The workflow is intentionally `1 semantic model -> 1 or more reports`
@@ -190,6 +216,7 @@ Both web exports download the latest completed analysis without re-running it.
 - Every applied plan records a receipt and original bytes for guarded restore; legacy direct-write HTTP routes are withheld
 - Field parameters backed by `NAMEOF(...)` are supported
 - Calculation groups are recognized (type, items, selector column, retained parent-table DAX consumers); calculation item expressions remain Analysis limitations and keep unused items at Review
+- Culture translations are read structurally as per-object Translation Membership (culture, file and line), shown as informational evidence that never changes the Cleanup Recommendation; `linguisticMetadata` is an Analysis limitation owned by its culture, and cleanup plans do not yet rewrite culture files
 - Analysis limitations are listed separately from Report Health with distinct-limitation and affected-item counts; remaining caveats include broader metadata indirection and malformed or skipped JSON
 
 ## Development
