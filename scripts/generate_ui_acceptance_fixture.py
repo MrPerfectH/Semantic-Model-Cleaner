@@ -60,7 +60,7 @@ def generate_fixture(output: Path) -> dict:
     lines = ['table Sales']
     for name, data_type, properties in columns:
         lines += ['\tcolumn ' + _name(name), '\t\tdataType: ' + data_type,
-                  '\t\tsourceColumn: ' + _name(name), *['\t\t' + prop for prop in properties]]
+                  '\t\tsourceColumn: ' + name, *['\t\t' + prop for prop in properties]]
     for name, expression, properties in [
         ('Revenue', 'SUM(Sales[Amount])', ['formatString: #,0.00', 'displayFolder: Performance']),
         ('Safe Cleanup Candidate', '0', ['displayFolder: Cleanup']),
@@ -73,14 +73,17 @@ def generate_fixture(output: Path) -> dict:
                   *['\t\t' + prop for prop in properties]]
     column_names = ', '.join(json.dumps(name) for name, _, _ in columns)
     values = ', '.join('"Synthetic"' if data_type == 'string' else '1' for _, data_type, _ in columns)
+    m_types = {'decimal': 'type number', 'int64': 'Int64.Type', 'string': 'type text'}
+    column_types = ', '.join('{' + json.dumps(name) + ', ' + m_types[data_type] + '}'
+                             for name, data_type, _ in columns)
     lines += ['\tpartition Sales = m', '\t\tmode: import', '\t\tsource =',
-              '\t\t\t#table({' + column_names + '}, {{' + values + '}})']
+              '\t\t\tTable.TransformColumnTypes(#table({' + column_names + '}, {{' + values + '}}), {' + column_types + '})']
     _write(model / 'definition/tables/Sales.tmdl', '\n'.join(lines) + '\n')
     _write(model / 'definition/tables/Date.tmdl',
            'table Date\n\tcolumn DateKey\n\t\tdataType: int64\n\t\tisKey\n\t\tsourceColumn: DateKey\n'
            '\tcolumn DateLabel\n\t\tdataType: string\n\t\tsourceColumn: DateLabel\n'
            '\tpartition Date = m\n\t\tmode: import\n\t\tsource =\n'
-           '\t\t\t#table({"DateKey", "DateLabel"}, {{1, "Synthetic day"}})\n')
+           '\t\t\t#table(type table [DateKey = Int64.Type, DateLabel = text], {{1, "Synthetic day"}})\n')
     _write(model / 'definition/model.tmdl', 'model Model\n\tculture: en-US\n\nref table Sales\nref table Date\n')
     _write(model / 'definition/relationships.tmdl',
            'relationship SalesDate\n\tfromColumn: Sales.DateKey\n\ttoColumn: Date.DateKey\n'

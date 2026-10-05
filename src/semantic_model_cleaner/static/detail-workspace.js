@@ -381,7 +381,7 @@
     return '<p><strong>' + changes.length + ' file change(s)</strong> · Review differences before applying.</p>' + scopeHtml(plan.scope) + validationHtml(plan.validation) + changes.map(function (change, index) { return '<details' + (index === 0 ? ' open' : '') + '><summary>' + esc(change.path || change.artifact || 'File') + ' · ' + esc(change.change || 'modified') + '</summary><pre tabindex="0">' + esc(change.diff || 'No text difference available.') + '</pre></details>'; }).join('');
   }
   function receiptHtml(receipt) {
-    return '<h3>' + esc(receipt.status || 'Change recorded') + '</h3><p class="object-note">Receipt ' + esc(receipt.id || '') + '</p>' + validationHtml(receipt.validation) + '<h3>Files</h3>' + formatDetailList((receipt.changed_files || []).map(function (file) { return typeof file === 'string' ? file : file.path || JSON.stringify(file); }));
+    return '<h3>' + esc(receipt.status || 'Change recorded') + '</h3><p class="object-note">Receipt ' + esc(receipt.id || '') + ' · ' + esc(receipt.updated_at || '') + '</p>' + scopeHtml(receipt.scope) + validationHtml(receipt.validation) + '<h3>Files</h3>' + formatDetailList((receipt.changed_files || []).map(function (file) { return typeof file === 'string' ? file : file.path || JSON.stringify(file); }));
   }
   function consumedDraftFields(operations, item, tableName) {
     var fields = [];

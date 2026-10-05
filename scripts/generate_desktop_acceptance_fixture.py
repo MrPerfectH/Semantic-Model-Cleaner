@@ -3,6 +3,8 @@
 The original fixture intentionally includes invalid DAX, a missing Report
 Reference and an inferred-column declaration that Desktop cannot deserialize.
 This derivative removes those negative cases for an actual Desktop round trip.
+It materializes the report-extension expressions as model measures for a local
+Import model, so both reports have a valid native Desktop baseline.
 """
 from pathlib import Path
 import argparse
@@ -26,6 +28,16 @@ def generate_desktop_fixture(output):
     text = text.replace("Owner's Region [Synthetic]", "Owner's Region Synthetic")
     table.write_text(text, encoding='utf-8')
     for report in fixture['reports']:
+        extensions = report / 'definition/reportExtensions.json'
+        if extensions.exists():
+            metadata = json.loads(extensions.read_text(encoding='utf-8'))
+            for entity in metadata['entities']:
+                target = fixture['model'] / ('definition/tables/' + entity['name'] + '.tmdl')
+                with target.open('a', encoding='utf-8') as stream:
+                    for measure in entity['measures']:
+                        name = measure['name'].replace("'", "''")
+                        stream.write("\n\tmeasure '" + name + "' = " + measure['expression'] + '\n')
+            extensions.unlink()
         for path in (report / 'definition/pages').rglob('visual.json'):
             visual = json.loads(path.read_text(encoding='utf-8'))
             values = visual['visual']['query']['queryState']['Values']['projections']

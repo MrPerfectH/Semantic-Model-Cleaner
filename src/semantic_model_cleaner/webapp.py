@@ -2111,6 +2111,11 @@ def api_plans():
                 plans.append(summary)
             for path in sorted(directory.glob("*.receipt.json"), reverse=True):
                 receipts.append(json.loads(path.read_text(encoding="utf-8")))
+            # Plan filenames are random identities, not chronological order.
+            # ISO UTC timestamps are emitted by the plan/receipt writers.
+            plans.sort(key=lambda plan: (str(plan.get("created_at") or ""), plan["id"]), reverse=True)
+            receipts.sort(key=lambda receipt: (str(receipt.get("updated_at") or ""),
+                                                str(receipt.get("plan_id") or receipt.get("id") or "")), reverse=True)
             return jsonify({"plans": plans, "receipts": receipts})
         data = request.get_json(silent=True) or {}
         model_path, error = _cleanup_action_model_path(data)

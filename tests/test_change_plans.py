@@ -23,6 +23,35 @@ def hide_operation(model):
     return {'kind': 'actions', 'actions': [{'action': 'hide', 'table': item.table, 'name': item.name, 'item_type': item.item_type}]}
 
 
+def test_history_orders_actual_time_not_random_plan_identity(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from semantic_model_cleaner import webapp
+
+    identities = iter(['f' * 32, '0' * 32])
+    monkeypatch.setattr(plans.uuid, 'uuid4', lambda: SimpleNamespace(hex=next(identities)))
+    directory = tmp_path / 'history'
+    monkeypatch.setattr(webapp, '_plan_directory', lambda: directory)
+    created = []
+    for name in ('older', 'newer'):
+        model, report = project(tmp_path / name)
+        plan = plans.create_plan(model, [report], [hide_operation(model)])
+        plans.save_plan(plan, directory)
+        assert plans.apply_plan(plan, directory)['ok']
+        created.append(plan)
+    response = webapp.app.test_client().get('/api/plans')
+    assert response.status_code == 200
+    history = response.get_json()
+    expected = [created[1]['id'], created[0]['id']]
+    assert [entry['id'] for entry in history['plans']] == expected
+    assert [entry['plan_id'] for entry in history['receipts']] == expected
+    # Restoring an older change is the latest history event, but does not
+    # change the creation order of prepared plans.
+    assert plans.restore_plan(created[0], directory)['ok']
+    history = webapp.app.test_client().get('/api/plans').get_json()
+    assert [entry['id'] for entry in history['plans']] == expected
+    assert history['receipts'][0]['plan_id'] == created[0]['id']
+
+
 def test_preview_apply_verify_restore_byte_exact(tmp_path):
     model, report = project(tmp_path)
     original = plans._inventory(plans._roots(model, [report]))
