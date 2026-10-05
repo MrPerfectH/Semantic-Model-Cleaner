@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Semantic Model Cleaner</title>
-  <meta name="description" content="Local-first Power BI PBIR and TMDL analysis with a Windows download path, source access, and separate stable and beta channels.">
+  <meta name="description" content="Local-first Power BI PBIR and TMDL analysis with a Windows download path, source access, and a clearly labeled public beta.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -28,15 +28,15 @@
           <div class="eyebrow">Local-first Power BI cleanup</div>
           <h1>Review what your semantic model still uses before you delete anything.</h1>
           <p class="lede">
-            Semantic Model Cleaner scans one `.SemanticModel` against one or more `.Report` folders,
-            highlights unused items, and gives you a safer local workflow for cleanup.
+            Semantic Model Cleaner scans one <code>.SemanticModel</code> against one or more <code>.Report</code> folders,
+            shows supported usage evidence and lets you review exact cleanup changes. Conclusions cover only the selected scope.
           </p>
           <div class="cta-row">
-            <a class="btn btn-primary" href="https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b2/semantic-model-cleaner-windows-x64-0.4.0b2.zip">Download Windows Public Beta</a>
+            <a class="btn btn-primary" href="https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b3/semantic-model-cleaner-windows-x64-0.4.0b3.zip">Download Windows Public Beta</a>
             <a class="btn btn-secondary" href="https://github.com/MrPerfectH/Semantic-Model-Cleaner">Browse Source</a>
           </div>
           <div class="hero-note">
-            Current release: `0.4.0b2` public beta, with a local web UI, CLI, and immutable versioned downloads.
+            Published download: <strong>0.4.0b3 public beta</strong>. The next Windows candidate is under verification and has not been published.
           </div>
         </section>
 
@@ -64,25 +64,25 @@
       <section class="section download-section" id="download">
         <div class="section-head">
           <div class="eyebrow">Download highlights</div>
-          <h2>Pick the channel and format that matches your workflow.</h2>
+          <h2>Start with the Windows public beta.</h2>
         </div>
         <div class="download-grid">
           <article class="download-card">
             <div class="download-chip">Public beta ZIP</div>
-            <h3>Windows 0.4.0b2</h3>
-            <p>Download the versioned ZIP and its SHA-256 sidecar. Extract the complete ZIP, then launch the unsigned `.exe`.</p>
-            <a class="text-link" href="https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b2/semantic-model-cleaner-windows-x64-0.4.0b2.zip">Download v0.4.0b2</a>
+            <h3>Windows 0.4.0b3</h3>
+            <p>Download the versioned ZIP and its SHA-256 sidecar. Extract the complete ZIP, then launch the unsigned <code>.exe</code>.</p>
+            <a class="text-link" href="https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b3/semantic-model-cleaner-windows-x64-0.4.0b3.zip">Download v0.4.0b3</a> · <a class="text-link" href="https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b3/semantic-model-cleaner-windows-x64-0.4.0b3.zip.sha256">SHA-256 checksum</a>
           </article>
           <article class="download-card">
             <div class="download-chip">Beta prereleases</div>
             <h3>Test prerelease builds</h3>
-            <p>Use the GitHub prereleases tab when you want early-access flows. GitHub marks these releases as prereleases; keep them separate from stable installs.</p>
-            <a class="text-link" href="https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b2">Open v0.4.0b2 prerelease</a>
+            <p>The public release is a beta. Evaluate it on disposable copies. The upcoming candidate includes additional file protection and interface improvements.</p>
+            <a class="text-link" href="https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b3">Open v0.4.0b3 prerelease</a>
           </article>
           <article class="download-card">
             <div class="download-chip">Source install</div>
             <h3>Clone &amp; pip</h3>
-            <p>Developers can `git clone` and `python -m pip install .` to keep working in terminal/VS Code. The repo still contains CLI/web entry points for contributors.</p>
+            <p>Developers can <code>git clone</code> and <code>python -m pip install .</code> to keep working in terminal/VS Code. The repo still contains CLI/web entry points for contributors.</p>
             <a class="text-link" href="https://github.com/MrPerfectH/Semantic-Model-Cleaner#readme">Read repository setup</a>
           </article>
         </div>
@@ -94,16 +94,16 @@
         </div>
         <div class="channel-grid">
           <article class="channel-card channel-stable">
-            <div class="card-chip">Stable</div>
-            <h3>Regular releases</h3>
-            <p>Use this if you want the safest current path. Stable releases keep beta UI hidden by default and are the right choice for day-to-day cleanup work.</p>
+            <div class="card-chip">Release status</div>
+            <h3>Public beta</h3>
+            <p>There is no stable-release recommendation for this candidate. Review supported inputs and validation limits before using a beta.</p>
             <a class="text-link" href="https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases">Open release history</a>
           </article>
           <article class="channel-card channel-beta">
             <div class="card-chip">Beta</div>
             <h3>Prerelease builds</h3>
             <p>Use this if you want to test early-access flows and give feedback before they graduate. Beta builds surface prerelease UI clearly and may change faster.</p>
-            <a class="text-link" href="https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b2">Open v0.4.0b2 prerelease</a>
+            <a class="text-link" href="https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b3">Open v0.4.0b3 prerelease</a>
           </article>
           <article class="channel-card channel-source">
             <div class="card-chip">Source</div>
@@ -114,6 +114,13 @@
         </div>
       </section>
 
+      <section class="section" aria-label="Candidate demonstration">
+        <div class="section-head"><div class="eyebrow">Upcoming Windows candidate · not yet published</div><h2>Understand scope, then review a change.</h2></div>
+        <p>Actual captures from the locally verified Windows candidate, source fa5d1b8. These screens are not the currently published beta3 download.</p>
+        <figure><img src="assets/candidate/analysis.png" alt="Candidate analysis shows the Semantic Model, selected Report scope, separate coverage limitations and cleanup recommendations" style="width:100%;height:auto;border-radius:12px" loading="lazy"><figcaption>Analyze a disposable demo and inspect the evidence behind each recommendation.</figcaption></figure>
+        <details><summary>See the candidate restoration review</summary><img src="assets/candidate/restore.png" alt="Restoration review shows saved differences and the current file state before restoring original bytes" style="max-width:100%;height:auto" loading="lazy"></details>
+        <p>Inputs: a TMDL Semantic Model and connected PBIR Reports. A PBIX file must first be saved as a Power BI Project with those text formats. <a href="quickstart.md">Quick start</a> · <a href="support.md">Supported workflows</a> · <a href="cli/README.md">CLI and AI automation</a></p>
+      </section>
       <section class="section" id="workflow">
         <div class="section-head">
           <div class="eyebrow">Workflow</div>
@@ -133,7 +140,7 @@
           <article class="step-card">
             <div class="step-no">03</div>
             <h3>Export or apply cleanup locally</h3>
-            <p>Review results in the web UI, export JSON or Excel, and apply cleanup actions against your local files with optional backup support.</p>
+            <p>Review results in the web UI, export JSON or Excel, and review exact file differences before applying. Changes &amp; history provides file verification and guarded restoration of original bytes.</p>
           </article>
         </div>
       </section>
@@ -171,7 +178,7 @@
           </article>
           <article class="faq-card">
             <h3>Should I use beta builds?</h3>
-            <p>Only if you want early-access features and are comfortable with faster iteration. Stable releases are the default path.</p>
+            <p>Use a disposable copy for evaluation. Safe means no supported scanned metadata requires the item in the selected scope; Power BI runtime behavior is not verified by static analysis.</p>
           </article>
         </div>
       </section>
