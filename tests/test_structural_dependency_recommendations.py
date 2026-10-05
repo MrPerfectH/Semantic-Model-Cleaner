@@ -14,11 +14,11 @@ def project(tmp_path, dependency='sort'):
     source = tables / 'Sales.tmdl'
     source.write_text('table Sales\n\tcolumn Spare\n\t\tdataType: int64\n\tcolumn Label\n'
                       + ('\t\tsortByColumn: Spare\n' if dependency == 'sort' else
-                         '\thierarchy Geo\n\t\tlevel Label\n\t\t\tcolumn: Spare\n'))
+                         '\thierarchy Geo\n\t\tlevel Label\n\t\t\tcolumn: Spare\n'), encoding="utf-8")
     (report / 'definition').mkdir(parents=True)
-    (report / 'definition/report.json').write_text('{}')
-    (report / 'definition.pbir').write_text(json.dumps({'datasetReference': {'byPath': {'path': '../M.SemanticModel'}}}))
-    (model / '.platform').write_text('{"metadata":{"displayName":"M"}}')
+    (report / 'definition/report.json').write_text('{}', encoding="utf-8")
+    (report / 'definition.pbir').write_text(json.dumps({'datasetReference': {'byPath': {'path': '../M.SemanticModel'}}}), encoding="utf-8")
+    (model / '.platform').write_text('{"metadata":{"displayName":"M"}}', encoding="utf-8")
     return model, report, source
 
 
@@ -70,11 +70,11 @@ def test_every_sort_source_contributes_usage_regardless_of_declaration_order(tmp
     model, report, source = project(tmp_path)
     source.write_text('table Sales\n\tcolumn Spare\n\t\tdataType: int64\n'
                       '\tcolumn First\n\t\tsortByColumn: Spare\n'
-                      '\tcolumn Last\n\t\tsortByColumn: Spare\n')
+                      '\tcolumn Last\n\t\tsortByColumn: Spare\n', encoding="utf-8")
     visual = report / 'definition/pages/P/visuals/V/visual.json'
     visual.parent.mkdir(parents=True)
     visual.write_text(json.dumps({'visual': {'query': {'Column': {
-        'Expression': {'SourceRef': {'Entity': 'Sales'}}, 'Property': used_source}}}}))
+        'Expression': {'SourceRef': {'Entity': 'Sales'}}, 'Property': used_source}}}}), encoding="utf-8")
     result = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
     target = next(row for row in result['items'] if row['item'].name == 'Spare')
     assert target['status'] == f'USED (Sort Column for: {used_source})'
@@ -84,7 +84,7 @@ def test_every_sort_source_contributes_usage_regardless_of_declaration_order(tmp
 
 def test_sort_deletion_requires_every_source_but_allows_reviewed_complete_group(tmp_path):
     model, report, source = project(tmp_path / 'project')
-    source.write_text(source.read_text() + '\tcolumn Second\n\t\tsortByColumn: Spare\n\tcolumn Keep\n')
+    source.write_text(source.read_text() + '\tcolumn Second\n\t\tsortByColumn: Spare\n\tcolumn Keep\n', encoding="utf-8")
     original = snapshot(tmp_path / 'project')
     partial = [delete('Spare'), delete('Label')]
     assert not cleanup_policy.evaluate_deletion_policy(model, [report], partial)['ok']
@@ -97,7 +97,8 @@ def test_sort_deletion_requires_every_source_but_allows_reviewed_complete_group(
     assert snapshot(tmp_path / 'project') == original
     assert change_plan.apply_plan(plan, tmp_path / 'journal')['ok']
     assert change_plan.verify_plan(plan)['state'] == 'applied'
-    assert source.read_text() == 'table Sales\n\tcolumn Keep\n'
-    assert (model / '.platform').read_bytes() == original['M.SemanticModel/.platform']
+    assert source.read_text(encoding="utf-8") == 'table Sales\n\tcolumn Keep\n'
+    platform_key = str((model / '.platform').relative_to(tmp_path / 'project'))
+    assert (model / '.platform').read_bytes() == original[platform_key]
     assert change_plan.restore_plan(plan, tmp_path / 'journal')['ok']
     assert snapshot(tmp_path / 'project') == original

@@ -1,0 +1,63 @@
+Semantic Model Cleaner
+BETA
+Changes & history
+Classic layout
+v0.4.0b3 | commit 7c145f3 | dirty
+Items
+Tables
+Report health
+References
+Compare
+BETA
+Changes & history
+Review policy
+Analyzer warnings
+Action log
+TestModel
+1 report
+Edit scope ▾
+Beta channel enabled
+
+This build can expose prerelease UI and experimental behavior. Stable users should stay on standard releases.
+
+Start with a Power BI Project
+
+Open a folder containing your Semantic Model and Reports, or explore a disposable demo. Review what will be checked before analyzing. Setup does not change your project files.
+
+Open Power BI Project Try demo
+
+Choose model and report folders separately
+
+Analysis scope
+What gets scanned — and what counts as “used”.
+✕
+Open Power BI Project
+Try demo
+
+Choose a folder containing .SemanticModel and .Report folders. For separate locations, use the model and report controls below.
+
+REVIEW ANALYSIS SCOPE
+
+1 connected Report(s) selected; 0 excluded.
+
+Selected — TestReport: definition.pbir references the selected local Semantic Model.
+
+Only selected Reports are checked. Other Reports may use these items. Analysis limitations are identified during analysis; this scope review does not establish complete coverage.
+
+SEMANTIC MODEL
+1
+TestModel
+×
+Choose model...
+REPORTS
+1
+TestReport
+×
+Browse for reports...
+Find connected reports...
+Search includes all report subfolders beneath the chosen folder. Hidden folders are excluded.
+OPTIONS
+Auto-refresh analysis after apply
+Confirm delete
+Show action log
+Analyze

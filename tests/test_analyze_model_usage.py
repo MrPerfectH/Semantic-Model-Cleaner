@@ -1,11 +1,12 @@
 import json
+import os
 from io import BytesIO
 from pathlib import Path
 
 import pytest
 from openpyxl import load_workbook
 
-from semantic_model_cleaner import analyzer
+from semantic_model_cleaner import analyzer, webapp
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -31,6 +32,13 @@ def _find_item(results: dict, table: str, name: str, item_type: str | None = Non
     if item_type is None:
         assert len(matches) == 1, f"Expected one match for {table}[{name}], found {len(matches)}"
     return matches[0]
+
+
+def _bind_report(report: Path, model: Path) -> None:
+    """Give metadata-analysis fixtures a valid local binding for normal discovery."""
+    (report / "definition.pbir").write_text(json.dumps({
+        "datasetReference": {"byPath": {"path": os.path.relpath(model, report)}}
+    }), encoding="utf-8")
 
 
 def _write_basic_sales_model(model: Path) -> None:
@@ -144,6 +152,7 @@ def _write_fp_workspace(tmp_path, fp_source_lines: str, sales_table: str = "Sale
         }),
         encoding="utf-8",
     )
+    _bind_report(report, model)
     return workspace
 
 
@@ -236,12 +245,12 @@ def test_product_qa_workspace_exercises_trust_workflows():
     assert cleanup_note["analysis_limitation_ids"]
     assert all(limitation["kind"] == "invalid_report_json" for limitation in results["coverage"]["limitations"])
     assert perspective_revenue["status"] == "NOT USED"
+    # Review only because of the fixture's shared unreadable-JSON limitation; perspective
+    # membership is informational evidence and never a review trigger (#101).
     assert perspective_revenue["removal_risk"] == "Review"
-    # Perspective membership is concrete metadata evidence, not an analysis gap.
-    assert any(
-        trigger.startswith("Member of perspective Executive")
-        for trigger in perspective_revenue["review_triggers"]
-    )
+    assert len(perspective_revenue["review_triggers"]) == 1
+    assert "unreadable PBIR JSON file" in perspective_revenue["review_triggers"][0]
+    assert not any("perspective" in trigger.lower() for trigger in perspective_revenue["review_triggers"])
     assert not any("Unsupported Metadata" in trigger for trigger in perspective_revenue["review_triggers"])
     assert perspective_revenue["perspectives"][0]["perspective"] == "Executive"
     assert store_code["status"] == "USED (RLS: Store Role)"
@@ -280,6 +289,7 @@ def test_split_tmdl_item_records_source_file(tmp_path):
         encoding="utf-8",
     )
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace.resolve())
 
     revenue = _find_item(results, "Sales", "Revenue", "Measure")
@@ -501,6 +511,7 @@ def test_report_issues_include_missing_visual_fields_filters_and_suggestions(tmp
         encoding="utf-8",
     )
 
+    _bind_report(report, model)
     results = analyzer.analyze(tmp_path.resolve())
     issue_types = {issue["issueType"] for issue in results["report_issues"]}
 
@@ -593,6 +604,7 @@ def test_report_issue_visual_labels_distinguish_table_visuals(tmp_path):
     write_visual(second_visual / "visual.json", "Alerts", "Alert Text")
     write_visual(titled_visual / "visual.json", "MissingTitleTable", "Name", "Release Notes")
 
+    _bind_report(report, model)
     results = analyzer.analyze(tmp_path.resolve())
     issues_by_visual = {issue["visualId"]: issue for issue in results["report_issues"]}
 
@@ -753,6 +765,7 @@ def test_report_issues_include_page_bookmark_definition_and_invalid_json(tmp_pat
     )
     (custom_dir / "bad.json").write_text("{ bad json", encoding="utf-8")
 
+    _bind_report(report, model)
     results = analyzer.analyze(tmp_path.resolve())
     issues = results["report_issues"]
 
@@ -865,6 +878,7 @@ def test_rls_table_permission_marks_referenced_column_used(tmp_path):
         encoding="utf-8",
     )
 
+    _bind_report(report, model)
     results = analyzer.analyze(tmp_path.resolve())
 
     store_code = _find_item(results, "Store", "Store Code", "Column")
@@ -905,6 +919,7 @@ def test_multiline_rls_table_permission_uses_declared_table_for_unqualified_colu
         encoding="utf-8",
     )
 
+    _bind_report(report, model)
     results = analyzer.analyze(tmp_path.resolve())
 
     store_code = _find_item(results, "Store", "Store Code", "Column")
@@ -1005,6 +1020,7 @@ def test_stale_formatting_selectors_do_not_count_as_live_usage(tmp_path):
         encoding="utf-8",
     )
 
+    _bind_report(report, model)
     results = analyzer.analyze(tmp_path.resolve())
 
     live_measure = _find_item(results, "_Measures", "PL_LINE Budget", "Measure")
@@ -1097,6 +1113,7 @@ def test_source_ref_alias_counts_as_live_report_usage(tmp_path):
         encoding="utf-8",
     )
 
+    _bind_report(report, model)
     results = analyzer.analyze(tmp_path.resolve())
     revenue = _find_item(results, "Sales", "Revenue", "Measure")
 
@@ -1201,6 +1218,7 @@ def test_stale_bookmark_projections_do_not_count_as_live_usage(tmp_path):
         encoding="utf-8",
     )
 
+    _bind_report(report, model)
     results = analyzer.analyze(tmp_path.resolve())
     stale_measure = _find_item(results, "_Measures", "A&P - LY", "Measure")
 
@@ -1233,6 +1251,7 @@ def test_unused_hidden_column_includes_review_triggers(tmp_path):
     )
     (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace.resolve())
     date_key = _find_item(results, "Date", "DateKey", "Column")
 
@@ -1245,7 +1264,7 @@ def test_unused_hidden_column_includes_review_triggers(tmp_path):
     assert payload_item["reviewTriggers"] == ["Item is hidden"]
 
 
-def test_unused_item_is_review_when_perspective_membership_is_known(tmp_path):
+def test_unused_item_stays_safe_when_perspective_membership_is_known(tmp_path):
     workspace = tmp_path / "Workspace"
     model = workspace / "Models" / "Sales.SemanticModel"
     report = workspace / "Reports" / "Executive.Report"
@@ -1270,18 +1289,13 @@ def test_unused_item_is_review_when_perspective_membership_is_known(tmp_path):
     )
     (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace.resolve())
     revenue = _find_item(results, "Sales", "Revenue", "Measure")
 
     assert revenue["status"] == "NOT USED"
-    assert revenue["removal_risk"] == "Review"
-    assert revenue["review_triggers"] == [
-        (
-            "Member of perspective Executive (definition/perspectives/Executive.tmdl). "
-            "Removing the item also removes this perspective member; membership alone "
-            "does not prove a report executes it."
-        )
-    ]
+    assert revenue["removal_risk"] == "Safe"
+    assert revenue["review_triggers"] == []
     assert revenue["perspectives"] == [
         {"perspective": "Executive", "source_file": "definition/perspectives/Executive.tmdl", "line": 3}
     ]
@@ -1291,15 +1305,24 @@ def test_unused_item_is_review_when_perspective_membership_is_known(tmp_path):
 
     payload = json.loads(analyzer.format_json_output(results))
     payload_item = next(item for item in payload["items"] if item["table"] == "Sales" and item["name"] == "Revenue")
-    assert payload_item["removalRisk"] == "Review"
-    assert payload_item["reviewTriggers"] == revenue["review_triggers"]
+    assert payload_item["removalRisk"] == "Safe"
+    assert payload_item["reviewTriggers"] == []
+    assert payload_item["perspectives"] == ["Executive"]
+    browser_item = next(
+        item for item in webapp._serialize_results(results)["items"]
+        if item["table"] == "Sales" and item["name"] == "Revenue"
+    )
+    assert browser_item["deleteSafety"] == "Safe"
+    assert browser_item["perspectiveMemberships"] == [
+        {"perspective": "Executive", "sourceFile": "definition/perspectives/Executive.tmdl"}
+    ]
 
     workbook = load_workbook(BytesIO(analyzer.create_xlsx_bytes(results)))
     detail_sheet = workbook["Details"]
     headers = [cell.value for cell in detail_sheet[1]]
     trigger_col = headers.index("Review Triggers") + 1
     revenue_row = next(row for row in detail_sheet.iter_rows(min_row=2) if row[2].value == "Revenue")
-    assert revenue_row[trigger_col - 1].value == revenue["review_triggers"][0]
+    assert not revenue_row[trigger_col - 1].value
 
 
 def test_unsupported_metadata_areas_downgrade_safe_items_to_review(tmp_path):
@@ -1362,6 +1385,7 @@ def test_unsupported_metadata_areas_downgrade_safe_items_to_review(tmp_path):
     )
     (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace.resolve())
 
     expectations = {
@@ -1409,6 +1433,7 @@ def test_ordinary_unused_item_remains_safe_without_unsupported_metadata(tmp_path
     )
     (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace.resolve())
     revenue = _find_item(results, "Sales", "Revenue", "Measure")
 
@@ -1441,6 +1466,7 @@ def test_unsupported_tmdl_metadata_does_not_review_unrelated_file_refs(tmp_path)
     )
     (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace.resolve())
     ordinary_target = _find_item(results, "Sales", "OrdinaryTarget", "Measure")
     format_target = _find_item(results, "Sales", "FormatTarget", "Measure")
@@ -1533,6 +1559,7 @@ def test_report_extension_measures_are_analyzed_and_promote_model_dependencies(t
         encoding="utf-8",
     )
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace.resolve())
     report_measure = _find_item(results, "Sales", "Report Revenue", "Measure")
     base_measure = _find_item(results, "Sales", "Base Measure", "Measure")
@@ -1598,6 +1625,7 @@ def test_report_extension_measure_schema_gaps_are_report_health_issues(tmp_path)
         encoding="utf-8",
     )
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace.resolve())
 
     issue_keys = [
@@ -1665,6 +1693,7 @@ def test_invalid_report_json_is_report_health_issue(tmp_path):
     )
     (visual_dir / "visual.json").write_text("{ bad json", encoding="utf-8")
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace.resolve())
 
     assert len(results["report_issues"]) == 1
@@ -1709,7 +1738,8 @@ def test_invalid_definition_pbir_is_report_health_issue(tmp_path):
     )
     (report / "definition.pbir").write_text("{ bad json", encoding="utf-8")
 
-    results = analyzer.analyze(workspace.resolve())
+    # Diagnostic scope deliberately inspects the malformed binding; normal discovery excludes it.
+    results = analyzer.analyze(workspace.resolve(), report_paths=[report])
 
     issue = next(issue for issue in results["report_issues"] if issue["issueType"] == "invalid_report_json")
     assert issue["artifactKind"] == "Report Definition"
@@ -1726,6 +1756,7 @@ def test_tmsl_model_bim_semantic_model_fails_clearly(tmp_path):
     (model / "definition.pbism").write_text('{"version":"4.0"}', encoding="utf-8")
     (report / "definition.pbir").write_text('{"version":"4.0"}', encoding="utf-8")
 
+    _bind_report(report, model)
     with pytest.raises(analyzer.UnsupportedSemanticModelError) as exc_info:
         analyzer.analyze(workspace.resolve())
 
@@ -1810,6 +1841,7 @@ def test_unused_measure_with_dax_dependents_is_caution(tmp_path):
     (report / "definition").mkdir()
     (report / "definition/report.json").write_text('{}', encoding="utf-8")
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace)
     measure_a = _find_item(results, "Measures", "A", "Measure")
 
@@ -1928,6 +1960,7 @@ def test_table_summaries_capture_role_patterns_and_single_column_measures(tmp_pa
         encoding="utf-8",
     )
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace.resolve())
     table_summaries = {row["name"]: row for row in results["table_summaries"]}
 
@@ -1959,6 +1992,7 @@ def test_broken_measure_refs_are_flagged(tmp_path):
     )
     (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace.resolve())
     revenue = _find_item(results, "Sales", "Revenue", "Measure")
 
@@ -1996,6 +2030,7 @@ def test_bare_table_refs_are_flagged_as_broken(tmp_path):
     (report / "definition.pbir").write_text('{"version":"4.0"}', encoding="utf-8")
     (report / "report.json").write_text('{"sections":[]}', encoding="utf-8")
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace)
     row_count = _find_item(results, "Measures", "Row Count", "Measure")
 
@@ -2029,6 +2064,7 @@ def test_bare_table_refs_are_exposed_in_table_dependency_signals(tmp_path):
     (report / "definition.pbir").write_text('{"version":"4.0"}', encoding="utf-8")
     (report / "report.json").write_text('{"sections":[]}', encoding="utf-8")
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace)
     table_summaries = {row["name"]: row for row in results["table_summaries"]}
 
@@ -2070,6 +2106,7 @@ def test_valid_quoted_column_refs_do_not_trigger_false_broken_table_refs(tmp_pat
     (report / "definition.pbir").write_text('{"version":"4.0"}', encoding="utf-8")
     (report / "report.json").write_text('{"sections":[]}', encoding="utf-8")
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace)
     row = _find_item(results, "Measures", "Forecast Amount - USD - March", "Measure")
 
@@ -2117,6 +2154,7 @@ def test_inline_calculated_columns_are_parsed_and_do_not_false_flag_measures(tmp
     assert ("Date", "HasActuals USD", "Calculated Column") in parsed_refs
     assert ("Date", "YearMonthNumber", "Calculated Column") in parsed_refs
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace)
     measure = _find_item(results, "Measures", "Forecast Amount - USD - September - Dynamic (vena)", "Measure")
     assert measure["broken_dax_refs"] == []
@@ -2214,6 +2252,7 @@ def test_quoted_tmdl_identifiers_with_apostrophes_analyze_consistently(tmp_path)
         encoding="utf-8",
     )
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace.resolve())
 
     executive = _find_item(results, "Metrics", "Executive Bob's Revenue", "Measure")
@@ -2276,6 +2315,7 @@ def test_field_parameter_tables_warn_on_unresolved_nameof_targets(tmp_path):
     )
     (pages_dir / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
 
+    _bind_report(report, model)
     results = analyzer.analyze(workspace.resolve())
 
     unresolved = [w for w in results["warnings"] if w["code"] == "UNRESOLVED_NAMEOF_TARGET"]

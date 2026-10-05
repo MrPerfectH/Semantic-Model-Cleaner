@@ -18,7 +18,7 @@ def js_function(source, name):
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js unavailable')
 def test_v2_same_named_reports_have_distinct_keys_filters_counts_and_mutation_paths(tmp_path):
-    source = TEMPLATE.read_text()
+    source = TEMPLATE.read_text(encoding="utf-8")
     names = ['itemKey','reportIssueKey','reportReferenceId','reportReferenceLabel','getReportPathByName',
              'getReportPathForReference','reportIssueCleanupEntry','reportIssueActionEntry',
              'usageLocationKey','usageLocatorKey','renderUsageDetails','uniqueCount','detailCounts', 'filterReportIssues']
@@ -54,13 +54,13 @@ assert(tree.includes('/A/Same.Report')&&tree.includes('/B/Same.Report'));
 chosenReports=[{name:'Same',path:'C:/A/Same.Report'},{name:'Same',path:'C:/B/Same.Report'}];
 assert.equal(getReportPathForReference({report:'Same',reportPath:['c:','b','same.report'].join(String.fromCharCode(92))}),'C:/B/Same.Report');
 assert.equal(getReportPathByName('Same',['c:','a','same.report','definition','reportExtensions.json'].join(String.fromCharCode(92))),'C:/A/Same.Report');
-''')
+''', encoding="utf-8")
     result = subprocess.run([shutil.which('node'), str(harness)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_v2_preserves_inventory_polish_and_passes_exact_reference_builders():
-    source = TEMPLATE.read_text()
+    source = TEMPLATE.read_text(encoding="utf-8")
     assert "filename='detail-workspace.js'" in source
     assert 'getReportPathForReference(issue)' in js_function(source, 'reportIssueCleanupEntry')
     assert 'getReportPathForReference(issue)' in js_function(source, 'reportIssueActionEntry')

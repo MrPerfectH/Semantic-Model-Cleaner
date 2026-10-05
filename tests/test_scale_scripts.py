@@ -37,12 +37,15 @@ def test_generator_refuses_existing_directory_and_symlink(tmp_path):
     target = tmp_path / 'existing'
     target.mkdir()
     sentinel = target / 'untouched.txt'
-    sentinel.write_text('untouched')
+    sentinel.write_text('untouched', encoding="utf-8")
     with pytest.raises(ValueError, match='already exists'):
         generator.generate_fixture(target)
-    assert sentinel.read_text() == 'untouched'
+    assert sentinel.read_text(encoding="utf-8") == 'untouched'
     linked = tmp_path / 'linked'
-    linked.symlink_to(tmp_path / 'missing')
+    try:
+        linked.symlink_to(tmp_path / 'missing')
+    except OSError as exc:
+        pytest.skip(f'Symlinks unavailable on this platform: {exc}')
     with pytest.raises(ValueError, match='symlinks'):
         generator.generate_fixture(linked)
     assert not (tmp_path / 'missing').exists()

@@ -94,10 +94,12 @@ def test_redirected_cp1252_console_does_not_crash_on_unicode_banner(monkeypatch)
         "127.0.0.1", 61234, debug=False, mode="desktop"
     )
 
-    output = stdout_bytes.getvalue().decode("cp1252")
+    # The console starts out strictly cp1252, but configuring it reconfigures
+    # stdout/stderr to UTF-8, so both the ASCII banner and the non-ASCII
+    # workspace path write through without raising or needing escaping.
+    output = stdout_bytes.getvalue().decode("utf-8")
     assert stdout.line_buffering is True
     assert stdout.write_through is True
     assert "URL       : http://127.0.0.1:61234" in output
     assert "Mode      : desktop" in output
-    assert r"\u2500" in output
-    assert r"Za\u017có\u0142\u0107" in output
+    assert "Zażółć" in output

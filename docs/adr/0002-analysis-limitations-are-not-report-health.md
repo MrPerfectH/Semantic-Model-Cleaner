@@ -34,11 +34,15 @@ Two detection faults made it worse (issues #82 and #83):
    descriptions, comments, string literals and DAX bodies never produce a
    finding. Each finding carries the owning object and `file:line`.
 2. **Evidence is not a limitation.** Perspective membership and
-   calculation-group structure are concrete metadata facts. They appear as
-   item-specific Review reasons that name the perspective, the member, the group
-   and its retained parent-table consumers. Membership alone never counts as a
-   Report Reference or proof of runtime use; the existing reviewed-change policy
-   (Review) still applies.
+   calculation-group structure are concrete metadata facts. Calculation-group
+   structure appears as item-specific Review reasons that name the group and its
+   retained parent-table consumers. Perspective membership is informational
+   evidence naming the perspective and the member: a perspective is a view over
+   the model, not a consumer, so membership never counts as a Report Reference or
+   proof of runtime use and never changes the Cleanup Recommendation (an unused
+   member stays Safe; deleting it also removes the member). Owner decision
+   2026-10-05, issue #101; this supersedes the earlier wording that listed
+   membership among the Review reasons.
 3. **Analysis limitations get their own surface.** The analyzer returns a
    distinct `analysis_limitations` list. Each entry states the feature, owning
    object, source location, what was checked, what remains unchecked and the
@@ -63,12 +67,23 @@ Two detection faults made it worse (issues #82 and #83):
 - `SMC003` findings are emitted per construct with owner and location rather
   than per file and area, so their fingerprints changed. `SMC003` is a coverage
   rule and was never baseline-suppressible.
-- Whole-group deletion of a calculation group with dynamic items remains
-  blocked by `SMC-D002` even in a coordinated plan, because the fresh analysis
-  cannot evaluate a final state in which the group file is gone. Evaluating
-  deletions against a simulated final state is a later slice; the parent-table
-  guard (`SMC-D006`) already evaluates the proposed final state for ordinary
-  tables.
+- Deletion plans are evaluated against a simulated final state (issue #91).
+  The fresh analysis still reads the current files, but the deletion policy
+  then drops shared limitations whose owning table the plan removes completely
+  and that no retained structural or DAX consumer still references
+  (`SMC-D006` finds none). `coverage.complete` for the plan
+  (`policy.scope.complete`, `plan.coverage.final_state`) and `SMC-D002` are
+  computed from the remaining limitations; each cleared gap is listed in
+  `scope.cleared_limitations` and in the plan preview's validation notes
+  ("Coverage gap owned by '<group>' is cleared because the plan removes the
+  calculation group and every retained parent-table consumer."). For removed
+  items, the collapsed shared-coverage reason and the calculation-group
+  structure reasons are re-derived against that final state; every other
+  Review reason (hidden, key, perspective membership, targeted metadata) and
+  every other guard still applies. Deleting only the group keeps both
+  `SMC-D006` and its own `SMC-D002`. Limitations owned by any retained object,
+  report-scan gaps and model-level constructs never clear, and targeted
+  limitations whose owner remains still apply to remaining items.
 - Property declarations that are not part of TOM (such as a hypothetical
   `secondaryExpression`) are no longer treated as a feature. Detectors cover
   calculation groups and items, calculation-item format strings, selection

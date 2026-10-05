@@ -22,18 +22,28 @@ import os
 import re
 import sys
 import tempfile
+from contextlib import redirect_stderr
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
 
+from semantic_model_cleaner.analysis_export import validate_export_destination
+from semantic_model_cleaner import __version__
+from semantic_model_cleaner.cli_contract import (
+    ArgumentParser, COMMAND_GUIDE, DiagnosticCapture, emit_json, json_requested,
+)
 from semantic_model_cleaner.reference_tokens import dax_tokens
+from semantic_model_cleaner.console import configure_console_output
 from semantic_model_cleaner.report_writer import STALE_CLEANUP_SUPPORTED_KINDS
 from semantic_model_cleaner.tmdl_declarations import (
     extract_culture_metadata,
+    TmdlDeclaration,
     extract_feature_expressions,
     extract_perspective_members,
+    scan_tmdl_declarations,
+    tmdl_indent_depth as _tmdl_indent_depth,
 )
 from semantic_model_cleaner.tmdl_identifiers import (
     parse_tmdl_dotted_ref,
@@ -485,7 +495,7 @@ def report_binding_status(
     adds to its warning list, or None).
 
     Statuses: `connected`, `connected_by_name`, `remote`, `not_connected`,
-    `missing_definition`, `invalid_definition`, `missing_dataset_reference`,
+    `missing_definition`, `invalid_definition`, `ambiguous_definition`, `missing_dataset_reference`,
     and `unreadable` (definition.pbir could not be read at all; the UI reports
     that as a warning without a status row).
     """
@@ -528,6 +538,11 @@ def report_binding_status(
         return fail("invalid_definition", "Invalid definition.pbir JSON: expected a JSON object.")
 
     dataset_reference = definition.get("datasetReference", {})
+    if isinstance(dataset_reference, dict) and "byPath" in dataset_reference and "byConnection" in dataset_reference:
+        return fail(
+            "ambiguous_definition",
+            "definition.pbir contains both datasetReference.byPath and byConnection; select one binding.",
+        )
     if isinstance(dataset_reference, dict) and "byConnection" in dataset_reference:
         connection = dataset_reference.get("byConnection")
         published_name = ""
@@ -601,6 +616,42 @@ def filter_reports_bound_to_model(reports: list[Path], model_path: Path) -> list
     return partition_reports_by_binding(reports, model_path)[0]
 
 
+def report_binding_scope(model_path: Path, reports: list[Path]) -> dict:
+    """Return selected/excluded identities and evidence for default Report scope."""
+    scope = {"selected": [], "excluded": []}
+    names, label = model_name_candidates(model_path), model_label(model_path)
+    for report in _unique_sorted_paths(reports):
+        binding = report_binding_status(report, model_path, names=names, label=label)
+        binding.pop("scanned", None)
+        binding.pop("warning", None)
+        group = "selected" if binding["status"] in BOUND_REPORT_STATUSES else "excluded"
+        scope[group].append(binding)
+    return scope
+
+
+def record_report_scope(results: dict, scope: dict) -> None:
+    """Attach selection evidence separately from scan coverage/classification."""
+    results["report_binding"] = scope
+    results.setdefault("warnings", []).extend({
+        "code": "REPORT_SCOPE_EXCLUDED", "severity": "warning",
+        "message": f"Excluded {row['name']} from analysis: {row['message']}",
+        "artifactPath": row["definitionFile"],
+    } for row in scope["excluded"])
+
+
+def narrow_report_scope(scope: dict, reports: list[Path]) -> dict:
+    """Record an explicit name/interactive subset of eligible connected Reports."""
+    selected = {str(Path(path).resolve()) for path in reports}
+    return {
+        "selected": [row for row in scope["selected"] if row["path"] in selected],
+        "excluded": [*scope["excluded"], *[
+            {**row, "bindingStatus": row["status"], "status": "not_selected",
+             "message": "Connected Report excluded by name filter or interactive selection."}
+            for row in scope["selected"] if row["path"] not in selected
+        ]],
+    }
+
+
 def filter_models(models: list[Path], model_filters: Optional[list[str]]) -> list[Path]:
     if not model_filters:
         return models
@@ -650,20 +701,21 @@ def select_paths_interactively(label: str, paths: list[Path], formatter) -> list
     if not paths:
         return []
 
-    print(f"\nSelect {label} (comma list, range like 1-3, or 'all'):")
+    print(f"\nSelect {label} (comma list, range like 1-3, or 'all'):", file=sys.stderr)
     for idx, path in enumerate(paths, start=1):
-        print(f"{idx:>3}. {formatter(path)}")
+        print(f"{idx:>3}. {formatter(path)}", file=sys.stderr)
 
     while True:
-        raw = input(f"{label} selection [all]: ").strip()
+        print(f"{label} selection [all]: ", end="", file=sys.stderr, flush=True)
+        raw = input().strip()
         try:
             picks = _parse_selection_spec(raw, len(paths))
         except ValueError:
-            print("Invalid selection. Use e.g. 1,3-5 or all.")
+            print("Invalid selection. Use e.g. 1,3-5 or all.", file=sys.stderr)
             continue
         if picks:
             return [paths[i - 1] for i in picks]
-        print("No valid items selected. Try again.")
+        print("No valid items selected. Try again.", file=sys.stderr)
 
 
 def normalize_key(table: str, name: str) -> tuple[str, str]:
@@ -1069,15 +1121,6 @@ def _unsupported_metadata_review_trigger(
         f"Referenced by the {feature}{owner} ({_limitation_location(ref)}). "
         f"Dependency checking is incomplete for {ref.area}, so the reference is "
         f"evidence of a dependency, not proof of report use; the item stays at Review."
-    )
-
-
-def _perspective_review_trigger(member: PerspectiveMembership) -> str:
-    """Perspective membership is metadata evidence, not proof of runtime use."""
-    return (
-        f"Member of perspective {member.perspective} ({member.source_file}). "
-        f"Removing the item also removes this perspective member; membership alone "
-        f"does not prove a report executes it."
     )
 
 
@@ -1569,189 +1612,148 @@ def _parse_tmdl_hierarchies(filepath: Path) -> list[HierarchyInfo]:
     return hierarchies
 
 
+def _tmdl_description_lines(lines: list[str], declaration: TmdlDeclaration) -> list[str]:
+    """`///` description lines directly above a declaration, at the same depth."""
+    description_lines: list[str] = []
+    previous = declaration.line - 2
+    while previous >= 0:
+        raw = lines[previous]
+        stripped = raw.strip()
+        if not stripped.startswith("///") or _tmdl_indent_depth(raw) != declaration.depth:
+            break
+        description_lines.insert(0, stripped[3:].lstrip())
+        previous -= 1
+    return description_lines
+
+
+def _tmdl_dax_lines(declaration: TmdlDeclaration) -> list[str]:
+    """Expression lines of one declaration, without fences or blank lines."""
+    return [line for line in declaration.expression_lines if line and line != "```"]
+
+
+def _tmdl_flag(prop: TmdlDeclaration) -> bool:
+    """A boolean property: bare (`isHidden`) means true, otherwise `isHidden: true`."""
+    if prop.kind == "object":
+        return not prop.name
+    return prop.kind == "value" and prop.value.lower() == "true"
+
+
 def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
-    lines = filepath.read_text(encoding="utf-8-sig").splitlines()
-    items = []
-    current_table = None
-    i = 0
+    """Measures and columns of one table file, using the structural TMDL scanner.
 
-    while i < len(lines):
-        line = lines[i]
+    An item's DAX body is its own expression only: the declaration line, lines two
+    levels deeper (or a ``` fenced block). Nested child objects one level deeper
+    (`kpi`, `annotation`, `changedProperty`, `extendedProperty`, ...) and their
+    properties are not part of it; child-object expressions such as KPI targets are
+    reported separately through `extract_feature_expressions` (#92).
+    """
+    text = filepath.read_text(encoding="utf-8-sig")
+    lines = text.splitlines()
+    items: list[ModelItem] = []
 
-        # Table declaration at 0-indent
-        if not line.startswith("\t") and line.startswith("table "):
-            current_table = unquote_tmdl_name(line[6:])
-            i += 1
+    for table in scan_tmdl_declarations(text):
+        if table.keyword != "table" or table.depth != 0 or table.kind != "object" or not table.name:
             continue
-
-        if not current_table:
-            i += 1
-            continue
-
-        # Measure declaration at 1-tab
-        m = _parse_tmdl_keyword_declaration(line, "measure")
-        if m:
-            name, first_dax, _ = m
-            if first_dax.startswith("```"):
-                first_dax = first_dax[3:].strip()
-
-            dax_lines = [first_dax] if first_dax and first_dax != "```" else []
-            data_type = source_column = format_string = ""
-            description_lines = []
-            previous = i - 1
-            while previous >= 0 and lines[previous].startswith("\t///"):
-                description_lines.insert(0, lines[previous][4:].lstrip())
-                previous -= 1
-            description = "\n".join(description_lines)
-            display_folder = ""
-            is_hidden = False
-            i += 1
-
-            while i < len(lines):
-                inner = lines[i]
-                if inner == "" or inner.strip() == "":
-                    i += 1
-                    continue
-                if inner.startswith("\t\t\t"):
-                    cleaned = inner.strip()
-                    if cleaned != "```":
-                        dax_lines.append(cleaned)
-                    i += 1
-                    continue
-                if inner.startswith("\t\t") and not inner.startswith("\t\t\t"):
-                    prop = inner.strip()
-                    if prop.startswith("dataType:"):
-                        data_type = prop.split(":", 1)[1].strip()
-                    if prop.startswith("sourceColumn:"):
-                        source_column = prop.split(":", 1)[1].strip()
-                    if prop.startswith("description:"):
-                        description = prop.split(":", 1)[1].strip()
-                    if prop.startswith("formatString:"):
-                        format_string = prop.split(":", 1)[1].strip()
-                    if prop.startswith("displayFolder:"):
-                        display_folder = prop.split(":", 1)[1].strip()
-                    if prop.startswith("hidden:") or prop.startswith("isHidden:"):
-                        is_hidden = prop.split(":", 1)[1].strip().lower() == "true"
-                    elif prop in ("hidden", "isHidden"):
-                        is_hidden = True
-                    # formatStringDefinition may contain DAX column refs
-                    if prop.startswith("formatStringDefinition"):
-                        expr = prop.split("=", 1)
-                        if len(expr) > 1:
-                            dax_lines.append(expr[1].strip())
-                    i += 1
-                    continue
-                if inner.startswith("\t") and not inner.startswith("\t\t"):
-                    break
-                if not inner.startswith("\t"):
-                    break
-                i += 1
-
-            items.append(ModelItem(
-                item_type="Measure",
-                table=current_table,
-                name=name,
-                display_folder=display_folder,
-                dax_body="\n".join(dax_lines),
-                is_hidden=is_hidden,
-                source_file=str(filepath),
-                data_type=data_type,
-                source_column=source_column,
-                description=description,
-                format_string=format_string,
-            ))
-            continue
-
-        # Column declaration at 1-tab
-        c = _parse_tmdl_keyword_declaration(line, "column")
-        if c:
-            name, first_dax, _ = c
-            is_calculated = bool(first_dax)
-            data_type = source_column = format_string = ""
-            description_lines = []
-            previous = i - 1
-            while previous >= 0 and lines[previous].startswith("\t///"):
-                description_lines.insert(0, lines[previous][4:].lstrip())
-                previous -= 1
-            description = "\n".join(description_lines)
-            display_folder = ""
-            is_hidden = False
-            is_key = False
-            is_inferred = False
-            sort_by_column = ""
-            dax_lines = [first_dax] if first_dax else []
-            i += 1
-
-            while i < len(lines):
-                inner = lines[i]
-                if inner == "" or inner.strip() == "":
-                    i += 1
-                    continue
-                if inner.startswith("\t\t\t"):
-                    dax_lines.append(inner.strip())
-                    i += 1
-                    continue
-                if inner.startswith("\t\t") and not inner.startswith("\t\t\t"):
-                    prop = inner.strip()
-                    if prop.startswith("dataType:"):
-                        data_type = prop.split(":", 1)[1].strip()
-                    if prop.startswith("sourceColumn:"):
-                        source_column = prop.split(":", 1)[1].strip()
-                    if prop.startswith("description:"):
-                        description = prop.split(":", 1)[1].strip()
-                    if prop.startswith("formatString:"):
-                        format_string = prop.split(":", 1)[1].strip()
-                    if "expression" in prop and "=" in prop and not prop.startswith("formatString"):
-                        is_calculated = True
-                        expr_part = prop.split("=", 1)[1].strip()
-                        if expr_part:
-                            dax_lines.append(expr_part)
-                    if prop.startswith("displayFolder:"):
-                        display_folder = prop.split(":", 1)[1].strip()
-                    if prop.startswith("hidden:") or prop.startswith("isHidden:"):
-                        is_hidden = prop.split(":", 1)[1].strip().lower() == "true"
-                    elif prop in ("hidden", "isHidden"):
-                        is_hidden = True
-                    if prop.startswith("isKey:"):
-                        is_key = prop.split(":", 1)[1].strip().lower() == "true"
-                    elif prop == "isKey":
-                        is_key = True
-                    if prop.startswith("isNameInferred:") or prop.startswith("isDataTypeInferred:"):
-                        if prop.split(":", 1)[1].strip().lower() == "true":
-                            is_inferred = True
-                    elif prop in ("isNameInferred", "isDataTypeInferred"):
-                        is_inferred = True
-                    if prop.startswith("sortByColumn:"):
-                        sort_by_column = unquote_tmdl_name(prop.split(":", 1)[1])
-                    i += 1
-                    continue
-                if inner.startswith("\t") and not inner.startswith("\t\t"):
-                    break
-                if not inner.startswith("\t"):
-                    break
-                i += 1
-
-            items.append(ModelItem(
-                item_type="Calculated Column" if is_calculated else "Column",
-                table=current_table,
-                name=name,
-                display_folder=display_folder,
-                dax_body="\n".join(dax_lines),
-                is_hidden=is_hidden,
-                is_key=is_key,
-                is_inferred=is_inferred,
-                sort_by_column=sort_by_column,
-                source_file=str(filepath),
-                data_type=data_type,
-                source_column=source_column,
-                description=description,
-                format_string=format_string,
-            ))
-            continue
-
-        i += 1
+        for declaration in table.children:
+            if declaration.kind != "object" or not declaration.name:
+                continue
+            if declaration.keyword == "measure":
+                items.append(_tmdl_measure_item(filepath, lines, table.name, declaration))
+            elif declaration.keyword == "column":
+                items.append(_tmdl_column_item(filepath, lines, table.name, declaration))
 
     return items
+
+
+def _tmdl_measure_item(filepath: Path, lines: list[str], table: str, measure: TmdlDeclaration) -> ModelItem:
+    dax_lines = _tmdl_dax_lines(measure)
+    data_type = source_column = format_string = display_folder = ""
+    description = "\n".join(_tmdl_description_lines(lines, measure))
+    is_hidden = False
+    for prop in measure.children:
+        keyword = prop.keyword
+        if prop.kind == "value":
+            if keyword == "dataType":
+                data_type = prop.value
+            elif keyword == "sourceColumn":
+                source_column = prop.value
+            elif keyword == "description":
+                description = prop.value
+            elif keyword == "formatString":
+                format_string = prop.value
+            elif keyword == "displayFolder":
+                display_folder = prop.value
+        if keyword in ("hidden", "isHidden"):
+            is_hidden = _tmdl_flag(prop)
+        # formatStringDefinition may contain DAX column refs
+        if keyword == "formatStringDefinition" and prop.kind == "expression":
+            dax_lines.extend(_tmdl_dax_lines(prop))
+
+    return ModelItem(
+        item_type="Measure",
+        table=table,
+        name=measure.name,
+        display_folder=display_folder,
+        dax_body="\n".join(dax_lines),
+        is_hidden=is_hidden,
+        source_file=str(filepath),
+        data_type=data_type,
+        source_column=source_column,
+        description=description,
+        format_string=format_string,
+    )
+
+
+def _tmdl_column_item(filepath: Path, lines: list[str], table: str, column: TmdlDeclaration) -> ModelItem:
+    dax_lines = _tmdl_dax_lines(column)
+    # Unchanged legacy rule: a column is calculated when its declaration line carries
+    # an expression (or a ``` fence opener), or it has an `expression =` property.
+    _, first_expression, _ = split_tmdl_name_and_expression(lines[column.line - 1].strip()[len("column"):])
+    is_calculated = bool(first_expression)
+    data_type = source_column = format_string = display_folder = sort_by_column = ""
+    description = "\n".join(_tmdl_description_lines(lines, column))
+    is_hidden = is_key = is_inferred = False
+    for prop in column.children:
+        keyword = prop.keyword
+        if prop.kind == "value":
+            if keyword == "dataType":
+                data_type = prop.value
+            elif keyword == "sourceColumn":
+                source_column = prop.value
+            elif keyword == "description":
+                description = prop.value
+            elif keyword == "formatString":
+                format_string = prop.value
+            elif keyword == "displayFolder":
+                display_folder = prop.value
+            elif keyword == "sortByColumn":
+                sort_by_column = unquote_tmdl_name(prop.value)
+        if keyword == "expression" and prop.kind == "expression":
+            is_calculated = True
+            dax_lines.extend(_tmdl_dax_lines(prop))
+        if keyword in ("hidden", "isHidden"):
+            is_hidden = _tmdl_flag(prop)
+        elif keyword == "isKey":
+            is_key = _tmdl_flag(prop)
+        elif keyword in ("isNameInferred", "isDataTypeInferred") and _tmdl_flag(prop):
+            is_inferred = True
+
+    return ModelItem(
+        item_type="Calculated Column" if is_calculated else "Column",
+        table=table,
+        name=column.name,
+        display_folder=display_folder,
+        dax_body="\n".join(dax_lines),
+        is_hidden=is_hidden,
+        is_key=is_key,
+        is_inferred=is_inferred,
+        sort_by_column=sort_by_column,
+        source_file=str(filepath),
+        data_type=data_type,
+        source_column=source_column,
+        description=description,
+        format_string=format_string,
+    )
 
 
 def parse_report_extension_measures(
@@ -4456,12 +4458,17 @@ def analyze(
         models = discover_models(model_roots)
         models = filter_models(models, model_filters)
 
+    scope = None
     if report_paths is not None:
         reports = _unique_sorted_paths(report_paths)
     else:
         report_roots = report_search_roots or [workspace]
         reports = discover_reports(report_roots)
+        _require_single_model(models)
+        scope = report_binding_scope(models[0], reports)
+        reports = [Path(row["path"]) for row in scope["selected"]]
         reports = filter_reports(reports, report_filters)
+        scope = narrow_report_scope(scope, reports)
 
     if not models:
         roots = model_search_roots or [workspace]
@@ -4471,7 +4478,7 @@ def analyze(
     if not reports:
         roots = report_search_roots or [workspace]
         roots_display = ", ".join(str(p) for p in roots)
-        print(f"Error: No matching *.Report found under: {roots_display}", file=sys.stderr)
+        print(f"Error: No matching connected *.Report found under: {roots_display}. Check definition.pbir and report filters.", file=sys.stderr)
         sys.exit(1)
 
     # ── Parse model ──
@@ -4797,6 +4804,10 @@ def analyze(
 
         # ── Removal risk ──
         review_triggers: list[str] = []
+        # Plan validation re-derives these two reasons against a proposed final
+        # state (issue #91), so keep them identifiable without parsing text.
+        item_shared_trigger = ""
+        group_triggers: list[str] = []
         if identity in broken_dax_refs and broken_dax_refs[identity]:
             removal_risk = ""
             review_triggers.extend([detail["message"] for detail in broken_dax_refs[identity]])
@@ -4817,14 +4828,13 @@ def analyze(
             )
             if item.source_kind == "model":
                 if item.table in model_metadata.calculation_groups:
-                    review_triggers.extend(_calculation_group_triggers(
+                    group_triggers = _calculation_group_triggers(
                         item, model_metadata.calculation_groups[item.table],
                         table_dependents_by_table.get(item.table.casefold(), []),
-                    ))
-                review_triggers.extend(
-                    _perspective_review_trigger(member) for member in perspective_index.get(nkey, [])
-                )
+                    )
+                    review_triggers.extend(group_triggers)
             if shared_limitation_trigger:
+                item_shared_trigger = shared_limitation_trigger
                 review_triggers.append(shared_limitation_trigger)
             if review_triggers:
                 removal_risk = "Review"
@@ -4863,6 +4873,8 @@ def analyze(
             "has_direct_usage": has_direct_usage,
             "removal_risk": removal_risk,
             "review_triggers": review_triggers,
+            "shared_limitation_trigger": item_shared_trigger,
+            "calculation_group_triggers": group_triggers,
             "hierarchies": hierarchy_names,
             "broken_dax_refs": [detail["ref"] for detail in broken_dax_refs.get(identity, [])],
             "broken_dax_ref_details": broken_dax_refs.get(identity, []),
@@ -4974,7 +4986,7 @@ def analyze(
     affected_item_ids = {
         item_identity(r["item"]) for r in results if r["analysis_limitation_ids"]
     }
-    return {
+    output = {
         "coverage": {"complete": not coverage_limitations, "limitations": coverage_limitations},
         "analysis_limitations": analysis_limitations,
         "analysis_limitation_summary": {
@@ -5004,6 +5016,9 @@ def analyze(
         "warnings": [_serialize_warning(w) for w in warnings],
         "report_issues": [_serialize_report_issue(issue) for issue in report_issues],
     }
+    if scope is not None:
+        record_report_scope(output, scope)
+    return output
 
 
 # ── Output Formatters ─────────────────────────────────────────────────────────
@@ -5195,6 +5210,8 @@ def format_unused(results: dict) -> str:
 
 def format_json_output(results: dict) -> str:
     output = {
+        "schema_version": "1.0", "command": "analyze", "ok": True,
+        "reportBinding": results.get("report_binding"),
         "summary": results["summary"],
         "tables": results.get("table_summaries", []),
         "warnings": results.get("warnings", []),
@@ -5970,7 +5987,25 @@ def clean_stale_command(argv: list[str]) -> int:
 
 
 def main(argv: Optional[list[str]] = None):
+    configure_console_output()
     argv = list(sys.argv[1:] if argv is None else argv)
+    if not json_requested(argv) or (argv and argv[0] == "clean-stale"):
+        return _analysis_cli(argv)
+    diagnostics = DiagnosticCapture(sys.stderr)
+    try:
+        with redirect_stderr(diagnostics):
+            return _analysis_cli(argv)
+    except SystemExit as exc:
+        if not exc.code:
+            raise
+        message = ''.join(diagnostics.parts).strip() or f'Analysis failed (exit {exc.code}).'
+    except Exception as exc:
+        message = str(exc) or type(exc).__name__
+    emit_json('analyze', {'ok': False, 'error': message})
+    raise SystemExit(2)
+
+
+def _analysis_cli(argv):
 
     # Subcommand dispatch is done by hand (rather than with argparse subparsers)
     # so the historical no-subcommand invocation -- `smc . --format unused` --
@@ -5978,14 +6013,14 @@ def main(argv: Optional[list[str]] = None):
     if argv and argv[0] == "clean-stale":
         sys.exit(clean_stale_command(argv[1:]))
 
-    parser = argparse.ArgumentParser(
+    parser = ArgumentParser(
+        prog="smc",
         description="Analyze one TMDL semantic model against one or more PBIR reports",
-        epilog=(
-            "Subcommand: smc clean-stale <project_path> [--kind ...] "
-            "-- preview stale PBIR metadata; use smc plan for reviewed changes "
-            "(see `smc clean-stale --help`)."
-        ),
+        epilog=COMMAND_GUIDE,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        json_errors=json_requested(argv),
     )
+    parser.add_argument('--version', action='version', version=f'Semantic Model Cleaner {__version__}')
     parser.add_argument(
         "workspace",
         nargs="?",
@@ -6000,7 +6035,7 @@ def main(argv: Optional[list[str]] = None):
     )
     parser.add_argument(
         "-o", "--output",
-        help="Output file path. Required for xlsx format. For other formats, writes to file instead of stdout.",
+        help="Output file outside Semantic Model and Report folders. Excel defaults to <model>_usage_analysis.xlsx; other formats default to stdout.",
     )
     parser.add_argument(
         "--models-path",
@@ -6033,8 +6068,9 @@ def main(argv: Optional[list[str]] = None):
         args.workspace, args.models_path, args.reports_path
     )
 
-    models = filter_models(discover_models(model_roots), args.model)
-    reports = filter_reports(discover_reports(report_roots), args.report)
+    discovered_models = discover_models(model_roots)
+    discovered_reports = discover_reports(report_roots)
+    models = filter_models(discovered_models, args.model)
 
     if args.interactive:
         if not sys.stdin.isatty():
@@ -6045,13 +6081,32 @@ def main(argv: Optional[list[str]] = None):
             models,
             lambda p: f"{p.name} ({p})",
         )
+    _require_single_model(models)
+    scope = report_binding_scope(models[0], discovered_reports)
+    reports = filter_reports([Path(row["path"]) for row in scope["selected"]], args.report)
+    if args.interactive:
         reports = select_paths_interactively(
             "reports",
             reports,
             lambda p: f"{report_display_name(p)} ({p})",
         )
 
-    _require_single_model(models)
+    scope = narrow_report_scope(scope, reports)
+    for row in scope["excluded"]:
+        print(f"Excluded {row['path']}: {row['message']}", file=sys.stderr)
+
+    output_path = args.output
+    if args.format == "xlsx" and not output_path:
+        model_name = models[0].name.replace(".SemanticModel", "")
+        output_path = f"{model_name}_usage_analysis.xlsx"
+    if output_path:
+        try:
+            output_path = validate_export_destination(
+                output_path, [*discovered_models, *discovered_reports, *models, *reports]
+            )
+        except (ValueError, OSError, RuntimeError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(2)
 
     try:
         results = analyze(
@@ -6065,11 +6120,9 @@ def main(argv: Optional[list[str]] = None):
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(2)
 
+    record_report_scope(results, scope)
+
     if args.format == "xlsx":
-        output_path = args.output
-        if not output_path:
-            model_name = models[0].name.replace(".SemanticModel", "") if models else "model"
-            output_path = f"{model_name}_usage_analysis.xlsx"
         format_xlsx(results, output_path)
     else:
         if args.format == "full":
@@ -6078,9 +6131,12 @@ def main(argv: Optional[list[str]] = None):
             text = format_unused(results)
         elif args.format == "json":
             text = format_json_output(results)
-        if args.output:
-            Path(args.output).write_text(text, encoding="utf-8")
-            print(f"Report saved to: {args.output}")
+        if output_path:
+            output_path.write_text(text, encoding="utf-8")
+            if args.format == "json":
+                emit_json('analyze', {'output_file': str(output_path)})
+            else:
+                print(f"Report saved to: {output_path}")
         else:
             print(text)
 

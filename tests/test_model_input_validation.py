@@ -19,8 +19,8 @@ def model_project(tmp_path, contents):
     (report / 'definition').mkdir(parents=True)
     (report / 'definition.pbir').write_text(json.dumps({
         'datasetReference': {'byPath': {'path': '../Invalid.SemanticModel'}},
-    }))
-    (report / 'definition/report.json').write_text('{}')
+    }), encoding="utf-8")
+    (report / 'definition/report.json').write_text('{}', encoding="utf-8")
     return model, report
 
 
@@ -71,7 +71,7 @@ def test_bom_table_keeps_real_items_and_report_references(tmp_path):
     visual.parent.mkdir(parents=True)
     visual.write_text(json.dumps({'visual': {'query': {'Measure': {
         'Expression': {'SourceRef': {'Entity': 'Sales'}}, 'Property': 'Revenue',
-    }}}}))
+    }}}}), encoding="utf-8")
     result = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
     assert [(r['item'].name, r['status']) for r in result['items']] == [('Revenue', 'USED')]
     assert not result['report_issues']
@@ -113,7 +113,7 @@ def test_initial_and_discovery_scope_excludes_invalid_models_with_reasons(tmp_pa
     model, report = model_project(tmp_path, {})
     valid = tmp_path / 'Valid.SemanticModel'
     (valid / 'definition').mkdir(parents=True)
-    (valid / 'definition/model.tmdl').write_text('model Model\n')
+    (valid / 'definition/model.tmdl').write_text('model Model\n', encoding="utf-8")
     monkeypatch.setattr(webapp, '_discover_initial_artifacts', lambda: ([model, valid], [report]))
     monkeypatch.setitem(webapp._state, 'model_search_roots', [str(tmp_path)])
     monkeypatch.setitem(webapp._state, 'report_search_roots', [str(tmp_path)])

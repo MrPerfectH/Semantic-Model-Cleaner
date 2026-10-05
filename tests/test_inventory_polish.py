@@ -23,7 +23,7 @@ def test_inventory_page_exposes_named_selection_and_filter_controls():
 
 @pytest.mark.skipif(NODE is None, reason='Node required to execute browser ownership helper')
 def test_report_ownership_uses_exact_source_or_unique_name_and_fails_closed():
-    source = TEMPLATE.read_text()
+    source = TEMPLATE.read_text(encoding="utf-8")
     start = source.index('function getReportPathByName(')
     end = source.index('\nfunction summarizeReportPreview', start)
     function = source[start:end]

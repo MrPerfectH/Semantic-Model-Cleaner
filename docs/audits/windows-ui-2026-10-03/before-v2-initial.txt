@@ -1,0 +1,46 @@
+Semantic Model Cleaner
+BETA
+Changes & history
+Classic layout
+v0.4.0b3 | commit 7c145f3 | clean
+Items
+Tables
+Report health
+References
+Compare
+BETA
+Changes & history
+Review policy
+Analyzer warnings
+Action log
+Choose model & reports
+0 reports
+Edit scope ▾
+Beta channel enabled
+
+This build can expose prerelease UI and experimental behavior. Stable users should stay on standard releases.
+
+Point the app at a Power BI project
+
+Pick one .SemanticModel folder and the .Report folders that use it. The analyzer maps usage, dependencies and cleanup safety — nothing is written without a plan preview and backup.
+
+Choose model & reports
+Analysis scope
+What gets scanned — and what counts as “used”.
+✕
+SEMANTIC MODEL
+0
+No model selected
+Choose model...
+REPORTS
+0
+No reports selected
+Browse for reports...
+Find connected reports...
+Items used only by reports outside this scope will count as Unused.
+OPTIONS
+Auto-refresh analysis after apply
+Confirm delete
+Show action log
+New here? Try the demo workspace — a small sample model and report you can safely analyze and clean.
+Analyze

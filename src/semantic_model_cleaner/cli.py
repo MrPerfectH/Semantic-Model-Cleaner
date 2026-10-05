@@ -2,9 +2,11 @@
 import sys
 
 from . import analyzer
+from .console import configure_console_output
 
 
 def main(argv: list[str] | None = None):
+    configure_console_output()
     args = list(sys.argv[1:] if argv is None else argv)
     if args and args[0] in {"policy", "naming"}:
         from .policy_cli import main as policy_main

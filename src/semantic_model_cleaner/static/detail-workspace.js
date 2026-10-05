@@ -141,7 +141,7 @@
       ? card('Parent-table consumers — DAX outside ' + item.table + ' that references the table itself', '<p class="object-note">' + (parentConsumers.length ? parentConsumers.length + ' retained item(s) reference the parent table by name (for example ALL or REMOVEFILTERS). They are not direct consumers of this item and not Report References, but they block deleting the whole table.' : 'No DAX outside this table references the table itself.') + '</p>' + formatDetailList(parentConsumers, { linkItems: true }))
       : '';
     var perspectiveCard = (item.perspectiveMemberships || []).length
-      ? card('Perspective membership — metadata evidence', '<p class="object-note">Membership keeps the item in a curated perspective; it does not prove a report executes it.</p>' + formatDetailList(item.perspectiveMemberships.map(function (member) { return member.perspective + ' (' + member.sourceFile + ')'; })))
+      ? card('Perspective membership — metadata evidence', '<p class="object-note">Informational only: a perspective is a view over the model, so membership never blocks deletion or makes the item count as used. Deleting the item also removes it from these perspectives.</p>' + formatDetailList(item.perspectiveMemberships.map(function (member) { return member.perspective + ' (' + member.sourceFile + ')'; })))
       : '';
     var translationCard = (item.translationMemberships || []).length
       ? card('Translation membership — metadata evidence', '<p class="object-note">Informational only: removing the item also removes its translation. A translation never changes the cleanup recommendation.</p>' + formatDetailList(item.translationMemberships.map(function (translation) { return translation.culture + ' (' + translation.location + ')'; })))
@@ -381,10 +381,10 @@
   }
   function planHtml(plan) {
     var changes = plan.changes || [];
-    return '<p><strong>' + changes.length + ' file change(s)</strong> · Review differences before applying.</p>' + scopeHtml(plan.scope) + validationHtml(plan.validation) + changes.map(function (change, index) { return '<details' + (index === 0 ? ' open' : '') + '><summary>' + esc(change.path || change.artifact || 'File') + ' · ' + esc(change.change || 'modified') + '</summary><pre>' + esc(change.diff || 'No text difference available.') + '</pre></details>'; }).join('');
+    return '<p><strong>' + changes.length + ' file change(s)</strong> · Review differences before applying.</p>' + scopeHtml(plan.scope) + validationHtml(plan.validation) + changes.map(function (change, index) { return '<details' + (index === 0 ? ' open' : '') + '><summary>' + esc(change.path || change.artifact || 'File') + ' · ' + esc(change.change || 'modified') + '</summary><pre tabindex="0">' + esc(change.diff || 'No text difference available.') + '</pre></details>'; }).join('');
   }
   function receiptHtml(receipt) {
-    return '<h3>' + esc(receipt.status || 'Change recorded') + '</h3><p class="object-note">Receipt ' + esc(receipt.id || '') + '</p>' + validationHtml(receipt.validation) + '<h3>Files</h3>' + formatDetailList((receipt.changed_files || []).map(function (file) { return typeof file === 'string' ? file : file.path || JSON.stringify(file); }));
+    return '<h3>' + esc(receipt.status || 'Change recorded') + '</h3><p class="object-note">Receipt ' + esc(receipt.id || '') + ' · ' + esc(receipt.updated_at || '') + '</p>' + scopeHtml(receipt.scope) + validationHtml(receipt.validation) + '<h3>Files</h3>' + formatDetailList((receipt.changed_files || []).map(function (file) { return typeof file === 'string' ? file : file.path || JSON.stringify(file); }));
   }
   function consumedDraftFields(operations, item, tableName) {
     var fields = [];
@@ -479,13 +479,50 @@
     try {
       var result = await apiGet('/api/plans'); if (!dialog.open || dialog.dataset.requestId !== historyRequest) return; if (result.error) throw new Error(result.error);
       var receipts = result.receipts || []; var plans = result.plans || [];
-      $('objectReviewBody').innerHTML = (pendingActions.size ? '<section class="object-validation"><h3>' + pendingActions.size + ' queued change(s)</h3><button type="button" class="btn btn-primary btn-sm" id="objectResumeQueue">Review queued changes</button></section>' : '') + (drafts.size ? '<h3>Item drafts</h3>' + Array.from(drafts.keys()).map(function (key) { var identity = JSON.parse(key)[2]; var isTable = identity.startsWith('Table:::'); var item = key === draftKeyForItem(identity) ? isTable ? getTableByName(identity.slice(8)) : getItemByKey(identity) : null; return item ? '<p><button type="button" class="object-link" data-open-draft="' + esc(identity) + '">' + esc(isTable ? 'Table · ' + item.name : item.table + '[' + item.name + ']') + '</button></p>' : ''; }).join('') : '') + '<h3>Receipts</h3>' + (receipts.length ? receipts.map(function (receipt) { return '<details><summary>' + esc(receipt.status || 'Recorded') + ' · ' + esc(receipt.id || '') + '</summary>' + receiptHtml(receipt) + '<button type="button" class="btn btn-secondary btn-sm" data-restore-id="' + esc(receipt.plan_id || receipt.id || '') + '">Review recovery</button></details>'; }).join('') : empty('No changes have been applied.')) + '<h3>Prepared plans</h3>' + (plans.length ? plans.map(function (plan) { return '<details><summary>' + esc(plan.id || '') + '</summary>' + planHtml(plan) + '<button type="button" class="btn btn-primary btn-sm" data-resume-plan="' + esc(plan.id) + '">Refresh and review plan</button></details>'; }).join('') : empty('No prepared plans.'));
+      $('objectReviewBody').innerHTML = (pendingActions.size ? '<section class="object-validation"><h3>' + pendingActions.size + ' queued change(s)</h3><button type="button" class="btn btn-primary btn-sm" id="objectResumeQueue">Review queued changes</button></section>' : '') + (drafts.size ? '<h3>Item drafts</h3>' + Array.from(drafts.keys()).map(function (key) { var identity = JSON.parse(key)[2]; var isTable = identity.startsWith('Table:::'); var item = key === draftKeyForItem(identity) ? isTable ? getTableByName(identity.slice(8)) : getItemByKey(identity) : null; return item ? '<p><button type="button" class="object-link" data-open-draft="' + esc(identity) + '">' + esc(isTable ? 'Table · ' + item.name : item.table + '[' + item.name + ']') + '</button></p>' : ''; }).join('') : '') + '<h3>Receipts</h3>' + (receipts.length ? receipts.map(function (receipt) { return '<details><summary>' + esc(receipt.status || 'Recorded') + ' · ' + esc(receipt.id || '') + '</summary>' + receiptHtml(receipt) + '<button type="button" class="btn btn-secondary btn-sm" data-verify-id="' + esc(receipt.plan_id || receipt.id || '') + '">Verify files</button> ' + (['applied','applying','recovery_required','restoring'].indexOf(receipt.status) >= 0 ? '<button type="button" class="btn btn-secondary btn-sm" data-restore-id="' + esc(receipt.plan_id || receipt.id || '') + '">Review recovery</button>' : '') + '</details>'; }).join('') : empty('No changes have been applied.')) + '<h3>Prepared plans</h3>' + (plans.length ? plans.map(function (plan) { return '<details><summary>' + esc(plan.id || '') + '</summary>' + planHtml(plan) + '<button type="button" class="btn btn-primary btn-sm" data-resume-plan="' + esc(plan.id) + '">Refresh and review plan</button></details>'; }).join('') : empty('No prepared plans.'));
       $('objectReviewBody').querySelectorAll('[data-open-draft]').forEach(function (button) { button.onclick = function () { dialog.close(); var identity = button.dataset.openDraft; if (identity.startsWith('Table:::')) { openTableDetails(identity.slice(8)); selectTab('table', 'changes'); } else { openItemDetails(identity); selectTab('item', 'changes'); } }; });
       if ($('objectResumeQueue')) $('objectResumeQueue').onclick = function () { dialog.close(); applyQueuedActions(); };
       $('objectReviewBody').querySelectorAll('[data-resume-plan]').forEach(function (button) { button.onclick = function () { var plan = plans.find(function (p) { return p.id === button.dataset.resumePlan; }); if (!plan) return; dialog.close(); reviewOperations(plan.operations, 'Review saved change', null, plan.scope); }; });
-      $('objectReviewBody').querySelectorAll('[data-restore-id]').forEach(function (button) { button.onclick = function () {
-        var id = button.dataset.restoreId; $('objectReviewStatus').textContent = 'Restore the original files from this plan. Later edits will block recovery.'; $('objectReviewApply').textContent = 'Restore original files'; $('objectReviewApply').hidden = false; $('objectReviewApply').disabled = false;
-        $('objectReviewApply').onclick = async function () { reviewBusy = true; $('objectReviewApply').disabled = true; $('objectReviewClose').disabled = true; try { var restored = await apiPost('/api/plans/' + encodeURIComponent(id) + '/restore', {}); if (!restored.ok) throw new Error(restored.error || 'Recovery refused.'); analysisIsCurrent = false; window.smcUpdateScopeChip(); $('objectReviewBody').innerHTML = receiptHtml(restored.receipt || {status: 'restored', id: id}); $('objectReviewStatus').textContent = 'Original files restored.'; $('objectReviewApply').hidden = true; var refresh = await reAnalyze({}); if (!refresh || !refresh.ok) $('objectReviewStatus').textContent = 'Original files restored; analysis refresh failed or was cancelled. Re-analyze to update the results. ' + (refresh && refresh.error || ''); } catch (error) { $('objectReviewStatus').textContent = error.message; } finally { reviewBusy = false; $('objectReviewClose').disabled = false; } };
+      $('objectReviewBody').querySelectorAll('[data-verify-id]').forEach(function (button) { button.onclick = async function () {
+        button.disabled = true;
+        try {
+          var verification = await apiPost('/api/plans/' + encodeURIComponent(button.dataset.verifyId) + '/verify', {});
+          if (verification.error || !verification.state) throw new Error(verification.error || 'Verification unavailable.');
+          if (dialog.open && dialog.dataset.requestId === historyRequest) $('objectReviewStatus').textContent = 'Files: ' + verification.state + (verification.state === 'changed' ? '. Changed paths: ' + (verification.changed_since_plan || []).join(', ') : '.');
+        } catch (error) { if (dialog.open && dialog.dataset.requestId === historyRequest) $('objectReviewStatus').textContent = error.message; }
+        finally { button.disabled = false; }
+      }; });
+      $('objectReviewBody').querySelectorAll('[data-restore-id]').forEach(function (button) { button.onclick = async function () {
+        var id = button.dataset.restoreId;
+        var recoveryRequest = String(Date.now() + Math.random()); dialog.dataset.requestId = recoveryRequest;
+        $('objectReviewApply').hidden = true;
+        $('objectReviewStatus').textContent = 'Checking current files and loading saved differences…';
+        try {
+          var saved = await apiGet('/api/plans/' + encodeURIComponent(id));
+          var verification = await apiPost('/api/plans/' + encodeURIComponent(id) + '/verify', {});
+          if (!dialog.open || dialog.dataset.requestId !== recoveryRequest) return;
+          if (!saved.ok || !saved.plan || verification.error || !verification.state) throw new Error(saved.error || verification.error || 'Recovery preview unavailable.');
+          $('objectReviewTitle').textContent = 'Review restoration';
+          $('objectReviewBody').scrollTop = 0;
+          $('objectReviewBody').innerHTML = '<p>Restore reverses the saved differences below using the original bytes. Later file edits are protected.</p>' + planHtml(saved.plan);
+          $('objectReviewStatus').textContent = 'Current files: ' + verification.state + '. Restore checks the files again before writing.';
+          $('objectReviewApply').textContent = 'Restore original files'; $('objectReviewApply').hidden = false; $('objectReviewApply').disabled = verification.state === 'original';
+          $('objectReviewApply').onclick = async function () {
+            if (reviewBusy) return;
+            reviewBusy = true; $('objectReviewApply').disabled = true; $('objectReviewClose').disabled = true;
+            try {
+              var restored = await apiPost('/api/plans/' + encodeURIComponent(id) + '/restore', {});
+              if (!restored.ok) throw new Error(restored.error || 'Recovery refused.');
+              pendingActions.clear(); actionStatus.clear(); clearActionPlanPreview(); updateApplyButtonState();
+              analysisIsCurrent = false; window.smcUpdateScopeChip();
+              $('objectReviewBody').innerHTML = receiptHtml(restored.receipt || {status: 'restored', id: id});
+              $('objectReviewStatus').textContent = 'Original files restored.'; $('objectReviewApply').hidden = true;
+              var refresh = await reAnalyze({});
+              if (!refresh || !refresh.ok) $('objectReviewStatus').textContent = 'Original files restored; analysis refresh failed or was cancelled. Re-analyze to update the results. ' + (refresh && refresh.error || '');
+            } catch (error) { $('objectReviewStatus').textContent = error.message; }
+            finally { reviewBusy = false; $('objectReviewClose').disabled = false; }
+          };
+        } catch (error) { if (dialog.open && dialog.dataset.requestId === recoveryRequest) $('objectReviewStatus').textContent = error.message; }
       }; });
     } catch (error) { if (dialog.open && dialog.dataset.requestId === historyRequest) $('objectReviewBody').innerHTML = '<p class="object-error">' + esc(error.message) + '</p>'; }
   };

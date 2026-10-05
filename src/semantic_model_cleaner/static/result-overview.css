@@ -1,0 +1,19 @@
+.result-overview { margin: 0 0 14px; padding: 18px 20px; background: #fff; border: 1px solid #d6dfeb; border-radius: 12px; color: #24364b; font-size: 13px; line-height: 1.5; }
+.result-overview-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.result-overview h2 { font-size: 20px; margin: 0; overflow-wrap: anywhere; }
+.result-eyebrow { color: #526079; font-size: 12px; }
+.result-scope { margin: 6px 0 12px; }
+.result-scope summary { cursor: pointer; }
+.result-scope li { overflow-wrap: anywhere; }
+.result-scope li span { color: #526079; }
+.result-facts { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; padding: 12px 0; border-block: 1px solid #e2e8f0; }
+.result-facts strong, .result-facts span { display: block; }
+.result-facts span { color: #526079; font-size: 12px; }
+.result-overview p { margin: 10px 0 0; }
+.result-next { color: #394867; }
+@media(max-width: 760px) { .result-facts { grid-template-columns: 1fr; } }
+
+body.object-view .result-overview { display: none; }
+body:has(#resultOverview:not(.hidden)) .beta-banner { display: none; }
+.result-overview { padding: 12px 16px; }
+.result-facts { padding: 8px 0; }

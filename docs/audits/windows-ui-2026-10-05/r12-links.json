@@ -1,0 +1,552 @@
+[
+  {
+    "file": "README.md",
+    "target": "docs/releases/windows-candidate.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "docs/quickstart.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "docs/cli/README.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "docs/cli/plans.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "docs/local-http-security.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "src/semantic_model_cleaner/demo_workspace",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "examples/product-qa-workspace",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "docs/quickstart.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "docs/cli/check.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "docs/support.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "CONTRIBUTING.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "BACKLOG.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "scripts/analyze_model_usage.README.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "LICENSE",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "CODE_OF_CONDUCT.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "SECURITY.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "docs/cli/plans.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "docs/cli/check.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "docs/support.md",
+    "exists": true
+  },
+  {
+    "file": "README.md",
+    "target": "docs/quickstart.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\quickstart.md",
+    "target": "releases/windows-candidate.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\quickstart.md",
+    "target": "assets/candidate/analysis.png",
+    "exists": true
+  },
+  {
+    "file": "docs\\quickstart.md",
+    "target": "cli/README.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\quickstart.md",
+    "target": "support.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\quickstart.md",
+    "target": "../SECURITY.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\support.md",
+    "target": "releases/windows-candidate.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\support.md",
+    "target": "cli/review-policy.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\support.md",
+    "target": "schema-validation.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\support.md",
+    "target": "cli/README.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\support.md",
+    "target": "cli/check.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\support.md",
+    "target": "../SECURITY.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\releases\\windows-candidate.md",
+    "target": "../quickstart.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\releases\\windows-candidate.md",
+    "target": "../audits/windows-ui-2026-10-05/R12.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "EXECUTION.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "../../audits/windows-ui-2026-10-05/R12.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "../../audits/release-readiness-2026-10-02.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r01-protect-analysis-exports.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r02-windows-unicode.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r03-protect-local-http.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r04-consistent-report-scope.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r05-windows-ci.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r02-windows-unicode.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r06-cli-discovery-and-errors.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r01-protect-analysis-exports.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r02-windows-unicode.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r04-consistent-report-scope.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r07-first-run.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r03-protect-local-http.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r04-consistent-report-scope.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r08-result-clarity.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r04-consistent-report-scope.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r07-first-run.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r09-keyboard-and-visual-polish.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r07-first-run.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r08-result-clarity.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r10-windows-release-verification.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r01-protect-analysis-exports.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r02-windows-unicode.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r03-protect-local-http.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r04-consistent-report-scope.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r05-windows-ci.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r06-cli-discovery-and-errors.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r09-keyboard-and-visual-polish.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r11-release-guidance.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r06-cli-discovery-and-errors.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r09-keyboard-and-visual-polish.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r12-release-decision.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r10-windows-release-verification.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r11-release-guidance.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r13-agent-operations-contract.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r06-cli-discovery-and-errors.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r01-protect-analysis-exports.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r02-windows-unicode.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r03-protect-local-http.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r04-consistent-report-scope.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r05-windows-ci.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r06-cli-discovery-and-errors.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r07-first-run.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r08-result-clarity.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r09-keyboard-and-visual-polish.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r10-windows-release-verification.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r11-release-guidance.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r12-release-decision.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\README.md",
+    "target": "tickets/r13-agent-operations-contract.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\EXECUTION.md",
+    "target": "README.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\EXECUTION.md",
+    "target": "../../audits/windows-ui-2026-10-03/R07.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\EXECUTION.md",
+    "target": "../../audits/windows-ui-2026-10-03/r03-v2/README.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\EXECUTION.md",
+    "target": "../../audits/windows-ui-2026-10-05/R08.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\EXECUTION.md",
+    "target": "../../audits/windows-ui-2026-10-05/R09.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\EXECUTION.md",
+    "target": "../../audits/windows-ui-2026-10-05/R10.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\EXECUTION.md",
+    "target": "../../audits/windows-ui-2026-10-05/R11.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\plans\\windows-public-beta\\EXECUTION.md",
+    "target": "../../audits/windows-ui-2026-10-05/R12.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R10.md",
+    "target": "package/artifact-hashes.json",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R10.md",
+    "target": "package/verification.json",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R10.md",
+    "target": "package/automatic-browser.json",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R10.md",
+    "target": "package/",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R10.md",
+    "target": "package/desktop-roundtrip.json",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R10.md",
+    "target": "R09.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R10.md",
+    "target": "R12.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R12.md",
+    "target": "../../plans/windows-public-beta/EXECUTION.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R12.md",
+    "target": "R09.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R12.md",
+    "target": "R08.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R12.md",
+    "target": "R09.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R12.md",
+    "target": "R10.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R12.md",
+    "target": "package/artifact-hashes.json",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R12.md",
+    "target": "package/desktop-roundtrip.json",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R12.md",
+    "target": "R11.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R12.md",
+    "target": "../../releases/windows-candidate.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R12.md",
+    "target": "../../quickstart.md",
+    "exists": true
+  },
+  {
+    "file": "docs\\audits\\windows-ui-2026-10-05\\R12.md",
+    "target": "../../support.md",
+    "exists": true
+  }
+]
