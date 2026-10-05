@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import re
 
-from .tmdl_identifiers import split_tmdl_name_and_expression
+from .tmdl_identifiers import read_single_quoted_name, split_tmdl_name_and_expression
 
 _KEYWORD_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*(.*)$", re.S)
 _FENCE = "```"
@@ -40,6 +40,7 @@ class TmdlDeclaration:
     value: str = ""
     parent: "TmdlDeclaration | None" = field(default=None, repr=False)
     children: list["TmdlDeclaration"] = field(default_factory=list, repr=False)
+    end_line: int = 0  # last source line owned directly, including an expression fence
 
     @property
     def expression(self) -> str:
@@ -72,12 +73,18 @@ def tmdl_indent_depth(line: str) -> int:
     return spaces // 4
 
 
-def scan_tmdl_declarations(text: str) -> list[TmdlDeclaration]:
-    """Return every declaration in document order with parent/children links."""
+def scan_tmdl_declarations(text: str, *, strict: bool = False) -> list[TmdlDeclaration]:
+    """Return declarations with source spans and parent/children links.
+
+    Read-only analysis tolerates unrecognized syntax. Writers can request strict
+    lexical/indentation checks; callers must still validate their supported tree
+    grammar. This is not a TOM or expression validator.
+    """
     declarations: list[TmdlDeclaration] = []
     stack: list[TmdlDeclaration] = []
     fence_owner: TmdlDeclaration | None = None
     in_block_comment = False
+    block_comment_line = 0
 
     def expression_owner(depth: int) -> TmdlDeclaration | None:
         if not stack:
@@ -91,6 +98,7 @@ def scan_tmdl_declarations(text: str) -> list[TmdlDeclaration]:
 
     for index, raw in enumerate(text.splitlines(), start=1):
         if fence_owner is not None:
+            fence_owner.end_line = index
             if raw.strip() == _FENCE:
                 fence_owner = None
             else:
@@ -98,6 +106,8 @@ def scan_tmdl_declarations(text: str) -> list[TmdlDeclaration]:
             continue
         if in_block_comment:
             if "*/" in raw:
+                if strict and raw.split("*/", 1)[1].strip():
+                    raise ValueError(f"line {index}: text after a block comment is unsupported")
                 in_block_comment = False
             continue
         stripped = raw.strip()
@@ -107,6 +117,7 @@ def scan_tmdl_declarations(text: str) -> list[TmdlDeclaration]:
 
         owner = expression_owner(depth)
         if owner is not None:
+            owner.end_line = index
             if stripped == _FENCE:
                 fence_owner = owner
             else:
@@ -118,21 +129,35 @@ def scan_tmdl_declarations(text: str) -> list[TmdlDeclaration]:
             continue
         if stripped.startswith("/*"):
             in_block_comment = "*/" not in stripped[2:]
+            block_comment_line = index
+            if strict and not in_block_comment and stripped.split("*/", 1)[1].strip():
+                raise ValueError(f"line {index}: text after a block comment is unsupported")
             continue
 
         while stack and stack[-1].depth >= depth:
             stack.pop()
         parent = stack[-1] if stack else None
 
+        if strict:
+            indent = raw[:len(raw) - len(raw.lstrip())]
+            if (indent and not re.fullmatch(r"\t+|(?: {4})+", indent)) or \
+                    depth != (parent.depth + 1 if parent else 0):
+                raise ValueError(f"line {index}: unsupported or inconsistent indentation")
+
         match = _KEYWORD_RE.match(stripped)
         if not match:
+            if strict:
+                raise ValueError(f"line {index}: unrecognized TMDL syntax")
             continue
         keyword, rest = match.group(1), match.group(2).strip()
         declaration = TmdlDeclaration(keyword=keyword, name="", depth=depth, line=index,
-                                      kind="object", parent=parent)
+                                      kind="object", parent=parent, end_line=index)
         if rest.startswith(":"):
             declaration.kind = "value"
             declaration.value = rest[1:].strip()
+            if strict and declaration.value.startswith('"') and not re.fullmatch(
+                    r'"(?:[^"\r\n]|"")*"', declaration.value):
+                raise ValueError(f"line {index}: malformed quoted property value")
         elif rest.startswith("="):
             declaration.kind = "expression"
             declaration.has_expression = True
@@ -143,7 +168,14 @@ def scan_tmdl_declarations(text: str) -> list[TmdlDeclaration]:
             if first:
                 declaration.expression_lines.append(first)
         elif rest:
+            if strict and rest.startswith("'"):
+                parsed_name = read_single_quoted_name(rest)
+                if parsed_name is None or (rest[parsed_name[1]:].strip() and
+                                          not rest[parsed_name[1]:].lstrip().startswith("=")):
+                    raise ValueError(f"line {index}: malformed quoted object name")
             name, expression, has_expression = split_tmdl_name_and_expression(rest)
+            if strict and not rest.startswith("'") and re.search(r"[\s.:'\"]", name):
+                raise ValueError(f"line {index}: object name requires single quotes")
             declaration.name = name
             declaration.has_expression = has_expression
             if has_expression:
@@ -156,12 +188,18 @@ def scan_tmdl_declarations(text: str) -> list[TmdlDeclaration]:
                 keyword not in _OBJECT_KEYWORDS_WITH_EXPRESSION and parent is not None and \
                 parent.kind != "object":
             # A bare word under a property is malformed; keep it out of the tree.
+            if strict:
+                raise ValueError(f"line {index}: declaration nested under a property")
             continue
         if parent is not None:
             parent.children.append(declaration)
         declarations.append(declaration)
         stack.append(declaration)
 
+    if strict and fence_owner is not None:
+        raise ValueError(f"line {fence_owner.line}: unterminated expression fence")
+    if strict and in_block_comment:
+        raise ValueError(f"line {block_comment_line}: unterminated block comment")
     return declarations
 
 

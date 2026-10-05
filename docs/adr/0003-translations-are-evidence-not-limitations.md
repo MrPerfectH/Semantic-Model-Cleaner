@@ -52,7 +52,8 @@ property of the culture holding a JSON payload (Q&A linguistic schema).
 - Limitation counts drop for models whose culture files previously produced a
   file-scoped limitation without a `linguisticMetadata` block; models with
   linguistic metadata keep one targeted limitation per culture.
-- Renames and deletions still do not rewrite culture files (the same gap
-  exists for perspective members). Issue #99 covers removing the translation
-  entries in the same reviewed plan; until then the evidence tells users what
-  to clean up by hand.
+- Issue #99 adds structural culture and perspective edits to rename and deletion
+  plans. Their previews and recovery journals include the dependent files, and
+  unsupported or malformed structure blocks writing. Captions, comments and opaque
+  linguistic metadata payloads are preserved; this does not expand expression
+  analysis coverage or imply runtime use.

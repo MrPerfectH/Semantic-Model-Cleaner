@@ -133,6 +133,84 @@ def test_item_dax_body_stops_at_nested_child_objects_but_keeps_continuations(tmp
         "Column", "", "Plain", True)
 
 
+# ── #96: calculated-column kind follows the structural expression ──────────
+
+@pytest.mark.parametrize("declaration", [
+    "\tcolumn Calc = [Base] + 1\n",
+    "\tcolumn Calc =\n\t\t\t[Base] + 1\n",
+    "\tcolumn Calc = ```\n\t\t\t[Base] + 1\n\t\t\t```\n",
+    "\tcolumn Calc =\n\t\t\t```\n\t\t\t[Base] + 1\n\t\t\t```\n",
+    "\tcolumn Calc\n\t\texpression =\n\t\t\t[Base] + 1\n",
+], ids=["inline", "multiline", "inline-fence", "multiline-fence", "expression-property"])
+def test_calculated_column_kind_does_not_depend_on_same_line_dax(tmp_path, declaration):
+    items = _parse_items(tmp_path, (
+        "table T\n"
+        "\tcolumn Base\n\t\tdataType: int64\n\t\tsourceColumn: Base\n"
+        "\t\tannotation Note = [NotDax]\n"
+        + declaration + "\t\tdataType: int64\n\t\tdisplayFolder: Calculations\n"
+        "\t\tannotation Note = [NotDax]\n"
+    ))
+    assert (items["Calc"].item_type, items["Calc"].dax_body, items["Calc"].data_type,
+            items["Calc"].display_folder) == (
+        "Calculated Column", "[Base] + 1", "int64", "Calculations")
+    assert (items["Base"].item_type, items["Base"].dax_body, items["Base"].source_column) == (
+        "Column", "", "Base")
+
+
+MULTILINE_COLUMNS = (
+    "table T\n"
+    "\tcolumn Base\n\t\tdataType: int64\n\t\tsourceColumn: Base\n"
+    "\tcolumn Multi =\n\t\t\tVAR value = [Base] + 1\n\t\t\tRETURN value\n"
+    "\t\tdataType: int64\n"
+    "\tcolumn Fenced =\n\t\t\t```\n\t\t\t[Base] + 2\n\t\t\t```\n"
+    "\t\tdataType: int64\n"
+    "\tcolumn Inline = [Base] + 3\n\t\tdataType: int64\n"
+)
+
+
+def test_multiline_calculated_column_kind_reaches_browser_json_and_xlsx(tmp_path):
+    from openpyxl import load_workbook
+
+    model, report = synthetic_project(tmp_path, {"T": MULTILINE_COLUMNS})
+    analysis = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
+    expected_types = {"Base": "Column", **dict.fromkeys(
+        ["Multi", "Fenced", "Inline"], "Calculated Column")}
+    assert {r["item"].name: r["item"].item_type for r in analysis["items"]} == expected_types
+    assert analysis["summary"]["total_calc_columns"] == 3
+    browser = webapp._serialize_results(analysis, model_paths=[str(model)])
+    assert {i["name"]: i["type"] for i in browser["items"]} == expected_types
+    assert item(browser, "T", "Multi")["daxExpression"] == "VAR value = [Base] + 1\nRETURN value"
+    assert item(browser, "T", "Fenced")["daxExpression"] == "[Base] + 2"
+    exported = json.loads(analyzer.format_json_output(analysis))
+    assert {i["name"]: i["type"] for i in exported["items"]} == expected_types
+    output = tmp_path / "analysis.xlsx"
+    analyzer.format_xlsx(analysis, str(output), announce=False)
+    workbook = load_workbook(output, read_only=True)
+    try:
+        rows = workbook["Details"].iter_rows(values_only=True)
+        headers = next(rows)
+        details = [dict(zip(headers, values)) for values in rows]
+        assert {r["Name"]: r["Type"] for r in details} == expected_types
+    finally:
+        workbook.close()
+
+
+def test_multiline_calculated_columns_keep_cleanup_dependency_guards(tmp_path):
+    model, report = synthetic_project(tmp_path, {"T": MULTILINE_COLUMNS})
+    base = {"action": "delete", "table": "T", "name": "Base", "item_type": "Column"}
+    calculated = [{"action": "delete", "table": "T", "name": name,
+                   "item_type": "Calculated Column"} for name in ("Multi", "Fenced", "Inline")]
+    policy = evaluate_deletion_policy(model, [report], [base])
+    assert not policy["ok"]
+    assert {v["message"] for v in policy["violations"] if v["rule_id"] == "SMC-D006"} == {
+        f"T[Base] is required by retained T[{name}]." for name in ("Multi", "Fenced", "Inline")}
+    for action in calculated:
+        policy = evaluate_deletion_policy(model, [report], [action])
+        assert policy["ok"], policy["errors"]
+    policy = evaluate_deletion_policy(model, [report], [base, *calculated])
+    assert policy["ok"], policy["errors"]
+
+
 def test_perspective_members_come_from_declarations_only():
     members = extract_perspective_members(
         "perspective Exec\n\t// perspectiveMeasure Ghost\n\tperspectiveTable Sales\n\t\tperspectiveMeasure Revenue\n")
