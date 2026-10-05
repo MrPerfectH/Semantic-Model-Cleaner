@@ -1,0 +1,44 @@
+{
+  "release_url": "https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b4",
+  "tag": "v0.4.0b4",
+  "published_at": "2026-10-05T16:28:18Z",
+  "assets": [
+    {
+      "name": "semantic-model-cleaner-windows-x64-0.4.0b4.zip",
+      "size": 13538360,
+      "digest": "sha256:7fff5bed76d2a3224a982d680d076461b5a79109d02a49bdbc2f2079dba3945c",
+      "browser_download_url": "https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b4/semantic-model-cleaner-windows-x64-0.4.0b4.zip"
+    },
+    {
+      "name": "semantic-model-cleaner-windows-x64-0.4.0b4.zip.sha256",
+      "size": 114,
+      "digest": "sha256:7a9e363dca1d40efa37c4e0c6ffbf34476ca8939c825366865f141c4a29af884",
+      "browser_download_url": "https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b4/semantic-model-cleaner-windows-x64-0.4.0b4.zip.sha256"
+    },
+    {
+      "name": "semantic_model_cleaner-0.4.0b4-py3-none-any.whl",
+      "size": 713606,
+      "digest": "sha256:8172037ee58d2c65f3440090e7951c739f38116958e9e2a775df1a85925cd94f",
+      "browser_download_url": "https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b4/semantic_model_cleaner-0.4.0b4-py3-none-any.whl"
+    },
+    {
+      "name": "semantic_model_cleaner-0.4.0b4-py3-none-any.whl.sha256",
+      "size": 114,
+      "digest": "sha256:84e9e77e00c3d20c843055f4f437bcec11644fb207ba0c479a448198da472c41",
+      "browser_download_url": "https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b4/semantic_model_cleaner-0.4.0b4-py3-none-any.whl.sha256"
+    },
+    {
+      "name": "semantic_model_cleaner-0.4.0b4.tar.gz",
+      "size": 687004,
+      "digest": "sha256:0bebd6bbb6eed779b597068cf86e8ff9c18e76d9ac7ed6fc79c1eb31bd811dda",
+      "browser_download_url": "https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b4/semantic_model_cleaner-0.4.0b4.tar.gz"
+    },
+    {
+      "name": "semantic_model_cleaner-0.4.0b4.tar.gz.sha256",
+      "size": 104,
+      "digest": "sha256:d9597a3bcb04988f16fa2d6eefd47add96c63dcabcb2a30040743a244c7fe032",
+      "browser_download_url": "https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b4/semantic_model_cleaner-0.4.0b4.tar.gz.sha256"
+    }
+  ],
+  "download_checksums_verified": true
+}

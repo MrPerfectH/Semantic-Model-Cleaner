@@ -1,5 +1,7 @@
 # Windows public beta session execution
 
+**Publication update:** the user requested completion after the merge. Beta4 is now published; [final release verification](../../releases/0.4.0b4-verification.md) supersedes the earlier candidate-only disposition below.
+
 The user authorized execution on 2026-10-03. Work is isolated from the original checkout and existing `.claude` worktrees. No release has been published.
 
 Integration worktree: `C:/Users/PrzemekHarazny/Projects/smc-windows-beta-integration` on `codex/windows-beta-integration`.
