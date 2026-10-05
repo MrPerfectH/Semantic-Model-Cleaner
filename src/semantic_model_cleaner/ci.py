@@ -13,7 +13,11 @@ COVERAGE_RULES = {"SMC002", "SMC003", "SMC008", "SMC010", "SMC011", "SMC012"}
 
 
 def _relative(path: Path, root: Path) -> str:
-    return Path(os.path.relpath(path.resolve(), root.resolve())).as_posix()
+    try:
+        return Path(os.path.relpath(path.resolve(), root.resolve())).as_posix()
+    except ValueError:
+        # Windows: different drives have no relative path; keep the absolute one.
+        return path.resolve().as_posix()
 
 
 def run_check(

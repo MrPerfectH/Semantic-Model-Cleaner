@@ -170,3 +170,19 @@ def test_path_identity_keeps_same_named_reports_separate():
     after = metadata.validate_metadata({'report-1/page.json': json.dumps(document),
                                         'report-2/page.json': json.dumps(changed)})
     assert metadata.compare_validation(before, after)['new_errors'][0]['file'] == 'report-2/page.json'
+
+
+def test_report_on_another_drive_than_workspace_still_validates(tmp_path, monkeypatch):
+    # Windows raises when the report and workspace share no drive; CI runners
+    # keep the checkout on D: and temp files on C:, so this layout is real.
+    report = tmp_path / 'Sales.Report'
+    (report / 'definition' / 'pages' / 'Overview').mkdir(parents=True)
+    (report / 'definition' / 'pages' / 'Overview' / 'page.json').write_text(
+        json.dumps(fixture('page-valid.json')), encoding="utf-8")
+    import os
+    def cross_drive(path, start=os.curdir):
+        raise ValueError("path is on mount 'C:', start on mount 'D:'")
+    monkeypatch.setattr(os.path, 'relpath', cross_drive)
+    result = metadata.validate_report_paths([report], workspace=tmp_path / 'elsewhere')
+    assert result['counts']['valid'] == 1
+    assert result['files'][0]['path'] == 'report-1/definition/pages/Overview/page.json'
