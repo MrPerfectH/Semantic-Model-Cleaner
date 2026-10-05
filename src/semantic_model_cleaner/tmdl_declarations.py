@@ -64,7 +64,7 @@ class TmdlDeclaration:
         return None
 
 
-def _indent_depth(line: str) -> int:
+def tmdl_indent_depth(line: str) -> int:
     tabs = len(line) - len(line.lstrip("\t"))
     if tabs:
         return tabs
@@ -103,7 +103,7 @@ def scan_tmdl_declarations(text: str) -> list[TmdlDeclaration]:
         stripped = raw.strip()
         if not stripped:
             continue
-        depth = _indent_depth(raw)
+        depth = tmdl_indent_depth(raw)
 
         owner = expression_owner(depth)
         if owner is not None:

@@ -38,8 +38,11 @@ from semantic_model_cleaner.reference_tokens import dax_tokens
 from semantic_model_cleaner.console import configure_console_output
 from semantic_model_cleaner.report_writer import STALE_CLEANUP_SUPPORTED_KINDS
 from semantic_model_cleaner.tmdl_declarations import (
+    TmdlDeclaration,
     extract_feature_expressions,
     extract_perspective_members,
+    scan_tmdl_declarations,
+    tmdl_indent_depth as _tmdl_indent_depth,
 )
 from semantic_model_cleaner.tmdl_identifiers import (
     parse_tmdl_dotted_ref,
@@ -1578,189 +1581,148 @@ def _parse_tmdl_hierarchies(filepath: Path) -> list[HierarchyInfo]:
     return hierarchies
 
 
+def _tmdl_description_lines(lines: list[str], declaration: TmdlDeclaration) -> list[str]:
+    """`///` description lines directly above a declaration, at the same depth."""
+    description_lines: list[str] = []
+    previous = declaration.line - 2
+    while previous >= 0:
+        raw = lines[previous]
+        stripped = raw.strip()
+        if not stripped.startswith("///") or _tmdl_indent_depth(raw) != declaration.depth:
+            break
+        description_lines.insert(0, stripped[3:].lstrip())
+        previous -= 1
+    return description_lines
+
+
+def _tmdl_dax_lines(declaration: TmdlDeclaration) -> list[str]:
+    """Expression lines of one declaration, without fences or blank lines."""
+    return [line for line in declaration.expression_lines if line and line != "```"]
+
+
+def _tmdl_flag(prop: TmdlDeclaration) -> bool:
+    """A boolean property: bare (`isHidden`) means true, otherwise `isHidden: true`."""
+    if prop.kind == "object":
+        return not prop.name
+    return prop.kind == "value" and prop.value.lower() == "true"
+
+
 def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
-    lines = filepath.read_text(encoding="utf-8-sig").splitlines()
-    items = []
-    current_table = None
-    i = 0
+    """Measures and columns of one table file, using the structural TMDL scanner.
 
-    while i < len(lines):
-        line = lines[i]
+    An item's DAX body is its own expression only: the declaration line, lines two
+    levels deeper (or a ``` fenced block). Nested child objects one level deeper
+    (`kpi`, `annotation`, `changedProperty`, `extendedProperty`, ...) and their
+    properties are not part of it; child-object expressions such as KPI targets are
+    reported separately through `extract_feature_expressions` (#92).
+    """
+    text = filepath.read_text(encoding="utf-8-sig")
+    lines = text.splitlines()
+    items: list[ModelItem] = []
 
-        # Table declaration at 0-indent
-        if not line.startswith("\t") and line.startswith("table "):
-            current_table = unquote_tmdl_name(line[6:])
-            i += 1
+    for table in scan_tmdl_declarations(text):
+        if table.keyword != "table" or table.depth != 0 or table.kind != "object" or not table.name:
             continue
-
-        if not current_table:
-            i += 1
-            continue
-
-        # Measure declaration at 1-tab
-        m = _parse_tmdl_keyword_declaration(line, "measure")
-        if m:
-            name, first_dax, _ = m
-            if first_dax.startswith("```"):
-                first_dax = first_dax[3:].strip()
-
-            dax_lines = [first_dax] if first_dax and first_dax != "```" else []
-            data_type = source_column = format_string = ""
-            description_lines = []
-            previous = i - 1
-            while previous >= 0 and lines[previous].startswith("\t///"):
-                description_lines.insert(0, lines[previous][4:].lstrip())
-                previous -= 1
-            description = "\n".join(description_lines)
-            display_folder = ""
-            is_hidden = False
-            i += 1
-
-            while i < len(lines):
-                inner = lines[i]
-                if inner == "" or inner.strip() == "":
-                    i += 1
-                    continue
-                if inner.startswith("\t\t\t"):
-                    cleaned = inner.strip()
-                    if cleaned != "```":
-                        dax_lines.append(cleaned)
-                    i += 1
-                    continue
-                if inner.startswith("\t\t") and not inner.startswith("\t\t\t"):
-                    prop = inner.strip()
-                    if prop.startswith("dataType:"):
-                        data_type = prop.split(":", 1)[1].strip()
-                    if prop.startswith("sourceColumn:"):
-                        source_column = prop.split(":", 1)[1].strip()
-                    if prop.startswith("description:"):
-                        description = prop.split(":", 1)[1].strip()
-                    if prop.startswith("formatString:"):
-                        format_string = prop.split(":", 1)[1].strip()
-                    if prop.startswith("displayFolder:"):
-                        display_folder = prop.split(":", 1)[1].strip()
-                    if prop.startswith("hidden:") or prop.startswith("isHidden:"):
-                        is_hidden = prop.split(":", 1)[1].strip().lower() == "true"
-                    elif prop in ("hidden", "isHidden"):
-                        is_hidden = True
-                    # formatStringDefinition may contain DAX column refs
-                    if prop.startswith("formatStringDefinition"):
-                        expr = prop.split("=", 1)
-                        if len(expr) > 1:
-                            dax_lines.append(expr[1].strip())
-                    i += 1
-                    continue
-                if inner.startswith("\t") and not inner.startswith("\t\t"):
-                    break
-                if not inner.startswith("\t"):
-                    break
-                i += 1
-
-            items.append(ModelItem(
-                item_type="Measure",
-                table=current_table,
-                name=name,
-                display_folder=display_folder,
-                dax_body="\n".join(dax_lines),
-                is_hidden=is_hidden,
-                source_file=str(filepath),
-                data_type=data_type,
-                source_column=source_column,
-                description=description,
-                format_string=format_string,
-            ))
-            continue
-
-        # Column declaration at 1-tab
-        c = _parse_tmdl_keyword_declaration(line, "column")
-        if c:
-            name, first_dax, _ = c
-            is_calculated = bool(first_dax)
-            data_type = source_column = format_string = ""
-            description_lines = []
-            previous = i - 1
-            while previous >= 0 and lines[previous].startswith("\t///"):
-                description_lines.insert(0, lines[previous][4:].lstrip())
-                previous -= 1
-            description = "\n".join(description_lines)
-            display_folder = ""
-            is_hidden = False
-            is_key = False
-            is_inferred = False
-            sort_by_column = ""
-            dax_lines = [first_dax] if first_dax else []
-            i += 1
-
-            while i < len(lines):
-                inner = lines[i]
-                if inner == "" or inner.strip() == "":
-                    i += 1
-                    continue
-                if inner.startswith("\t\t\t"):
-                    dax_lines.append(inner.strip())
-                    i += 1
-                    continue
-                if inner.startswith("\t\t") and not inner.startswith("\t\t\t"):
-                    prop = inner.strip()
-                    if prop.startswith("dataType:"):
-                        data_type = prop.split(":", 1)[1].strip()
-                    if prop.startswith("sourceColumn:"):
-                        source_column = prop.split(":", 1)[1].strip()
-                    if prop.startswith("description:"):
-                        description = prop.split(":", 1)[1].strip()
-                    if prop.startswith("formatString:"):
-                        format_string = prop.split(":", 1)[1].strip()
-                    if "expression" in prop and "=" in prop and not prop.startswith("formatString"):
-                        is_calculated = True
-                        expr_part = prop.split("=", 1)[1].strip()
-                        if expr_part:
-                            dax_lines.append(expr_part)
-                    if prop.startswith("displayFolder:"):
-                        display_folder = prop.split(":", 1)[1].strip()
-                    if prop.startswith("hidden:") or prop.startswith("isHidden:"):
-                        is_hidden = prop.split(":", 1)[1].strip().lower() == "true"
-                    elif prop in ("hidden", "isHidden"):
-                        is_hidden = True
-                    if prop.startswith("isKey:"):
-                        is_key = prop.split(":", 1)[1].strip().lower() == "true"
-                    elif prop == "isKey":
-                        is_key = True
-                    if prop.startswith("isNameInferred:") or prop.startswith("isDataTypeInferred:"):
-                        if prop.split(":", 1)[1].strip().lower() == "true":
-                            is_inferred = True
-                    elif prop in ("isNameInferred", "isDataTypeInferred"):
-                        is_inferred = True
-                    if prop.startswith("sortByColumn:"):
-                        sort_by_column = unquote_tmdl_name(prop.split(":", 1)[1])
-                    i += 1
-                    continue
-                if inner.startswith("\t") and not inner.startswith("\t\t"):
-                    break
-                if not inner.startswith("\t"):
-                    break
-                i += 1
-
-            items.append(ModelItem(
-                item_type="Calculated Column" if is_calculated else "Column",
-                table=current_table,
-                name=name,
-                display_folder=display_folder,
-                dax_body="\n".join(dax_lines),
-                is_hidden=is_hidden,
-                is_key=is_key,
-                is_inferred=is_inferred,
-                sort_by_column=sort_by_column,
-                source_file=str(filepath),
-                data_type=data_type,
-                source_column=source_column,
-                description=description,
-                format_string=format_string,
-            ))
-            continue
-
-        i += 1
+        for declaration in table.children:
+            if declaration.kind != "object" or not declaration.name:
+                continue
+            if declaration.keyword == "measure":
+                items.append(_tmdl_measure_item(filepath, lines, table.name, declaration))
+            elif declaration.keyword == "column":
+                items.append(_tmdl_column_item(filepath, lines, table.name, declaration))
 
     return items
+
+
+def _tmdl_measure_item(filepath: Path, lines: list[str], table: str, measure: TmdlDeclaration) -> ModelItem:
+    dax_lines = _tmdl_dax_lines(measure)
+    data_type = source_column = format_string = display_folder = ""
+    description = "\n".join(_tmdl_description_lines(lines, measure))
+    is_hidden = False
+    for prop in measure.children:
+        keyword = prop.keyword
+        if prop.kind == "value":
+            if keyword == "dataType":
+                data_type = prop.value
+            elif keyword == "sourceColumn":
+                source_column = prop.value
+            elif keyword == "description":
+                description = prop.value
+            elif keyword == "formatString":
+                format_string = prop.value
+            elif keyword == "displayFolder":
+                display_folder = prop.value
+        if keyword in ("hidden", "isHidden"):
+            is_hidden = _tmdl_flag(prop)
+        # formatStringDefinition may contain DAX column refs
+        if keyword == "formatStringDefinition" and prop.kind == "expression":
+            dax_lines.extend(_tmdl_dax_lines(prop))
+
+    return ModelItem(
+        item_type="Measure",
+        table=table,
+        name=measure.name,
+        display_folder=display_folder,
+        dax_body="\n".join(dax_lines),
+        is_hidden=is_hidden,
+        source_file=str(filepath),
+        data_type=data_type,
+        source_column=source_column,
+        description=description,
+        format_string=format_string,
+    )
+
+
+def _tmdl_column_item(filepath: Path, lines: list[str], table: str, column: TmdlDeclaration) -> ModelItem:
+    dax_lines = _tmdl_dax_lines(column)
+    # Unchanged legacy rule: a column is calculated when its declaration line carries
+    # an expression (or a ``` fence opener), or it has an `expression =` property.
+    _, first_expression, _ = split_tmdl_name_and_expression(lines[column.line - 1].strip()[len("column"):])
+    is_calculated = bool(first_expression)
+    data_type = source_column = format_string = display_folder = sort_by_column = ""
+    description = "\n".join(_tmdl_description_lines(lines, column))
+    is_hidden = is_key = is_inferred = False
+    for prop in column.children:
+        keyword = prop.keyword
+        if prop.kind == "value":
+            if keyword == "dataType":
+                data_type = prop.value
+            elif keyword == "sourceColumn":
+                source_column = prop.value
+            elif keyword == "description":
+                description = prop.value
+            elif keyword == "formatString":
+                format_string = prop.value
+            elif keyword == "displayFolder":
+                display_folder = prop.value
+            elif keyword == "sortByColumn":
+                sort_by_column = unquote_tmdl_name(prop.value)
+        if keyword == "expression" and prop.kind == "expression":
+            is_calculated = True
+            dax_lines.extend(_tmdl_dax_lines(prop))
+        if keyword in ("hidden", "isHidden"):
+            is_hidden = _tmdl_flag(prop)
+        elif keyword == "isKey":
+            is_key = _tmdl_flag(prop)
+        elif keyword in ("isNameInferred", "isDataTypeInferred") and _tmdl_flag(prop):
+            is_inferred = True
+
+    return ModelItem(
+        item_type="Calculated Column" if is_calculated else "Column",
+        table=table,
+        name=column.name,
+        display_folder=display_folder,
+        dax_body="\n".join(dax_lines),
+        is_hidden=is_hidden,
+        is_key=is_key,
+        is_inferred=is_inferred,
+        sort_by_column=sort_by_column,
+        source_file=str(filepath),
+        data_type=data_type,
+        source_column=source_column,
+        description=description,
+        format_string=format_string,
+    )
 
 
 def parse_report_extension_measures(
