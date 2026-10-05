@@ -216,7 +216,8 @@ instead. Ordinary external export files can still be overwritten.
 - Every applied plan records a receipt and original bytes for guarded restore; legacy direct-write HTTP routes are withheld
 - Field parameters backed by `NAMEOF(...)` are supported
 - Calculation groups are recognized (type, items, selector column, retained parent-table DAX consumers); calculation item expressions remain Analysis limitations and keep unused items at Review
-- Culture translations are read structurally as per-object Translation Membership (culture, file and line), shown as informational evidence that never changes the Cleanup Recommendation; `linguisticMetadata` is an Analysis limitation owned by its culture, and cleanup plans do not yet rewrite culture files
+- Culture translations are read structurally as per-object Translation Membership (culture, file and line), shown as informational evidence that never changes the Cleanup Recommendation; `linguisticMetadata` remains an Analysis Limitation owned by its culture
+- Delete and rename plans include dependent perspective members and culture translations in their file diffs and recovery data. Unrecognized or malformed perspective/culture structure blocks the plan with a file-specific explanation; expression payloads such as linguistic metadata remain unchecked
 - Analysis limitations are listed separately from Report Health with distinct-limitation and affected-item counts; remaining caveats include broader metadata indirection and malformed or skipped JSON
 
 ## Development

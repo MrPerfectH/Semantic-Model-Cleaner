@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .reference_tokens import dax_references, rewrite_dax, transform_tmdl_expressions
+from .membership_writer import MembershipError, is_membership_file, prepare_membership_edits
 
 from semantic_model_cleaner.tmdl_identifiers import (
     quote_dax_table_name as _quote_dax_table_name,
@@ -63,10 +64,10 @@ def _resolve_source_file(model_path: Path, source_file: str | Path | None) -> Pa
 def _candidate_item_files(model_path: Path, source_file: str | Path | None = None) -> list[Path]:
     files = []
     resolved_source = _resolve_source_file(model_path, source_file)
-    if resolved_source and resolved_source.is_file():
+    if resolved_source and resolved_source.is_file() and not is_membership_file(model_path, resolved_source):
         files.append(resolved_source)
     for filepath in _iter_tmdl_files(model_path):
-        if filepath not in files:
+        if filepath not in files and not is_membership_file(model_path, filepath):
             files.append(filepath)
     return files
 
@@ -99,7 +100,7 @@ def _find_table_declaration_file(model_path: Path, table: str) -> Path | None:
             return tmdl_file
     for filepath in _iter_tmdl_files(model_path):
         lines = filepath.read_text(encoding="utf-8").splitlines()
-        if _find_table_block(lines, table):
+        if not is_membership_file(model_path, filepath) and _find_table_block(lines, table):
             return filepath
     return None
 
@@ -107,6 +108,8 @@ def _find_table_declaration_file(model_path: Path, table: str) -> Path | None:
 def _model_has_column_named(model_path: Path, name: str) -> bool:
     column_pattern = re.compile(r"^\tcolumn\s+(.+?)(?:\s*=.*)?$", re.IGNORECASE)
     for filepath in _iter_tmdl_files(model_path):
+        if is_membership_file(model_path, filepath):
+            continue
         for line in filepath.read_text(encoding="utf-8").splitlines():
             match = column_pattern.match(line)
             if match and _unquote_tmdl_name(match.group(1)).casefold() == name.casefold():
@@ -719,10 +722,18 @@ def rename_measure(
     if _find_item_source(model_path, table, target_name, "Measure"):
         return {"ok": False, "error": f"Table '{table}' already has a measure named '{target_name}'"}
 
+    try:
+        membership_edits = prepare_membership_edits(
+            model_path, table=table, name=name, item_type="Measure", target_name=target_name)
+    except MembershipError as exc:
+        return {"ok": False, "written": False, "error": str(exc)}
+
     update_unqualified = not _model_has_column_named(model_path, name)
     if not update_unqualified:
         ambiguous_files = []
         for filepath in _iter_tmdl_files(model_path):
+            if is_membership_file(model_path, filepath):
+                continue
             def detect(value):
                 refs = [ref for ref in dax_references(value) if ref[0] is None and ref[1].casefold() == name.casefold()]
                 return value, len(refs)
@@ -741,6 +752,8 @@ def rename_measure(
         return {"ok": False, "error": f"Measure declaration not recognized for '{name}'"}
 
     for filepath in _iter_tmdl_files(model_path):
+        if is_membership_file(model_path, filepath):
+            continue
         text = filepath.read_text(encoding="utf-8")
         new_text = text
         count = 0
@@ -772,6 +785,8 @@ def rename_measure(
             changed_files.append(str(filepath))
             if not dry_run:
                 filepath.write_text(new_text, encoding="utf-8")
+
+    reference_count += _write_membership_edits(membership_edits, changed_files, dry_run=dry_run)
 
     return {
         "ok": True,
@@ -817,9 +832,16 @@ def rename_table(
     if not repair_only and target_file.exists():
         return {"ok": False, "error": f"Target TMDL file already exists: {target_file.name}"}
 
+    try:
+        membership_edits = prepare_membership_edits(model_path, table=table, target_name=target_table)
+    except MembershipError as exc:
+        return {"ok": False, "written": False, "error": str(exc)}
+
     changed_files = []
     reference_count = 0
     for filepath in _iter_tmdl_files(model_path):
+        if is_membership_file(model_path, filepath):
+            continue
         text = filepath.read_text(encoding="utf-8")
         new_text, count = _rewrite_table_name_in_text(text, table, target_table)
         if new_text != text:
@@ -827,6 +849,8 @@ def rename_table(
             changed_files.append(str(target_file if filepath == source_file and not repair_only else filepath))
             if not dry_run:
                 filepath.write_text(new_text, encoding="utf-8")
+
+    reference_count += _write_membership_edits(membership_edits, changed_files, dry_run=dry_run)
 
     if not dry_run and not repair_only:
         source_file.rename(target_file)
@@ -846,6 +870,16 @@ def rename_table(
         if repair_only
         else [],
     }
+
+
+def _write_membership_edits(edits, changed_files, *, dry_run):
+    count = 0
+    for path, content in edits.items():
+        count += sum(old != new for old, new in zip(path.read_bytes().splitlines(), content.splitlines()))
+        changed_files.append(str(path))
+        if not dry_run:
+            path.write_bytes(content)
+    return count
 
 
 def _rewrite_scoped_item_metadata(text: str, table: str, name: str, target_name: str, kind: str) -> tuple[str, int]:
@@ -891,7 +925,13 @@ def rename_column(
             or _find_item_source(model_path, table, target_name, 'Measure')):
         return {"ok": False, "error": f"An item named '{target_name}' already exists in '{table}'"}
     source_path = source[0]
-    all_text = {path: path.read_text(encoding='utf-8') for path in _iter_tmdl_files(model_path)}
+    try:
+        membership_edits = prepare_membership_edits(
+            model_path, table=table, name=name, item_type="Column", target_name=target_name)
+    except MembershipError as exc:
+        return {"ok": False, "written": False, "error": str(exc)}
+    all_text = {path: path.read_text(encoding='utf-8') for path in _iter_tmdl_files(model_path)
+                if not is_membership_file(model_path, path)}
     same_named = 0
     for text in all_text.values():
         for line in text.splitlines():
@@ -930,17 +970,21 @@ def rename_column(
             reference_count += count
     if ambiguous:
         return {"ok": False, "error": "Unqualified column references are ambiguous; qualify them before renaming", "ambiguous_files": sorted(set(ambiguous)), "written": False}
+    changed_files = [str(path) for path in pending]
     if not dry_run:
         snapshots = _snapshot_model_files(model_path)
         try:
             for path, text in pending.items():
                 path.write_text(text, encoding='utf-8')
+            reference_count += _write_membership_edits(membership_edits, changed_files, dry_run=False)
         except Exception as exc:
             _restore_model_files(model_path, snapshots)
             return {"ok": False, "error": str(exc), "rolled_back": True}
+    else:
+        reference_count += _write_membership_edits(membership_edits, changed_files, dry_run=True)
     return {"ok": True, "action": "rename_column", "table": table, "name": name,
             "target_name": target_name, "dry_run": dry_run,
-            "changed_files": [str(path) for path in pending], "updated_reference_count": reference_count}
+            "changed_files": changed_files, "updated_reference_count": reference_count}
 
 
 def rename_model_metadata(
@@ -983,7 +1027,7 @@ def rename_model_metadata(
     if any(not result.get("ok") for result in validation_results):
         return {
             "ok": False,
-            "error": "One or more model renames are invalid",
+            "error": "; ".join(result["error"] for result in validation_results if not result.get("ok")),
             "results": validation_results,
         }
 
@@ -1251,6 +1295,8 @@ def delete_item(
     retained_items = False
     try:
         for candidate in _iter_tmdl_files(model_path):
+            if is_membership_file(model_path, candidate):
+                continue
             candidate_lines = lines if candidate == tmdl_file else candidate.read_text(encoding="utf-8").splitlines()
             for table_start, table_end in _table_declaration_blocks(candidate_lines, table):
                 declarations.append((candidate, table_start, table_end))
@@ -1262,6 +1308,12 @@ def delete_item(
             f"Cannot delete the last item of table '{table}' across multiple TMDL declarations; "
             "consolidate and review its source definitions before whole-table cleanup."
         )}
+
+    try:
+        membership_edits = prepare_membership_edits(
+            model_path, table=table, name=name, item_type=item_type, delete_table=not retained_items)
+    except MembershipError as exc:
+        return {"ok": False, "written": False, "error": str(exc)}
 
     result = {"ok": True, "file": str(tmdl_file), "action": "delete", "item": name}
 
@@ -1290,6 +1342,10 @@ def delete_item(
         _delete_table_ref_from_model(model_path, table)
     else:
         tmdl_file.write_bytes("".join(raw_lines).encode("utf-8"))
+
+    for path, content in membership_edits.items():
+        path.write_bytes(content)
+    result["membership_files"] = [str(path) for path in membership_edits]
 
     return result
 
@@ -1530,18 +1586,18 @@ def _validate_action(model_path: Path, act: dict) -> dict:
     return result
 
 
-def _snapshot_model_files(model_path: Path) -> dict[Path, str | None]:
+def _snapshot_model_files(model_path: Path) -> dict[Path, bytes | None]:
     definition_dir = model_path / "definition"
     if not definition_dir.exists():
         return {}
     files = {path for path in definition_dir.rglob("*.tmdl") if path.is_file()}
-    snapshot: dict[Path, str | None] = {}
+    snapshot: dict[Path, bytes | None] = {}
     for path in files:
-        snapshot[path] = path.read_text(encoding="utf-8")
+        snapshot[path] = path.read_bytes()
     return snapshot
 
 
-def _restore_model_files(model_path: Path, snapshot: dict[Path, str | None]) -> None:
+def _restore_model_files(model_path: Path, snapshot: dict[Path, bytes | None]) -> None:
     definition_dir = model_path / "definition"
     current_files = {path for path in definition_dir.rglob("*.tmdl") if path.is_file()} if definition_dir.exists() else set()
 
@@ -1554,4 +1610,4 @@ def _restore_model_files(model_path: Path, snapshot: dict[Path, str | None]) -> 
             if path.exists():
                 path.unlink()
         else:
-            path.write_text(content, encoding="utf-8")
+            path.write_bytes(content)
