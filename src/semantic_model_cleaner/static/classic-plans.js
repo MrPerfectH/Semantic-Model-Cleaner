@@ -152,7 +152,7 @@
   applyQueuedActions = function () {
     if (!pendingActions.size) return Promise.resolve(null);
     return run([{kind: 'actions', actions: Array.from(pendingActions.values())}], 'Review queued cleanup', function () {
-      pendingActions.clear(); selectedKeys.clear(); selectedTableNames.clear(); clearActionPlanPreview(); updateApplyButtonState();
+      pendingActions.forEach(function (action, key) { actionStatus.set(key, "Applied: " + actionLabel(action)); }); pendingActions.clear(); selectedKeys.clear(); selectedTableNames.clear(); clearActionPlanPreview(); updateApplyButtonState();
     });
   };
   moveCurrentMeasureToTable = function () { return withItem(function (item) {
@@ -233,6 +233,7 @@
             var restored = await request('/api/plans/' + encodeURIComponent(id) + '/restore', {});
             el('classicPlanBody').innerHTML = receiptHtml(restored.receipt);
             el('classicPlanApply').hidden = true; status('Original files restored.');
+            pendingActions.clear(); actionStatus.clear(); clearActionPlanPreview(); updateApplyButtonState();
             await reAnalyze({});
           } catch (error) { status(error.message); } finally { setBusy(false); }
         };

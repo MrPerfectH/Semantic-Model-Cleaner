@@ -1,0 +1,38 @@
+[
+  {
+    "layout": "v2",
+    "scenario": "rich",
+    "overview": "Analyzed scope\nSynthetic Acceptance\nChanges & history\n2 checked Report(s) \u00b7 inspect scope\n34 Safe \u00b7 2 Review\nCleanup Recommendations\n0 distinct limitation(s)\nNo shared coverage gap detected\n2 Report Health issue(s)\nReport metadata findings\n\nSafe applies to supported scanned metadata in this scope. Other Reports and Power BI runtime behavior are not verified.\n\nNext: open a candidate to inspect Usage and dependency evidence, then prepare and review the exact file changes.",
+    "errors": []
+  },
+  {
+    "layout": "v2",
+    "scenario": "incomplete",
+    "overview": "Analyzed scope\nSynthetic Dependencies\nChanges & history\n1 checked Report(s) \u00b7 inspect scope\n0 Safe \u00b7 19 Review\nCleanup Recommendations\n7 distinct limitation(s)\nIncomplete analysis coverage\n0 Report Health issue(s)\nReport metadata findings\n\nSafe applies to supported scanned metadata in this scope. Other Reports and Power BI runtime behavior are not verified.\n\nNo Safe cleanup candidates in this scope. Inspect item evidence and any Analysis Limitations before deciding on a change.",
+    "errors": []
+  },
+  {
+    "layout": "v2",
+    "scenario": "no-candidates",
+    "overview": "Analyzed scope\nOnly\nChanges & history\n1 checked Report(s) \u00b7 inspect scope\n0 Safe \u00b7 0 Review\nCleanup Recommendations\n0 distinct limitation(s)\nNo shared coverage gap detected\n0 Report Health issue(s)\nReport metadata findings\n\nSafe applies to supported scanned metadata in this scope. Other Reports and Power BI runtime behavior are not verified.\n\nNo Safe cleanup candidates in this scope. Inspect item evidence and any Analysis Limitations before deciding on a change.",
+    "errors": []
+  },
+  {
+    "layout": "classic",
+    "scenario": "rich",
+    "overview": "Analyzed scope\nSynthetic Acceptance\nChanges & history\n2 checked Report(s) \u00b7 inspect scope\n34 Safe \u00b7 2 Review\nCleanup Recommendations\n0 distinct limitation(s)\nNo shared coverage gap detected\n2 Report Health issue(s)\nReport metadata findings\n\nSafe applies to supported scanned metadata in this scope. Other Reports and Power BI runtime behavior are not verified.\n\nNext: open a candidate to inspect Usage and dependency evidence, then prepare and review the exact file changes.",
+    "errors": []
+  },
+  {
+    "layout": "classic",
+    "scenario": "incomplete",
+    "overview": "Analyzed scope\nSynthetic Dependencies\nChanges & history\n1 checked Report(s) \u00b7 inspect scope\n0 Safe \u00b7 19 Review\nCleanup Recommendations\n7 distinct limitation(s)\nIncomplete analysis coverage\n0 Report Health issue(s)\nReport metadata findings\n\nSafe applies to supported scanned metadata in this scope. Other Reports and Power BI runtime behavior are not verified.\n\nNo Safe cleanup candidates in this scope. Inspect item evidence and any Analysis Limitations before deciding on a change.",
+    "errors": []
+  },
+  {
+    "layout": "classic",
+    "scenario": "no-candidates",
+    "overview": "Analyzed scope\nOnly\nChanges & history\n1 checked Report(s) \u00b7 inspect scope\n0 Safe \u00b7 0 Review\nCleanup Recommendations\n0 distinct limitation(s)\nNo shared coverage gap detected\n0 Report Health issue(s)\nReport metadata findings\n\nSafe applies to supported scanned metadata in this scope. Other Reports and Power BI runtime behavior are not verified.\n\nNo Safe cleanup candidates in this scope. Inspect item evidence and any Analysis Limitations before deciding on a change.",
+    "errors": []
+  }
+]

@@ -612,6 +612,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
 }
 </style>
 <link rel="stylesheet" href="{{ url_for('static', filename='detail-workspace.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='result-overview.css') }}">
 </head>
 <body class="app-flow-cleanup">
 <div class="header">
@@ -794,6 +795,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       </div>
     </div>
   </section>
+  <section id="resultOverview" class="result-overview hidden cleanup-flow" aria-label="Analysis overview"></section>
   <details class="result-guide hidden cleanup-flow" id="resultGuideSection">
     <summary>
       <span class="result-guide-title">How to read these results</span>
@@ -883,7 +885,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
         <th data-col="measureDependentCount" title="Measures that depend on this item, whether or not those measures are report-used.">Measures <span class="sort-arrow"></span></th>
         <th data-col="relationshipRefCount" title="Relationships that use this column.">Relationships <span class="sort-arrow"></span></th>
         <th data-col="otherModelUseCount" title="Other model-only uses such as sort-by, hierarchies, field parameters, or key metadata.">Flags <span class="sort-arrow"></span></th>
-        <th data-col="deleteSafety" title="Cleanup recommendation. Safe means low-risk cleanup; Keep means treat as required metadata.">Cleanup <span class="sort-arrow"></span></th>
+        <th data-col="deleteSafety" title="Cleanup recommendation. Safe applies only to supported scanned metadata in the selected scope; Keep means treat as required metadata.">Cleanup <span class="sort-arrow"></span></th>
         <th>Action</th>
       </tr></thead>
       <tbody id="tableBody"></tbody>
@@ -2509,7 +2511,7 @@ function mainSearchTextForRef(ref) {
 
 function cleanupHelpText(value) {
   var text = {
-    'Safe': 'No report usage or blocking model dependency was found. Lowest-risk cleanup candidate.',
+    'Safe': 'No supported scanned metadata indicates this item is required, and no shared Analysis Limitation applies. Safe is limited to the selected scope; confirm use in other Reports before changing it.',
     'Review': 'Not clearly blocked, but still needs a manual check before deletion.',
     'Blocked': 'Still used directly or indirectly by reports or model dependencies.',
     'Keep': 'Treat as intentional metadata or required structure, not as a cleanup target.'
@@ -3378,6 +3380,7 @@ function setResultsData(data, preserveActionState) {
   applyFilters();
   updateApplyButtonState();
   updateColumnActionButtons();
+  if (window.smcRenderResultOverview) window.smcRenderResultOverview(data);
 }
 
 function renderWarnings() {
@@ -5609,7 +5612,7 @@ function detailDecisionCopy(item) {
       : 'This item is report-level metadata, so standard model cleanup actions are disabled.';
   }
   var cleanup = deleteSafetyValue(item);
-  if (cleanup === 'Safe') return 'No report usage or blocking model dependency was found. This is a low-risk cleanup candidate.';
+  if (cleanup === 'Safe') return 'No supported scanned metadata indicates this item is required in the selected scope. Confirm use outside that scope before preparing a change.';
   if (cleanup === 'Blocked') return 'This item is still used directly or indirectly. Keep it until the report or model dependencies are resolved.';
   if (cleanup === 'Keep') return 'This item is required by model metadata. Treat it as retained, even when report usage is not visible.';
   if (window.smcCleanupExplanation) { var explanation = window.smcCleanupExplanation(item); return explanation.lead + ' ' + explanation.next; }
@@ -7302,5 +7305,6 @@ setAppFlow('cleanup');
 <script src="{{ url_for('static', filename='analysis-limitations.js') }}"></script>
 <script src="{{ url_for('static', filename='policy-workspace.js') }}"></script>
 <script src="{{ url_for('static', filename='first-run.js') }}"></script>
+<script src="{{ url_for('static', filename='result-overview.js') }}"></script>
 </body>
 </html>
