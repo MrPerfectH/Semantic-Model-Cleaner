@@ -1782,10 +1782,9 @@ def _tmdl_measure_item(filepath: Path, lines: list[str], table: str, measure: Tm
 
 def _tmdl_column_item(filepath: Path, lines: list[str], table: str, column: TmdlDeclaration) -> ModelItem:
     dax_lines = _tmdl_dax_lines(column)
-    # Unchanged legacy rule: a column is calculated when its declaration line carries
-    # an expression (or a ``` fence opener), or it has an `expression =` property.
-    _, first_expression, _ = split_tmdl_name_and_expression(lines[column.line - 1].strip()[len("column"):])
-    is_calculated = bool(first_expression)
+    # The expression marker also covers bodies that start on a later line or
+    # inside a fence; their kind must not depend on same-line DAX text.
+    is_calculated = column.has_expression
     data_type = source_column = format_string = display_folder = sort_by_column = ""
     description = "\n".join(_tmdl_description_lines(lines, column))
     is_hidden = is_key = is_inferred = False
