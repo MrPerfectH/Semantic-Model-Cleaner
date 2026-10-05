@@ -616,11 +616,7 @@ def test_serialize_results_marks_stale_only_usage_and_stale_details():
 
 def test_api_serialization_groups_report_health_workflow():
     results = _fake_results()
-    perspective_reason = (
-        "Member of perspective Executive (definition/perspectives/Executive.tmdl). "
-        "Removing the item also removes this perspective member; membership alone "
-        "does not prove a report executes it."
-    )
+    review_reason = "Item is marked as a key"
     results["report_issues"] = [
         {
             "severity": "error",
@@ -644,7 +640,7 @@ def test_api_serialization_groups_report_health_workflow():
         },
     ]
     results["items"][0]["removal_risk"] = "Review"
-    results["items"][0]["review_triggers"] = [perspective_reason]
+    results["items"][0]["review_triggers"] = [review_reason]
     results["items"][0]["stale_usages"] = [
         analyzer.UsageRef(
             table="Sales",
@@ -682,7 +678,7 @@ def test_api_serialization_groups_report_health_workflow():
         "label": "Preview stale cleanup",
         "entryCount": 1,
     }
-    assert payload["items"][0]["reviewTriggers"] == [perspective_reason]
+    assert payload["items"][0]["reviewTriggers"] == [review_reason]
     assert payload["analysisLimitations"] == {
         "distinctCount": 0, "sharedCount": 0, "targetedCount": 0,
         "affectedItemCount": 0, "coverageComplete": True, "limitations": [],
@@ -850,13 +846,9 @@ def test_api_analyze_includes_review_triggers(monkeypatch, tmp_path):
     assert payload["references"][0]["reviewTriggers"] == ["Item is hidden"]
 
 
-def test_api_serialization_preserves_perspective_review_reason():
+def test_api_serialization_preserves_review_reason():
     results = _fake_results()
-    reason = (
-        "Member of perspective Executive (definition/perspectives/Executive.tmdl). "
-        "Removing the item also removes this perspective member; membership alone "
-        "does not prove a report executes it."
-    )
+    reason = "Item is marked as a key"
     results["items"][0]["removal_risk"] = "Review"
     results["items"][0]["review_triggers"] = [reason]
     results["table_summaries"][0]["items"][0]["removal_risk"] = "Review"

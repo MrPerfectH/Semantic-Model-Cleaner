@@ -184,9 +184,7 @@ def test_perspective_membership_is_concrete_evidence_not_runtime_use(results, pa
     goal = row(results, "Sales", "Revenue Goal")
     assert goal["perspectives"] == [
         {"perspective": "Executive", "source_file": "definition/perspectives/Executive.tmdl", "line": 4}]
-    assert any(t == ("Member of perspective Executive (definition/perspectives/Executive.tmdl). Removing the "
-                     "item also removes this perspective member; membership alone does not prove a report "
-                     "executes it.") for t in goal["review_triggers"])
+    assert not any("perspective" in t.lower() for t in goal["review_triggers"])
     assert goal["status"] == "NOT USED"
     assert not any(limitation["area"] == "Perspectives" for limitation in results["analysis_limitations"])
     browser = item(payload, "Sales", "Revenue Goal")

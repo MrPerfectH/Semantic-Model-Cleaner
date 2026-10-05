@@ -805,8 +805,8 @@ def _unsupported_semantic_model_error(model_path: Path) -> str | None:
 def parse_unsupported_metadata_refs(model_path: Path) -> list[UnsupportedMetadataRef]:
     """Return Unsupported Metadata detected from actual TMDL declarations.
 
-    Perspective membership is not an analysis gap; it is concrete metadata and is
-    parsed separately by parse_model_metadata.
+    Perspective membership is not an analysis gap and never changes removal risk;
+    it is concrete metadata parsed separately by parse_model_metadata.
     """
     refs: list[UnsupportedMetadataRef] = []
     refs.extend(_parse_unsupported_tmdl_metadata_refs(model_path))
@@ -1036,15 +1036,6 @@ def _unsupported_metadata_review_trigger(
         f"Referenced by the {feature}{owner} ({_limitation_location(ref)}). "
         f"Dependency checking is incomplete for {ref.area}, so the reference is "
         f"evidence of a dependency, not proof of report use; the item stays at Review."
-    )
-
-
-def _perspective_review_trigger(member: PerspectiveMembership) -> str:
-    """Perspective membership is metadata evidence, not proof of runtime use."""
-    return (
-        f"Member of perspective {member.perspective} ({member.source_file}). "
-        f"Removing the item also removes this perspective member; membership alone "
-        f"does not prove a report executes it."
     )
 
 
@@ -4772,9 +4763,6 @@ def analyze(
                         item, model_metadata.calculation_groups[item.table],
                         table_dependents_by_table.get(item.table.casefold(), []),
                     ))
-                review_triggers.extend(
-                    _perspective_review_trigger(member) for member in perspective_index.get(nkey, [])
-                )
             if shared_limitation_trigger:
                 review_triggers.append(shared_limitation_trigger)
             if review_triggers:

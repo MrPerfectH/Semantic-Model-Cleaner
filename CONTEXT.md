@@ -81,7 +81,7 @@ The string column of a calculation group table that report authors place in slic
 _Avoid_: Calc group column, field
 
 **Perspective Membership**:
-Concrete model metadata stating that a table, measure, column, or hierarchy belongs to a named perspective. It is evidence for a reviewed change, not proof that a report executes the item, and not an Analysis Limitation.
+Concrete model metadata stating that a table, measure, column, or hierarchy belongs to a named perspective. A perspective is a view over the model, not a consumer: membership is informational evidence shown so the user sees which perspectives lose a member when the item is deleted. It never changes a Cleanup Recommendation, does not block Safe, is not proof that a report executes the item, and is not an Analysis Limitation.
 _Avoid_: Perspective usage, perspective dependency
 
 **Report Health**:

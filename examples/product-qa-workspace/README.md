@@ -24,9 +24,11 @@ semantic-model-cleaner-web examples/product-qa-workspace
 
 Highlights:
 
-- `Sales[Cleanup Note]` is a Safe cleanup candidate.
-- `Sales[Perspective Revenue]` is a Review candidate because it is a member of the Executive
-  perspective; membership is shown as concrete evidence, not as Unsupported Metadata.
+- `Sales[Cleanup Note]` has no use in scope but stays at Review because the unreadable visual JSON
+  is a shared Analysis Limitation.
+- `Sales[Perspective Revenue]` is a member of the Executive perspective. Membership is informational
+  evidence (deleting the measure also removes the member); it is never a Review trigger. The measure
+  is Review here only because of the same shared limitation, and would be Safe without it.
 - `Store[Store Code]` is Blocked by RLS metadata.
 - `Sales[Stale Margin]` appears only in stale PBIR metadata.
 - `Sales[Broken Forecast]` has broken model references.
