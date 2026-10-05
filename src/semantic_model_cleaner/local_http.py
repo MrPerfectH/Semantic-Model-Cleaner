@@ -30,7 +30,9 @@ def _origin(value):
 def install_local_http_boundary(app):
     # No cookies, URL parameters, log messages, or persistent token files.
     app.config['SMC_LOCAL_TOKEN'] = secrets.token_urlsafe(32)
-    app.config['TRUSTED_HOSTS'] = ['localhost', '127.0.0.1', '[::1]']
+    # Match the IPv4-only launcher contract. Bracketed IPv6 host matching
+    # differs between Werkzeug versions and can match unintended IPv6 hosts.
+    app.config['TRUSTED_HOSTS'] = ['localhost', '127.0.0.1']
 
     def reject(message):
         return jsonify(ok=False, code='LOCAL_REQUEST_REJECTED', error=message), 403

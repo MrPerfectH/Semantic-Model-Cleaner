@@ -67,7 +67,10 @@ def test_every_mutation_route_requires_token_before_dispatch(raw_client, monkeyp
     assert raw_client.open(path, method=method, json={}).status_code == 403
 
 
-@pytest.mark.parametrize('host', ['foreign.example', 'localhost.foreign.example', '127.0.0.1.foreign.example', '0.0.0.0'])
+@pytest.mark.parametrize('host', [
+    'foreign.example', 'localhost.foreign.example', '127.0.0.1.foreign.example', '0.0.0.0',
+    '[::1]', '[::2]', '[2001:db8::1]',
+])
 @pytest.mark.parametrize('path', ['/api/session', '/api/browse', '/api/plans', '/'])
 def test_untrusted_hosts_cannot_bootstrap_or_read(raw_client, host, path):
     response = raw_client.get(path, headers={'Host': host})
@@ -123,7 +126,7 @@ def test_remote_peer_cannot_access_bootstrap_even_with_local_host(raw_client, re
     assert response.status_code == 403
 
 
-@pytest.mark.parametrize('host', ['http://localhost', 'http://127.0.0.1:5001', 'http://[::1]:5001'])
+@pytest.mark.parametrize('host', ['http://localhost', 'http://127.0.0.1:5001'])
 def test_same_origin_bootstrap_and_authenticated_discovery_work(raw_client, tmp_path, host):
     headers = {'Origin': host, 'Sec-Fetch-Site': 'same-origin',
                'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Dest': 'empty'}
