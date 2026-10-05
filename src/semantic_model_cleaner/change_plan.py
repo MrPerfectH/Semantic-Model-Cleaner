@@ -287,7 +287,14 @@ def create_plan(model_path, report_paths, operations):
     from . import metadata_validation
     schema_before = metadata_validation.validate_metadata(before)
     baseline = _analyze(originals)
-    if strict and not baseline.get('coverage', {}).get('complete', True):
+    # Pure cleanup-action plans are judged against the simulated final state
+    # (#91): a gap owned by a table the plan removes with all its consumers no
+    # longer blocks. Rename/move/DAX propagation still needs complete coverage now.
+    final_state_complete = (all(op.get('kind') == 'actions' for op in operations)
+                            and policy['scope'].get('complete') is True)
+    cleared = [{key: entry.get(key) for key in ('id', 'owner', 'table', 'source_file', 'line', 'cleared_reason')}
+               for entry in policy['scope'].get('cleared_limitations', [])]
+    if strict and not baseline.get('coverage', {}).get('complete', True) and not final_state_complete:
         raise PlanError('Refactoring requires complete supported scan coverage. Resolve metadata limitations first.')
     with tempfile.TemporaryDirectory(prefix='smc-plan-') as temp:
         staged = {k: Path(temp).resolve() / k / p.name for k, p in originals.items()}
@@ -333,7 +340,10 @@ def create_plan(model_path, report_paths, operations):
             'created_at': datetime.now(timezone.utc).isoformat(),
             'scope': {k: str(p) for k, p in originals.items()},
             'coverage': {'reports': [{k: b.get(k) for k in ('name', 'status', 'message')} for b in bindings],
-                         'analysis': baseline.get('coverage', {})}, 'operations': operations,
+                         'analysis': baseline.get('coverage', {}),
+                         'final_state': {'complete': final_state_complete
+                                         or bool(baseline.get('coverage', {}).get('complete', False)),
+                                         'cleared_limitations': cleared}}, 'operations': operations,
             'inputs': _hashes(before), 'outputs': _hashes(after), 'changes': changes,
             'validation': {'json_syntax': 'passed' if strict else 'changed files passed',
                            'reference_integrity': 'no new unresolved references',
@@ -344,7 +354,8 @@ def create_plan(model_path, report_paths, operations):
                                            'changed_not_validated': schema_comparison['changed_not_validated'],
                                            'bundle_commit': schema_after['bundle'].get('commit')},
                            'limitations': ['Static analysis of selected TMDL/PBIR only.',
-                                           'Only supported declared PBIR schemas are validated; TMDL/DAX engine validation is not performed.']}}
+                                           'Only supported declared PBIR schemas are validated; TMDL/DAX engine validation is not performed.']
+                                          + sorted({entry['cleared_reason'] for entry in cleared})}}
     plan['digest'] = _seal(plan)
     return plan
 

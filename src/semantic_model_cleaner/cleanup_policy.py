@@ -18,9 +18,15 @@ def evaluate_deletion_policy(
     analysis. Deletes require a bound, readable selected report scope. An unused
     DAX chain may be removed together, but retained structural and DAX consumers
     block it. Review and inferred items are conservatively protected.
+
+    Coverage is evaluated against the proposed final state: a shared analysis
+    limitation declared inside a model table that the plan removes completely,
+    with no retained consumer left, no longer counts (issue #91).
+    ``scope["complete"]`` reports that final-state coverage and
+    ``scope["cleared_limitations"]`` lists what the plan cleared and why.
     """
     violations: list[dict] = []
-    scope = {"model": str(model_path), "reports": [], "complete": False}
+    scope = {"model": str(model_path), "reports": [], "complete": False, "cleared_limitations": []}
 
     def reject(rule_id: str, message: str, table: str = "", name: str = "") -> None:
         violations.append(dict(rule_id=rule_id, table=table, name=name, message=message))
@@ -56,8 +62,7 @@ def evaluate_deletion_policy(
         if warning.get("code") in {"UNRESOLVED_NAMEOF_TARGET", "AMBIGUOUS_NAMEOF_TARGET"}:
             scope["complete"] = False
             reject("SMC-D002", warning["message"])
-    for limitation in analysis.get("coverage", {}).get("limitations", []):
-        reject("SMC-D002", limitation["message"])
+    shared_limitations = analysis.get("coverage", {}).get("limitations", [])
     rows = {analyzer.normalize_key(*r["item"].key): r for r in analysis["items"]
             if r["item"].source_kind == "model"}
     targets: set[tuple[str, str]] = set()
@@ -71,13 +76,6 @@ def evaluate_deletion_policy(
         if not matches:
             reject("SMC-D003", f"Deletion target does not match a current model item: {table}[{name}].", table, name)
         targets.update(matches)
-    for key in sorted(targets):
-        row = rows[key]
-        item = row["item"]
-        if analyzer.is_used_status(row["status"]) or row["status"].startswith("BROKEN") or item.is_inferred:
-            reject("SMC-D004", f"Keep {analyzer.format_item_ref(item.key)}: {row['status']}.", *item.key)
-        elif row["removal_risk"] == "Review":
-            reject("SMC-D005", f"Review required for {analyzer.format_item_ref(item.key)}: " + "; ".join(row["review_triggers"]), *item.key)
     items = [row["item"] for row in analysis["items"]]
     graphs = analysis.get("dependency_graphs") or analyzer.scoped_dependency_graphs(items)
 
@@ -131,7 +129,80 @@ def evaluate_deletion_policy(
                 if table.casefold() in removed_tables:
                     owner = "" if source[0] == "model" else f" in {source[0]}"
                     reject("SMC-D006", f"Table {table} is required by retained {analyzer.format_item_ref(source[-2:])}{owner}.", table)
+    # Simulated final state (#91): a table is cleared only when the plan removes
+    # every model item in it and no retained structural or DAX consumer still
+    # needs it. Its own shared limitations vanish with its declaration; every
+    # other limitation, including targeted ones whose owner remains, still applies.
+    retained_consumer_tables = {v["table"].casefold() for v in violations if v["rule_id"] == "SMC-D006"}
+    cleared_tables = removed_tables - retained_consumer_tables
+    remaining_limitations = []
+    for limitation in shared_limitations:
+        if _owned_by_cleared_table(limitation, cleared_tables):
+            scope["cleared_limitations"].append(dict(limitation, cleared_reason=_cleared_reason(limitation)))
+        else:
+            remaining_limitations.append(limitation)
+            reject("SMC-D002", limitation["message"])
+    if shared_limitations and not remaining_limitations and not any(
+            v["rule_id"] == "SMC-D002" for v in violations):
+        scope["complete"] = True
+    coverage_cleared = scope["complete"] and bool(scope["cleared_limitations"])
+    for key in sorted(targets):
+        row = rows[key]
+        item = row["item"]
+        if analyzer.is_used_status(row["status"]) or row["status"].startswith("BROKEN") or item.is_inferred:
+            reject("SMC-D004", f"Keep {analyzer.format_item_ref(item.key)}: {row['status']}.", *item.key)
+        elif row["removal_risk"] == "Review":
+            reasons = _final_state_review_triggers(
+                row, coverage_cleared=coverage_cleared, group_cleared=item.table.casefold() in cleared_tables)
+            if reasons:
+                reject("SMC-D005", f"Review required for {analyzer.format_item_ref(item.key)}: "
+                       + "; ".join(reasons), *item.key)
     # Keep diagnostics deterministic and avoid duplicate edges from parser paths.
     unique = {(v["rule_id"], v["table"], v["name"], v["message"]): v for v in violations}
     violations[:] = [unique[key] for key in sorted(unique)]
     return result()
+
+
+# Informational reasons appended after the Review decision; their guards are
+# evaluated separately (SMC-D006) against the final state.
+_RETAINED_DECLARATION_PREFIXES = ("Sort column required by retained ", "Column belongs to retained hierarchy ")
+
+
+def _owned_by_cleared_table(limitation: dict, cleared_tables: set[str]) -> bool:
+    """True only for model metadata declared inside a table the plan fully removes.
+
+    Report-scan gaps and model-level constructs (no owning table) never qualify.
+    """
+    table = str(limitation.get("table") or "")
+    return (limitation.get("kind") == "unsupported_metadata" and bool(table)
+            and bool(limitation.get("owner")) and table.casefold() in cleared_tables)
+
+
+def _cleared_reason(limitation: dict) -> str:
+    owner = limitation["table"]
+    if "calculation item" in str(limitation.get("owner", "")):
+        return (f"Coverage gap owned by '{owner}' is cleared because the plan removes the calculation "
+                f"group and every retained parent-table consumer.")
+    return (f"Coverage gap owned by '{owner}' is cleared because the plan removes the table and every "
+            f"retained consumer.")
+
+
+def _final_state_review_triggers(row: dict, *, coverage_cleared: bool, group_cleared: bool) -> list[str]:
+    """Review reasons that still hold once the plan's removals are applied.
+
+    Only two reasons can be resolved by the plan itself: the collapsed shared
+    coverage reason (when final-state coverage is complete) and calculation-group
+    structure reasons (when the whole group goes with all its consumers). Every
+    item-specific reason (hidden, key, perspective, targeted metadata) remains.
+    """
+    resolved = set()
+    if coverage_cleared and row.get("shared_limitation_trigger"):
+        resolved.add(row["shared_limitation_trigger"])
+    if group_cleared:
+        resolved.update(row.get("calculation_group_triggers", []))
+    if not resolved:
+        return list(row["review_triggers"])
+    # Retained sort/hierarchy declarations are re-checked as SMC-D006 against the
+    # final state, so they are not repeated as Review reasons here.
+    return [t for t in row["review_triggers"]
+            if t not in resolved and not t.startswith(_RETAINED_DECLARATION_PREFIXES)]

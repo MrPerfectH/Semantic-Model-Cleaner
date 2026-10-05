@@ -4764,6 +4764,10 @@ def analyze(
 
         # ── Removal risk ──
         review_triggers: list[str] = []
+        # Plan validation re-derives these two reasons against a proposed final
+        # state (issue #91), so keep them identifiable without parsing text.
+        item_shared_trigger = ""
+        group_triggers: list[str] = []
         if identity in broken_dax_refs and broken_dax_refs[identity]:
             removal_risk = ""
             review_triggers.extend([detail["message"] for detail in broken_dax_refs[identity]])
@@ -4784,14 +4788,16 @@ def analyze(
             )
             if item.source_kind == "model":
                 if item.table in model_metadata.calculation_groups:
-                    review_triggers.extend(_calculation_group_triggers(
+                    group_triggers = _calculation_group_triggers(
                         item, model_metadata.calculation_groups[item.table],
                         table_dependents_by_table.get(item.table.casefold(), []),
-                    ))
+                    )
+                    review_triggers.extend(group_triggers)
                 review_triggers.extend(
                     _perspective_review_trigger(member) for member in perspective_index.get(nkey, [])
                 )
             if shared_limitation_trigger:
+                item_shared_trigger = shared_limitation_trigger
                 review_triggers.append(shared_limitation_trigger)
             if review_triggers:
                 removal_risk = "Review"
@@ -4830,6 +4836,8 @@ def analyze(
             "has_direct_usage": has_direct_usage,
             "removal_risk": removal_risk,
             "review_triggers": review_triggers,
+            "shared_limitation_trigger": item_shared_trigger,
+            "calculation_group_triggers": group_triggers,
             "hierarchies": hierarchy_names,
             "broken_dax_refs": [detail["ref"] for detail in broken_dax_refs.get(identity, [])],
             "broken_dax_ref_details": broken_dax_refs.get(identity, []),
