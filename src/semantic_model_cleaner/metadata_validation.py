@@ -221,8 +221,14 @@ def validate_report_paths(report_paths, *, workspace=None, progress=None):
     for index, (root, path) in enumerate(files):
         if progress and index % 20 == 0:
             progress('Checking declared report schemas', index, len(files))
-        key = (Path(os.path.relpath(path, workspace)).as_posix() if workspace else
-               f'report-{paths.index(root)+1}/{path.relative_to(root).as_posix()}')
+        key = f'report-{paths.index(root)+1}/{path.relative_to(root).as_posix()}'
+        if workspace:
+            try:
+                key = Path(os.path.relpath(path, workspace)).as_posix()
+            except ValueError:
+                # Windows cannot make relative paths across drives. Keep the
+                # per-report identity so similarly named reports stay distinct.
+                pass
         result = validate_metadata({key: path.read_bytes()})
         records.extend(result['files'])
     counts = Counter(record['status'] for record in records)

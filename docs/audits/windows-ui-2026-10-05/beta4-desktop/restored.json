@@ -1,0 +1,20 @@
+{
+  "visual_errors": [],
+  "query_rows": [
+    {
+      "Revenue": 1.0,
+      "Rows": 1
+    }
+  ],
+  "measures": [
+    "Revenue",
+    "Safe Cleanup Candidate",
+    "Unused Base",
+    "Unused Derived",
+    "Broken Revenue",
+    "Hidden Forecast",
+    "Report Target",
+    "Revenue vs Target"
+  ],
+  "powerbi_process": 61252
+}

@@ -1,0 +1,2269 @@
+[
+  {
+    "layout": "v2",
+    "measurements": [
+      {
+        "selector": "btn btn-secondary btn-sm object-persistent-review",
+        "text": "Changes & history",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "btn btn-secondary btn-sm",
+        "text": "Re-analyze",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "btnExportJson",
+        "text": "Export JSON",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "btnExportExcel",
+        "text": "Export Excel",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "tabDetailsCount",
+        "text": "(9/9)",
+        "color": "rgb(81, 74, 213)",
+        "bg": [
+          239,
+          237,
+          255
+        ],
+        "ratio": 5.54
+      },
+      {
+        "selector": "tabTablesCount",
+        "text": "(3/3)",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "tabReportsCount",
+        "text": "(5/5)",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "tabRefsCount",
+        "text": "(9/9)",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "rail-item btn btn-secondary",
+        "text": "Review policy",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "rail-row",
+        "text": "Safe6",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "rail-row",
+        "text": "Review0",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "rail-row",
+        "text": "Blocked3",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "rail-row",
+        "text": "Keep0",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "rail-row",
+        "text": "Total items9",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "rail-row",
+        "text": "Used3",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "rail-row",
+        "text": "Not used6",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "rail-row",
+        "text": "Measures3",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "rail-row",
+        "text": "Columns6",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "overviewHistory",
+        "text": "Changes & history",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "STRONG",
+        "text": "6 Safe \u00b7 0 Review",
+        "color": "rgb(36, 54, 75)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.32
+      },
+      {
+        "selector": "SPAN",
+        "text": "Cleanup Recommendations",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "STRONG",
+        "text": "0 distinct limitation(s)",
+        "color": "rgb(36, 54, 75)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.32
+      },
+      {
+        "selector": "SPAN",
+        "text": "No shared coverage gap detected",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "STRONG",
+        "text": "5 Report Health issue(s)",
+        "color": "rgb(36, 54, 75)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.32
+      },
+      {
+        "selector": "SPAN",
+        "text": "Report metadata findings",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "P",
+        "text": "Safe applies to supported scanned metadata in this scope. Ot",
+        "color": "rgb(36, 54, 75)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.32
+      },
+      {
+        "selector": "STRONG",
+        "text": "Safe applies to supported scanned metadata in this scope.",
+        "color": "rgb(36, 54, 75)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.32
+      },
+      {
+        "selector": "result-next",
+        "text": "Next: open a candidate to inspect Usage and dependency evide",
+        "color": "rgb(57, 72, 103)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.14
+      },
+      {
+        "selector": "badge badge-used badge-status",
+        "text": "Used",
+        "color": "rgb(30, 64, 175)",
+        "bg": [
+          219,
+          234,
+          254
+        ],
+        "ratio": 7.15
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Indirect",
+        "color": "rgb(55, 48, 163)",
+        "bg": [
+          224,
+          231,
+          255
+        ],
+        "ratio": 8.06
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Stale only",
+        "color": "rgb(154, 52, 18)",
+        "bg": [
+          255,
+          247,
+          237
+        ],
+        "ratio": 6.88
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Broken",
+        "color": "rgb(249, 250, 251)",
+        "bg": [
+          17,
+          24,
+          39
+        ],
+        "ratio": 16.98
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Stale",
+        "color": "rgb(154, 52, 18)",
+        "bg": [
+          255,
+          247,
+          237
+        ],
+        "ratio": 6.88
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(21, 128, 61)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 4.57
+      },
+      {
+        "selector": "badge badge-review",
+        "text": "Review",
+        "color": "rgb(180, 83, 9)",
+        "bg": [
+          254,
+          243,
+          199
+        ],
+        "ratio": 4.51
+      },
+      {
+        "selector": "badge badge-caution",
+        "text": "Blocked",
+        "color": "rgb(185, 28, 28)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 5.3
+      },
+      {
+        "selector": "badge badge-donotremove",
+        "text": "Keep",
+        "color": "rgb(71, 85, 105)",
+        "bg": [
+          238,
+          242,
+          246
+        ],
+        "ratio": 6.74
+      },
+      {
+        "selector": "badge badge-review",
+        "text": "5",
+        "color": "rgb(180, 83, 9)",
+        "bg": [
+          254,
+          243,
+          199
+        ],
+        "ratio": 4.51
+      },
+      {
+        "selector": "badge badge-caution",
+        "text": "error",
+        "color": "rgb(185, 28, 28)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 5.3
+      },
+      {
+        "selector": "rows-control",
+        "text": "Rows\n        \n          50\n          100\n          250\n     ",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          246,
+          247,
+          250
+        ],
+        "ratio": 5.93
+      },
+      {
+        "selector": "inline-checkbox",
+        "text": "Wrap long text",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          246,
+          247,
+          250
+        ],
+        "ratio": 5.93
+      },
+      {
+        "selector": "btnAutoSizeColumns",
+        "text": "Fit all columns",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "LABEL",
+        "text": "Type",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Table",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Name",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Origin",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Folder",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Hidden",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Usage",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Issues",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Reports",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Pages",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Direct",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Measures",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Relationships",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Flags",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Cleanup",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "LABEL",
+        "text": "Action",
+        "color": "rgb(38, 50, 71)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.89
+      },
+      {
+        "selector": "inventoryResetColumns",
+        "text": "Reset to compact defaults",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "TH",
+        "text": "Name",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          251,
+          252,
+          254
+        ],
+        "ratio": 6.18
+      },
+      {
+        "selector": "TH",
+        "text": "Usage",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          251,
+          252,
+          254
+        ],
+        "ratio": 6.18
+      },
+      {
+        "selector": "TH",
+        "text": "Issues",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          251,
+          252,
+          254
+        ],
+        "ratio": 6.18
+      },
+      {
+        "selector": "TH",
+        "text": "Reports",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          251,
+          252,
+          254
+        ],
+        "ratio": 6.18
+      },
+      {
+        "selector": "TH",
+        "text": "Cleanup",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          251,
+          252,
+          254
+        ],
+        "ratio": 6.18
+      },
+      {
+        "selector": "inventory-identity-meta",
+        "text": "Metric Parameter \u00b7 Column",
+        "color": "rgb(100, 116, 139)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 4.76
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(21, 128, 61)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 4.57
+      },
+      {
+        "selector": "inventory-identity-meta",
+        "text": "Orders \u00b7 Column",
+        "color": "rgb(100, 116, 139)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 4.76
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(21, 128, 61)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 4.57
+      },
+      {
+        "selector": "inventory-identity-meta",
+        "text": "Orders \u00b7 Column",
+        "color": "rgb(100, 116, 139)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 4.76
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(21, 128, 61)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 4.57
+      },
+      {
+        "selector": "inventory-identity-meta",
+        "text": "Orders \u00b7 Column",
+        "color": "rgb(100, 116, 139)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 4.76
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(21, 128, 61)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 4.57
+      },
+      {
+        "selector": "inventory-identity-meta",
+        "text": "Orders \u00b7 Column",
+        "color": "rgb(100, 116, 139)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 4.76
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(21, 128, 61)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 4.57
+      },
+      {
+        "selector": "inventory-identity-meta",
+        "text": "Orders \u00b7 Measure",
+        "color": "rgb(100, 116, 139)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 4.76
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(21, 128, 61)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 4.57
+      },
+      {
+        "selector": "inventory-identity-meta",
+        "text": "Metric Parameter \u00b7 Column",
+        "color": "rgb(100, 116, 139)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 4.76
+      },
+      {
+        "selector": "badge badge-used badge-status",
+        "text": "Used",
+        "color": "rgb(30, 64, 175)",
+        "bg": [
+          219,
+          234,
+          254
+        ],
+        "ratio": 7.15
+      },
+      {
+        "selector": "badge badge-caution",
+        "text": "Blocked",
+        "color": "rgb(185, 28, 28)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 5.3
+      },
+      {
+        "selector": "inventory-identity-meta",
+        "text": "Sales \u00b7 Measure",
+        "color": "rgb(100, 116, 139)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 4.76
+      },
+      {
+        "selector": "badge badge-used badge-status",
+        "text": "Used",
+        "color": "rgb(30, 64, 175)",
+        "bg": [
+          219,
+          234,
+          254
+        ],
+        "ratio": 7.15
+      },
+      {
+        "selector": "badge badge-caution",
+        "text": "Blocked",
+        "color": "rgb(185, 28, 28)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 5.3
+      },
+      {
+        "selector": "inventory-identity-meta",
+        "text": "Sales \u00b7 Measure",
+        "color": "rgb(100, 116, 139)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 4.76
+      },
+      {
+        "selector": "badge badge-used badge-status",
+        "text": "Used",
+        "color": "rgb(30, 64, 175)",
+        "bg": [
+          219,
+          234,
+          254
+        ],
+        "ratio": 7.15
+      },
+      {
+        "selector": "badge badge-caution",
+        "text": "Blocked",
+        "color": "rgb(185, 28, 28)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 5.3
+      },
+      {
+        "selector": "btnSelectAllSafe",
+        "text": "Select all Safe",
+        "color": "rgb(21, 128, 61)",
+        "bg": [
+          240,
+          253,
+          244
+        ],
+        "ratio": 4.79
+      },
+      {
+        "selector": "btnSelectAllVisible",
+        "text": "Select all visible",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "btnDeselectAll",
+        "text": "Deselect all",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "btnMoveToFolder",
+        "text": "Move to display folder",
+        "color": "rgb(113, 63, 18)",
+        "bg": [
+          254,
+          243,
+          199
+        ],
+        "ratio": 7.79
+      },
+      {
+        "selector": "btnHide",
+        "text": "Hide",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "btnUnhide",
+        "text": "Unhide",
+        "color": "rgb(60, 73, 96)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.07
+      },
+      {
+        "selector": "btnDelete",
+        "text": "Delete",
+        "color": "rgb(185, 28, 28)",
+        "bg": [
+          254,
+          242,
+          242
+        ],
+        "ratio": 5.91
+      }
+    ],
+    "failures": []
+  },
+  {
+    "layout": "classic",
+    "measurements": [
+      {
+        "selector": "classicPlanHistory",
+        "text": "Changes & history",
+        "color": "rgb(37, 99, 235)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 5.17
+      },
+      {
+        "selector": "btnToggleSetup",
+        "text": "Hide",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "btn btn-primary btn-sm",
+        "text": "Open Power BI Project",
+        "color": "rgb(255, 255, 255)",
+        "bg": [
+          37,
+          99,
+          235
+        ],
+        "ratio": 5.17
+      },
+      {
+        "selector": "btnLoadDemo",
+        "text": "Try demo",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "btnBrowseModels",
+        "text": "Choose model...",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "btnBrowseReports",
+        "text": "Browse for reports...",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "btnBrowseConnectedReportRoot",
+        "text": "Find connected reports...",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "btnAnalyze",
+        "text": "Analyze",
+        "color": "rgb(255, 255, 255)",
+        "bg": [
+          37,
+          99,
+          235
+        ],
+        "ratio": 5.17
+      },
+      {
+        "selector": "inline-checkbox",
+        "text": "Auto-refresh analysis after apply",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "inline-checkbox",
+        "text": "Confirm delete",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "inline-checkbox",
+        "text": "Create backup before apply",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "inline-checkbox",
+        "text": "Show action log",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "btnExportJson",
+        "text": "Export JSON",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "btnExportExcel",
+        "text": "Export Excel",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "overviewHistory",
+        "text": "Changes & history",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "STRONG",
+        "text": "6 Safe \u00b7 0 Review",
+        "color": "rgb(36, 54, 75)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.32
+      },
+      {
+        "selector": "SPAN",
+        "text": "Cleanup Recommendations",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "STRONG",
+        "text": "0 distinct limitation(s)",
+        "color": "rgb(36, 54, 75)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.32
+      },
+      {
+        "selector": "SPAN",
+        "text": "No shared coverage gap detected",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "STRONG",
+        "text": "5 Report Health issue(s)",
+        "color": "rgb(36, 54, 75)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.32
+      },
+      {
+        "selector": "SPAN",
+        "text": "Report metadata findings",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "P",
+        "text": "Safe applies to supported scanned metadata in this scope. Ot",
+        "color": "rgb(36, 54, 75)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.32
+      },
+      {
+        "selector": "STRONG",
+        "text": "Safe applies to supported scanned metadata in this scope.",
+        "color": "rgb(36, 54, 75)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 12.32
+      },
+      {
+        "selector": "result-next",
+        "text": "Next: open a candidate to inspect Usage and dependency evide",
+        "color": "rgb(57, 72, 103)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 9.14
+      },
+      {
+        "selector": "badge badge-used badge-status",
+        "text": "Used",
+        "color": "rgb(30, 64, 175)",
+        "bg": [
+          219,
+          234,
+          254
+        ],
+        "ratio": 7.15
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Indirect",
+        "color": "rgb(55, 48, 163)",
+        "bg": [
+          224,
+          231,
+          255
+        ],
+        "ratio": 8.06
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Stale only",
+        "color": "rgb(154, 52, 18)",
+        "bg": [
+          255,
+          247,
+          237
+        ],
+        "ratio": 6.88
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Broken",
+        "color": "rgb(249, 250, 251)",
+        "bg": [
+          17,
+          24,
+          39
+        ],
+        "ratio": 16.98
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Stale",
+        "color": "rgb(154, 52, 18)",
+        "bg": [
+          255,
+          247,
+          237
+        ],
+        "ratio": 6.88
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(22, 101, 52)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 6.49
+      },
+      {
+        "selector": "badge badge-review",
+        "text": "Review",
+        "color": "rgb(146, 64, 14)",
+        "bg": [
+          254,
+          243,
+          199
+        ],
+        "ratio": 6.37
+      },
+      {
+        "selector": "badge badge-caution",
+        "text": "Blocked",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-donotremove",
+        "text": "Keep",
+        "color": "rgb(71, 85, 105)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 6.15
+      },
+      {
+        "selector": "badge badge-review",
+        "text": "5",
+        "color": "rgb(146, 64, 14)",
+        "bg": [
+          254,
+          243,
+          199
+        ],
+        "ratio": 6.37
+      },
+      {
+        "selector": "badge badge-caution",
+        "text": "error",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "LABEL",
+        "text": "Search",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "LABEL",
+        "text": "Usage",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "LABEL",
+        "text": "Issues",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "LABEL",
+        "text": "Cleanup",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "LABEL",
+        "text": "Type",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "LABEL",
+        "text": "Table",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "LABEL",
+        "text": "Hidden",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "LABEL",
+        "text": "Folder",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "LABEL",
+        "text": "Modified",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "LABEL",
+        "text": "Source",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "tabDetailsCount",
+        "text": "(9/9)",
+        "color": "rgb(255, 255, 255)",
+        "bg": [
+          37,
+          99,
+          235
+        ],
+        "ratio": 5.17
+      },
+      {
+        "selector": "tabTablesCount",
+        "text": "(3/3)",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "tabReportsCount",
+        "text": "(5/5)",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "tabRefsCount",
+        "text": "(9/9)",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          255,
+          255,
+          255
+        ],
+        "ratio": 6.35
+      },
+      {
+        "selector": "rail-item btn btn-secondary",
+        "text": "Review policy",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "rows-control",
+        "text": "Rows\n        \n          50\n          100\n          250\n     ",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          245,
+          246,
+          250
+        ],
+        "ratio": 5.88
+      },
+      {
+        "selector": "inline-checkbox",
+        "text": "Wrap long text",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          245,
+          246,
+          250
+        ],
+        "ratio": 13.55
+      },
+      {
+        "selector": "btnAutoSizeColumns",
+        "text": "Fit all columns",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "btnSelectAllSafe",
+        "text": "Select all Safe",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "btnSelectAllVisible",
+        "text": "Select all visible",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "btnDeselectAll",
+        "text": "Deselect all",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "btnMoveToFolder",
+        "text": "Move to folder",
+        "color": "rgb(113, 63, 18)",
+        "bg": [
+          254,
+          243,
+          199
+        ],
+        "ratio": 7.79
+      },
+      {
+        "selector": "btnHide",
+        "text": "Hide",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "btnUnhide",
+        "text": "Unhide",
+        "color": "rgb(30, 41, 59)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 11.87
+      },
+      {
+        "selector": "btnDelete",
+        "text": "Delete",
+        "color": "rgb(255, 255, 255)",
+        "bg": [
+          220,
+          38,
+          38
+        ],
+        "ratio": 4.83
+      },
+      {
+        "selector": "TH",
+        "text": "Type",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Table",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Name",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Origin",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Folder",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Hidden",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Usage",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Issues",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Reports",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Pages",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Direct",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Measures",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Relationships",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Flags",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Cleanup",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "TH",
+        "text": "Action",
+        "color": "rgb(82, 96, 121)",
+        "bg": [
+          248,
+          250,
+          252
+        ],
+        "ratio": 6.07
+      },
+      {
+        "selector": "badge badge-muted",
+        "text": "Model",
+        "color": "rgb(71, 85, 105)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 6.15
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(22, 101, 52)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 6.49
+      },
+      {
+        "selector": "badge badge-muted",
+        "text": "Model",
+        "color": "rgb(71, 85, 105)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 6.15
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(22, 101, 52)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 6.49
+      },
+      {
+        "selector": "badge badge-muted",
+        "text": "Model",
+        "color": "rgb(71, 85, 105)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 6.15
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(22, 101, 52)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 6.49
+      },
+      {
+        "selector": "badge badge-muted",
+        "text": "Model",
+        "color": "rgb(71, 85, 105)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 6.15
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(22, 101, 52)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 6.49
+      },
+      {
+        "selector": "badge badge-muted",
+        "text": "Model",
+        "color": "rgb(71, 85, 105)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 6.15
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(22, 101, 52)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 6.49
+      },
+      {
+        "selector": "badge badge-muted",
+        "text": "Model",
+        "color": "rgb(71, 85, 105)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 6.15
+      },
+      {
+        "selector": "badge badge-status",
+        "text": "Unused",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-safe",
+        "text": "Safe",
+        "color": "rgb(22, 101, 52)",
+        "bg": [
+          220,
+          252,
+          231
+        ],
+        "ratio": 6.49
+      },
+      {
+        "selector": "badge badge-muted",
+        "text": "Model",
+        "color": "rgb(71, 85, 105)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 6.15
+      },
+      {
+        "selector": "badge badge-used badge-status",
+        "text": "Used",
+        "color": "rgb(30, 64, 175)",
+        "bg": [
+          219,
+          234,
+          254
+        ],
+        "ratio": 7.15
+      },
+      {
+        "selector": "badge badge-caution",
+        "text": "Blocked",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-muted",
+        "text": "Model",
+        "color": "rgb(71, 85, 105)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 6.15
+      },
+      {
+        "selector": "badge badge-used badge-status",
+        "text": "Used",
+        "color": "rgb(30, 64, 175)",
+        "bg": [
+          219,
+          234,
+          254
+        ],
+        "ratio": 7.15
+      },
+      {
+        "selector": "badge badge-muted",
+        "text": "Field param",
+        "color": "rgb(71, 85, 105)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 6.15
+      },
+      {
+        "selector": "badge badge-caution",
+        "text": "Blocked",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      },
+      {
+        "selector": "badge badge-muted",
+        "text": "Model",
+        "color": "rgb(71, 85, 105)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 6.15
+      },
+      {
+        "selector": "badge badge-used badge-status",
+        "text": "Used",
+        "color": "rgb(30, 64, 175)",
+        "bg": [
+          219,
+          234,
+          254
+        ],
+        "ratio": 7.15
+      },
+      {
+        "selector": "badge badge-muted",
+        "text": "Field param",
+        "color": "rgb(71, 85, 105)",
+        "bg": [
+          226,
+          232,
+          240
+        ],
+        "ratio": 6.15
+      },
+      {
+        "selector": "badge badge-caution",
+        "text": "Blocked",
+        "color": "rgb(153, 27, 27)",
+        "bg": [
+          254,
+          226,
+          226
+        ],
+        "ratio": 6.8
+      }
+    ],
+    "failures": []
+  }
+]

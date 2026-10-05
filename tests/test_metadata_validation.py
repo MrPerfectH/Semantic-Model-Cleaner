@@ -15,7 +15,7 @@ BASE = 'https://developer.microsoft.com/json-schemas/fabric/item/report/definiti
 
 
 def fixture(name):
-    return json.loads((FIXTURES / name).read_text())
+    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
 def snapshot(document, path='report-1/definition/pages/Overview/page.json'):
@@ -28,7 +28,7 @@ def test_bundle_has_pinned_source_license_and_complete_local_references():
     assert info['schema_count'] == 97
     assert info['network_access'] is False
     assert info['format_assertions'] is False
-    assert 'Microsoft Corporation' in (metadata.BUNDLE_ROOT / 'LICENSE').read_text()
+    assert 'Microsoft Corporation' in (metadata.BUNDLE_ROOT / 'LICENSE').read_text(encoding="utf-8")
 
 
 def test_declared_page_and_transitive_visual_schema_pass_without_network(monkeypatch):
@@ -150,8 +150,8 @@ def test_absent_runtime_registry_reference_is_not_reported_as_valid(monkeypatch)
 def test_bundle_checksum_failure_is_explicit(tmp_path, monkeypatch):
     manifest = {'schemas': [{'path': 'schema.json', 'sha256': hashlib.sha256(b'original').hexdigest(),
                              'uri': BASE + 'fake', 'id': BASE + 'fake'}]}
-    (tmp_path / 'manifest.json').write_text(json.dumps(manifest))
-    (tmp_path / 'schema.json').write_text('{}')
+    (tmp_path / 'manifest.json').write_text(json.dumps(manifest), encoding="utf-8")
+    (tmp_path / 'schema.json').write_text('{}', encoding="utf-8")
     monkeypatch.setattr(metadata, 'BUNDLE_ROOT', tmp_path)
     metadata._bundle.cache_clear()
     try:
@@ -170,3 +170,20 @@ def test_path_identity_keeps_same_named_reports_separate():
     after = metadata.validate_metadata({'report-1/page.json': json.dumps(document),
                                         'report-2/page.json': json.dumps(changed)})
     assert metadata.compare_validation(before, after)['new_errors'][0]['file'] == 'report-2/page.json'
+def test_report_schema_validation_across_windows_drives(tmp_path, monkeypatch):
+    from semantic_model_cleaner import metadata_validation
+
+    reports = [tmp_path / 'first' / 'Report', tmp_path / 'second' / 'Report']
+    for report in reports:
+        report.mkdir(parents=True)
+        (report / 'definition.pbir').write_text('{}', encoding='utf-8')
+
+    def different_drives(*args):
+        raise ValueError("path is on mount 'C:', start on mount 'D:'")
+
+    monkeypatch.setattr(metadata_validation.os.path, 'relpath', different_drives)
+    result = metadata_validation.validate_report_paths(reports, workspace=tmp_path)
+    assert len(result['files']) == 2
+    assert {record['path'] for record in result['files']} == {
+        'report-1/definition.pbir', 'report-2/definition.pbir',
+    }

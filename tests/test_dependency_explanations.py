@@ -88,6 +88,51 @@ def test_scanner_keeps_expression_continuations_out_of_the_tree():
     assert declarations[1].expression == "VAR kpi = 1\nRETURN kpi"
 
 
+def _parse_items(tmp_path, text):
+    tables = tmp_path / "M.SemanticModel" / "definition" / "tables"
+    tables.mkdir(parents=True)
+    (tables / "T.tmdl").write_text(text, encoding="utf-8")
+    return {parsed.name: parsed for parsed in analyzer.parse_model_items(tmp_path / "M.SemanticModel")}
+
+
+def test_kpi_child_object_is_not_folded_into_the_measure_dax_body():
+    target = next(i for i in analyzer.parse_model_items(MODEL) if i.table == "Targets" and i.name == "Target")
+    assert target.dax_body == "1000"
+
+
+def test_item_dax_body_stops_at_nested_child_objects_but_keeps_continuations(tmp_path):
+    items = _parse_items(tmp_path, (
+        "table T\n"
+        "\t/// Multi-line\n\t/// description\n"
+        "\tmeasure Multi =\n\t\t\tVAR x = [A]\n\t\t\tRETURN x\n"
+        "\t\tformatString: 0\n"
+        "\t\tdisplayFolder: KPIs\n"
+        "\t\tkpi\n\t\t\ttargetExpression = [Goal]\n\t\t\tstatusExpression =\n\t\t\t\t\t[Status]\n"
+        "\t\tchangedProperty = Name\n"
+        "\t\textendedProperty Ext =\n\t\t\t\t{ \"ref\": \"[Ext]\" }\n"
+        "\t\tannotation Note = [Annotated]\n\n"
+        "\tmeasure Fenced = ```\n\t\t\tVAR y = [B]\n\n\t\t\tRETURN y\n\t\t\t```\n"
+        "\t\tkpi\n\t\t\ttrendExpression = [Trend]\n"
+        "\t\tformatStringDefinition = [FormatRef]\n"
+        "\t\tisHidden\n\n"
+        "\tcolumn Calc = [C] + 1\n\t\tdataType: int64\n\t\tchangedProperty = DataType\n"
+        "\t\tannotation Note =\n\t\t\t\t[ColumnAnnotation]\n"
+        "\t\tisHidden\n\t\tisKey\n\t\tsortByColumn: 'Sort Key'\n\n"
+        "\tcolumn Plain\n\t\tdataType: string\n\t\tsourceColumn: Plain\n\t\tisNameInferred\n"
+    ))
+    multi = items["Multi"]
+    assert (multi.dax_body, multi.description, multi.format_string, multi.display_folder) == (
+        "VAR x = [A]\nRETURN x", "Multi-line\ndescription", "0", "KPIs")
+    fenced = items["Fenced"]
+    assert (fenced.dax_body, fenced.is_hidden) == ("VAR y = [B]\nRETURN y\n[FormatRef]", True)
+    calc = items["Calc"]
+    assert (calc.item_type, calc.dax_body, calc.data_type, calc.is_hidden, calc.is_key, calc.sort_by_column) == (
+        "Calculated Column", "[C] + 1", "int64", True, True, "Sort Key")
+    plain = items["Plain"]
+    assert (plain.item_type, plain.dax_body, plain.source_column, plain.is_inferred) == (
+        "Column", "", "Plain", True)
+
+
 def test_perspective_members_come_from_declarations_only():
     members = extract_perspective_members(
         "perspective Exec\n\t// perspectiveMeasure Ghost\n\tperspectiveTable Sales\n\t\tperspectiveMeasure Revenue\n")
@@ -109,14 +154,19 @@ def test_kpi_selector_table_creates_no_kpi_limitation(results, payload):
     assert not any("KPI Selector.tmdl" in trigger for trigger in browser_triggers)
 
 
-def test_genuine_kpi_reference_is_evidence_on_the_referenced_item(results):
+def test_genuine_kpi_reference_is_evidence_on_the_referenced_item(results, payload):
     goal = row(results, "Sales", "Revenue Goal")
     assert goal["status"] == "NOT USED"
     assert goal["removal_risk"] == "Review"
-    assert any(
-        trigger.startswith("Referenced by the KPI target expression of measure 'Targets'[Target] "
-                           "(definition/tables/Targets.tmdl:4)")
-        for trigger in goal["review_triggers"])
+    # The KPI target is evidence, not a DAX dependency of the owning measure (#92):
+    # the item stays Unused with exactly one targeted KPI trigger.
+    kpi_triggers = [trigger for trigger in goal["review_triggers"] if "KPI" in trigger]
+    assert len(kpi_triggers) == 1
+    assert kpi_triggers[0].startswith("Referenced by the KPI target expression of measure 'Targets'[Target] "
+                                      "(definition/tables/Targets.tmdl:4)")
+    browser = item(payload, "Sales", "Revenue Goal")
+    assert browser["usageState"] == "Unused"
+    assert browser["deleteSafety"] == "Review"
     # Sales[Revenue] is used directly; the KPI reference must not downgrade it.
     assert row(results, "Sales", "Revenue")["status"] == "USED"
 
@@ -193,6 +243,7 @@ def test_perspective_membership_is_concrete_evidence_not_runtime_use(results, pa
     assert browser["perspectiveMemberships"] == [
         {"perspective": "Executive", "sourceFile": "definition/perspectives/Executive.tmdl"}]
     assert browser["usageCount"] == 0  # membership never counts as a Report Reference
+    assert browser["usageState"] == "Unused"
     assert browser["deleteSafety"] == "Review"
 
 
@@ -218,13 +269,145 @@ def test_deletion_guards_block_whole_group_and_allow_coordinated_final_state(tmp
     (model / "definition/tables/Sales.tmdl").write_text(
         "table Sales\n\tmeasure Rows = COUNTROWS(Sales)\n\tmeasure Outside = CALCULATE([Rows], ALL('Dim'))\n",
         encoding="utf-8")
-    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../Plain.SemanticModel"}}}))
-    (report / "definition/report.json").write_text("{}")
+    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../Plain.SemanticModel"}}}), encoding="utf-8")
+    (report / "definition/report.json").write_text("{}", encoding="utf-8")
     whole_table = [{"action": "delete", "table": "Dim", "name": "", "item_type": "table"}]
     blocked = evaluate_deletion_policy(model, [report], whole_table)
     assert [v["message"] for v in blocked["violations"]] == ["Table Dim is required by retained Sales[Outside]."]
     coordinated = whole_table + [{"action": "delete", "table": "Sales", "name": "Outside", "item_type": "Measure"}]
     assert evaluate_deletion_policy(model, [report], coordinated)["ok"]
+
+
+# ── #91: coordinated whole-group deletion against the simulated final state ──
+
+GROUP_TABLE = [{"action": "delete", "table": "Time Intelligence", "name": "", "item_type": "table"}]
+CONSUMER_DELETES = [{"action": "delete", "table": "Sales", "name": consumer[len("Sales["):-1], "item_type": "Measure"}
+                    for consumer in CONSUMERS]
+GROUP_OWNERS = {
+    "calculation item 'Current' in 'Time Intelligence'",
+    "calculation item 'YTD' in 'Time Intelligence'",
+    "calculation item 'PY' in 'Time Intelligence'",
+}
+CURRENCY_GROUP = (
+    "table 'Currency Conversion'\n"
+    "\tcalculationGroup\n"
+    "\t\tprecedence: 20\n\n"
+    "\t\tcalculationItem Local = SELECTEDMEASURE()\n\n"
+    "\tcolumn Currency\n"
+    "\t\tdataType: string\n"
+    "\t\tsourceColumn: Name\n\n"
+    "\tpartition 'Currency Conversion' = calculationGroup\n"
+    "\t\tmode: import\n"
+    "\t\tsource = calculationGroup\n"
+)
+
+
+def standalone_group_copy(tmp_path, *, other_group=False):
+    """Copy the fixture without the item-specific facts that keep a delete at Review.
+
+    The shipped fixture deliberately uses Revenue Ignoring TI 01 in a visual, keeps
+    the selector in a perspective and hides Ordinal; those are separate guards
+    (SMC-D004/SMC-D005) unrelated to coverage, so the copy removes them.
+    """
+    import shutil
+
+    root = tmp_path / "workspace"
+    shutil.copytree(FIXTURE, root)
+    model = root / "Models" / "Synthetic Dependencies.SemanticModel"
+    report = root / "Reports" / "Executive.Report"
+    visual = report / "definition/pages/Overview/visuals/RevenueCard/visual.json"
+    data = json.loads(visual.read_text(encoding="utf-8"))
+    values = data["visual"]["query"]["queryState"]["Values"]
+    values["projections"] = [p for p in values["projections"] if p["queryRef"] == "Sales.Revenue"]
+    visual.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    perspective = model / "definition/perspectives/Executive.tmdl"
+    text = perspective.read_text(encoding="utf-8")
+    perspective.write_text(text.split("\tperspectiveTable 'Time Intelligence'")[0].rstrip() + "\n", encoding="utf-8")
+    group = model / "definition/tables/Time Intelligence.tmdl"
+    group.write_text(group.read_text(encoding="utf-8").replace("\t\tisHidden\n", ""), encoding="utf-8")
+    if other_group:
+        (model / "definition/tables/Currency Conversion.tmdl").write_text(CURRENCY_GROUP, encoding="utf-8")
+        definition = model / "definition/model.tmdl"
+        definition.write_text(definition.read_text(encoding="utf-8") + "ref table 'Currency Conversion'\n",
+                              encoding="utf-8")
+    return root, model, report
+
+
+def test_coordinated_group_deletion_clears_the_groups_own_coverage_gap():
+    policy = evaluate_deletion_policy(MODEL, [REPORT], GROUP_TABLE + CONSUMER_DELETES)
+    rules = {v["rule_id"] for v in policy["violations"]}
+    # In the final state the group file is gone and no retained item references it.
+    assert "SMC-D002" not in rules
+    assert "SMC-D006" not in rules
+    assert policy["scope"]["complete"] is True
+    assert {l["owner"] for l in policy["scope"]["cleared_limitations"]} == GROUP_OWNERS
+    assert len(policy["scope"]["cleared_limitations"]) == 4
+    assert all(l["cleared_reason"] == "Coverage gap owned by 'Time Intelligence' is cleared because the plan "
+               "removes the calculation group and every retained parent-table consumer."
+               for l in policy["scope"]["cleared_limitations"])
+    # Item-specific guards are unchanged: a used consumer, a perspective member and
+    # a hidden column still require review. The cleared gap and the group-structure
+    # reasons no longer appear among them.
+    remaining = {(v["rule_id"], v["table"], v["name"]): v["message"] for v in policy["violations"]}
+    assert set(remaining) == {
+        ("SMC-D004", "Sales", "Revenue Ignoring TI 01"),
+        ("SMC-D005", "Time Intelligence", "Name"),
+        ("SMC-D005", "Time Intelligence", "Ordinal"),
+    }
+    name = remaining[("SMC-D005", "Time Intelligence", "Name")]
+    ordinal = remaining[("SMC-D005", "Time Intelligence", "Ordinal")]
+    assert name == ("Review required for Time Intelligence[Name]: Member of perspective Executive "
+                    "(definition/perspectives/Executive.tmdl). Removing the item also removes this perspective "
+                    "member; membership alone does not prove a report executes it.")
+    assert ordinal == "Review required for Time Intelligence[Ordinal]: Item is hidden"
+
+
+def test_coordinated_group_deletion_is_allowed_when_no_item_guard_remains(tmp_path):
+    _, model, report = standalone_group_copy(tmp_path)
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    policy = evaluate_deletion_policy(model, [report], GROUP_TABLE + CONSUMER_DELETES)
+    assert policy["ok"], policy["errors"]
+    assert policy["scope"]["complete"] is True
+    assert {l["owner"] for l in policy["scope"]["cleared_limitations"]} == GROUP_OWNERS
+    # Deleting only the group stays Blocked by the parent-table guard, and its own
+    # coverage gap still counts because retained consumers keep referencing it.
+    blocked = evaluate_deletion_policy(model, [report], GROUP_TABLE)
+    assert not blocked["ok"]
+    assert len([v for v in blocked["violations"] if v["rule_id"] == "SMC-D006"]) == 10
+    assert any(v["rule_id"] == "SMC-D002" for v in blocked["violations"])
+    assert blocked["scope"]["cleared_limitations"] == []
+    # Deleting only the consumers keeps the group and its gap.
+    consumers_only = evaluate_deletion_policy(model, [report], CONSUMER_DELETES)
+    assert any(v["rule_id"] == "SMC-D002" for v in consumers_only["violations"])
+    assert {p: p.read_bytes() for p in before} == before
+
+
+def test_reviewed_plan_preview_explains_cleared_group_coverage(tmp_path):
+    from semantic_model_cleaner import change_plan
+
+    _, model, report = standalone_group_copy(tmp_path)
+    columns = [{"action": "delete", "table": "Time Intelligence", "name": name, "item_type": "Column"}
+               for name in ("Name", "Ordinal")]
+    plan = change_plan.create_plan(model, [report], [{"kind": "actions", "actions": columns + CONSUMER_DELETES}])
+    assert any(change["path"].endswith("tables/Time Intelligence.tmdl") and change["change"] == "deleted"
+               for change in plan["changes"])
+    assert plan["coverage"]["final_state"]["complete"] is True
+    assert ("Coverage gap owned by 'Time Intelligence' is cleared because the plan removes the calculation "
+            "group and every retained parent-table consumer.") in plan["validation"]["limitations"]
+
+
+def test_retained_other_group_still_blocks_coordinated_deletion(tmp_path):
+    _, model, report = standalone_group_copy(tmp_path, other_group=True)
+    policy = evaluate_deletion_policy(model, [report], GROUP_TABLE + CONSUMER_DELETES)
+    assert not policy["ok"]
+    coverage = [v["message"] for v in policy["violations"] if v["rule_id"] == "SMC-D002"]
+    assert coverage == ["Dependency checking is incomplete for the calculation item expression of calculation item "
+                        "'Local' in 'Currency Conversion' (definition/tables/Currency Conversion.tmdl:5)."]
+    assert policy["scope"]["complete"] is False
+    assert {l["owner"] for l in policy["scope"]["cleared_limitations"]} == GROUP_OWNERS
+    # The retained group's gap keeps the consumers at Review.
+    assert {v["name"] for v in policy["violations"] if v["rule_id"] == "SMC-D005"} >= {
+        consumer[len("Sales["):-1] for consumer in CONSUMERS}
 
 
 # ── #84: analysis limitations are a separate surface ─────────────────────────

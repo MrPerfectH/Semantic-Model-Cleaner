@@ -1,0 +1,51 @@
+{
+  "source_revision": "346224661467a3e4da11c329d372466b9c689fbe",
+  "version": "0.4.0b4",
+  "ci": {
+    "url": "https://github.com/MrPerfectH/Semantic-Model-Cleaner/actions/runs/37318118042",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "job": 111789923943,
+        "platform": "Linux",
+        "python": "3.11",
+        "passed": 1039,
+        "skipped": 2
+      },
+      {
+        "job": 111789924266,
+        "platform": "Linux",
+        "python": "3.13",
+        "passed": 1039,
+        "skipped": 2
+      },
+      {
+        "job": 111789924299,
+        "platform": "Windows",
+        "python": "3.13",
+        "passed": 1038,
+        "skipped": 3
+      }
+    ]
+  },
+  "packaging": {
+    "url": "https://github.com/MrPerfectH/Semantic-Model-Cleaner/actions/runs/37318117917",
+    "python_distributions": "success",
+    "windows_build": "success",
+    "separate_runner_windows_verification": "success",
+    "publication": "skipped"
+  },
+  "local_windows": {
+    "passed": 1033,
+    "skipped": 8,
+    "python_utf8": 0
+  },
+  "local_linux": {
+    "passed": 1039,
+    "skipped": 2,
+    "python": "3.12.15",
+    "distribution": "Alpine 3.22",
+    "nonroot": true
+  },
+  "local_wheel": "passed"
+}

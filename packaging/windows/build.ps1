@@ -30,11 +30,16 @@ python -m PyInstaller `
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
 
 $appDirectory = Join-Path $repoRoot "dist\Semantic Model Cleaner"
+$sourceRevision = (git rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0) { throw "Could not identify package source revision" }
+$sourceDirty = [bool](git status --porcelain --untracked-files=no)
 @{
   name = "Semantic Model Cleaner"
   version = $version
   release_channel = $channel
   packaging = "windows-x64-zip"
+  source_revision = $sourceRevision
+  source_dirty = $sourceDirty
 } | ConvertTo-Json | Set-Content -Path (Join-Path $appDirectory "release.json") -Encoding utf8
 Copy-Item -Path (Join-Path $repoRoot "LICENSE") -Destination $appDirectory -Force
 Copy-Item -Path (Join-Path $repoRoot "packaging\windows\README.txt") -Destination $appDirectory -Force

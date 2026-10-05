@@ -20,8 +20,8 @@ def write_report(tmp_path, payload):
     report = tmp_path / "R.Report"
     file = report / "definition/pages/P/visuals/V/visual.json"
     file.parent.mkdir(parents=True)
-    file.write_text(json.dumps(payload, indent=2) + "\n")
-    (report / "definition/report.json").write_text("{}")
+    file.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    (report / "definition/report.json").write_text("{}", encoding="utf-8")
     return report, file
 
 
@@ -58,7 +58,7 @@ def test_malformed_required_source_blocks_report_rewrite(tmp_path, malformed, dr
         {"field": {kind: {"Property": "Amount", **malformed}}, "queryRef": "Sales.Amount"},
     ]}}}}})
     earlier = report / "definition/first.json"
-    earlier.write_text(json.dumps(ref(kind, entity="Sales")))
+    earlier.write_text(json.dumps(ref(kind, entity="Sales")), encoding="utf-8")
     before = {path: path.read_bytes() for path in (earlier, file)}
     result = report_writer.rewrite_model_reference_changes(
         report_paths=[report], dry_run=dry_run,
@@ -74,11 +74,11 @@ def test_malformed_measure_source_blocks_reviewed_plan(tmp_path, malformed):
     model = tmp_path / "M.SemanticModel"
     source = model / "definition/tables/Sales.tmdl"
     source.parent.mkdir(parents=True)
-    source.write_text("table Sales\n\tmeasure Amount = 1\n")
+    source.write_text("table Sales\n\tmeasure Amount = 1\n", encoding="utf-8")
     report, _ = write_report(tmp_path, {"visual": {"query": {"queryState": {"Values": {"projections": [
         {"field": {"Measure": {"Property": "Amount", **malformed}}, "queryRef": "Sales.Amount"},
     ]}}}}})
-    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}))
+    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}), encoding="utf-8")
     roots = change_plan._roots(model, [report])
     before = change_plan._inventory(roots)
     with pytest.raises(change_plan.PlanError, match="required reference propagation"):
@@ -93,7 +93,7 @@ def test_measure_rename_preserves_valid_non_target_references(tmp_path):
         ref(entity="Sales"), *untouched]}}})
     result = rename(report)
     assert result["ok"], result
-    actual = json.loads(file.read_text())["visual"]["query"]["references"]
+    actual = json.loads(file.read_text(encoding="utf-8"))["visual"]["query"]["references"]
     assert actual[0]["Measure"]["Property"] == "Revenue"
     assert actual[1:] == untouched
 
@@ -134,7 +134,7 @@ def test_measure_rename_reused_alias_never_repoints_entities(tmp_path, reverse):
     result = rename(report)
     assert result["ok"], result
     assert result["updated_files"] == preview["updated_files"]
-    after = json.loads(file.read_text())["queries"]
+    after = json.loads(file.read_text(encoding="utf-8"))["queries"]
     assert [q["From"] for q in after] == [q["From"] for q in queries]
     assert [q["Select"][0]["Measure"]["Property"] for q in after] == (
         ["Amount", "Revenue"] if reverse else ["Revenue", "Amount"])
@@ -153,7 +153,7 @@ def test_nested_filter_reuses_alias_without_changing_visual_binding(tmp_path):
     report, file = write_report(tmp_path, payload)
     result = rename(report)
     assert result["ok"], result
-    visual = json.loads(file.read_text())["visual"]
+    visual = json.loads(file.read_text(encoding="utf-8"))["visual"]
     assert visual["query"]["SemanticQueryDataShapeCommand"]["Query"]["From"][0]["Entity"] == "Sales"
     projection = visual["query"]["queryState"]["Values"]["projections"][0]
     assert projection["field"]["Measure"]["Property"] == "Revenue"
@@ -168,7 +168,7 @@ def test_nested_filter_reuses_alias_without_changing_visual_binding(tmp_path):
 def test_unresolved_or_ambiguous_required_alias_aborts_all_files(tmp_path, dry_run, from_entries):
     report, file = write_report(tmp_path, {"Query": {"From": from_entries, "Select": [ref()]}})
     earlier = report / "definition/first.json"
-    earlier.write_text(json.dumps(ref(entity="Sales")))
+    earlier.write_text(json.dumps(ref(entity="Sales")), encoding="utf-8")
     before = {path: path.read_bytes() for path in [earlier, file]}
     result = rename(report, dry_run=dry_run)
     assert not result["ok"], result
@@ -198,7 +198,7 @@ def test_actual_move_changes_only_its_query_and_direct_entity(tmp_path):
     result = report_writer.rewrite_measure_table_references(
         report_paths=[report], moves=[{"table": "Sales", "name": "Amount", "target_table": "Measures"}])
     assert result["ok"], result
-    after = json.loads(file.read_text())
+    after = json.loads(file.read_text(encoding="utf-8"))
     assert [q["From"][0]["Entity"] for q in after["queries"]] == ["Measures", "Budget"]
     assert after["direct"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "Measures"
 
@@ -213,7 +213,7 @@ def test_expressionless_measure_edits_preserve_neighbor_blocks(tmp_path, name, o
     preceding = '\tmeasure Inline = "unchanged literal"\n\t\tformatString: 0\n\n'
     target = f"\tmeasure {quoted}\n\t\tformatString: #,0\n\n\t\tdisplayFolder: Empty\n\n"
     following = '\tmeasure Multiline =\n\t\t\t1 +\n\n\t\t\t2\n\t\tformatString: 0.0\n\n'
-    file.write_text("table Sales\n" + preceding + target + following)
+    file.write_text("table Sales\n" + preceding + target + following, encoding="utf-8")
     if operation == "rename":
         before = file.read_bytes()
         preview = tmdl_writer.rename_measure(model, "Sales", name, "Renamed' Amount", dry_run=True)
@@ -225,7 +225,7 @@ def test_expressionless_measure_edits_preserve_neighbor_blocks(tmp_path, name, o
     else:
         result = tmdl_writer.delete_item(model, "Sales", name, "Measure")
     assert result["ok"], result
-    after = file.read_text()
+    after = file.read_text(encoding="utf-8")
     assert preceding in after
     assert following in after
     if operation == "rename":
@@ -246,9 +246,9 @@ def test_query_scoped_writer_plan_preview_apply_restore(tmp_path, operation):
     tables.mkdir(parents=True)
     for table in ("Sales", "Budget", "Measures"):
         (tables / f"{table}.tmdl").write_text(f"table {table}\n\tmeasure Amount = 1\n" if table != "Measures"
-                                             else "table Measures\n\tmeasure Existing = 0\n")
+                                             else "table Measures\n\tmeasure Existing = 0\n", encoding="utf-8")
     report, file = write_report(tmp_path, {"visual": {"queries": [query("Sales"), query("Budget")]}})
-    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}))
+    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}), encoding="utf-8")
     op = ({"kind": "rename", "measure_renames": [{"table": "Sales", "name": "Amount", "target_name": "Revenue"}]}
           if operation == "rename" else
           {"kind": "move", "moves": [{"table": "Sales", "name": "Amount", "target_table": "Measures"}]})
@@ -258,7 +258,7 @@ def test_query_scoped_writer_plan_preview_apply_restore(tmp_path, operation):
     assert change_plan._inventory(roots) == before
     assert change_plan.apply_plan(plan, tmp_path / "journal")["ok"]
     assert change_plan._hashes(change_plan._inventory(roots)) == plan["outputs"]
-    after_queries = json.loads(file.read_text())["visual"]["queries"]
+    after_queries = json.loads(file.read_text(encoding="utf-8"))["visual"]["queries"]
     assert after_queries[0]["From"][0]["Entity"] == ("Sales" if operation == "rename" else "Measures")
     assert after_queries[0]["Select"][0]["Measure"]["Property"] == ("Revenue" if operation == "rename" else "Amount")
     assert after_queries[1] == query("Budget")
@@ -271,13 +271,13 @@ def test_reviewed_plan_blocks_incomplete_alias_propagation(tmp_path, unresolved)
     model = tmp_path / "M.SemanticModel"
     tables = model / "definition/tables"
     tables.mkdir(parents=True)
-    (tables / "Sales.tmdl").write_text("table Sales\n\tmeasure Amount = 1\n\tmeasure Keep = 2\n")
-    (tables / "Measures.tmdl").write_text("table Measures\n\tmeasure Existing = 0\n")
+    (tables / "Sales.tmdl").write_text("table Sales\n\tmeasure Amount = 1\n\tmeasure Keep = 2\n", encoding="utf-8")
+    (tables / "Measures.tmdl").write_text("table Measures\n\tmeasure Existing = 0\n", encoding="utf-8")
     payload = query("Sales", ref(), ref(name="Keep"))
     if unresolved:
         payload["From"] = []
     report, _ = write_report(tmp_path, {"visual": {"query": payload}})
-    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}))
+    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}), encoding="utf-8")
     roots = change_plan._roots(model, [report])
     before = change_plan._inventory(roots)
     with pytest.raises(change_plan.PlanError, match="alias"):
@@ -290,7 +290,7 @@ def test_measure_rename_preserves_original_table_spelling(tmp_path):
     report, file = write_report(tmp_path, {"Query": query("sales"), "direct": ref(entity="SALES")})
     result = rename(report)
     assert result["ok"], result
-    payload = json.loads(file.read_text())
+    payload = json.loads(file.read_text(encoding="utf-8"))
     assert payload["Query"]["From"][0]["Entity"] == "sales"
     assert payload["direct"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "SALES"
 
@@ -332,7 +332,7 @@ def test_move_propagates_query_ref_only_alias(tmp_path):
     result = report_writer.rewrite_measure_table_references(
         report_paths=[report], moves=[{"table": "Sales", "name": "Amount", "target_table": "Measures"}])
     assert result["ok"], result
-    assert json.loads(file.read_text())["Query"]["From"][0]["Entity"] == "Measures"
+    assert json.loads(file.read_text(encoding="utf-8"))["Query"]["From"][0]["Entity"] == "Measures"
 
 
 @pytest.mark.parametrize("query_state_first", [False, True])
@@ -345,7 +345,7 @@ def test_combined_table_and_measure_rename_uses_original_alias_binding(tmp_path,
         report_paths=[report], table_renames=[{"table": "Sales", "target_table": "Fact Sales"}],
         measure_renames=[{"table": "Sales", "name": "Amount", "target_name": "Revenue"}])
     assert result["ok"], result
-    actual = json.loads(file.read_text())["visual"]["query"]
+    actual = json.loads(file.read_text(encoding="utf-8"))["visual"]["query"]
     actual_query = actual["SemanticQueryDataShapeCommand"]["Query"]
     assert actual_query["From"][0]["Entity"] == "Fact Sales"
     assert actual_query["Select"][0]["Measure"]["Property"] == "Revenue"
@@ -368,9 +368,9 @@ def test_expressionless_measure_reviewed_plan_round_trip(tmp_path, operation):
     model = tmp_path / "M.SemanticModel"
     file = model / "definition/tables/Sales.tmdl"
     file.parent.mkdir(parents=True)
-    file.write_text("table Sales\n\tmeasure 'Empty'' Measure'\n\t\tformatString: 0\n\n\tmeasure Existing = 1\n")
+    file.write_text("table Sales\n\tmeasure 'Empty'' Measure'\n\t\tformatString: 0\n\n\tmeasure Existing = 1\n", encoding="utf-8")
     report, _ = write_report(tmp_path, {})
-    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}))
+    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}), encoding="utf-8")
     op = ({"kind": "rename", "measure_renames": [
         {"table": "Sales", "name": "Empty' Measure", "target_name": "Renamed"}]}
         if operation == "rename" else {"kind": "actions", "actions": [
@@ -381,7 +381,7 @@ def test_expressionless_measure_reviewed_plan_round_trip(tmp_path, operation):
     assert change_plan._inventory(roots) == before
     assert change_plan.apply_plan(plan, tmp_path / "journal")["ok"]
     assert change_plan._hashes(change_plan._inventory(roots)) == plan["outputs"]
-    content = file.read_text()
+    content = file.read_text(encoding="utf-8")
     assert "\tmeasure Existing = 1\n" in content
     if operation == "rename":
         assert "\tmeasure Renamed\n" in content

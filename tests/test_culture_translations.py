@@ -188,6 +188,8 @@ def test_linguistic_metadata_is_a_culture_owned_limitation_without_references(tm
     pages = tmp_path / "Workspace" / "Reports" / "Executive.Report" / "definition" / "pages" / "Page 1"
     pages.mkdir(parents=True)
     (pages / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
+    (pages.parents[2] / "definition.pbir").write_text(
+        '{"datasetReference":{"byPath":{"path":"../../Models/Sales.SemanticModel"}}}', encoding="utf-8")
     results = analyzer.analyze((tmp_path / "Workspace").resolve())
     limitations = [l for l in results["analysis_limitations"] if l["area"] == "Cultures/translations"]
     assert len(limitations) == 1

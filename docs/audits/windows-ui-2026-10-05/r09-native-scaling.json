@@ -1,0 +1,16 @@
+[
+  {
+    "layout": "v2",
+    "requested_zoom": 100,
+    "width": 1344,
+    "height": 809,
+    "dpr": 1.5
+  },
+  {
+    "layout": "classic",
+    "requested_zoom": 100,
+    "width": 1344,
+    "height": 809,
+    "dpr": 1.5
+  }
+]

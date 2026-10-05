@@ -21,8 +21,8 @@ def project(tmp_path, *, retained=True, neighbor=False):
     (model / "definition/relationships.tmdl").write_bytes(
         b"relationship SalesToDate\r\n\tfromColumn: Sales.Id\r\n\ttoColumn: Date.Id\r\n" if retained else b"")
     (report / "definition").mkdir(parents=True)
-    (report / "definition/report.json").write_text("{}")
-    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}))
+    (report / "definition/report.json").write_text("{}", encoding="utf-8")
+    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../M.SemanticModel"}}}), encoding="utf-8")
     return model, report, split
 
 

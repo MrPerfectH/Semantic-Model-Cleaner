@@ -1,0 +1,30 @@
+[
+  {
+    "layout": "v2",
+    "zoom": 1.0,
+    "native_dpr": 1.25,
+    "metrics": {
+      "dpr": 1.25,
+      "width": 1438,
+      "height": 822,
+      "visualViewportScale": 1
+    },
+    "keyboard_roundtrip": true,
+    "external_requests": [],
+    "errors": []
+  },
+  {
+    "layout": "classic",
+    "zoom": 1.0,
+    "native_dpr": 1.25,
+    "metrics": {
+      "dpr": 1.25,
+      "width": 1438,
+      "height": 822,
+      "visualViewportScale": 1
+    },
+    "keyboard_roundtrip": true,
+    "external_requests": [],
+    "errors": []
+  }
+]
