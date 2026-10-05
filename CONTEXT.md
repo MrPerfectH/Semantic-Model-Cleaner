@@ -85,7 +85,7 @@ Concrete model metadata stating that a table, measure, column, or hierarchy belo
 _Avoid_: Perspective usage, perspective dependency
 
 **Translation Membership**:
-Concrete culture metadata stating that a table, measure, column, or hierarchy has a translated caption, description, or display folder in a named culture, read from the `translations` block of a culture TMDL file with its source location. Like Perspective Membership it is evidence for a reviewed change, not proof that a report uses the item, and not an Analysis Limitation. A culture's `linguisticMetadata` payload is not Translation Membership; it remains an Analysis Limitation owned by the culture.
+Concrete culture metadata stating that a table, measure, column, or hierarchy has a translated caption, description, or display folder in a named culture, read from the `translations` block of a culture TMDL file with its source location. It is informational evidence only: it tells the user which translations are removed together with the item, but a translation is just a translation, never a reason to keep an item, so it does not change the Cleanup Recommendation. It is not proof that a report uses the item and not an Analysis Limitation. A culture's `linguisticMetadata` payload is not Translation Membership; it remains an Analysis Limitation owned by the culture.
 _Avoid_: Translation usage, translation reference, culture dependency
 
 **Report Health**:

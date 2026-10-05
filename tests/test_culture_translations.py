@@ -1,8 +1,8 @@
 """Culture translations are parsed structurally as per-object evidence (issue #93).
 
-A translation is Translation Membership: concrete metadata evidence that keeps an
-unused item at Review, like Perspective Membership. It is never an Analysis
-Limitation and never a Report Reference. `linguisticMetadata` stays an Analysis
+A translation is Translation Membership: informational evidence that lists which
+translations are removed with an item (issue #102). It never changes the Cleanup
+Recommendation, is never an Analysis Limitation and never a Report Reference. `linguisticMetadata` stays an Analysis
 Limitation owned by its culture and never yields item references from its text.
 """
 from pathlib import Path
@@ -103,12 +103,47 @@ def test_translated_items_get_owner_culture_and_location(results):
     assert region["translations"][0]["line"] == 18
 
 
-def test_translation_is_a_review_trigger_with_exact_wording(results):
+def test_translation_never_changes_the_recommendation_or_adds_a_trigger(results):
     region = row(results, "Sales", "Region")
     assert region["status"] == "NOT USED"
-    assert region["removal_risk"] == "Review"
-    assert (f"Translated in culture pl-PL ({CULTURE_FILE}:18). Removing the item also removes its "
-            f"translation; a translation does not prove report use.") in region["review_triggers"]
+    assert [t["culture"] for t in region["translations"]] == ["pl-PL"]
+    assert not any("Translated in culture" in trigger or "translation" in trigger.casefold()
+                   for trigger in region["review_triggers"])
+    # Without translation evidence the item classifies exactly as before: only
+    # the shared analysis limitations (if any) can hold it at Review.
+    untranslated = row(results, "Sales", "Order Date")
+    assert untranslated["translations"] == []
+    assert region["removal_risk"] == untranslated["removal_risk"]
+
+
+def test_unused_translated_measure_is_safe_and_lists_its_translation(tmp_path):
+    model = tmp_path / "Workspace" / "Models" / "Sales.SemanticModel"
+    (model / "definition" / "tables").mkdir(parents=True)
+    (model / "definition" / "cultures").mkdir(parents=True)
+    (model / "definition" / "tables" / "Sales.tmdl").write_text(
+        "table Sales\n\tmeasure Revenue = 1\n\tmeasure Plain = 1\n", encoding="utf-8")
+    (model / "definition" / "cultures" / "pl-PL.tmdl").write_text(
+        "culture pl-PL\n"
+        "\ttranslations\n"
+        "\t\tmodel Model\n"
+        "\t\t\ttable Sales\n"
+        "\t\t\t\tmeasure Revenue\n"
+        "\t\t\t\t\tcaption: Przych\u00f3d\n",
+        encoding="utf-8")
+    pages = tmp_path / "Workspace" / "Reports" / "Executive.Report" / "definition" / "pages" / "Page 1"
+    pages.mkdir(parents=True)
+    (pages / "page.json").write_text('{"displayName":"Overview"}', encoding="utf-8")
+    (pages.parents[2] / "definition.pbir").write_text(
+        '{"datasetReference":{"byPath":{"path":"../../Models/Sales.SemanticModel"}}}', encoding="utf-8")
+    results = analyzer.analyze((tmp_path / "Workspace").resolve())
+    revenue = next(r for r in results["items"] if r["item"].name == "Revenue")
+    assert revenue["status"] == "NOT USED"
+    assert revenue["removal_risk"] == "Safe"
+    assert revenue["review_triggers"] == []
+    assert [(t["culture"], t["owner"], t["line"]) for t in revenue["translations"]] == [
+        ("pl-PL", "Sales[Revenue]", 5)]
+    plain = next(r for r in results["items"] if r["item"].name == "Plain")
+    assert plain["removal_risk"] == "Safe" and plain["translations"] == []
 
 
 def test_names_in_culture_descriptions_and_comments_produce_no_evidence(results):
@@ -135,7 +170,7 @@ def test_translations_are_not_analysis_limitations(results, payload):
 def test_table_translation_is_a_table_signal(results):
     sales = next(t for t in results["table_summaries"] if t["name"] == "Sales")
     assert [t["owner"] for t in sales["translations"]] == ["Sales"]
-    assert "Translated in culture pl-PL; a translation does not prove report use." in sales["signals"]
+    assert "Translated in culture pl-PL; informational only, removing the table also removes its translation." in sales["signals"]
     targets = next(t for t in results["table_summaries"] if t["name"] == "Targets")
     assert targets["translations"] == []
 
