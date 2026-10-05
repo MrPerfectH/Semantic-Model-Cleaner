@@ -1,0 +1,185 @@
+{
+  "checked": [
+    {
+      "source": "README.md",
+      "target": "docs/releases/windows-candidate.md"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/quickstart.md"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/cli/README.md"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/cli/plans.md"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/local-http-security.md"
+    },
+    {
+      "source": "README.md",
+      "target": "src/semantic_model_cleaner/demo_workspace"
+    },
+    {
+      "source": "README.md",
+      "target": "examples/product-qa-workspace"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/quickstart.md"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/cli/check.md"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/support.md"
+    },
+    {
+      "source": "README.md",
+      "target": "CONTRIBUTING.md"
+    },
+    {
+      "source": "README.md",
+      "target": "BACKLOG.md"
+    },
+    {
+      "source": "README.md",
+      "target": "scripts/analyze_model_usage.README.md"
+    },
+    {
+      "source": "README.md",
+      "target": "LICENSE"
+    },
+    {
+      "source": "README.md",
+      "target": "CODE_OF_CONDUCT.md"
+    },
+    {
+      "source": "README.md",
+      "target": "SECURITY.md"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/cli/plans.md"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/cli/check.md"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/support.md"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/quickstart.md"
+    },
+    {
+      "source": "docs\\index.html",
+      "target": "./styles.css"
+    },
+    {
+      "source": "docs\\index.html",
+      "target": "assets/candidate/analysis.png"
+    },
+    {
+      "source": "docs\\index.html",
+      "target": "assets/candidate/restore.png"
+    },
+    {
+      "source": "docs\\index.html",
+      "target": "quickstart.md"
+    },
+    {
+      "source": "docs\\index.html",
+      "target": "support.md"
+    },
+    {
+      "source": "docs\\index.html",
+      "target": "cli/README.md"
+    },
+    {
+      "source": "docs\\quickstart.md",
+      "target": "releases/windows-candidate.md"
+    },
+    {
+      "source": "docs\\quickstart.md",
+      "target": "assets/candidate/analysis.png"
+    },
+    {
+      "source": "docs\\quickstart.md",
+      "target": "cli/README.md"
+    },
+    {
+      "source": "docs\\quickstart.md",
+      "target": "support.md"
+    },
+    {
+      "source": "docs\\quickstart.md",
+      "target": "../SECURITY.md"
+    },
+    {
+      "source": "docs\\support.md",
+      "target": "releases/windows-candidate.md"
+    },
+    {
+      "source": "docs\\support.md",
+      "target": "cli/review-policy.md"
+    },
+    {
+      "source": "docs\\support.md",
+      "target": "schema-validation.md"
+    },
+    {
+      "source": "docs\\support.md",
+      "target": "cli/README.md"
+    },
+    {
+      "source": "docs\\support.md",
+      "target": "cli/check.md"
+    },
+    {
+      "source": "docs\\support.md",
+      "target": "../SECURITY.md"
+    },
+    {
+      "source": "docs\\releases\\windows-candidate.md",
+      "target": "../quickstart.md"
+    },
+    {
+      "source": "docs\\cli\\check.md",
+      "target": "README.md"
+    },
+    {
+      "source": "docs\\cli\\plans.md",
+      "target": "README.md"
+    },
+    {
+      "source": "docs\\cli\\plans.md",
+      "target": "check.md"
+    },
+    {
+      "source": "docs\\cli\\plans.md",
+      "target": "../support.md"
+    },
+    {
+      "source": "docs\\cli\\README.md",
+      "target": "plans.md"
+    },
+    {
+      "source": "docs\\cli\\README.md",
+      "target": "check.md"
+    },
+    {
+      "source": "docs\\cli\\README.md",
+      "target": "review-policy.md"
+    }
+  ],
+  "missing": []
+}

@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Semantic Model Cleaner</title>
+<meta name="smc-local-token" content="{{ local_request_token }}">
+<script src="{{ url_for('static', filename='local-http.js') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='classic-plans.css') }}">
 <style>
 :root {
@@ -571,6 +573,8 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
   .action-cleanup-grid .folder-input { width: 100%; }
 }
 </style>
+<link rel="stylesheet" href="{{ url_for('static', filename='result-overview.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='accessibility.css') }}">
 </head>
 <body class="app-flow-cleanup">
 <div class="header">
@@ -709,12 +713,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       <button class="btn btn-secondary btn-sm setup-toggle" id="btnToggleSetup" type="button" aria-expanded="true" aria-controls="setupBody">Hide</button>
     </div>
     <div id="setupBody">
-    <div class="setup-intro" id="setupIntro">
-      Point the app at a Power BI Project on your machine: pick one <code>.SemanticModel</code> folder and the <code>.Report</code> folders that use it.
-      New here? <button class="btn btn-secondary btn-sm" id="btnLoadDemo" type="button" title="Copies a small sample workspace to a safe location and analyzes it — your own files are never touched">Try the demo workspace</button>
-      <span class="setup-intro-note">&mdash; it loads a small sample model and report you can safely analyze and clean.</span>
-      <span class="editor-status" id="demoStatus"></span>
-    </div>
+      {% include "first-run-setup.html" %}
     <div class="setup-columns">
       <div class="setup-col">
         <h3>Semantic Model <span class="count-badge" id="modelCountBadge">0</span></h3>
@@ -761,6 +760,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
     <div class="summary-card"><div class="value" id="sumCaution">0</div><div class="label">Blocked <span class="kpi-help" tabindex="0" data-tooltip="Items that still have direct or indirect dependencies and should not be deleted now." aria-label="Explain blocked">?</span></div></div>
     <div class="summary-card"><div class="value" id="sumKeep">0</div><div class="label">Keep <span class="kpi-help" tabindex="0" data-tooltip="Items retained for required model structure." aria-label="Explain keep">?</span></div></div>
   </div>
+  <section id="resultOverview" class="result-overview hidden cleanup-flow" aria-label="Analysis overview"></section>
   <details class="result-guide hidden cleanup-flow" id="resultGuideSection">
     <summary>
       <span class="result-guide-title">How to read these results</span>
@@ -891,7 +891,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
         <th data-col="measureDependentCount" title="Measures that depend on this item, whether or not those measures are report-used.">Measures <span class="sort-arrow"></span></th>
         <th data-col="relationshipRefCount" title="Relationships that use this column.">Relationships <span class="sort-arrow"></span></th>
         <th data-col="otherModelUseCount" title="Other model-only uses such as sort-by, hierarchies, field parameters, or key metadata.">Flags <span class="sort-arrow"></span></th>
-        <th data-col="deleteSafety" title="Cleanup recommendation. Safe means low-risk cleanup; Keep means treat as required metadata.">Cleanup <span class="sort-arrow"></span></th>
+        <th data-col="deleteSafety" title="Cleanup recommendation. Safe applies only to supported scanned metadata in the selected scope; Keep means treat as required metadata.">Cleanup <span class="sort-arrow"></span></th>
         <th>Action</th>
       </tr></thead>
       <tbody id="tableBody"></tbody>
@@ -1203,6 +1203,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
   <div class="explorer-modal">
     <div class="explorer-header">
       <h2 id="explorerTitle">Choose Model</h2>
+      <div id="explorerStatus" role="status" class="editor-status"></div>
       <div class="explorer-path-bar">
         <button class="btn btn-secondary btn-sm" id="btnExplorerUp" title="Go to parent folder">Up</button>
         <input type="text" id="explorerPathInput" placeholder="Type a path and press Enter...">
@@ -1269,6 +1270,8 @@ var filteredReportIssues = [];
 var initialConfig = {
   defaultRoot: {{ default_root|tojson }},
   modelBrowseRoot: {{ model_browse_root|tojson }},
+  availableModels: {{ available_models|tojson }},
+  availableReports: {{ available_reports|tojson }},
   runtime: {{ runtime|tojson }},
   initialModels: {{ initial_models|tojson }},
   initialReports: {{ initial_reports|tojson }},
@@ -1651,7 +1654,7 @@ function renderCompareResults(data) {
 
 function exportCompareResults(format) {
   if (!compareResults) return;
-  window.location.href = '/api/compare/export?format=' + encodeURIComponent(format);
+  smcDownload('/api/compare/export?format=' + encodeURIComponent(format));
 }
 
 async function runSemanticModelCompare() {
@@ -1775,7 +1778,7 @@ function writeExplorerDefaultPath(mode, path) {
 }
 
 function updateExplorerDefaultUI() {
-  if (explorerMode === 'folder') {
+  if (explorerMode === 'folder' || explorerMode === 'project') {
     $('btnExplorerSetDefault').disabled = true;
     $('explorerDefaultSummary').textContent = 'Search folder is based on the selected model';
     $('btnExplorerSetDefault').textContent = 'Set as default';
@@ -2425,7 +2428,7 @@ function mainSearchTextForRef(ref) {
 
 function cleanupHelpText(value) {
   var text = {
-    'Safe': 'No report usage or blocking model dependency was found. Lowest-risk cleanup candidate.',
+    'Safe': 'No supported scanned metadata indicates this item is required, and no shared Analysis Limitation applies. Safe is limited to the selected scope; confirm use in other Reports before changing it.',
     'Review': 'Not clearly blocked, but still needs a manual check before deletion.',
     'Blocked': 'Still used directly or indirectly by reports or model dependencies.',
     'Keep': 'Treat as intentional metadata or required structure, not as a cleanup target.'
@@ -2750,14 +2753,14 @@ function pruneActionState() {
   });
 }
 
-async function apiGet(url) { var r = await fetch(url); return r.json(); }
+async function apiGet(url) { var r = await smcFetch(url); return r.json(); }
 async function apiPost(url, body) {
   var mutationRoutes = ['/api/action', '/api/dax', '/api/model/rename', '/api/measure/move', '/api/report-measure/migrate', '/api/report/repair-references', '/api/report/cleanup-stale', '/api/report/issues/apply'];
   if (mutationRoutes.indexOf(url) >= 0) {
     if (!window.ClassicPlans) throw new Error('Change review is unavailable. Reload before changing files.');
     return window.ClassicPlans.post(url, body || {});
   }
-  var r = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+  var r = await smcFetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
   return r.json();
 }
 
@@ -2859,7 +2862,7 @@ function connectedReportSearchStartPathFromModel(modelPath) {
 }
 
 function explorerStartPath(mode, existing) {
-  var savedDefault = mode === 'folder' ? '' : readExplorerDefaultPath(mode);
+  var savedDefault = (mode === 'folder' || mode === 'project') ? '' : readExplorerDefaultPath(mode);
   if (existing.length) return parentDir(existing[0].path);
   if (savedDefault) return savedDefault;
   if (mode === 'model' || mode === 'compareBaseline' || mode === 'compareCandidate') {
@@ -2876,27 +2879,34 @@ function explorerStartPath(mode, existing) {
 
 function openExplorer(mode) {
   explorerMode = mode;
-  $('explorerTitle').textContent = mode === 'compareBaseline'
+  $('explorerTitle').textContent = mode === 'project' ? 'Open Power BI Project — choose its folder' : mode === 'compareBaseline'
     ? 'Choose Baseline Semantic Model'
     : (mode === 'compareCandidate'
       ? 'Choose Candidate Semantic Model'
-      : (mode === 'model' ? 'Choose Semantic Model' : (mode === 'folder' ? 'Choose Search Folder' : 'Browse for Reports')));
+      : (mode === 'model' ? 'Choose Semantic Model' : ((mode === 'folder' || mode === 'project') ? 'Choose Search Folder' : 'Browse for Reports')));
   explorerPicked.clear();
   var existing = mode === 'compareBaseline'
     ? (compareBaselineModel ? [compareBaselineModel] : [])
     : (mode === 'compareCandidate' ? (compareCandidateModel ? [compareCandidateModel] : []) : (mode === 'model' ? chosenModels : (mode === 'report' ? chosenReports : [])));
   existing.forEach(function(it) { explorerPicked.set(it.path, it); });
-  $('explorerSelectedSummary').textContent = mode === 'folder' ? 'Current folder will be used' : '0 selected';
+  $('explorerSelectedSummary').textContent = (mode === 'folder' || mode === 'project') ? 'Current folder will be used' : '0 selected';
   $('explorerModal').classList.remove('hidden');
   var startPath = explorerStartPath(mode, existing);
   browseDir(startPath);
 }
 
+var explorerBrowseGeneration = 0;
 async function browseDir(dirPath) {
+  var browseVersion = ++explorerBrowseGeneration;
+  $('btnExplorerDone').disabled = true;
+  $('explorerStatus').textContent = 'Opening folder…';
   try {
     var url = '/api/browse' + (dirPath ? '?path=' + encodeURIComponent(dirPath) : '');
     var data = await apiGet(url);
-    if (data.error) { alert(data.error); return; }
+    if (browseVersion !== explorerBrowseGeneration) return;
+    if (data.error) throw new Error(data.error);
+    $('btnExplorerDone').disabled = false;
+    $('explorerStatus').textContent = '';
     explorerCurrentPath = data.current;
     explorerParentPath = data.parent || '';
     $('explorerPathInput').value = data.current;
@@ -2906,11 +2916,12 @@ async function browseDir(dirPath) {
     updateExplorerSummary();
     updateExplorerDefaultUI();
   } catch (err) {
+    if (browseVersion !== explorerBrowseGeneration) return;
     console.error('Failed to browse directory', err);
     renderBreadcrumbs(dirPath || '');
     renderExplorerList([], '');
     updateExplorerDefaultUI();
-    alert('Unable to load that folder. Check the path and try again.');
+    $('explorerStatus').textContent = 'Unable to open this folder. Check the path and try again, or Cancel. ' + err.message;
   }
 }
 
@@ -2964,7 +2975,7 @@ function renderExplorerList(entries, parentPath) {
   list.querySelectorAll('.explorer-item').forEach(function(li) {
     li.onclick = function(e) {
       if (e.target.classList.contains('explorer-check')) return;
-      if (li.dataset.type === 'dir' || li.dataset.type === 'parent') { browseDir(li.dataset.path); }
+      if (explorerMode === 'project' || li.dataset.type === 'dir' || li.dataset.type === 'parent') { browseDir(li.dataset.path); }
       else { var cb = li.querySelector('.explorer-check'); if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); } }
     };
   });
@@ -3034,7 +3045,7 @@ function createExplorerRow(entry) {
 }
 
 function updateExplorerSummary() {
-  $('explorerSelectedSummary').textContent = explorerMode === 'folder'
+  $('explorerSelectedSummary').textContent = (explorerMode === 'folder' || explorerMode === 'project')
     ? 'Current folder will be used'
     : explorerPicked.size + ' selected';
 }
@@ -3043,14 +3054,19 @@ $('explorerPathInput').onkeydown = function(e) { if (e.key === 'Enter') browseDi
 $('btnExplorerUp').onclick = function() { if (explorerParentPath) browseDir(explorerParentPath); };
 $('btnExplorerGo').onclick = function() { browseDir($('explorerPathInput').value.trim()); };
 $('btnExplorerSetDefault').onclick = function() {
-  if (explorerMode === 'folder') return;
+  if (explorerMode === 'folder' || explorerMode === 'project') return;
   if (!explorerCurrentPath) return;
   writeExplorerDefaultPath(explorerMode, explorerCurrentPath);
   updateExplorerDefaultUI();
 };
 $('btnExplorerCancel').onclick = function() { $('explorerModal').classList.add('hidden'); };
 $('btnExplorerDone').onclick = function() {
-  if (explorerMode === 'folder') {
+  if (explorerMode === 'project') {
+    $('explorerModal').classList.add('hidden');
+    smcDiscoverProject(explorerCurrentPath);
+    return;
+  }
+  if (explorerMode === 'folder' || explorerMode === 'project') {
     $('connectedReportRootInput').value = explorerCurrentPath || $('explorerPathInput').value.trim();
     $('explorerModal').classList.add('hidden');
     findConnectedReports();
@@ -3117,12 +3133,9 @@ async function findConnectedReports() {
     });
     if (data.error) throw new Error(data.error);
     var foundReports = data.reports || [];
-    if (foundReports.length) {
-      chosenReports = foundReports
-        .map(function(report) { return { path: report.path, name: report.name }; })
-        .sort(function(a, b) { return a.name.localeCompare(b.name); });
-      renderPills();
-    }
+    chosenReports = (data.reportStatuses || foundReports)
+      .map(function(report) { return { path: report.path, name: report.name }; });
+    renderPills();
     var nameMatched = foundReports.filter(function(report) { return report.status === 'connected_by_name'; }).length;
     var statusMessage = foundReports.length
       ? 'Selected the ' + foundReports.length + ' report(s) connected to this model ('
@@ -3163,8 +3176,8 @@ async function findConnectedReports() {
     $('btnBrowseConnectedReportRoot').disabled = false;
   }
 }
-$('btnExportJson').onclick = function() { window.location.href = '/api/export?format=json'; };
-$('btnExportExcel').onclick = function() { window.location.href = '/api/export?format=xlsx'; };
+$('btnExportJson').onclick = function() { smcDownload('/api/export?format=json'); };
+$('btnExportExcel').onclick = function() { smcDownload('/api/export?format=xlsx'); };
 $('btnAutoSizeColumns').onclick = function() { fitCurrentTableColumnsToScreen(); };
 $('pageSizeSelect').value = String(readPageSizePreference());
 $('pageSizeSelect').onchange = function() {
@@ -3220,28 +3233,6 @@ async function runAnalyze() {
 }
 $('btnAnalyze').onclick = runAnalyze;
 
-/* == Demo workspace == */
-$('btnLoadDemo').onclick = async function() {
-  var btn = $('btnLoadDemo');
-  var status = $('demoStatus');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Loading demo...';
-  status.textContent = '';
-  try {
-    var data = await apiPost('/api/demo', {});
-    if (data.error) { status.textContent = data.error; return; }
-    chosenModels = (data.models || []).slice(0, 1);
-    chosenReports = (data.reports || []).slice();
-    renderPills();
-    status.textContent = data.reset
-      ? 'Demo workspace reset to its original state at ' + data.workspace
-      : 'Demo workspace copied to ' + data.workspace;
-    await runAnalyze();
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Try the demo workspace';
-  }
-};
 
 function loadResults(data) {
   setResultsData(data, false);
@@ -3311,6 +3302,7 @@ function setResultsData(data, preserveActionState) {
   applyFilters();
   updateApplyButtonState();
   updateColumnActionButtons();
+  if (window.smcRenderResultOverview) window.smcRenderResultOverview(data);
 }
 
 function renderWarnings() {
@@ -5534,7 +5526,7 @@ function detailDecisionCopy(item) {
       : 'This item is report-level metadata, so standard model cleanup actions are disabled.';
   }
   var cleanup = deleteSafetyValue(item);
-  if (cleanup === 'Safe') return 'No report usage or blocking model dependency was found. This is a low-risk cleanup candidate.';
+  if (cleanup === 'Safe') return 'No supported scanned metadata indicates this item is required in the selected scope. Confirm use outside that scope before preparing a change.';
   if (cleanup === 'Blocked') return 'This item is still used directly or indirectly. Keep it until the report or model dependencies are resolved.';
   if (cleanup === 'Keep') return 'This item is required by model metadata. Treat it as retained, even when report usage is not visible.';
   if (window.smcCleanupExplanation) { var explanation = window.smcCleanupExplanation(item); return explanation.lead + ' ' + explanation.next; }
@@ -7120,5 +7112,8 @@ setAppFlow('cleanup');
 <script src="{{ url_for('static', filename='schema-evidence.js') }}"></script>
 <script src="{{ url_for('static', filename='analysis-limitations.js') }}"></script>
 <script src="{{ url_for('static', filename='policy-workspace.js') }}"></script>
+<script src="{{ url_for('static', filename='first-run.js') }}"></script>
+<script src="{{ url_for('static', filename='result-overview.js') }}"></script>
+<script src="{{ url_for('static', filename='accessible-layers.js') }}"></script>
 </body>
 </html>

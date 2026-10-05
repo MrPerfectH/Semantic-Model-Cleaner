@@ -10,20 +10,18 @@ import time
 import webbrowser
 
 from . import webapp
+from .local_http import loopback_host
 
 
 def _configure_console_output() -> None:
     """Keep redirected Windows console output from crashing on Unicode text."""
+    webapp.configure_console_output()
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is None:
             continue
         try:
-            reconfigure(
-                errors="backslashreplace",
-                line_buffering=True,
-                write_through=True,
-            )
+            reconfigure(line_buffering=True, write_through=True)
         except (OSError, TypeError, ValueError):
             # Tests and embedded hosts can expose a closed or fixed text stream.
             continue
@@ -76,8 +74,8 @@ def main() -> None:
                         help="Path(s) to search for .Report directories")
     parser.add_argument("--port", type=int, default=5001,
                         help="Preferred port to use (default: 5001)")
-    parser.add_argument("--host", default="127.0.0.1",
-                        help="Host to bind to (default: 127.0.0.1)")
+    parser.add_argument("--host", default="127.0.0.1", type=loopback_host,
+                        help="Local bind address: 127.0.0.1 or localhost (default: 127.0.0.1)")
     parser.add_argument("--no-open-browser", action="store_true",
                         help="Start the local server without opening the browser automatically")
     args = parser.parse_args()

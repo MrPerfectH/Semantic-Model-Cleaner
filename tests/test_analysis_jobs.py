@@ -98,7 +98,7 @@ def test_compact_transport_reconstructs_references_and_shares_items(tmp_path):
     assert any(ref['pageHidden'] and ref['visualHidden'] and not ref['isStale'] for ref in expected)
     packed = webapp._compact_browser_results(payload)
     input_file = tmp_path / 'compact.json'
-    input_file.write_text(json.dumps(packed))
+    input_file.write_text(json.dumps(packed), encoding="utf-8")
     js = Path(__file__).parents[1] / 'src/semantic_model_cleaner/static/analysis-jobs.js'
     program = r'''
 const fs=require('fs'), vm=require('vm');

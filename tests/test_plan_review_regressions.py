@@ -11,10 +11,10 @@ def project(tmp_path):
     report = tmp_path / 'R.Report'
     tables = model / 'definition/tables'
     tables.mkdir(parents=True)
-    (tables / 'Sales.tmdl').write_text('table Sales\n\tmeasure Revenue = 1\n\tcolumn Spare\n')
+    (tables / 'Sales.tmdl').write_text('table Sales\n\tmeasure Revenue = 1\n\tcolumn Spare\n', encoding="utf-8")
     (report / 'definition').mkdir(parents=True)
-    (report / 'definition/report.json').write_text('{}')
-    (report / 'definition.pbir').write_text(json.dumps({'datasetReference': {'byPath': {'path': '../M.SemanticModel'}}}))
+    (report / 'definition/report.json').write_text('{}', encoding="utf-8")
+    (report / 'definition.pbir').write_text(json.dumps({'datasetReference': {'byPath': {'path': '../M.SemanticModel'}}}), encoding="utf-8")
     return model, report
 
 
@@ -28,7 +28,7 @@ def test_plan_rejects_second_identical_missing_reference_in_different_visual(tmp
         path = report / 'definition/pages/P/visuals' / visual / 'visual.json'
         path.parent.mkdir(parents=True)
         path.write_text(json.dumps({'visual': {'query': {'Column': {
-            'Expression': {'SourceRef': {'Entity': 'Sales'}}, 'Property': name}}}}))
+            'Expression': {'SourceRef': {'Entity': 'Sales'}}, 'Property': name}}}}), encoding="utf-8")
     with pytest.raises(change_plan.PlanError, match='unresolved references'):
         change_plan.create_plan(model, [report], [{'kind': 'report_repair',
             'column_renames': [{'table': 'Sales', 'name': 'Spare', 'target_name': 'Gone'}]}])
@@ -37,7 +37,7 @@ def test_plan_rejects_second_identical_missing_reference_in_different_visual(tmp
 def test_cli_plan_output_cannot_overwrite_selected_metadata(tmp_path, capsys):
     model, report = project(tmp_path)
     ops = tmp_path / 'operations.json'
-    ops.write_text(json.dumps([hide()]))
+    ops.write_text(json.dumps([hide()]), encoding="utf-8")
     target = report / 'definition/report.json'
     before = target.read_bytes()
     code = plan_cli.main(['plan', str(tmp_path), '--model', str(model), '--report', str(report),
@@ -62,7 +62,7 @@ def test_relative_report_action_path_never_mutates_original_during_preview(tmp_p
     target = report / 'definition/pages/P/visuals/V/visual.json'
     target.parent.mkdir(parents=True)
     target.write_text(json.dumps({'visual': {'query': {'Column': {
-        'Expression': {'SourceRef': {'Entity': 'Sales'}}, 'Property': 'Spare'}}}}))
+        'Expression': {'SourceRef': {'Entity': 'Sales'}}, 'Property': 'Spare'}}}}), encoding="utf-8")
     before = target.read_bytes()
     monkeypatch.chdir(tmp_path)
     with pytest.raises(change_plan.PlanError):

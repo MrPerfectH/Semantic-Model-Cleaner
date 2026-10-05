@@ -2,6 +2,8 @@
 
 Semantic Model Cleaner is a free, MIT-licensed tool that works on local project files. No account or hosted service is required for analysis or cleanup. Start with a copy of your project or a Git branch, choose one semantic model and its reports, and inspect the selected scope before reviewing changes.
 
+The currently published download is 0.4.0b3. This branch also documents the [unpublished Windows candidate](releases/windows-candidate.md); its fixes and screenshots are not available in that published ZIP yet.
+
 ## Inputs
 
 | Input | Support |
@@ -46,7 +48,7 @@ Legacy direct-write HTTP routes and `smc clean-stale --apply` are withheld in th
 6. Inspect the receipt and refreshed analysis. Resolve remaining findings; static validation does not establish equivalent Power BI runtime behavior.
 7. Use guarded recovery when necessary. Recovery must refuse to overwrite subsequent edits.
 
-Review decisions and naming conventions can be saved in the repository; see [review policy](cli/review-policy.md). Schema scope and versions are described in [offline validation](schema-validation.md). For automation, see [CI usage](cli/check.md). Analysis and CI gates should run before automated mutation is considered.
+Review decisions and naming conventions can be saved in the repository; see [review policy](cli/review-policy.md). Schema scope and versions are described in [offline validation](schema-validation.md). For automation and AI agents, see the [CLI output contract and disposable workflow](cli/README.md) and [CI usage](cli/check.md). Analysis and CI gates should run before automated mutation is considered.
 
 ## Installation and reporting problems
 

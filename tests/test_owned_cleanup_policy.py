@@ -17,15 +17,15 @@ def test_retained_same_named_report_measure_blocks_model_dependency_deletion(tmp
     model = tmp_path / 'M.SemanticModel'
     tables = model / 'definition/tables'
     tables.mkdir(parents=True)
-    (tables / 'Sales.tmdl').write_text('table Sales\n\tmeasure First = 1\n\tmeasure Second = 2\n\tcolumn Amount\n\t\tdataType: int64\n')
+    (tables / 'Sales.tmdl').write_text('table Sales\n\tmeasure First = 1\n\tmeasure Second = 2\n\tcolumn Amount\n\t\tdataType: int64\n', encoding="utf-8")
     reports = []
     for owner, dax in [('a', expression), ('b', '[Second]')]:
         report = tmp_path / owner / 'Same.Report'
         definition = report / 'definition'
         definition.mkdir(parents=True)
-        (report / 'definition.pbir').write_text(json.dumps({'datasetReference': {'byPath': {'path': os.path.relpath(model, report)}}}))
-        (definition / 'report.json').write_text('{}')
-        (definition / 'reportExtensions.json').write_text(json.dumps({'entities': [{'name': 'Sales', 'measures': [{'name': 'Local', 'expression': dax}]}]}))
+        (report / 'definition.pbir').write_text(json.dumps({'datasetReference': {'byPath': {'path': os.path.relpath(model, report)}}}), encoding="utf-8")
+        (definition / 'report.json').write_text('{}', encoding="utf-8")
+        (definition / 'reportExtensions.json').write_text(json.dumps({'entities': [{'name': 'Sales', 'measures': [{'name': 'Local', 'expression': dax}]}]}), encoding="utf-8")
         reports.append(report)
     result = evaluate_deletion_policy(model, reports, [
         {'action': 'delete', 'item_type': target_type, 'table': 'Sales', 'name': target_name}])

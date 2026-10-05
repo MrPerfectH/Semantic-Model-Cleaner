@@ -20,7 +20,13 @@ Exit codes:
 | 1 | Findings meet the failure threshold. |
 | 2 | Invalid arguments, invalid baseline, unusable input scope, or analysis failure. |
 
-Argparse syntax errors and `--help` follow normal CLI behavior (stderr usage with exit 2, help with exit 0). Runtime failures in JSON mode return a JSON envelope with `ok: false` and `errors`.
+In JSON mode (the default), argument syntax and runtime failures return the existing JSON envelope on stdout with `ok: false`, `errors`, and exit 2. `--format text` keeps argparse usage errors on stderr. `--help` always prints text and exits 0. See the [CLI contract](README.md) for stream and compatibility details.
+
+`--write-baseline` requires an existing external output directory. Selected,
+discovered, and named Semantic Model/Report folders are protected, including
+resolved aliases and excluded artifacts. Existing output files with multiple
+hard links are refused because they may alias project metadata; choose a new
+external filename. Ordinary external baseline files can still be overwritten.
 
 By default only error findings fail the check. `--fail-on warning` also fails on warnings, including items with no found usage. A pass does not mean the model has no unused items or that every possible consumer was inspected.
 
@@ -33,6 +39,12 @@ Paths in successful result scope and findings are relative to the project direct
 `scope` reports the selected model/reports, all discovered report binding states, selected and known-bound counts, whether all known bound reports were selected, unverified report count, and `scan_complete`. `external_consumers_verified` is always false. A connection matched by published model name is identified as `connected_by_name`; it is not equivalent to verified remote identity. Deliberately excluded reports remain visible in scope. An unverified discovered binding produces SMC008 because the excluded report might use the selected model.
 
 `scan_complete` means no detected unreadable report file or unresolved unsupported model metadata in the selected scan. It does not claim exhaustive format conformance. Unsupported metadata with resolved target names still produces a warning.
+
+Each `scope.bindings` row includes its classification `message`. Binding evidence
+is retained when discovery succeeds but the selected Report set is empty or
+unusable, so invalid-scope responses can still explain the exclusions. A
+definition containing both `byPath` and `byConnection` is `ambiguous_definition`
+and excluded consistently with the app and ordinary analysis.
 
 | Rule | Default severity | Meaning |
 |---|---|---|
