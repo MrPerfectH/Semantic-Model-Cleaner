@@ -1,0 +1,81 @@
+{
+  "archive": "semantic-model-cleaner-windows-x64-0.4.0b4.zip",
+  "sha256": "7fff5bed76d2a3224a982d680d076461b5a79109d02a49bdbc2f2079dba3945c",
+  "checks": [
+    "checksum",
+    "release identity",
+    "occupied-port fallback",
+    "Python-free child PATH",
+    "v2/classic UI and packaged assets",
+    "browser demo analysis in spaces/non-ASCII paths",
+    "browser Option B real-item tabs at 1280x800",
+    "browser JSON export",
+    "Excel export",
+    "local HTTP token and origin protection",
+    "stale-plan rejection without writes",
+    "browser reviewed plan/apply/verify/restore with byte-exact recovery",
+    "browser re-analysis after restore",
+    "UTF-8 rename/apply/verify/restore",
+    "offline schema validation",
+    "both-layout UI preview/cancel/apply/verify/restore"
+  ],
+  "release": {
+    "release_channel": "beta",
+    "source_revision": "c8ce5d3334a142d332cdf375f4e0cfc1b54d7828",
+    "name": "Semantic Model Cleaner",
+    "source_dirty": false,
+    "packaging": "windows-x64-zip",
+    "version": "0.4.0b4"
+  },
+  "url": "http://127.0.0.1:22085",
+  "python_free_path": "C:\\WINDOWS\\System32;C:\\WINDOWS",
+  "option_b_workspace": {
+    "item": "Revenue",
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "scope_chip_in_strip": true,
+    "tabs": {
+      "Definition": {
+        "selected": true,
+        "visible": true,
+        "content": true
+      },
+      "References": {
+        "selected": true,
+        "visible": true,
+        "content": true
+      },
+      "Dependencies": {
+        "selected": true,
+        "visible": true,
+        "content": true
+      },
+      "Changes": {
+        "selected": true,
+        "visible": true,
+        "content": true
+      }
+    },
+    "history_buttons": 2,
+    "visible_history_buttons": 2,
+    "definition_has_expression": true,
+    "screenshot": "04-option-b-item-laptop.png"
+  },
+  "reviewed_plan": {
+    "id": "00ffa32731014ef59e674f878a6e0f53",
+    "changed_paths": [
+      "model/definition/tables/Sales.tmdl"
+    ],
+    "original_sha256": "c49a4ceced6282d640947019263fdd34dc40c9be9f3345b7123f0a41705041da",
+    "preview_sha256": "c49a4ceced6282d640947019263fdd34dc40c9be9f3345b7123f0a41705041da",
+    "applied_sha256": "f679ef8880aedae862ae085945ebcc36f015f7981408989a93bf646e1f6d539f",
+    "apply_status": "applied",
+    "verify_state": "applied",
+    "restore_status": "restored",
+    "restored_sha256": "c49a4ceced6282d640947019263fdd34dc40c9be9f3345b7123f0a41705041da"
+  },
+  "schema_count": 97,
+  "ok": true
+}
