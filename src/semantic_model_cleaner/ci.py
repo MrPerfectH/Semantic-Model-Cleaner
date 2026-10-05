@@ -1,11 +1,13 @@
 """Deterministic, read-only CI checks over the same local analyzer as the UI."""
-import argparse
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 
 from . import analyzer
+from .analysis_export import validate_export_destination
+from .cli_contract import ArgumentParser, CLIUsageError, json_requested
 
 SCHEMA_VERSION = "1.0"
 # Coverage failures cannot be suppressed by baselines.
@@ -58,12 +60,6 @@ def run_check(
         bindings = [(report, analyzer.report_binding_status(report, model)) for report in discovered]
         bound = [report for report, binding in bindings if binding["status"] in analyzer.BOUND_REPORT_STATUSES]
         reports = sorted({Path(path).resolve() for path in report_paths}) if report_paths is not None else analyzer.filter_reports(bound, report_filters)
-        if any(report not in bound for report in reports):
-            raise ValueError("Every explicitly selected report must be bound to the Semantic Model.")
-        if not reports:
-            raise ValueError("No selected reports are bound to the Semantic Model; inspect definition.pbir or report filters.")
-        if any(not (report / "definition").is_dir() for report in reports):
-            raise ValueError("Selected reports require the supported PBIR definition directory.")
         payload["scope"] = {
             "model": _relative(model, workspace),
             "reports": [_relative(report, workspace) for report in reports],
@@ -72,8 +68,15 @@ def run_check(
             "external_consumers_verified": False,
             "unverified_report_count": sum(binding["status"] not in {"connected", "connected_by_name", "not_connected"} for _, binding in bindings),
             "bindings": [{"path": _relative(report, workspace), "status": binding["status"],
+                          "message": binding["message"],
                           "selected": report in reports} for report, binding in bindings],
         }
+        if any(report not in bound for report in reports):
+            raise ValueError("Every explicitly selected report must be bound to the Semantic Model.")
+        if not reports:
+            raise ValueError("No selected reports are bound to the Semantic Model; inspect definition.pbir or report filters.")
+        if any(not (report / "definition").is_dir() for report in reports):
+            raise ValueError("Selected reports require the supported PBIR definition directory.")
         result = analyzer.analyze(workspace, model_paths=[model], report_paths=reports)
         payload["scope"]["scan_complete"] = result.get("coverage", {}).get("complete", False)
         findings: list[dict] = []
@@ -174,7 +177,9 @@ def run_check(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="smc check", description="Read-only, local model/report CI checks.")
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = ArgumentParser(prog="smc check", description="Read-only, local model/report CI checks.",
+                            json_errors=json_requested(argv, default=True))
     parser.add_argument("project_path", nargs="?", default=".")
     parser.add_argument("--model", help="Semantic Model path (relative to project_path).")
     parser.add_argument("--report", action="append", help="Report-name substring filter; repeat to select reports.")
@@ -183,7 +188,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--policy", type=Path, help="Repository review policy JSON (default: project/.smc-policy.json).")
     parser.add_argument("--baseline", type=Path, help="Suppress matching existing findings, except incomplete coverage.")
     parser.add_argument("--write-baseline", type=Path, help="Write current baseline; exit code still reflects this check.")
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except CLIUsageError as exc:
+        print(json.dumps({"schema_version": SCHEMA_VERSION, "command": "check", "ok": False,
+                          "scope": {}, "findings": [], "summary": {}, "errors": [str(exc)]}))
+        return 2
     root = Path(args.project_path)
     baseline = None
     try:
@@ -196,25 +206,17 @@ def main(argv: list[str] | None = None) -> int:
         code, payload = run_check(root, policy=repository_policy, model_path=(root / args.model) if args.model else None,
                                   report_filters=args.report, baseline=baseline, fail_on=args.fail_on)
         if args.write_baseline and code != 2:
-            target = args.write_baseline.resolve()
             artifact_roots = [
                 *(path.resolve() for path in analyzer.discover_models([root])),
                 *(path.resolve() for path in analyzer.discover_reports([root])),
                 (root / payload["scope"]["model"]).resolve(),
             ]
-            # Include explicit artifacts outside discovery roots and resolved
-            # symlink destinations. A baseline must never become model/report
-            # metadata merely because an output path was entered incorrectly.
-            if any(target == artifact or target.is_relative_to(artifact) for artifact in artifact_roots) or any(
-                parent.name.casefold().endswith((".semanticmodel", ".report"))
-                for parent in target.parents
-            ):
-                raise ValueError("Baseline output must be outside Semantic Model and Report artifact folders.")
-            args.write_baseline.write_text(json.dumps({
+            target = validate_export_destination(args.write_baseline, artifact_roots)
+            target.write_text(json.dumps({
                 "schema_version": SCHEMA_VERSION,
                 "fingerprints": sorted(f["fingerprint"] for f in payload["findings"] if f["rule_id"] not in COVERAGE_RULES),
             }, indent=2) + "\n", encoding="utf-8")
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         code, payload = 2, {"schema_version": SCHEMA_VERSION, "command": "check", "ok": False,
                             "scope": {}, "findings": [], "summary": {}, "errors": [str(exc)]}
     if args.format == "json":

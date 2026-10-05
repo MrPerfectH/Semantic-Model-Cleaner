@@ -211,21 +211,6 @@ def compare_validation(before: dict, after: dict) -> dict:
             'lost_validation': sorted(lost), 'changed_not_validated': sorted(changed_unknown)}
 
 
-def _evidence_key(path, root, ordinal, workspace):
-    """Workspace-relative evidence path, or a report-relative one when none exists.
-
-    On Windows os.path.relpath raises when the report and the workspace live on
-    different drives; that layout is legitimate (and is what CI runners use), so
-    fall back to the stable report-ordinal form rather than failing the analysis.
-    """
-    if workspace:
-        try:
-            return Path(os.path.relpath(path, workspace)).as_posix()
-        except ValueError:
-            pass
-    return f'report-{ordinal}/{path.relative_to(root).as_posix()}'
-
-
 def validate_report_paths(report_paths, *, workspace=None, progress=None):
     """Read report metadata one file at a time; never retain a whole raw workspace."""
     records = []
@@ -236,7 +221,14 @@ def validate_report_paths(report_paths, *, workspace=None, progress=None):
     for index, (root, path) in enumerate(files):
         if progress and index % 20 == 0:
             progress('Checking declared report schemas', index, len(files))
-        key = _evidence_key(path, root, paths.index(root) + 1, workspace)
+        key = f'report-{paths.index(root)+1}/{path.relative_to(root).as_posix()}'
+        if workspace:
+            try:
+                key = Path(os.path.relpath(path, workspace)).as_posix()
+            except ValueError:
+                # Windows cannot make relative paths across drives. Keep the
+                # per-report identity so similarly named reports stay distinct.
+                pass
         result = validate_metadata({key: path.read_bytes()})
         records.extend(result['files'])
     counts = Counter(record['status'] for record in records)

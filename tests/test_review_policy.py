@@ -201,3 +201,28 @@ def test_explicit_missing_policy_is_not_silently_ignored(project, capsys):
     assert "does not exist" in json.loads(capsys.readouterr().out)["errors"][0]
     assert policy_cli.main(["policy", "validate", str(root)]) == 2
     assert "does not exist" in json.loads(capsys.readouterr().out)["error"]
+
+
+@pytest.mark.parametrize("source_kind", ["model", "policy"])
+def test_naming_output_rejects_hardlinked_input(project, capsys, source_kind):
+    root, model, _ = project
+    policy.save_policy(root, naming_config())
+    source = model / "definition/tables/Sales.tmdl" if source_kind == "model" else root / policy.POLICY_FILENAME
+    target = root / "linked-plan.json"
+    try:
+        target.hardlink_to(source)
+    except OSError as exc:
+        pytest.skip(f"Hard links unavailable: {exc}")
+    before = {str(p): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    assert policy_cli.main(["naming", "preview", str(root), "-o", str(target)]) == 2
+    assert "hard link" in json.loads(capsys.readouterr().out)["error"]
+    assert {str(p): p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
+
+
+def test_naming_output_keeps_nested_external_destination(project, capsys):
+    root, _, _ = project
+    policy.save_policy(root, naming_config())
+    target = root / "reviews/new/naming.plan.json"
+    assert policy_cli.main(["naming", "preview", str(root), "-o", str(target)]) == 0
+    assert json.loads(capsys.readouterr().out)["plan_file"] == str(target)
+    assert json.loads(target.read_text(encoding="utf-8"))["digest"]

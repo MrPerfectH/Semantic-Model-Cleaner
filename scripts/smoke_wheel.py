@@ -18,6 +18,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import tomllib
 
 
 def _run(command: list[str], *, cwd: Path, env: dict, expected: int = 0) -> subprocess.CompletedProcess:
@@ -82,6 +83,9 @@ def main() -> None:
     wheel = args.wheel.resolve()
     if not wheel.is_file():
         parser.error(f"Wheel not found: {wheel}")
+    expected_version = tomllib.loads(
+        (Path(__file__).resolve().parents[1] / 'pyproject.toml').read_text(encoding='utf-8')
+    )['project']['version']
 
     with tempfile.TemporaryDirectory(prefix="smc-wheel-consumer-") as temporary:
         root = Path(temporary).resolve()
@@ -109,7 +113,7 @@ def main() -> None:
         installed = json.loads(identity.stdout)
         if (
             not Path(installed["path"]).is_relative_to(venv)
-            or installed["version"] != "0.4.0b3"
+            or installed["version"] != expected_version
             or installed["channel"] != "beta"
         ):
             raise RuntimeError(f"Unexpected installed wheel identity: {installed}")
@@ -145,13 +149,29 @@ def main() -> None:
             )
         try:
             html = _wait_for_web(f"http://127.0.0.1:{port}", process)
-            if b"Semantic Model Cleaner" not in html or b"0.4.0b3" not in html or b"beta-badge" not in html:
+            if b"Semantic Model Cleaner" not in html or expected_version.encode() not in html or b"beta-badge" not in html:
                 raise RuntimeError("Installed smc-web did not serve the public-beta UI")
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            for asset in ("detail-workspace.js", "analysis-jobs.js", "schema-evidence.js", "analysis-limitations.js"):
+            for asset in ("local-http.js", "detail-workspace.js", "analysis-jobs.js", "schema-evidence.js", "analysis-limitations.js"):
                 with opener.open(f"http://127.0.0.1:{port}/static/{asset}", timeout=5) as response:
                     if not response.read():
                         raise RuntimeError(f"Installed wheel did not serve {asset}")
+            base = f"http://127.0.0.1:{port}"
+            with opener.open(base + '/api/session', timeout=5) as response:
+                token = json.loads(response.read())['token']
+            protected = urllib.request.Request(base + '/api/discover', data=b'{}', headers={
+                'Content-Type': 'application/json', 'X-SMC-Token': token,
+            })
+            with opener.open(protected, timeout=5) as response:
+                if not json.loads(response.read()).get('models'):
+                    raise RuntimeError('Installed wheel authenticated discovery failed')
+            try:
+                opener.open(base + '/api/discover', timeout=5)
+            except urllib.error.HTTPError as exc:
+                if exc.code != 403:
+                    raise
+            else:
+                raise RuntimeError('Installed wheel accepted an API request without its launch token')
         finally:
             process.terminate()
             try:

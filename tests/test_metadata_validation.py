@@ -170,19 +170,20 @@ def test_path_identity_keeps_same_named_reports_separate():
     after = metadata.validate_metadata({'report-1/page.json': json.dumps(document),
                                         'report-2/page.json': json.dumps(changed)})
     assert metadata.compare_validation(before, after)['new_errors'][0]['file'] == 'report-2/page.json'
+def test_report_schema_validation_across_windows_drives(tmp_path, monkeypatch):
+    from semantic_model_cleaner import metadata_validation
 
+    reports = [tmp_path / 'first' / 'Report', tmp_path / 'second' / 'Report']
+    for report in reports:
+        report.mkdir(parents=True)
+        (report / 'definition.pbir').write_text('{}', encoding='utf-8')
 
-def test_report_on_another_drive_than_workspace_still_validates(tmp_path, monkeypatch):
-    # Windows raises when the report and workspace share no drive; CI runners
-    # keep the checkout on D: and temp files on C:, so this layout is real.
-    report = tmp_path / 'Sales.Report'
-    (report / 'definition' / 'pages' / 'Overview').mkdir(parents=True)
-    (report / 'definition' / 'pages' / 'Overview' / 'page.json').write_text(
-        json.dumps(fixture('page-valid.json')), encoding="utf-8")
-    import os
-    def cross_drive(path, start=os.curdir):
+    def different_drives(*args):
         raise ValueError("path is on mount 'C:', start on mount 'D:'")
-    monkeypatch.setattr(os.path, 'relpath', cross_drive)
-    result = metadata.validate_report_paths([report], workspace=tmp_path / 'elsewhere')
-    assert result['counts']['valid'] == 1
-    assert result['files'][0]['path'] == 'report-1/definition/pages/Overview/page.json'
+
+    monkeypatch.setattr(metadata_validation.os.path, 'relpath', different_drives)
+    result = metadata_validation.validate_report_paths(reports, workspace=tmp_path)
+    assert len(result['files']) == 2
+    assert {record['path'] for record in result['files']} == {
+        'report-1/definition.pbir', 'report-2/definition.pbir',
+    }
