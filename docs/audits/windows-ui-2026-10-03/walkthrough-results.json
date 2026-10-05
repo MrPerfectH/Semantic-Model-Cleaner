@@ -1,0 +1,67 @@
+{
+  "browser": "Installed Edge on MSI, isolated headless contexts",
+  "viewport": "1366x768",
+  "source_files_unchanged": true,
+  "results": [
+    {
+      "layout": "v2",
+      "scenario": "one",
+      "passed": true,
+      "pageErrors": []
+    },
+    {
+      "layout": "v2",
+      "scenario": "ambiguous",
+      "passed": true,
+      "pageErrors": []
+    },
+    {
+      "layout": "v2",
+      "scenario": "invalid",
+      "passed": true,
+      "pageErrors": []
+    },
+    {
+      "layout": "v2",
+      "scenario": "separate",
+      "passed": true,
+      "pageErrors": []
+    },
+    {
+      "layout": "v2",
+      "scenario": "demo",
+      "passed": true,
+      "pageErrors": []
+    },
+    {
+      "layout": "classic",
+      "scenario": "one",
+      "passed": true,
+      "pageErrors": []
+    },
+    {
+      "layout": "classic",
+      "scenario": "ambiguous",
+      "passed": true,
+      "pageErrors": []
+    },
+    {
+      "layout": "classic",
+      "scenario": "invalid",
+      "passed": true,
+      "pageErrors": []
+    },
+    {
+      "layout": "classic",
+      "scenario": "separate",
+      "passed": true,
+      "pageErrors": []
+    },
+    {
+      "layout": "classic",
+      "scenario": "demo",
+      "passed": true,
+      "pageErrors": []
+    }
+  ]
+}

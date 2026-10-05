@@ -239,7 +239,7 @@ def test_preview_api_rejects_ineligible_entries_and_previews_real_stale_selector
 
 
 def _run_builder(template: str, items: list[dict], reports: list[dict]) -> list[dict]:
-    html = (ROOT / "src/semantic_model_cleaner/templates" / template).read_text()
+    html = (ROOT / "src/semantic_model_cleaner/templates" / template).read_text(encoding="utf-8")
     functions = []
     for name in ("getReportPathByName", "getReportPathForReference", "cleanupEligibleStaleUsages",
                  "staleCleanupEntriesForItem", "staleCleanupEntriesForItems"):
@@ -297,7 +297,7 @@ def test_cli_dry_run_reports_only_the_genuine_stale_selector(workspace, capsys):
 @pytest.mark.skipif(not shutil.which("node"), reason="Node.js unavailable")
 @pytest.mark.parametrize("template", TEMPLATES)
 def test_bulk_stale_cleanup_excludes_inactive_cards_and_orphan_bookmarks(template):
-    html = (ROOT / "src/semantic_model_cleaner/templates" / template).read_text()
+    html = (ROOT / "src/semantic_model_cleaner/templates" / template).read_text(encoding="utf-8")
     functions = []
     for name in ("getReportPathByName", "getReportPathForReference", "isReportIssueStale",
                  "isReportIssueCleanup", "reportIssueCleanupEntry", "reportIssueActionEntry",

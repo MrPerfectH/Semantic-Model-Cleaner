@@ -218,8 +218,8 @@ def test_deletion_guards_block_whole_group_and_allow_coordinated_final_state(tmp
     (model / "definition/tables/Sales.tmdl").write_text(
         "table Sales\n\tmeasure Rows = COUNTROWS(Sales)\n\tmeasure Outside = CALCULATE([Rows], ALL('Dim'))\n",
         encoding="utf-8")
-    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../Plain.SemanticModel"}}}))
-    (report / "definition/report.json").write_text("{}")
+    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {"byPath": {"path": "../Plain.SemanticModel"}}}), encoding="utf-8")
+    (report / "definition/report.json").write_text("{}", encoding="utf-8")
     whole_table = [{"action": "delete", "table": "Dim", "name": "", "item_type": "table"}]
     blocked = evaluate_deletion_policy(model, [report], whole_table)
     assert [v["message"] for v in blocked["violations"]] == ["Table Dim is required by retained Sales[Outside]."]

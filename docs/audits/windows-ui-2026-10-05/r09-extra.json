@@ -1,0 +1,12 @@
+[
+  {
+    "layout": "v2",
+    "real_job_cancelled": true,
+    "policy_saved_without_model_report_changes": true
+  },
+  {
+    "layout": "classic",
+    "real_job_cancelled": true,
+    "policy_saved_without_model_report_changes": true
+  }
+]

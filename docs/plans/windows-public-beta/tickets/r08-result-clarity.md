@@ -1,0 +1,45 @@
+# R08 Make analysis results explain coverage and the next Cleanup Action
+
+Status (2026-10-05): Implemented and integrated; delegated review passed. [Evidence](../../../audits/windows-ui-2026-10-05/R08.md). Local ticket, not a published GitHub issue.
+Type: Originally HITL. The user delegated routine verification/review to the agent on 2026-10-05; independent-user and environment evidence remain separate requirements.
+Priority: Launch target; reduce scope if release gates need time.
+
+## User story
+
+As a Power BI developer, I can understand what was checked and why an item has a Cleanup Recommendation before preparing a change.
+
+## What to build
+
+Improve the existing result entry point and item explanation. Present selected scope, limitations, cleanup candidates, and Report Health distinctly, with a clear route to supporting evidence and an exact change preview. Retain canonical Safe, Review, and other existing semantics, explaining their limits in plain language.
+
+## Acceptance criteria
+
+- [x] Capture the current analyzed UI and review the intended hierarchy before changing it.
+- [x] The result entry point identifies the selected Semantic Model, checked Reports, and material coverage limitations.
+- [x] A user can distinguish found usage, Cleanup Recommendation, and Report Health without interpreting color alone.
+- [x] Safe is visibly defined relative to supported scanned metadata and selected scope; no copy promises universal deletion safety or runtime equivalence.
+- [x] A user can open one candidate, inspect dependency/evidence details, prepare a change, and locate Changes & history.
+- [x] Report issue grouping remains presentation-only under the accepted ADR; no inferred rename or group repair is introduced.
+- [x] Delegated agent review covers normal results, incomplete coverage, no candidates, and a project with broken references.
+
+## Blocked by
+
+- [R04: Use consistent connected Report selection across analysis and automation](r04-consistent-report-scope.md)
+- [R07: Give Windows users a clear first analysis path](r07-first-run.md)
+
+## Verification
+
+Use the bundled demo and richer synthetic QA project. Capture scope/result/item/preview states and verify that classifications and mutation permissions have not changed.
+
+## Browser observations to assess
+
+Local MSI walkthroughs found a classic row still showing `Pending: Hide` after successful apply/restore, and v2 history lacking classic's visible Verify files action and restore preflight/diff. Both layouts restored original bytes correctly. Reproduce the status issue and assess review/history clarity within this ticket, coordinating recovery acceptance with R10. See [classic evidence](../../../audits/windows-ui-2026-10-03/r03-classic/README.md) and [v2 evidence](../../../audits/windows-ui-2026-10-03/r03-v2/README.md). These observations do not change analysis classifications or authorize bypassing recovery guards.
+
+## Out of scope
+
+Changing analysis rules, renaming canonical domain concepts without a separate decision, or implementing automatic broken-reference repair.
+
+## Session handoff
+
+Read the [release plan](../README.md), repository agent instructions, domain glossary, and applicable ADRs. Use a separate branch/worktree. Recheck the current implementation because the audit describes revision 6d29ce2, not necessarily your starting revision. Stay within this ticket; record dependencies, changed behavior, executed checks, and outstanding acceptance. Do not publish a release or perform unreviewed mutations on real Power BI Projects.
+

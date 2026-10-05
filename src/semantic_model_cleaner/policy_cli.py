@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from . import analyzer, review_policy
+from .analysis_export import validate_export_destination
 
 
 def main(argv=None) -> int:
@@ -27,7 +28,7 @@ def main(argv=None) -> int:
     naming.add_argument("--file", help="Policy path inside the project.")
     naming.add_argument("--model", help="Model path relative to project_path.")
     naming.add_argument("--report", action="append", help="Exact report path relative to project_path.")
-    naming.add_argument("-o", "--output", help="Optional existing change-plan JSON for smc diff/apply.")
+    naming.add_argument("-o", "--output", help="Save the generated change-plan JSON; output path is relative to CWD.")
     args = parser.parse_args(argv)
     root = Path(args.project_path).resolve()
     try:
@@ -71,9 +72,9 @@ def main(argv=None) -> int:
         else:
             result = review_policy.naming_preview(root, models[0], reports, policy=review_policy.load_policy(root, args.file))
             if args.output and result.get("plan"):
-                target = Path(args.output).resolve()
                 protected = [*models, *reports, *analyzer.discover_models([root]), *analyzer.discover_reports([root])]
-                if any(target.is_relative_to(path.resolve()) for path in protected) or target == (root / (args.file or review_policy.POLICY_FILENAME)).resolve():
+                target = validate_export_destination(args.output, protected, allow_missing_parent=True)
+                if target == (root / (args.file or review_policy.POLICY_FILENAME)).resolve():
                     raise review_policy.PolicyError("Naming plan output must be outside artifacts and must not replace policy.")
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(json.dumps(result["plan"], indent=2) + "\n", encoding="utf-8")
@@ -81,6 +82,6 @@ def main(argv=None) -> int:
             print(json.dumps(result, indent=2))
             return 0 if result["ok"] else 1
         return 0
-    except (ValueError, OSError, KeyError, TypeError) as exc:
+    except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}))
         return 2
