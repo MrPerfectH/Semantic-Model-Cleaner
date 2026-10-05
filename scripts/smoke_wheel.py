@@ -119,6 +119,12 @@ def main() -> None:
             raise RuntimeError(f"Unexpected installed wheel identity: {installed}")
         if not smc.is_file() or not smc_web.is_file():
             raise RuntimeError("Wheel did not install the smc and smc-web entry points")
+        capabilities = json.loads(_run([str(smc), "capabilities"], cwd=root, env=env).stdout)
+        contract = json.loads(_run([str(smc), "operations-schema"], cwd=root, env=env).stdout)
+        if (capabilities["tool_version"] != expected_version
+                or capabilities["operations_schema_version"] != "1.0"
+                or len(contract["$defs"]) != 8):
+            raise RuntimeError("Installed wheel is missing the agent operations contract")
 
         project = root / "repository with spaces"
         _write_check_fixture(project)

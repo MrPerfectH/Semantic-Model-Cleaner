@@ -1,3 +1,4 @@
+param([switch]$SkipArchive)
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -44,17 +45,4 @@ $sourceDirty = [bool](git status --porcelain --untracked-files=no)
 Copy-Item -Path (Join-Path $repoRoot "LICENSE") -Destination $appDirectory -Force
 Copy-Item -Path (Join-Path $repoRoot "packaging\windows\README.txt") -Destination $appDirectory -Force
 
-$zipName = "semantic-model-cleaner-windows-x64-$version.zip"
-$zipPath = Join-Path $repoRoot "dist\$zipName"
-if (Test-Path $zipPath) {
-  Remove-Item $zipPath
-}
-
-Compress-Archive `
-  -Path "$appDirectory\*" `
-  -DestinationPath $zipPath
-
-Write-Host "Created Windows artifact: $zipName"
-
-$hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-"$hash  $zipName" | Set-Content -Path "$zipPath.sha256" -Encoding ascii
+if (-not $SkipArchive) { & (Join-Path $PSScriptRoot "archive.ps1") }

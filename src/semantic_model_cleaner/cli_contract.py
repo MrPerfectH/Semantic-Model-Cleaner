@@ -6,6 +6,8 @@ import json
 COMMAND_GUIDE = """Commands (use COMMAND --help for details):
   smc PROJECT                     Analyze one model and its connected Reports
   smc check PROJECT               Read-only CI checks (JSON by default)
+  smc capabilities                Machine-readable agent capabilities
+  smc operations-schema           Standalone JSON Schema for versioned operations
   smc clean-stale PROJECT          Discover stale Report metadata (read-only)
   smc plan PROJECT --operations FILE -o PLAN
                                   Prepare reviewed changes on copies
