@@ -8,6 +8,8 @@ It is designed for local use against files on your machine. Version `0.4.0b3`
 is the public beta for Power BI practitioners who already work with PBIR
 and TMDL.
 
+> This branch contains an **unpublished Windows candidate** with additional protection, first-run, recovery and keyboard improvements. The linked 0.4.0b3 download predates those changes. See the [candidate notes](docs/releases/windows-candidate.md).
+
 ## Current Status
 
 - Project maturity: public beta `0.4.0b3`
@@ -33,7 +35,8 @@ and TMDL.
 
 ## Requirements
 
-- Python `3.11+`
+- Windows ZIP: Windows x64; no Python installation required.
+- CLI or source install: Python `3.11+`.
 
 ## Install
 
@@ -79,6 +82,10 @@ Packaged runtime behavior:
 - can skip browser launch with `--no-open-browser`
 
 ## Quick Start
+
+### Windows candidate
+
+Open **Try demo** or **Open Power BI Project**, review the selected Semantic Model and connected Reports, then choose **Analyze**. Inspect one item’s Usage and dependencies before preparing changes. Review the exact file diff before apply. **Changes & history** provides file verification and guarded restore. See the [Windows walkthrough](docs/quickstart.md).
 
 ### CLI
 
