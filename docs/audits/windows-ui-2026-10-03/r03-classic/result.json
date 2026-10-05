@@ -1,0 +1,26 @@
+{
+  "source_revision": "7c145f3",
+  "machine": "MSI Summit E15 A11SCST",
+  "browser": "Microsoft Edge 153.0.4234.32",
+  "viewport": {
+    "width": 1366,
+    "height": 768
+  },
+  "layout": "classic",
+  "checks": [
+    "demo analysis",
+    "JSON download: 9 items",
+    "Excel download: workbook present",
+    "reviewed hide plan",
+    "apply",
+    "history verify: applied",
+    "review restore",
+    "restore",
+    "review policy decision saved"
+  ],
+  "byte_exact_restore": true,
+  "source_files_compared": 10,
+  "page_errors": [],
+  "packaged_exe": false,
+  "policy_save_preserved_metadata": true
+}

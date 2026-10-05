@@ -2,6 +2,8 @@
 
 Semantic Model Cleaner is a free, MIT-licensed tool that works on local project files. No account or hosted service is required for analysis or cleanup. Start with a copy of your project or a Git branch, choose one semantic model and its reports, and inspect the selected scope before reviewing changes.
 
+The currently published download is 0.4.0b3. This branch also documents the [unpublished Windows candidate](releases/windows-candidate.md); its fixes and screenshots are not available in that published ZIP yet.
+
 ## Inputs
 
 | Input | Support |
@@ -24,7 +26,7 @@ Semantic Model Cleaner is a free, MIT-licensed tool that works on local project 
 | Model relationships, keys, sorting, hierarchies and RLS | Retention/dependency evidence for supported metadata | Inspect dependency impact before removal; unsupported rewrites must not be treated as validated |
 | `NAMEOF` field parameters | Supported resolved targets; unresolved/ambiguous patterns produce review evidence | A retained parameter definition protects its targets even when the parameter has no report usage. Remove and verify the definition in a separate reviewed plan before deleting its targets. |
 | Calculation groups | Recognized from the `calculationGroup` declaration: table type, calculation items, selector column, perspective membership and retained parent-table DAX consumers are shown. Calculation item expressions, their format strings and selection expressions are listed as Analysis Limitations because they apply to arbitrary measures at runtime | Whole-group deletion is blocked while retained consumers reference the table; a coordinated plan that removes the whole group and every retained consumer is evaluated against the proposed final state, so the group's own dynamic items no longer trip the coverage guard. Dynamic items of any retained group still block, and item-specific reasons (hidden columns, perspective membership, report use) still require review; absence of a reference is not proof of safety |
-| KPIs, detail rows, dynamic format strings, data coverage definitions, cultures | Detected from actual TMDL declarations only, never from words in names, descriptions or comments. Direct item references inside the expressions are resolved and listed as evidence; the expressions themselves are not evaluated | Referenced items stay at Review; unresolved references keep every unused item at Review |
+| KPIs, detail rows, dynamic format strings, data coverage definitions, cultures | Detected from actual TMDL declarations only, never from words in names, descriptions or comments. Direct item references inside the expressions are resolved and listed as evidence on the referenced item (a KPI target, status or trend reference is not a DAX dependency of the KPI's measure); the expressions themselves are not evaluated | Referenced items stay at Review; unresolved references keep every unused item at Review |
 | Perspectives | Membership is concrete metadata evidence naming the perspective and member; it is not an Analysis Limitation and not proof of report use | Review through the existing reviewed-change policy; removal also removes the perspective member |
 | Report stale metadata | Stale selectors, formatting rules and supported bookmark projections | Explicit cleanup; broken live references are a separate repair workflow |
 | Renames and measure home-table moves | Model/report reference impact | Preview the supported model and selected-report rewrites together |
@@ -46,7 +48,7 @@ Legacy direct-write HTTP routes and `smc clean-stale --apply` are withheld in th
 6. Inspect the receipt and refreshed analysis. Resolve remaining findings; static validation does not establish equivalent Power BI runtime behavior.
 7. Use guarded recovery when necessary. Recovery must refuse to overwrite subsequent edits.
 
-Review decisions and naming conventions can be saved in the repository; see [review policy](cli/review-policy.md). Schema scope and versions are described in [offline validation](schema-validation.md). For automation, see [CI usage](cli/check.md). Analysis and CI gates should run before automated mutation is considered.
+Review decisions and naming conventions can be saved in the repository; see [review policy](cli/review-policy.md). Schema scope and versions are described in [offline validation](schema-validation.md). For automation and AI agents, see the [CLI output contract and disposable workflow](cli/README.md) and [CI usage](cli/check.md). Analysis and CI gates should run before automated mutation is considered.
 
 ## Installation and reporting problems
 

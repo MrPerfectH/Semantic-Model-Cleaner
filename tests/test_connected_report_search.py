@@ -32,7 +32,7 @@ def test_search_recurses_beyond_conventional_reports_and_matches_quoted_model(tm
         report.mkdir(parents=True)
         name = 'Other' if relative.endswith('Unrelated.Report') else 'Sales'
         (report / 'definition.pbir').write_text(json.dumps({'datasetReference': {'byConnection': {
-            'connectionString': f'Initial Catalog="{name}";Provider=MSOLAP;'}}}))
+            'connectionString': f'Initial Catalog="{name}";Provider=MSOLAP;'}}}), encoding="utf-8")
     client = webapp.app.test_client()
     result = client.post('/api/reports/find-connected', json={'model_path': str(model), 'search_root': str(tmp_path)})
     assert result.status_code == 200

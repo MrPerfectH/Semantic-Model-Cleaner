@@ -12,14 +12,14 @@ def project(tmp_path):
     model = tmp_path / 'M.SemanticModel'
     tables = model / 'definition/tables'
     tables.mkdir(parents=True)
-    (tables / 'Sales.tmdl').write_text('table Sales\n\tcolumn Amount\n\tmeasure Revenue = SUM(Sales[Amount])\n\tmeasure Spare = 1\n')
+    (tables / 'Sales.tmdl').write_text('table Sales\n\tcolumn Amount\n\tmeasure Revenue = SUM(Sales[Amount])\n\tmeasure Spare = 1\n', encoding="utf-8")
     reports = []
     for parent in ('A', 'B'):
         report = tmp_path / parent / 'Same.Report'
         visual = report / 'definition/pages/P/visuals/V/visual.json'
         visual.parent.mkdir(parents=True)
-        visual.write_text(json.dumps({'visual': {'query': {'Measure': {'Expression': {'SourceRef': {'Entity': 'Sales'}}, 'Property': 'Revenue'}, 'Missing': {'Measure': {'Expression': {'SourceRef': {'Entity': 'Sales'}}, 'Property': 'Gone'}}}, 'objects': {'labels': [{'selector': {'metadata': 'Sales.Spare'}}]}}}))
-        (report / 'definition/report.json').write_text('{}')
+        visual.write_text(json.dumps({'visual': {'query': {'Measure': {'Expression': {'SourceRef': {'Entity': 'Sales'}}, 'Property': 'Revenue'}, 'Missing': {'Measure': {'Expression': {'SourceRef': {'Entity': 'Sales'}}, 'Property': 'Gone'}}}, 'objects': {'labels': [{'selector': {'metadata': 'Sales.Spare'}}]}}}), encoding="utf-8")
+        (report / 'definition/report.json').write_text('{}', encoding="utf-8")
         reports.append(report)
     return model, reports
 
@@ -48,7 +48,7 @@ def test_same_named_reports_keep_distinct_issues_live_stale_and_cleanup_owners(t
 def test_invalid_json_issue_scanners_keep_exact_report_owner(tmp_path):
     model, reports = project(tmp_path)
     for report in reports:
-        (report / 'definition/report.json').write_text('{invalid')
+        (report / 'definition/report.json').write_text('{invalid', encoding="utf-8")
     results = analyzer.analyze(tmp_path, model_paths=[model], report_paths=reports)
     invalid = [issue for issue in results['report_issues'] if issue['issueType'] == 'invalid_report_json']
     assert len(invalid) == 2
@@ -73,7 +73,7 @@ def test_synthetic_field_parameter_usages_inherit_report_identity(tmp_path):
 
 def extension(report, name, expression):
     path = report / 'definition/reportExtensions.json'
-    path.write_text(json.dumps({'name': 'extension', 'entities': [{'name': 'Sales', 'measures': [{'name': name, 'expression': expression}]}]}))
+    path.write_text(json.dumps({'name': 'extension', 'entities': [{'name': 'Sales', 'measures': [{'name': name, 'expression': expression}]}]}), encoding="utf-8")
 
 
 def test_same_named_report_extensions_keep_independent_formulas_and_usage(tmp_path):
@@ -81,9 +81,9 @@ def test_same_named_report_extensions_keep_independent_formulas_and_usage(tmp_pa
     extension(reports[0], 'Local', '[Revenue]')
     extension(reports[1], 'Local', '[Spare]')
     visual = reports[0] / 'definition/pages/P/visuals/V/visual.json'
-    visual.write_text(visual.read_text().replace('Revenue', 'Local'))
+    visual.write_text(visual.read_text().replace('Revenue', 'Local'), encoding="utf-8")
     other_visual = reports[1] / 'definition/pages/P/visuals/V/visual.json'
-    other_visual.write_text('{}')
+    other_visual.write_text('{}', encoding="utf-8")
     results = analyzer.analyze(tmp_path, model_paths=[model], report_paths=reports)
     assert results['coverage']['complete']
     local = [row for row in results['items'] if row['item'].name == 'Local']
@@ -144,9 +144,9 @@ def test_duplicate_declarations_within_one_report_remain_unsupported(tmp_path):
     model, reports = project(tmp_path)
     extension(reports[0], 'Local', '1')
     path = reports[0] / 'definition/reportExtensions.json'
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     data['entities'][0]['measures'].append({'name': 'Local', 'expression': '2'})
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(analyzer.UnsupportedSemanticModelError, match='within one report'):
         analyzer.analyze(tmp_path, model_paths=[model], report_paths=reports)
 
@@ -156,9 +156,9 @@ def test_report_extension_is_not_available_to_another_report_or_model(tmp_path):
     extension(reports[0], 'OnlyInA', '[Revenue]')
     extension(reports[1], 'OnlyInB', '[OnlyInA]')
     source = model / 'definition/tables/Sales.tmdl'
-    source.write_text(source.read_text() + '\tmeasure InvalidModelReference = [OnlyInA]\n')
+    source.write_text(source.read_text() + '\tmeasure InvalidModelReference = [OnlyInA]\n', encoding="utf-8")
     visual = reports[1] / 'definition/pages/P/visuals/V/visual.json'
-    visual.write_text(visual.read_text().replace('Revenue', 'OnlyInA'))
+    visual.write_text(visual.read_text().replace('Revenue', 'OnlyInA'), encoding="utf-8")
     results = analyzer.analyze(tmp_path, model_paths=[model], report_paths=reports)
     local_a = next(row for row in results['items'] if row['item'].name == 'OnlyInA')
     assert not local_a['usages']
@@ -171,7 +171,7 @@ def test_report_extension_is_not_available_to_another_report_or_model(tmp_path):
 def test_model_broken_formula_does_not_leak_into_valid_same_named_local(tmp_path):
     model, reports = project(tmp_path)
     source = model / 'definition/tables/Sales.tmdl'
-    source.write_text(source.read_text().replace('SUM(Sales[Amount])', '[MissingModelMeasure]'))
+    source.write_text(source.read_text().replace('SUM(Sales[Amount])', '[MissingModelMeasure]'), encoding="utf-8")
     extension(reports[0], 'Revenue', '[Spare]')
     result = analyzer.analyze(tmp_path, model_paths=[model], report_paths=reports)
     same_named = {row['item'].source_kind: row for row in result['items'] if row['item'].name == 'Revenue'}
@@ -185,7 +185,7 @@ def test_model_local_ambiguity_is_nonsuppressible_ci_coverage_finding(tmp_path):
     extension(reports[0], 'Revenue', '[Spare]')
     for report in reports:
         (report / 'definition.pbir').write_text(json.dumps({
-            'version': '4.0', 'datasetReference': {'byPath': {'path': '../../M.SemanticModel'}}}))
+            'version': '4.0', 'datasetReference': {'byPath': {'path': '../../M.SemanticModel'}}}), encoding="utf-8")
     _, first = run_check(tmp_path, model_path=model, report_paths=reports)
     ambiguity = [finding for finding in first['findings'] if finding['rule_id'] == 'SMC002']
     assert ambiguity
