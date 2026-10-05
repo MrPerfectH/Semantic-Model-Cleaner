@@ -23,15 +23,17 @@ property of the culture holding a JSON payload (Q&A linguistic schema).
 
 ## Decision
 
-1. **Translations are Translation Membership.** Each table or item under
-   `translations` that carries a translated property yields one evidence entry
-   with owner (`Table` or `Table[Item]`), culture, source file and line. Like
-   Perspective Membership it is concrete metadata: translated measures and
-   columns get an item-specific Review trigger ("Translated in culture X
-   (file:line). Removing the item also removes its translation; a translation
-   does not prove report use."), tables get a signal, and the browser payload
-   carries `translationMemberships` on items and `translations` on tables. It
-   is never a Report Reference and never an Analysis Limitation.
+1. **Translations are Translation Membership, informational evidence only.**
+   Each table or item under `translations` that carries a translated property
+   yields one evidence entry with owner (`Table` or `Table[Item]`), culture,
+   source file and line. A translation is just a translation: it is never
+   evidence that an item should be kept, so it adds no Review trigger and never
+   changes the Cleanup Recommendation. The entry exists so users can see which
+   translations are removed together with the item. Items carry it as
+   `translations` (`translationMemberships` in the browser payload), tables get
+   an informational signal and `translations`. It is never a Report Reference
+   and never an Analysis Limitation. This differs deliberately from Perspective
+   Membership, which curates what consumers see.
 2. **Linguistic metadata stays an Analysis Limitation**, owned by
    `culture <name>` with its location. Its JSON payload is not parsed and never
    produces item references; the limitation is targeted with no targets, so it
@@ -43,12 +45,14 @@ property of the culture holding a JSON payload (Q&A linguistic schema).
 
 ## Consequences
 
-- In a model translated into one or more cultures, translated unused measures
-  and columns move to Review even when no other evidence applies. This is the
-  intended reviewed-change policy for metadata membership, as for perspectives.
+- Translated unused measures and columns stay Safe when no other evidence
+  applies, so fully translated models keep their Safe counts. (The first
+  version of this decision moved them to Review; owner decision of 2026-10-05,
+  issue #102, amends that.)
 - Limitation counts drop for models whose culture files previously produced a
   file-scoped limitation without a `linguisticMetadata` block; models with
   linguistic metadata keep one targeted limitation per culture.
 - Renames and deletions still do not rewrite culture files (the same gap
-  exists for perspective members). A later slice should update or remove the
-  translation entries in the same reviewed plan.
+  exists for perspective members). Issue #99 covers removing the translation
+  entries in the same reviewed plan; until then the evidence tells users what
+  to clean up by hand.

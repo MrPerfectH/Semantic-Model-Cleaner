@@ -144,7 +144,7 @@
       ? card('Perspective membership — metadata evidence', '<p class="object-note">Membership keeps the item in a curated perspective; it does not prove a report executes it.</p>' + formatDetailList(item.perspectiveMemberships.map(function (member) { return member.perspective + ' (' + member.sourceFile + ')'; })))
       : '';
     var translationCard = (item.translationMemberships || []).length
-      ? card('Translation membership — metadata evidence', '<p class="object-note">Removing the item also removes its translation; a translation does not prove report use.</p>' + formatDetailList(item.translationMemberships.map(function (translation) { return translation.culture + ' (' + translation.location + ')'; })))
+      ? card('Translation membership — metadata evidence', '<p class="object-note">Informational only: removing the item also removes its translation. A translation never changes the cleanup recommendation.</p>' + formatDetailList(item.translationMemberships.map(function (translation) { return translation.culture + ' (' + translation.location + ')'; })))
       : '';
     $('item-pane-dependencies').innerHTML = '<div class="object-stack">' + card('Depends on — inputs to this item', formatDetailList(dependencies, { linkItems: true })) + card('Used by — downstream consumers', formatDetailList(item.dependentItems || item.usedByItems || [], { linkItems: true })) + parentCard + perspectiveCard + translationCard + card('Model role and retention', '<p class="object-note">' + esc(usageHelpText(item)) + '</p>' + formatDetailList(roles(item))) + card('Reference problems', formatBrokenRefDetails(item.brokenDaxRefDetails || [], item.brokenDaxRefs || [])) + '</div>';
     $('detailSharedActions').classList.toggle('hidden', isReportItem(item));

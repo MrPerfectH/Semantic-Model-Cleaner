@@ -1081,14 +1081,6 @@ def _perspective_review_trigger(member: PerspectiveMembership) -> str:
     )
 
 
-def _translation_review_trigger(translation: TranslationMembership) -> str:
-    """Translation Membership is metadata evidence, not proof of report use."""
-    return (
-        f"Translated in culture {translation.culture} ({translation.location}). "
-        f"Removing the item also removes its translation; a translation does not prove report use."
-    )
-
-
 def _limitation_explanation(ref: UnsupportedMetadataRef) -> dict:
     """Explain one Unsupported Metadata construct: what is checked and what is not."""
     targets = sorted(format_item_ref(key) for key in ref.item_keys)
@@ -4292,7 +4284,7 @@ def build_table_summaries(
         if translations:
             cultures = sorted({translation["culture"] for translation in translations}, key=str.casefold)
             signals.append(f"Translated in {'culture' if len(cultures) == 1 else 'cultures'} "
-                           f"{', '.join(cultures)}; a translation does not prove report use.")
+                           f"{', '.join(cultures)}; informational only, removing the table also removes its translation.")
 
         # Whole-table (whole-group) deletion recommendation. Retained consumers
         # outside the table block it even when no child is directly used.
@@ -4831,10 +4823,6 @@ def analyze(
                     ))
                 review_triggers.extend(
                     _perspective_review_trigger(member) for member in perspective_index.get(nkey, [])
-                )
-                review_triggers.extend(
-                    _translation_review_trigger(translation)
-                    for translation in translation_index.get(nkey, [])
                 )
             if shared_limitation_trigger:
                 review_triggers.append(shared_limitation_trigger)

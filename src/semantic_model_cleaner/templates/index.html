@@ -5179,7 +5179,7 @@ function renderResultGuideLegend() {
         { label: 'Report Health', definition: 'Report-side problems in PBIR files: references to missing items, stale selectors and invalid JSON, with repair actions.' },
         { label: 'Unused in scope', definition: 'No use found in the selected reports and supported model metadata. When coverage is incomplete, this is not a claim of global non-use.' },
         { label: 'Perspective membership', definition: 'Concrete metadata evidence that an item belongs to a perspective. Removal also removes the member; membership alone does not prove a report executes the item.' },
-        { label: 'Translation membership', definition: 'Concrete culture metadata evidence that a table or item has a translated caption, description or display folder (culture, file and line). Removal also removes the translation; a translation does not prove report use and is not an analysis limitation.' }
+        { label: 'Translation membership', definition: 'Concrete culture metadata evidence that a table or item has a translated caption, description or display folder (culture, file and line). Informational only: removal also removes the translation, but a translation never changes the cleanup recommendation, does not prove report use and is not an analysis limitation.' }
       ]
     }
   ];
