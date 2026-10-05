@@ -250,7 +250,10 @@ def _run_builder(template: str, items: list[dict], reports: list[dict]) -> list[
         "var chosenReports=" + json.dumps(reports) + ";\n" + "\n".join(functions) + "\n"
         "process.stdout.write(JSON.stringify(staleCleanupEntriesForItems(" + json.dumps(items) + ")));\n"
     )
-    result = subprocess.run([shutil.which("node"), "-e", script], capture_output=True, text=True)
+    # Pass the script on stdin: a full analysis payload exceeds the Windows
+    # command-line length limit when passed with `node -e`.
+    result = subprocess.run([shutil.which("node"), "-"], input=script, capture_output=True,
+                            text=True, encoding="utf-8")
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
 

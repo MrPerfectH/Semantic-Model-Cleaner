@@ -720,6 +720,20 @@ def _build_report_root_cause_groups(report_issues: list[dict]) -> dict:
     }
 
 
+def _serialize_translation(translation: dict) -> dict:
+    """Translation Membership for the browser: owner, culture and file:line evidence."""
+    line = translation.get("line") or 0
+    return {
+        "culture": translation["culture"],
+        "owner": translation["owner"],
+        "kind": translation["kind"],
+        "properties": translation.get("properties", []),
+        "sourceFile": translation["source_file"],
+        "line": line,
+        "location": f"{translation['source_file']}:{line}" if line else translation["source_file"],
+    }
+
+
 def _serialize_results(results: dict, model_paths=None) -> dict:
     """Serialize analyzer results for JSON API responses."""
     def _issue_state(status: str, broken_refs: list[str] | None, stale_usage_count: int = 0) -> str:
@@ -881,6 +895,8 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
                 {"perspective": member["perspective"], "sourceFile": member["source_file"]}
                 for member in r.get("perspectives", [])
             ],
+            "translationMemberships": [_serialize_translation(translation)
+                                       for translation in r.get("translations", [])],
             "tableKind": r.get("table_kind", "") or ("Report" if item.source_kind == "report" else "Table"),
             "modelRole": r.get("model_role", "") or None,
             "tableDependentItems": r.get("table_dependents", []),
@@ -1133,6 +1149,8 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             "tableKind": table.get("table_kind", "Table"),
             "calculationItems": table.get("calculation_items", []),
             "perspectives": table.get("perspectives", []),
+            "translations": [_serialize_translation(translation)
+                             for translation in table.get("translations", [])],
             "cleanupRecommendation": table.get("cleanup_recommendation", ""),
             "cleanupReason": table.get("cleanup_reason", ""),
             "usageStatus": table_usage_status,

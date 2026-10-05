@@ -1,0 +1,25 @@
+/// Polish culture. Prose mentions Sales[Amount], 'Targets'[Target] and Region
+/// to prove that words in comments never become translation evidence.
+culture pl-PL
+	translations
+		model Model
+			caption: Model syntetyczny
+			description: Opis modelu wspomina 'KPI Selector'[KPI Name] i Sales[Order Date]
+
+			table Sales
+				caption: Sprzedaż
+				description: Tabela sprzedaży; zobacz Targets[Target] oraz 'Time Intelligence'[Ordinal]
+
+				measure 'Revenue Goal'
+					caption: Cel przychodu
+					displayFolder: Cele
+
+				// column Amount is mentioned in this comment only
+				column Region
+					caption: Region sprzedaży
+					description: Kolumna podobna do Sales[Amount] i 'Revenue Ignoring TI 01'
+
+				column 'Order Date'
+
+			table Targets
+				measure Target
