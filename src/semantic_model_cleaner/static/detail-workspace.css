@@ -70,6 +70,8 @@ body.object-view #resultGuideSection { display:none!important; }
 .object-validation .object-properties { display:grid; grid-template-columns:150px 1fr; gap:6px 12px; }
 .object-validation .object-properties dt,.object-validation .object-properties dd { margin:0; }
 .object-validation .object-note { margin:10px 0 0; padding-left:18px; }
+.object-confirmations { margin:0 0 12px; padding:10px 12px; border:1px solid #fde68a; border-radius:7px; background:#fffbeb; }
+.object-confirmations ul { margin:4px 0 0; padding-left:18px; }
 .object-scope-summary .object-properties { margin-top:12px; }
 .object-scope-summary ul { padding-left:18px; margin:0; }
 .object-review-content>p:first-child { margin-top:0; }

@@ -69,6 +69,7 @@ body.app-flow-cleanup .view-tab.detail-tab.active { display: flex; }
 .rail-heading { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); padding: 0 10px 6px; }
 .rail-summary { display: flex; flex-direction: column; }
 .rail-row { display: flex; align-items: center; gap: 9px; padding: 4px 10px; border-radius: 8px; font-size: 12.5px; color: var(--text-mid); white-space: nowrap; }
+.rail-subrow { padding-left: 27px; font-size: 11.5px; color: var(--text-light); }
 .rail-row .value { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--text-faint); }
 .rail-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .rail-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 1px; padding-top: 12px; }
@@ -655,6 +656,8 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <div class="rail-heading">Cleanup</div>
       <div class="rail-row" title="Items that look low-risk to clean up"><span class="rail-dot" style="background:#16a34a"></span>Safe<span class="value" id="sumSafe">0</span></div>
       <div class="rail-row" title="Items that may be removable, but still need a manual check first"><span class="rail-dot" style="background:#f59e0b"></span>Review<span class="value" id="sumReview">0</span></div>
+      <div class="rail-row rail-subrow" title="Unused calculation groups and field parameters: this tool always asks you to confirm them; nothing uses them">by entity type<span class="value" id="sumReviewEntity">0</span></div>
+      <div class="rail-row rail-subrow" title="Items with concrete evidence that needs a manual check (hidden, key, perspective, metadata or coverage)">because of evidence<span class="value" id="sumReviewEvidence">0</span></div>
       <div class="rail-row" title="Items that still have direct or indirect dependencies and should not be deleted now"><span class="rail-dot" style="background:#dc2626"></span>Blocked<span class="value" id="sumCaution">0</span></div>
       <div class="rail-row" title="Items retained for required model structure"><span class="rail-dot" style="background:#64748b"></span>Keep<span class="value" id="sumKeep">0</span></div>
       <div class="rail-divider"></div>
@@ -3512,6 +3515,11 @@ function updateSummary(s) {
   $('sumColumns').textContent = s.total_columns;
   $('sumSafe').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Safe'; }).length;
   $('sumReview').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Review'; }).length;
+  // Review by entity type (calculation group / field parameter rule) vs Review because of evidence (#103).
+  var reviewItems = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Review'; });
+  var entityReview = reviewItems.filter(function(i) { return i.reviewBasis === 'entity_type'; }).length;
+  $('sumReviewEntity').textContent = entityReview;
+  $('sumReviewEvidence').textContent = reviewItems.length - entityReview;
   $('sumCaution').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Blocked'; }).length;
   $('sumKeep').textContent = allItems.filter(function(i) { return deleteSafetyValue(i) === 'Keep'; }).length;
 }

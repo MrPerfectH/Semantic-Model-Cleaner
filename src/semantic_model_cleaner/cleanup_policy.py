@@ -24,16 +24,25 @@ def evaluate_deletion_policy(
     with no retained consumer left, no longer counts (issue #91).
     ``scope["complete"]`` reports that final-state coverage and
     ``scope["cleared_limitations"]`` lists what the plan cleared and why.
+
+    A calculation group or field parameter that the plan removes as a whole,
+    with nothing left that uses it, is not blocked by the hidden flag or the
+    structure of its own internal columns (issue #103). It gets one
+    ``confirmations`` entry with the entity-type reason instead; the plan
+    preview asks the user to confirm it. Partial plans keep the item-alone
+    reasons, and guards on anything outside the entity are unchanged.
     """
     violations: list[dict] = []
     scope = {"model": str(model_path), "reports": [], "complete": False, "cleared_limitations": []}
+    confirmations: dict[str, dict] = {}
 
     def reject(rule_id: str, message: str, table: str = "", name: str = "") -> None:
         violations.append(dict(rule_id=rule_id, table=table, name=name, message=message))
 
     def result() -> dict:
         return {"ok": not violations, "errors": [v["message"] for v in violations],
-                "violations": violations, "scope": scope}
+                "violations": violations, "scope": scope,
+                "confirmations": [confirmations[key] for key in sorted(confirmations)]}
 
     deletes = [a for a in actions if isinstance(a, dict) and a.get("action") == "delete"]
     if not deletes:
@@ -151,7 +160,18 @@ def evaluate_deletion_policy(
         item = row["item"]
         if analyzer.is_used_status(row["status"]) or row["status"].startswith("BROKEN") or item.is_inferred:
             reject("SMC-D004", f"Keep {analyzer.format_item_ref(item.key)}: {row['status']}.", *item.key)
-        elif row["removal_risk"] == "Review":
+        elif row.get("entity_type_trigger") and item.table.casefold() in cleared_tables:
+            # The whole tool entity goes and nothing that remains uses it.
+            reasons = _final_state_review_triggers(
+                row, coverage_cleared=coverage_cleared, group_cleared=True,
+                waived=row.get("entity_internal_triggers", []))
+            if reasons:
+                reject("SMC-D005", f"Review required for {analyzer.format_item_ref(item.key)}: "
+                       + "; ".join(reasons), *item.key)
+            confirmations.setdefault(item.table.casefold(), dict(
+                kind="entity_type", table=item.table,
+                message=analyzer.entity_type_trigger(row["entity_kind"], item.table, after_plan=True)))
+        elif row.get("standalone_removal_risk", row["removal_risk"]) == "Review":
             reasons = _final_state_review_triggers(
                 row, coverage_cleared=coverage_cleared, group_cleared=item.table.casefold() in cleared_tables)
             if reasons:
@@ -165,7 +185,7 @@ def evaluate_deletion_policy(
 
 # Informational reasons appended after the Review decision; their guards are
 # evaluated separately (SMC-D006) against the final state.
-_RETAINED_DECLARATION_PREFIXES = ("Sort column required by retained ", "Column belongs to retained hierarchy ")
+_RETAINED_DECLARATION_PREFIXES = analyzer._RETAINED_DECLARATION_PREFIXES
 
 
 def _owned_by_cleared_table(limitation: dict, cleared_tables: set[str]) -> bool:
@@ -187,22 +207,26 @@ def _cleared_reason(limitation: dict) -> str:
             f"retained consumer.")
 
 
-def _final_state_review_triggers(row: dict, *, coverage_cleared: bool, group_cleared: bool) -> list[str]:
+def _final_state_review_triggers(row: dict, *, coverage_cleared: bool, group_cleared: bool,
+                                 waived: list[str] = ()) -> list[str]:
     """Review reasons that still hold once the plan's removals are applied.
 
-    Only two reasons can be resolved by the plan itself: the collapsed shared
-    coverage reason (when final-state coverage is complete) and calculation-group
-    structure reasons (when the whole group goes with all its consumers). Every
-    item-specific reason (hidden, key, perspective, targeted metadata) remains.
+    The plan itself can resolve the collapsed shared coverage reason (when
+    final-state coverage is complete), calculation-group structure reasons (when
+    the whole group goes with all its consumers) and, for a whole tool entity,
+    the ``waived`` internal reasons such as the hidden flag of its own columns.
+    Every other item-specific reason (key, perspective, targeted metadata) remains.
+    Starts from the item-alone reasons, never from the entity-type summary.
     """
-    resolved = set()
+    triggers = row.get("standalone_review_triggers", row["review_triggers"])
+    resolved = set(waived)
     if coverage_cleared and row.get("shared_limitation_trigger"):
         resolved.add(row["shared_limitation_trigger"])
     if group_cleared:
         resolved.update(row.get("calculation_group_triggers", []))
     if not resolved:
-        return list(row["review_triggers"])
+        return list(triggers)
     # Retained sort/hierarchy declarations are re-checked as SMC-D006 against the
     # final state, so they are not repeated as Review reasons here.
-    return [t for t in row["review_triggers"]
+    return [t for t in triggers
             if t not in resolved and not t.startswith(_RETAINED_DECLARATION_PREFIXES)]

@@ -250,7 +250,7 @@ def _run_builder(template: str, items: list[dict], reports: list[dict]) -> list[
         "var chosenReports=" + json.dumps(reports) + ";\n" + "\n".join(functions) + "\n"
         "process.stdout.write(JSON.stringify(staleCleanupEntriesForItems(" + json.dumps(items) + ")));\n"
     )
-    result = subprocess.run([shutil.which("node"), "-e", script], capture_output=True, text=True)
+    result = subprocess.run([shutil.which("node"), "-"], input=script, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
 
@@ -315,7 +315,7 @@ def test_bulk_stale_cleanup_excludes_inactive_cards_and_orphan_bookmarks(templat
               + "process.stdout.write(JSON.stringify({selected:reportCleanupEntriesForIssues(issues),"
               + "all:reportCleanupEntriesForIssues(issues.filter(isReportIssueCleanup)),"
               + "explicit:reportIssueActionEntry(issues[1],'remove')}));")
-    result = subprocess.run([shutil.which("node"), "-e", script], capture_output=True, text=True)
+    result = subprocess.run([shutil.which("node"), "-"], input=script, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     for scope in ("selected", "all"):

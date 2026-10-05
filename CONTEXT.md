@@ -80,6 +80,14 @@ _Avoid_: Column consumer, usage
 The string column of a calculation group table that report authors place in slicers or filters to pick a calculation item.
 _Avoid_: Calc group column, field
 
+**Tool Entity**:
+A calculation group or field parameter table: model structure that drives report behaviour rather than holding data. When nothing in the model or the selected reports uses it, it stays at Review by entity type: one reason, "Entity type requires confirmation", never a hidden flag or a claim of use.
+_Avoid_: Helper table, technical table
+
+**Review By Entity Type**:
+A Review recommendation that rests only on the Tool Entity rule, as opposed to Review because of evidence (hidden, key, perspective, metadata or coverage facts). A plan that removes the whole entity asks for confirmation instead of blocking.
+_Avoid_: Soft review, default review
+
 **Perspective Membership**:
 Concrete model metadata stating that a table, measure, column, or hierarchy belongs to a named perspective. It is evidence for a reviewed change, not proof that a report executes the item, and not an Analysis Limitation.
 _Avoid_: Perspective usage, perspective dependency
