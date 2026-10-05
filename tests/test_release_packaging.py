@@ -5,6 +5,8 @@ import subprocess
 
 import pytest
 
+from semantic_model_cleaner import __version__
+
 
 ROOT = Path(__file__).parents[1]
 
@@ -21,13 +23,13 @@ checksums = _load("release_checksums", ROOT / "scripts/release_checksums.py")
 
 
 def test_public_beta_release_identity_is_consistent():
-    release = identity.verify("v0.4.0b3")
+    release = identity.verify(f"v{__version__}")
     assert release == {
         "name": "semantic-model-cleaner",
-        "version": "0.4.0b3",
+        "version": __version__,
         "channel": "beta",
-        "tag": "v0.4.0b3",
-        "windows_archive": "semantic-model-cleaner-windows-x64-0.4.0b3.zip",
+        "tag": f"v{__version__}",
+        "windows_archive": f"semantic-model-cleaner-windows-x64-{__version__}.zip",
     }
 
 
