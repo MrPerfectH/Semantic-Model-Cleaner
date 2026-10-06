@@ -227,7 +227,11 @@ def test_usage_and_parser_errors_are_machine_readable(project, args):
 
 def test_capabilities_help_and_empty_search():
     result = run(["capabilities"])
-    assert result["read_only"] and result["tool_version"]
+    assert result["query_commands_read_only"] and result["tool_version"]
+    assert result["operations_schema_version"] == "1.0"
+    assert {"actions", "rename", "move", "dax"} <= set(result["operations"])
+    assert result["schema_command"] == "smc operations-schema"
+    assert result["plan_workflow_mutations"] == ["apply", "restore", "recover-lock"]
     assert {row["name"] for row in result["commands"]} == {"items", "usage", "summary", "review", "capabilities"}
     text = run(["--help"], json_output=False)
     assert "smc usage" in text and "smc summary" in text

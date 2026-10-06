@@ -1,5 +1,7 @@
 # CLI and automation contract
 
+External agents: [versioned operations schema and reviewed workflow](agents.md).
+
 `smc`, `semantic-model-cleaner`, and `python -m semantic_model_cleaner` use the
 same command dispatcher. `--help` lists every command; `COMMAND --help` shows
 its options. `--version` prints the package version. Help and version are always

@@ -16,7 +16,8 @@ FILTER_TYPES = ["table", *insights.ITEM_TYPES]
 
 
 def capabilities():
-    return {"tool_version": __version__, "contract": "insights/1.0", "read_only": True,
+    from .operations_contract import capabilities as operation_capabilities
+    return {**operation_capabilities(), "contract": "insights/1.0", "query_commands_read_only": True,
             "commands": [{"name": name, "description": description,
                           "options": _options(name)} for name, description in COMMANDS.items()],
             "formats": ["text", "json"], "default_format": "text (capabilities: json)",

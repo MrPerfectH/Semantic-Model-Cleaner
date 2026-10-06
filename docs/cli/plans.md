@@ -120,6 +120,17 @@ Each action has `action`, `table`, `name` and `item_type`. Supported action name
 
 For table renames, entries use `table` and `target_table`. Column rename entries use `table`, `name` and `target_name`. For report-only repair, column entries can additionally identify `target_table` where supported. Inspect the generated diff and remaining findings; the plan rejects newly detected unresolved references.
 
+Model deletes and renames also update references in `definition/perspectives/*.tmdl`
+and `definition/cultures/*.tmdl`. Deletion removes the selected member/translation
+block; an empty translation table is removed too. Removing the last model item
+also removes the table's memberships and translations. Renames change object names
+in those declarations while preserving captions, comments and unrelated bytes.
+These files appear in the reviewed differences and are covered by apply/restore.
+Malformed or unsupported structure blocks the plan with a file and line explanation.
+This structural check does not validate or rewrite linguistic metadata payloads or
+evaluate Power BI runtime behavior. Existing dependency and analysis coverage guards
+still apply.
+
 ### Move a measure
 
 ```json

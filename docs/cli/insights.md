@@ -128,7 +128,11 @@ failure, including argument syntax errors. Help remains plain text. Every respon
 has `schema_version: "1.0"`, `command`, and `ok`. Errors include `error` and an
 `errors` array, and may include scope or candidate matches. New optional fields
 may be added. `capabilities` defaults to JSON and describes the read-query
-contract `insights/1.0`; it is not a schema for saved-plan mutation operations.
+contract `insights/1.0`. Its existing operations-schema version, supported
+operations, approval guidance and safeguards remain available alongside query
+discovery. Use `smc operations-schema` for the standalone mutation input schema.
+`query_commands_read_only` applies to the listed query commands; the separate
+`plan_workflow_mutations` list identifies commands that can write project files.
 
 The principal response fields are:
 

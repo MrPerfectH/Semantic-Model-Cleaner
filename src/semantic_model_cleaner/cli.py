@@ -11,6 +11,9 @@ def main(argv: list[str] | None = None):
     if args and args[0] in {"items", "usage", "summary", "review", "capabilities"}:
         from .insights_cli import main as insights_main
         raise SystemExit(insights_main(args))
+    if args and args[0] == "operations-schema":
+        from .operations_contract import main as contract_main
+        raise SystemExit(contract_main(args))
     if args and args[0] in {"policy", "naming"}:
         from .policy_cli import main as policy_main
         raise SystemExit(policy_main(args))

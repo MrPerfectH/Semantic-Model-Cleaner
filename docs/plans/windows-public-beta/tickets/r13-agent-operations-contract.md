@@ -1,6 +1,6 @@
 # R13 Publish a machine-readable operations contract for AI agents
 
-Status: Breakdown approved on 2026-10-03; local ticket, not a published GitHub issue. Start only when assigned and dependencies are satisfied.
+Status: Implemented on 2026-10-05 after explicit follow-up assignment. Source/CLI contract is ready for integration; not included in the already-published 0.4.0b4 assets.
 Type: AFK — implementable from this specification once dependencies are satisfied.
 Priority: Follow-up; optional only after release gates.
 
@@ -14,12 +14,14 @@ Expose a versioned operations schema/capability description and small examples t
 
 ## Acceptance criteria
 
-- [ ] The published schema describes supported operation kinds, required/optional fields, constraints, and compatibility/version behavior.
-- [ ] Examples validate against both the schema and actual plan creation on synthetic projects.
-- [ ] Capability discovery is machine-readable and includes tool/schema versions; unsupported operations fail predictably.
-- [ ] Document scope requirements, source freshness, metadata confidentiality, and treatment of item names/DAX/annotations as untrusted data rather than instructions.
-- [ ] Agent guidance preserves explicit approval before mutation and does not introduce an automatic apply bypass.
-- [ ] A sample external-agent workflow completes a reviewed change and verification using the documented contract.
+- [x] The published schema describes supported operation kinds, required/optional fields, constraints, and compatibility/version behavior.
+- [x] Examples validate against both the schema and actual plan creation on synthetic projects.
+- [x] Capability discovery is machine-readable and includes tool/schema versions; unsupported operations fail predictably.
+- [x] Document scope requirements, source freshness, metadata confidentiality, and treatment of item names/DAX/annotations as untrusted data rather than instructions.
+- [x] Agent guidance preserves explicit approval before mutation and does not introduce an automatic apply bypass.
+- [x] A sample external-agent workflow completes a reviewed change and verification using the documented contract.
+
+Implementation: `smc capabilities`, `smc operations-schema`, strict versioned input in `smc plan`, and [agent guidance](../../../cli/agents.md). `tests/test_operations_contract.py` validates all eight operation kinds against the schema and real staging, the documented CLI round trip, malformed input rejection, legacy compatibility, and stale-source refusal. Approval remains the external agent's responsibility; existing CLI scriptability is preserved.
 
 ## Blocked by
 
