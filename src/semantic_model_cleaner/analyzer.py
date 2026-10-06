@@ -1616,6 +1616,8 @@ def promote_field_parameter_usages(
                     visual_type=origin.visual_type,
                     visual_title=origin.visual_title,
                     context="Field Parameter",
+                    page_hidden=origin.page_hidden,
+                    visual_hidden=origin.visual_hidden,
                 ))
 
     return synthetic_usages, promoted_tables
@@ -4031,6 +4033,16 @@ def _known_unquoted_table_refs(expression: str, table_names: dict[str, str]) -> 
     return refs
 
 
+def dax_table_references(expression: str, table_names: dict[str, str]) -> set[str]:
+    """Resolve bare-table references against a casefolded declaration index."""
+    refs = _known_unquoted_table_refs(expression, table_names)
+    for name in _extract_dax_table_refs(expression):
+        resolved = table_names.get(name.casefold())
+        if resolved:
+            refs.add(resolved)
+    return refs
+
+
 def build_dax_table_deps(items: list[ModelItem]) -> dict[tuple[str, str], set[str]]:
     """Build item_key -> {referenced table names via bare table refs in DAX} graph."""
     table_name_index = {item.table.casefold(): item.table for item in items}
@@ -4040,14 +4052,7 @@ def build_dax_table_deps(items: list[ModelItem]) -> dict[tuple[str, str], set[st
         if not item.dax_body or item.item_type not in ("Measure", "Calculated Column"):
             continue
 
-        refs: set[str] = set()
-        refs.update(_known_unquoted_table_refs(item.dax_body, table_name_index))
-        for table_name in _extract_dax_table_refs(item.dax_body):
-            resolved = table_name_index.get(table_name.casefold())
-            if resolved:
-                refs.add(resolved)
-
-        deps[item.key] = refs
+        deps[item.key] = dax_table_references(item.dax_body, table_name_index)
 
     return deps
 
@@ -4529,6 +4534,7 @@ def analyze(
     model_search_roots: list[Path] | None = None,
     report_search_roots: list[Path] | None = None,
     progress=None,
+    allow_model_only: bool = False,
 ) -> dict:
     def checkpoint(stage, current=0, total=None):
         if progress is not None:
@@ -4559,7 +4565,7 @@ def analyze(
         roots_display = ", ".join(str(p) for p in roots)
         print(f"Error: No matching *.SemanticModel found under: {roots_display}", file=sys.stderr)
         sys.exit(1)
-    if not reports:
+    if not reports and not allow_model_only:
         roots = report_search_roots or [workspace]
         roots_display = ", ".join(str(p) for p in roots)
         print(f"Error: No matching connected *.Report found under: {roots_display}. Check definition.pbir and report filters.", file=sys.stderr)
@@ -4797,6 +4803,16 @@ def analyze(
             continue
         seen_limitation_ids.add(limitation["id"])
         analysis_limitations.append(limitation)
+    if not reports:
+        analysis_limitations.append({
+            "id": "report_scan:not_requested", "kind": "report_scan", "area": "Report scan",
+            "feature": "report usage not checked", "construct": "model_only", "owner": "selected Semantic Model",
+            "table": "", "source_file": "", "line": 0, "location": "selected Semantic Model", "scope": "shared",
+            "targets": [], "checked": "Semantic Model metadata and dependencies were inspected.",
+            "unchecked": "No Reports were scanned.",
+            "effect": "Items without known use require Review; report usage is unknown.",
+            "message": "Report usage was not checked (model-only inspection).",
+        })
     coverage_limitations = [limitation for limitation in analysis_limitations if limitation["scope"] == "shared"]
     shared_limitation_trigger = _shared_limitation_trigger(coverage_limitations) if coverage_limitations else ""
     shared_limitation_ids = [limitation["id"] for limitation in coverage_limitations]
@@ -5104,6 +5120,10 @@ def analyze(
         },
         "items": results,
         "dependency_graphs": graphs,
+        # Preserve scanner evidence such as hierarchy-level references that do
+        # not have a same-named item row. This is an internal projection input;
+        # public export formats keep their existing contracts.
+        "report_references": all_usages,
         "summary": summary,
         "table_summaries": table_summaries,
         "warnings": [_serialize_warning(w) for w in warnings],

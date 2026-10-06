@@ -93,6 +93,22 @@ Run `smc --help` for the complete command guide and `smc --version` for the
 installed version. The [CLI automation contract](docs/cli/README.md) documents
 JSON output, exit codes, path/filter differences, and a disposable reviewed-change workflow.
 
+Ask focused questions with compact text output or versioned JSON for agents:
+
+```bash
+smc items . --search Revenue
+smc usage . --table Sales --item Revenue
+smc usage . --table Sales
+smc summary .
+smc review . --format json
+smc capabilities
+```
+
+These source-version commands explain direct and indirect usage by Report, page,
+and visual, summarize each Report's model footprint, and group existing check
+findings. They are read-only; use `--model-only` when Report usage cannot be
+checked. See [focused CLI queries and agent workflows](docs/cli/insights.md).
+
 Run the analyzer from a workspace root:
 
 ```bash

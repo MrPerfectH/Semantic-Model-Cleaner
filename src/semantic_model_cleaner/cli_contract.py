@@ -5,6 +5,12 @@ import json
 
 COMMAND_GUIDE = """Commands (use COMMAND --help for details):
   smc PROJECT                     Analyze one model and its connected Reports
+  smc items PROJECT --search TEXT  Find item names (bounded results)
+  smc usage PROJECT --item NAME    Explain usage; add --table to disambiguate
+  smc usage PROJECT --table NAME   Explain whole-table usage
+  smc summary PROJECT             Model totals and each Report's footprint
+  smc review PROJECT              Compact existing model/Report checks
+  smc capabilities                Discover read-only query options as JSON
   smc check PROJECT               Read-only CI checks (JSON by default)
   smc clean-stale PROJECT          Discover stale Report metadata (read-only)
   smc plan PROJECT --operations FILE -o PLAN
@@ -31,6 +37,7 @@ Path rules:
   Check --model is an exact path relative to PROJECT; --report is a name filter.
   Plan --model/--report are exact paths relative to the current directory (CWD).
   Policy/naming --model/--report are exact paths relative to PROJECT.
+  Items/usage/summary/review --model/--report are exact paths relative to PROJECT.
   Output, operations, plan, baseline and journal file paths are relative to CWD.
 
 Automation: UTF-8 output. Analysis --format json and check use JSON stdout.

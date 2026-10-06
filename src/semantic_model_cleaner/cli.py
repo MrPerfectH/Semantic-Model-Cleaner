@@ -8,6 +8,9 @@ from .console import configure_console_output
 def main(argv: list[str] | None = None):
     configure_console_output()
     args = list(sys.argv[1:] if argv is None else argv)
+    if args and args[0] in {"items", "usage", "summary", "review", "capabilities"}:
+        from .insights_cli import main as insights_main
+        raise SystemExit(insights_main(args))
     if args and args[0] in {"policy", "naming"}:
         from .policy_cli import main as policy_main
         raise SystemExit(policy_main(args))

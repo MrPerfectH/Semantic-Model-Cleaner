@@ -26,6 +26,7 @@ def run_check(
     workspace: Path, *, model_path: Path | None = None,
     report_filters: list[str] | None = None, baseline: dict | None = None,
     fail_on: str = "error", report_paths: list[Path] | None = None, policy: dict | None = None,
+    allow_model_only: bool = False,
 ) -> tuple[int, dict]:
     """Return exit 0 pass, 1 unsuppressed findings, 2 invalid input/analysis failure.
 
@@ -73,11 +74,14 @@ def run_check(
         }
         if any(report not in bound for report in reports):
             raise ValueError("Every explicitly selected report must be bound to the Semantic Model.")
-        if not reports:
+        if not reports and not allow_model_only:
             raise ValueError("No selected reports are bound to the Semantic Model; inspect definition.pbir or report filters.")
         if any(not (report / "definition").is_dir() for report in reports):
             raise ValueError("Selected reports require the supported PBIR definition directory.")
-        result = analyzer.analyze(workspace, model_paths=[model], report_paths=reports)
+        if not reports:
+            payload["scope"].update(report_usage_checked=False, selection_complete=False)
+        result = analyzer.analyze(workspace, model_paths=[model], report_paths=reports,
+                                  **({"allow_model_only": True} if allow_model_only else {}))
         payload["scope"]["scan_complete"] = result.get("coverage", {}).get("complete", False)
         findings: list[dict] = []
 
@@ -89,6 +93,8 @@ def run_check(
                              "path": path, "table": table, "name": name, "location": location,
                              "fingerprint": fingerprint, "suppressed": False})
 
+        if not reports:
+            add("SMC002", "warning", "Report usage was not checked (model-only inspection).", _relative(model, workspace))
         for row in result["items"]:
             item = row["item"]
             path = _relative(Path(item.source_file), workspace) if item.source_file else _relative(model, workspace)
