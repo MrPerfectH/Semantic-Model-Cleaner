@@ -102,6 +102,20 @@ def parse_operations(raw):
     return raw["operations"]
 
 
+def capabilities():
+    """Stable change-operation discovery fields, also used by query discovery."""
+    return {
+        "tool_version": __version__, "operations_schema_version": VERSION,
+        "operations": list(schema()["$defs"]), "schema_command": "smc operations-schema",
+        "workflow": ["analyze", "plan", "diff", "apply", "verify"],
+        "plan_workflow_mutations": ["apply", "restore", "recover-lock"],
+        "approval": "Obtain explicit user approval of the exact plan before apply or restore.",
+        "safeguards": ["local staging", "scope checks", "sealed plans", "freshness checks",
+                       "semantic validation", "byte-exact recovery"],
+        "legacy_unversioned_operations": True,
+    }
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = ArgumentParser(description="Offline discovery for external agents.", json_errors=True)
@@ -112,16 +126,7 @@ def main(argv=None):
         if args.command == "operations-schema":
             print(json.dumps(schema(), ensure_ascii=False, indent=2))
         else:
-            emit_json(args.command, {
-                "tool_version": __version__, "operations_schema_version": VERSION,
-                "operations": list(schema()["$defs"]), "schema_command": "smc operations-schema",
-                "workflow": ["analyze", "plan", "diff", "apply", "verify"],
-                "plan_workflow_mutations": ["apply", "restore", "recover-lock"],
-                "approval": "Obtain explicit user approval of the exact plan before apply or restore.",
-                "safeguards": ["local staging", "scope checks", "sealed plans", "freshness checks",
-                               "semantic validation", "byte-exact recovery"],
-                "legacy_unversioned_operations": True,
-            })
+            emit_json(args.command, capabilities())
         return 0
     except ValueError as exc:
         emit_json(argv[0] if argv else "capabilities", {"ok": False, "error": str(exc)})

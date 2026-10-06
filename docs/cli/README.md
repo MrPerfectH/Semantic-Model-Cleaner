@@ -14,6 +14,10 @@ that scope and do not prove all external consumers were checked.
 
 ## Commands and paths
 
+For compact item search, usage explanations, Report footprints and grouped
+checks, see [read-only queries for people and agents](insights.md). Discover
+their versioned options with `smc capabilities`.
+
 Relative project/search paths start at the current working directory (CWD).
 
 | Command family | `--model` | `--report` | Other path bases |
@@ -24,6 +28,7 @@ Relative project/search paths start at the current working directory (CWD).
 | `diff`, `apply`, `verify`, `restore`, `recover-lock` | Not applicable | Not applicable | Positional plan/model paths and `--journal-dir`: CWD |
 | `history` | Not applicable | Not applicable | `--journal-dir`: CWD |
 | `policy`, `naming preview` | Exact model path relative to PROJECT | Repeatable exact Report path relative to PROJECT | Policy `--file`: PROJECT; naming plan `--output`: CWD |
+| `items`, `usage`, `summary`, `review` | Exact model path relative to PROJECT | Repeatable exact connected Report path relative to PROJECT | No file outputs; use stdout |
 
 Absolute paths work where a path is expected. They do not turn a name filter
 into an exact-path option. For separate analysis roots use `--models-path` and
@@ -46,6 +51,7 @@ contain human diagnostics, exclusions, or interactive prompts; parse stdout.
 | Plan family without `--format json` | Existing JSON results except a saved-plan `diff`, which is text; caught errors remain JSON on **stderr** | Existing 0/1/2 behavior |
 | `clean-stale --format json` | Existing stale-candidate result | 0 no candidates; 1 candidates; 2 input/analysis failure or withheld direct apply |
 | `policy`, `naming preview` | Existing JSON results/errors | 0 success; 1 unsuccessful naming preview; 2 caught input/execution failure |
+| `items`, `usage`, `summary`, `review` with `--format json`; `capabilities` by default | Versioned response or error on stdout, including argument errors | 0 query completed; 1 review findings meet threshold; 2 input/execution failure |
 
 The **plan family** is `plan`, `diff`, `apply`, `verify`, `history`, `restore`,
 and `recover-lock`. Add `--format json` after the subcommand to opt into the
@@ -75,7 +81,7 @@ may be added. This response version does **not** change the saved-plan schema,
 digest, or check finding fingerprints.
 
 Argument-parser failures are structured for analysis with `--format json`,
-check's JSON mode, and the opt-in plan JSON mode. Other command modes retain
+check's JSON mode, read-only query JSON mode, and the opt-in plan JSON mode. Other command modes retain
 argparse's text usage/errors on stderr with exit 2. Policy/naming and stale
 discovery retain their existing result shapes; they are not silently wrapped
 in the new response envelope. Ordinary text/Excel analysis also retains its
