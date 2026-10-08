@@ -158,7 +158,7 @@ def main() -> None:
             if b"Semantic Model Cleaner" not in html or expected_version.encode() not in html or b"beta-badge" not in html:
                 raise RuntimeError("Installed smc-web did not serve the public-beta UI")
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            for asset in ("local-http.js", "detail-workspace.js", "analysis-jobs.js", "schema-evidence.js", "analysis-limitations.js"):
+            for asset in ("local-http.js", "detail-workspace.js", "analysis-jobs.js", "schema-evidence.js", "analysis-limitations.js", "favicon.svg"):
                 with opener.open(f"http://127.0.0.1:{port}/static/{asset}", timeout=5) as response:
                     if not response.read():
                         raise RuntimeError(f"Installed wheel did not serve {asset}")

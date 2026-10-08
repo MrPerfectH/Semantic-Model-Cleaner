@@ -59,7 +59,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-semantic_model_cleaner = ["templates/*.html", "static/*.js", "static/*.css", "demo_workspace/**/*", "schemas/**/*", "schemas/microsoft-report/LICENSE"]
+semantic_model_cleaner = ["templates/*.html", "static/*.js", "static/*.css", "static/*.svg", "demo_workspace/**/*", "schemas/**/*", "schemas/microsoft-report/LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

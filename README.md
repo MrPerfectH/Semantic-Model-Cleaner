@@ -234,6 +234,7 @@ instead. Ordinary external export files can still be overwritten.
 - Calculation groups are recognized (type, items, selector column, retained parent-table DAX consumers); calculation item expressions remain Analysis limitations and keep unused items at Review
 - Culture translations are read structurally as per-object Translation Membership (culture, file and line), shown as informational evidence that never changes the Cleanup Recommendation; `linguisticMetadata` remains an Analysis Limitation owned by its culture
 - Delete and rename plans include dependent perspective members and culture translations in their file diffs and recovery data. Unrecognized or malformed perspective/culture structure blocks the plan with a file-specific explanation; expression payloads such as linguistic metadata remain unchecked
+- Usage states: the web app separates **Used**, **Indirect**, **Stale only** (referenced only by stale report metadata) and **Unused**. The CLI `--format unused` list and the JSON `summary.not_used` total include Stale only items, so they can exceed the web app's "Not used" count by exactly those items
 - Analysis limitations are listed separately from Report Health with distinct-limitation and affected-item counts; remaining caveats include broader metadata indirection and malformed or skipped JSON
 
 ## Development
