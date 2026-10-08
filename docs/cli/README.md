@@ -28,7 +28,7 @@ Relative project/search paths start at the current working directory (CWD).
 | `diff`, `apply`, `verify`, `restore`, `recover-lock` | Not applicable | Not applicable | Positional plan/model paths and `--journal-dir`: CWD |
 | `history` | Not applicable | Not applicable | `--journal-dir`: CWD |
 | `policy`, `naming preview` | Exact model path relative to PROJECT | Repeatable exact Report path relative to PROJECT | Policy `--file`: PROJECT; naming plan `--output`: CWD |
-| `items`, `usage`, `summary`, `review` | Exact model path relative to PROJECT | Repeatable exact connected Report path relative to PROJECT | No file outputs; use stdout |
+| `items`, `usage`, `summary`, `review`, `cleanup-groups` | Exact model path relative to PROJECT | Repeatable exact connected Report path relative to PROJECT | Optional `--output`: CWD; stdout always contains the response |
 
 Absolute paths work where a path is expected. They do not turn a name filter
 into an exact-path option. For separate analysis roots use `--models-path` and

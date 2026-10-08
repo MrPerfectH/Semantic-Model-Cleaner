@@ -63,7 +63,7 @@ def test_calculation_item_unqualified_reference_is_resolved(project):
     assert row(result, "Spare")["removal_risk"] == "Safe"
 
 
-@pytest.mark.parametrize("expression", ["SELECTEDMEASURE()", "[Unknown]", "[Revenue] + [Unknown]", "Sales[Unknown]"])
+@pytest.mark.parametrize("expression", ["SELECTEDMEASURENAME()", "[Unknown]", "[Revenue] + [Unknown]", "Sales[Unknown]"])
 def test_unknown_calculation_group_coverage_is_retained(project, expression):
     _, model, _ = project
     (model / "definition/tables/Time.tmdl").write_text(
@@ -134,3 +134,15 @@ def test_policy_rejects_unknown_or_malformed_target(project):
         result = evaluate_deletion_policy(model, [report], [action])
         assert not result["ok"]
         assert result["violations"][0]["rule_id"] == "SMC-D003"
+
+
+@pytest.mark.parametrize("expression", ["SELECTEDMEASURE()", "SELECTEDMEASURE() * 2", "SELECTEDMEASUREFORMATSTRING()", "ISSELECTEDMEASURE([Revenue])"])
+def test_selected_measure_context_does_not_retain_unrelated_items(project, expression):
+    _, model, _ = project
+    (model / "definition/tables/Time.tmdl").write_text(
+        "table Time\n\tcalculationGroup\n\t\tcalculationItem Current = " + expression + "\n", encoding="utf-8")
+    result = analyze(project)
+    assert result["coverage"]["complete"]
+    assert row(result, "Spare")["removal_risk"] == "Safe"
+    if "Revenue" in expression:
+        assert row(result, "Revenue")["removal_risk"] == "Review"

@@ -2822,7 +2822,7 @@ def test_api_find_connected_reports_matches_live_connections_by_model_name(tmp_p
     assert "Matched by name" in matched_status["message"]
 
     other_status = next(s for s in payload["reportStatuses"] if s["path"] == str(other.resolve()))
-    assert other_status["status"] == "remote"
+    assert other_status["status"] == "not_connected"
     assert "'Finance Model'" in other_status["message"]
     assert "does not match the selected model 'Retail_POC'" in other_status["message"]
 
@@ -2859,7 +2859,7 @@ def test_api_find_connected_reports_matches_live_connections_by_platform_display
     assert all(r["status"] == "connected_by_name" for r in payload["reports"])
 
     other_status = next(s for s in payload["reportStatuses"] if s["path"] == str(other.resolve()))
-    assert other_status["status"] == "remote"
+    assert other_status["status"] == "not_connected"
     assert "does not match the selected model 'Retail - Production Model'" in other_status["message"]
 
 

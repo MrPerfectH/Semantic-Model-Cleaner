@@ -12,6 +12,13 @@ from . import analyzer
 def evaluate_deletion_policy(
     model_path: Path, report_paths: list[Path], actions: list[dict]
 ) -> dict:
+    """Validate deletion with fresh analysis; used by all mutation workflows."""
+    return _evaluate_deletion_policy(model_path, report_paths, actions)
+
+
+def _evaluate_deletion_policy(
+    model_path: Path, report_paths: list[Path], actions: list[dict], *, analysis: dict | None = None,
+) -> dict:
     """Return {ok, errors, violations, scope}; never write project files.
 
     Each violation has rule_id/table/name/message. Non-delete batches bypass
@@ -61,11 +68,14 @@ def evaluate_deletion_policy(
             reject("SMC-D001", f"Report {report.name} has no supported PBIR definition directory.")
     if violations:
         return result()
-    try:
-        analysis = analyzer.analyze(model_path.parent, model_paths=[model_path], report_paths=reports)
-    except (Exception, SystemExit) as exc:
-        reject("SMC-D001", f"Fresh analysis failed: {exc}")
-        return result()
+    # Read-only group previews reuse their one invocation's analysis snapshot.
+    # The public entry point always scans afresh before any mutation workflow.
+    if analysis is None:
+        try:
+            analysis = analyzer.analyze(model_path.parent, model_paths=[model_path], report_paths=reports)
+        except (Exception, SystemExit) as exc:
+            reject("SMC-D001", f"Fresh analysis failed: {exc}")
+            return result()
     scope["complete"] = analysis.get("coverage", {}).get("complete", False)
     for warning in analysis.get("warnings", []):
         if warning.get("code") in {"UNRESOLVED_NAMEOF_TARGET", "AMBIGUOUS_NAMEOF_TARGET"}:

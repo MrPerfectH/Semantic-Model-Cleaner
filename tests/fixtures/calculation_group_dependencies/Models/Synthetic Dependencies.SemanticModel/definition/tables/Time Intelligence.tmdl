@@ -2,13 +2,13 @@ table 'Time Intelligence'
 	calculationGroup
 		precedence: 10
 
-		calculationItem Current = SELECTEDMEASURE()
+		calculationItem Current = IF(SELECTEDMEASURENAME() = "Revenue", SELECTEDMEASURE(), BLANK())
 
-		calculationItem YTD = CALCULATE(SELECTEDMEASURE(), DATESYTD(Sales[Order Date]))
-			formatStringDefinition = SELECTEDMEASUREFORMATSTRING() & " YTD"
+		calculationItem YTD = CALCULATE(IF(SELECTEDMEASURENAME() = "Revenue", SELECTEDMEASURE(), BLANK()), DATESYTD(Sales[Order Date]))
+			formatStringDefinition = IF(SELECTEDMEASURENAME() = "Revenue", SELECTEDMEASUREFORMATSTRING(), "0") & " YTD"
 			ordinal: 1
 
-		calculationItem PY = CALCULATE(SELECTEDMEASURE(), SAMEPERIODLASTYEAR(Sales[Order Date]))
+		calculationItem PY = CALCULATE(IF(SELECTEDMEASURENAME() = "Revenue", SELECTEDMEASURE(), BLANK()), SAMEPERIODLASTYEAR(Sales[Order Date]))
 			ordinal: 2
 
 	column Name

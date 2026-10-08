@@ -22,6 +22,16 @@ def test_connection_catalog_does_not_match_inside_another_value():
     assert analyzer._connection_catalog('Initial Catalog="Unclosed') == ''
 
 
+@pytest.mark.parametrize('connection,expected', [
+    ('initialcatalog="Sales"', 'Sales'),
+    ('Initial Catalog=Sales;initialcatalog=sales', 'Sales'),
+    ('Initial Catalog=Other;initialcatalog=Sales', ''),
+    ('Initial Catalog=;Initial Catalog=Sales', ''),
+])
+def test_connection_catalog_aliases_and_duplicate_keys(connection, expected):
+    assert analyzer._connection_catalog(connection) == expected
+
+
 def test_search_recurses_beyond_conventional_reports_and_matches_quoted_model(tmp_path):
     model = tmp_path / 'Models/Sales.SemanticModel'
     model.mkdir(parents=True)
