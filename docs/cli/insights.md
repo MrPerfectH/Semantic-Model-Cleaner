@@ -21,6 +21,13 @@ smc usage . --table Sales
 
 # What does each connected Report use? Count unique items, not visual occurrences.
 smc summary .
+smc summary . --all
+
+# Filter unused items, keeping deletion recommendations separate from usage.
+smc items . --unused --all --format json -o unused.json
+
+# Preview dead measure chains/cycles as groups, with deletion-policy findings.
+smc cleanup-groups . --all --format json
 
 # Which items does one Report actually use, including helper measures/columns?
 smc items . --report Reports/Executive.Report --used-in-reports
@@ -104,7 +111,17 @@ check, and mutation commands still require Reports.
 - **Cleanup candidates** follow existing analyzer recommendations. Query output
   conservatively lowers Safe to Review when known Report scope is incomplete or
   bindings are unverified. Empty Tables with no item evidence require Review.
+  `items` and `usage` share the same single-item cleanup policy: known live
+  Report use, structural use, or a retained dependent blocks deletion, even
+  when the item also has broken DAX references. An unused dependent still
+  blocks deleting its dependency alone; this does not assess deleting a group.
   These summaries do not authorize deletion or replace saved-plan validation.
+- **Published Report bindings** compare `Initial Catalog` (or `initialcatalog`)
+  with the selected model's folder name and platform display name, ignoring
+  case. A different catalog is `not_connected` and does not make local scope
+  incomplete. A missing, malformed, or conflicting catalog remains `remote`
+  and unverified. Name matching does not verify service identity or published
+  aliases; check naming consistency before relying on cleanup recommendations.
 - **Summary counts** cover unique model-owned measures and columns. A Report's
   direct and indirect item counts are disjoint. Report-local measures have a
   separate count. Table counts include bare-table DAX dependencies, so a Table
@@ -122,6 +139,28 @@ execute DAX, refresh data, or prove equivalent Power BI runtime behavior.
 Perspective and translation memberships do not count as use.
 
 ## JSON and bounded output
+
+`items` includes `status_code` (`used`, `indirect`, `unused`, `broken`) and a
+structured `via` array of immediate consumers. The original `status` display
+label remains available for compatibility; agents should use `status_code`.
+Query capabilities use contract `insights/1.1`; the response envelope remains 1.0.
+
+`cleanup-groups` finds connected components of model measures unreachable from
+known Report and structural roots, including cycles. Each returned group lists
+its items, delete actions, outside consumers, and fresh deletion-policy
+violations. `Safe` requires a passing policy and complete selected local scope.
+This is a preview, not authorization to apply the actions. Explicit metadata
+references and consumers outside the measure group can keep it at `Review`.
+
+Calculation items using only selected value/format context no longer impose a
+shared limitation on unrelated items. Explicit references remain protected;
+name-based branching (`SELECTEDMEASURENAME()`), unresolved references, and bare
+table expressions still require review. Runtime DAX is not evaluated.
+
+All query commands accept `-o`/`--output` for UTF-8 output relative to CWD;
+the same response is also printed to stdout. Output inside `.SemanticModel` or
+`.Report` folders is rejected. `--all` removes collection page-size limits;
+`--offset` still applies. `--unused` and `--used-in-reports` are mutually exclusive.
 
 `--format json` writes one UTF-8 JSON object to stdout for success or a handled
 failure, including argument syntax errors. Help remains plain text. Every response

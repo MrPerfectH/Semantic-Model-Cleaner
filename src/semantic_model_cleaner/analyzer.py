@@ -469,14 +469,18 @@ def _connection_catalog(connection_string: str) -> str:
     if quote:
         return ''
     fields.append(''.join(field))
+    catalogs = []
     for field in fields:
         key, separator, value = field.partition('=')
-        if separator and key.strip().casefold() == 'initial catalog':
+        if separator and key.strip().casefold() in {'initial catalog', 'initialcatalog'}:
             value = value.strip()
             if len(value) >= 2 and value[0] in {'"', "'"} and value[-1] == value[0]:
                 value = value[1:-1].replace(value[0] * 2, value[0])
-            return value
-    return ''
+            catalogs.append(value)
+    # Conflicting/empty duplicate keys cannot establish a model binding.
+    if not catalogs or any(not value for value in catalogs) or len({value.casefold() for value in catalogs}) != 1:
+        return ''
+    return catalogs[0]
 
 
 def report_binding_status(
@@ -560,11 +564,13 @@ def report_binding_status(
             )
             return status
         if published_name:
-            return fail(
-                "remote",
+            status["status"] = "not_connected"
+            status["message"] = (
                 f"Live connection to a published semantic model named '{published_name}', "
-                f"which does not match the selected model '{selected_model_label}'.",
+                f"which does not match the selected model '{selected_model_label}'. "
+                "Excluded by name, not by verified service identity."
             )
+            return status
         return fail(
             "remote",
             "Live connection to a published semantic model in the Power BI service; "
@@ -1053,12 +1059,24 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
                     item_keys.update(matches)
                     if len(matches) != 1:
                         unresolved = True
-                if _expression_uses_dynamic_measure_context(expression):
+                # Selected value/format delegates to the invoking measure; it
+                # does not introduce an arbitrary named measure dependency.
+                # Name-based branching remains a shared analysis gap.
+                dynamic_functions = _DYNAMIC_DAX_FUNCTIONS
+                if feature.owner.startswith("calculation item "):
+                    dynamic_functions = {"selectedmeasurename"}
+                active, _ = _split_dax_comments(expression)
+                if any(token.kind == "identifier" and token.value.casefold() in dynamic_functions
+                       for token in dax_tokens(active)):
                     unresolved = True
-            if feature.dynamic and not item_keys:
+            if feature.dynamic and not expression:
                 # A calculation item without any identifiable reference is still
                 # applied to arbitrary measures at runtime.
                 unresolved = True
+            if feature.owner.startswith("calculation item ") and not item_keys and not unresolved:
+                # Nothing remains unchecked for item deletion: selected value
+                # and format context alone do not retain any named model item.
+                continue
             ref = _unsupported_ref(feature.area, item_keys, filepath, model_path)
             ref.unresolved_targets = unresolved
             ref.feature = feature.feature
@@ -1142,7 +1160,7 @@ def _limitation_explanation(ref: UnsupportedMetadataRef) -> dict:
     if ref.construct == "culture/linguisticMetadata":
         unchecked = ("The linguistic metadata JSON payload (Q&A synonyms and phrasings) is not parsed; "
                      "names inside it are never treated as item references.")
-    elif ref.dynamic:
+    elif ref.dynamic and ref.unresolved_targets:
         unchecked = (f"The {feature} is applied to whichever measure is selected at runtime, so "
                      f"it cannot be tied to specific items from TMDL alone.")
     elif ref.unresolved_targets:

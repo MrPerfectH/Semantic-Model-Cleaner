@@ -120,6 +120,20 @@ def test_stale_references_are_not_live_and_retained_dependencies_are_explained(p
     assert required["dependents"]["items"][0]["name"] == "IdleConsumer"
 
 
+def test_items_and_usage_share_single_item_cleanup_verdict(project):
+    source = project[1] / "definition/tables/Sales.tmdl"
+    source.write_text(source.read_text(encoding="utf-8").replace(
+        "measure Top = [Middle] + 1", "measure Top = [Middle] + [Missing]"), encoding="utf-8")
+    q = query(project)
+    for row in q.items(limit=1000)["items"]["items"]:
+        usage = q.usage(table=row["table"], item=row["name"], item_type=next(
+            name for name, value in insights.ITEM_TYPES.items() if value == row["type"]))
+        assert row["cleanup"] == usage["cleanup"], row
+    retained = next(row for row in q.items(search="Retained")["items"]["items"])
+    assert retained["cleanup"] == "Blocked"
+    assert not q.usage(table="Sales", item="Retained")["report_used"]
+
+
 def test_structural_uses_and_sort_column_locations(project):
     visual(project[2][0], "P2", name="Label", kind="Column")
     q = query(project)
@@ -167,6 +181,88 @@ def test_no_usage_with_incomplete_coverage_or_scope_stays_review(project):
     (project[0] / "Unknown.Report").mkdir()
     unknown = query(project).usage(table="Sales", item="Spare")
     assert unknown["scope"]["unverified_reports"] == 1 and unknown["cleanup"] == "Review"
+
+
+@pytest.mark.parametrize("connection,expected_status", [
+    ('Initial Catalog="Other Model"', "not_connected"),
+    ('initialcatalog="Other Model"', "not_connected"),
+    ('Data Source=powerbi://example', "remote"),
+    ('Initial Catalog="Unclosed', "remote"),
+    ('Initial Catalog=Other;Initial Catalog=M', "remote"),
+])
+def test_catalog_binding_controls_scope_without_claiming_external_coverage(project, connection, expected_status):
+    report = project[0] / "External.Report"
+    write_json(report / "definition.pbir", {"datasetReference": {
+        "byConnection": {"connectionString": connection}}})
+    # Even an unrelated report containing a matching field name is excluded.
+    visual(report, "P1", name="Spare")
+    output = run(["usage", project[0], "--table", "Sales", "--item", "Spare", "--format", "json"])
+    assert output["scope"]["excluded_reports"] == [{"path": "External.Report", "reason": expected_status}]
+    verified = expected_status == "not_connected"
+    assert output["scope"]["unverified_reports"] == (0 if verified else 1)
+    assert output["cleanup"] == ("Safe" if verified else "Review")
+    assert not output["report_used"]
+    assert not output["scope"]["external_consumers_verified"]
+    _, checked = ci.run_check(project[0])
+    assert checked["scope"]["unverified_report_count"] == (0 if verified else 1)
+    assert any(row["rule_id"] == "SMC008" for row in checked["findings"]) == (not verified)
+
+
+def test_query_filters_structured_status_and_output(project, tmp_path):
+    output = tmp_path / "items.json"
+    result = run(["items", project[0], "--unused", "--all", "--format", "json", "-o", output])
+    assert json.loads(output.read_text(encoding="utf-8")) == result
+    assert not result["items"]["has_more"]
+    assert all(row["status_code"] == "unused" and isinstance(row["via"], list)
+               for row in result["items"]["items"])
+    used = run(["items", project[0], "--search", "Middle", "--format", "json"])["items"]["items"][0]
+    assert used["status_code"] == "indirect"
+    assert [row["name"] for row in used["via"]] == ["Top"]
+    run(["items", project[0], "--unused", "--used-in-reports", "--format", "json"], code=2)
+    source = project[1] / "definition/tables/Sales.tmdl"
+    before = source.read_bytes()
+    run(["summary", project[0], "--format", "json", "-o", source], code=2)
+    assert source.read_bytes() == before
+    for index in range(25):
+        (project[1] / f"definition/tables/Extra{index}.tmdl").write_text(
+            f"table Extra{index}\n", encoding="utf-8")
+    result = run(["summary", project[0], "--all", "--format", "json"])
+    assert result["tables"]["total"] > 20
+    assert len(result["tables"]["items"]) == result["tables"]["total"]
+    assert all(not result[name]["has_more"] for name in ("tables", "reports", "limitations"))
+
+
+def test_dead_measure_groups_include_chains_and_cycles_without_live_dependencies(project):
+    source = project[1] / "definition/tables/Sales.tmdl"
+    with source.open("a", encoding="utf-8") as out:
+        out.write("\n\tmeasure CycleA = [CycleB]\n\tmeasure CycleB = [CycleA]\n")
+    before = {p: p.read_bytes() for p in project[0].rglob("*") if p.is_file()}
+    result = run(["cleanup-groups", project[0], "--all", "--format", "json"])
+    groups = {frozenset(item["name"] for item in group["items"]): group for group in result["groups"]["items"]}
+    chain = groups[frozenset(("Retained", "IdleConsumer"))]
+    assert chain["cleanup"] == "Safe" and not chain["outside_consumers"]
+    assert len(chain["actions"]) == 2
+    assert groups[frozenset(("CycleA", "CycleB"))]["cleanup"] == "Safe"
+    assert not any({"Base", "Middle", "Top"} & names for names in groups)
+    assert before == {p: p.read_bytes() for p in project[0].rglob("*") if p.is_file()}
+    selected = run(["cleanup-groups", project[0], "--report", "A/Same.Report", "--all", "--format", "json"])
+    assert all(group["cleanup"] == "Review" for group in selected["groups"]["items"])
+
+
+def test_group_preview_uses_one_scan_and_mutation_policy_stays_fresh(project, monkeypatch):
+    from semantic_model_cleaner.cleanup_policy import evaluate_deletion_policy
+    q = query(project)
+    original = analyzer.analyze
+    scans = []
+    def track(*args, **kwargs):
+        scans.append(True)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(analyzer, "analyze", track)
+    assert q.cleanup_groups(limit=None)["groups"]["total"] > 1
+    assert not scans
+    assert evaluate_deletion_policy(project[1], project[2], [{"action": "delete", "table": "Sales",
+        "name": "IdleConsumer", "item_type": "Measure"}])["ok"]
+    assert len(scans) == 1
 
 
 def test_explicit_model_only_does_not_claim_report_usage_or_safe_candidates(project):
@@ -232,7 +328,7 @@ def test_capabilities_help_and_empty_search():
     assert {"actions", "rename", "move", "dax"} <= set(result["operations"])
     assert result["schema_command"] == "smc operations-schema"
     assert result["plan_workflow_mutations"] == ["apply", "restore", "recover-lock"]
-    assert {row["name"] for row in result["commands"]} == {"items", "usage", "summary", "review", "capabilities"}
+    assert {row["name"] for row in result["commands"]} == {"items", "usage", "summary", "review", "capabilities", "cleanup-groups"}
     text = run(["--help"], json_output=False)
     assert "smc usage" in text and "smc summary" in text
     for command in ("items", "usage", "summary", "review", "capabilities"):

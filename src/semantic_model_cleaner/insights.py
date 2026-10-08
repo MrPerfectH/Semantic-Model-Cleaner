@@ -25,6 +25,8 @@ def relative(path, root):
 
 
 def window(rows, limit=20, offset=0):
+    if limit is None:
+        limit = max(1, len(rows))
     return {"total": len(rows), "offset": offset, "limit": limit,
             "has_more": offset + limit < len(rows), "items": rows[offset:offset + limit]}
 
@@ -179,6 +181,12 @@ class Insights:
     def _recommendation(self, key):
         row = self.rows[key]
         risk = row.get("removal_risk")
+        # These queries recommend deleting one item at a time. Even an idle
+        # dependent must be retained until a separate group deletion is reviewed.
+        paths = self._paths(key, self.reverse)
+        if any(self.live[consumer] or self.structural[consumer] for consumer in paths) or any(
+                consumer in self.rows for consumer in self.reverse[key]):
+            return "Blocked"
         if row.get("broken_dax_refs"):
             return "Review"
         if analyzer.is_used_status(row["status"]) or risk in {"Caution", "Do not remove"}:
@@ -213,8 +221,11 @@ class Insights:
             matches.append(key)
         return sorted(matches, key=lambda k: (k[2].casefold(), k[3].casefold(), k[1], k[0]))
 
-    def items(self, *, limit=20, offset=0, used_in_reports=False, **filters):
+    def items(self, *, limit=20, offset=0, used_in_reports=False, unused=False, **filters):
         matches = self.match(**filters)
+        if unused:
+            matches = [key for key in matches if key in self.rows
+                       and self.rows[key]["status"] == "NOT USED"]
         if used_in_reports:
             if not self.scope["report_usage_checked"]:
                 raise QueryError("--used-in-reports requires Report analysis; omit --model-only.")
@@ -224,16 +235,59 @@ class Insights:
                     used.update(self._paths(key, self.graph))
             matches = [key for key in matches if key in used]
         rows = []
-        for key in matches[offset:offset + limit]:
+        for key in matches[offset:offset + limit if limit is not None else None]:
             identity = self.identity(key)
             if key in self.rows:
                 row = self.rows[key]
                 identity.update(status=row["status"], cleanup=self._recommendation(key),
                                 hidden=row["item"].is_hidden)
+                identity["status_code"] = ("broken" if row["broken_dax_refs"] else
+                    "unused" if row["status"] == "NOT USED" else
+                    "indirect" if row["status"].startswith("INDIRECT") else "used")
+                identity["via"] = [self.identity(consumer) for consumer in sorted(self.reverse[key])
+                                   if consumer in self.rows]
             rows.append(identity)
         page = window(matches, limit, offset)
         page["items"] = rows
         return {**self._base(limit, offset), "items": page}
+
+    def cleanup_groups(self, *, limit=20, offset=0):
+        """Preview dead measure components; validate group deletion with existing policy."""
+        from .cleanup_policy import _evaluate_deletion_policy
+        live = set()
+        for key in self.rows:
+            if self.live[key] or self.structural[key]:
+                live.update(self._paths(key, self.graph))
+        dead = {key for key in self.rows if key[0] == "model" and key[1] == "Measure"
+                and key not in live}
+        components = []
+        while dead:
+            start = min(dead)
+            component, queue = set(), [start]
+            while queue:
+                key = queue.pop()
+                if key not in dead:
+                    continue
+                dead.remove(key)
+                component.add(key)
+                queue.extend((self.graph[key] | self.reverse[key]) & dead)
+            components.append(sorted(component))
+        rows = []
+        for component in window(components, limit, offset)["items"]:
+            actions = [{"action": "delete", "table": key[2], "name": key[3], "item_type": "Measure"}
+                       for key in component]
+            policy = _evaluate_deletion_policy(self.model, self.reports, actions, analysis=self.result)
+            complete = self.scope["selection_complete"] and not self.scope["unverified_reports"]
+            outside = sorted({consumer for key in component for consumer in self.reverse[key]
+                              if consumer in self.rows and consumer not in component})
+            rows.append({"items": [self.identity(key) for key in component], "actions": actions,
+                         "cleanup": "Safe" if policy["ok"] and complete else "Review",
+                         "violations": policy["violations"], "scope_complete": bool(complete),
+                         "outside_consumers": [self.identity(key) for key in outside]})
+        page = window(components, limit, offset)
+        page["items"] = rows
+        return {**self._base(limit, offset), "groups": page,
+                "semantics": "Dead measure groups in selected local scope; preview only. Use a reviewed plan before deletion."}
 
     def _location(self, usage):
         artifact = usage.artifact_path.replace("\\", "/")
@@ -306,7 +360,7 @@ class Insights:
             cleanup = "Blocked" if used else ("Review" if not self.children[key[2]] or any(self._recommendation(k) != "Safe" for k in self.children[key[2]]) else "Safe")
             reasons = sorted({r for k in self.children[key[2]] for r in self.rows[k].get("review_triggers", [])})
         else:
-            cleanup = "Blocked" if used else self._recommendation(key)
+            cleanup = self._recommendation(key)
             reasons = self.rows[key].get("review_triggers", [])
         details = {}
         if key in self.rows:

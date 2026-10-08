@@ -3149,8 +3149,8 @@ async function findConnectedReports() {
     }
     if (!foundReports.length && (data.reportStatuses || []).length) {
       var reasonLabels = {
-        not_connected: 'point to a different local model folder',
-        remote: 'connect live to a published model with a different name than the selected model',
+        not_connected: 'reference a different local model folder or published model name',
+        remote: 'connect live with an unknown or ambiguous published model name',
         missing_dataset_reference: 'have no model reference in definition.pbir',
         missing_definition: 'are missing definition.pbir',
         invalid_definition: 'have invalid definition.pbir JSON'

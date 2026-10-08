@@ -368,7 +368,7 @@ CURRENCY_GROUP = (
     "table 'Currency Conversion'\n"
     "\tcalculationGroup\n"
     "\t\tprecedence: 20\n\n"
-    "\t\tcalculationItem Local = SELECTEDMEASURE()\n\n"
+    "\t\tcalculationItem Local = IF(SELECTEDMEASURENAME() = \"Revenue\", SELECTEDMEASURE(), BLANK())\n\n"
     "\tcolumn Currency\n"
     "\t\tdataType: string\n"
     "\t\tsourceColumn: Name\n\n"
