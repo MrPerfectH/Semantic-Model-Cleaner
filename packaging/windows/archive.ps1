@@ -23,5 +23,6 @@ $zipName = "semantic-model-cleaner-windows-x64-$($manifest.version).zip"
 $zipPath = Join-Path $repoRoot "dist\$zipName"
 Compress-Archive -Path "$appDirectory\*" -DestinationPath $zipPath -Force
 $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-"$hash  $zipName" | Set-Content -LiteralPath "$zipPath.sha256" -Encoding ascii
+# LF line ending so `sha256sum -c` accepts the sidecar on Linux and macOS; matches scripts/release_checksums.py
+[System.IO.File]::WriteAllText("$zipPath.sha256", "$hash  $zipName`n", [System.Text.Encoding]::ASCII)
 Write-Host "Created Windows artifact: $zipName (signature: $($signature.Status))"

@@ -10,6 +10,8 @@ and TMDL.
 
 > Beta6 resolves declared named-calendar references without blocking unrelated cleanup candidates, while protecting calendar columns. See the [release notes](docs/releases/0.4.0b6.md).
 
+> **Before applying changes:** back up your Power BI Project or commit it to version control first. Apply writes to your TMDL and PBIR files; guarded restore recovers the original bytes from the plan, but a backup is your safety net.
+
 ## Current Status
 
 - Project maturity: public beta `0.4.0b6`
