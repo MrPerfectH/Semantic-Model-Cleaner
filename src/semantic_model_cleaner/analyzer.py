@@ -1018,6 +1018,21 @@ def _expression_uses_dynamic_measure_context(expression: str) -> bool:
                for token in dax_tokens(active))
 
 
+def parse_calendar_tables(model_path: Path) -> dict[str, list[str]]:
+    """Index genuine named-calendar declarations; duplicates remain ambiguous.
+
+    Calendar column categories are not interpreted. Consumers conservatively
+    protect all columns of the declaring table instead of guessing categories.
+    """
+    calendars: dict[str, list[str]] = defaultdict(list)
+    for path in sorted((Path(model_path) / "definition/tables").glob("*.tmdl")):
+        for node in scan_tmdl_declarations(path.read_text(encoding="utf-8-sig")):
+            if (node.keyword == "calendar" and node.kind == "object" and node.parent
+                    and node.parent.keyword == "table" and node.name):
+                calendars[node.name.casefold()].append(node.parent.name)
+    return dict(calendars)
+
+
 def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedMetadataRef]:
     """Detect unsupported constructs from TMDL declarations, one ref per construct.
 
@@ -1035,12 +1050,28 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
     model_items = parse_model_items(model_path)
     known_keys = {normalize_key(*item.key) for item in model_items}
     table_names = {item.table.casefold(): item.table for item in model_items}
+    calendars = parse_calendar_tables(model_path)
+    bare_names = {**{name: name for name in calendars}, **table_names}
     for item in model_items:
         if item.item_type == "Measure":
             measure_names[item.name.casefold()].add(item.key)
 
     for filepath in sorted(tables_dir.glob("*.tmdl")):
-        features, _ = extract_feature_expressions(filepath.read_text(encoding="utf-8-sig"))
+        text = filepath.read_text(encoding="utf-8-sig")
+        for node in scan_tmdl_declarations(text):
+            if (node.keyword == "calendar" and node.kind == "object" and node.parent
+                    and node.parent.keyword == "table"):
+                targets = {item.key for item in model_items
+                           if item.table.casefold() == node.parent.name.casefold()
+                           and item.item_type in ("Column", "Calculated Column")}
+                ref = _unsupported_ref("Calendars", targets, filepath, model_path)
+                ref.feature = "named calendar declaration"
+                ref.construct = "table/calendar"
+                ref.owner = f"calendar '{node.name}' in '{node.parent.name}'"
+                ref.table = node.parent.name
+                ref.line = node.line
+                refs.append(ref)
+        features, _ = extract_feature_expressions(text)
         for feature in features:
             expression = feature.expression
             item_keys = set(_extract_dax_qualified_refs(expression)) if expression else set()
@@ -1051,9 +1082,19 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
                 # table used alongside them (for example FILTER(Sales, ...)).
                 # Keep cleanup fail-closed until those table consumers can be
                 # represented, including expressions with no item refs at all.
-                if (_extract_dax_table_refs(expression)
-                        or _known_unquoted_table_refs(expression, table_names)):
-                    unresolved = True
+                bare_refs = (_extract_dax_table_refs(expression)
+                             | _known_unquoted_table_refs(expression, bare_names))
+                for name in bare_refs:
+                    owners = calendars.get(name.casefold(), [])
+                    if len(owners) == 1 and name.casefold() not in table_names:
+                        targets = {item.key for item in model_items
+                                   if item.table.casefold() == owners[0].casefold()
+                                   and item.item_type in ("Column", "Calculated Column")}
+                        item_keys.update(targets)
+                        if not targets:
+                            unresolved = True
+                    else:
+                        unresolved = True
                 for name in _extract_dax_unqualified_refs(expression):
                     matches = measure_names.get(name.casefold(), set())
                     item_keys.update(matches)
