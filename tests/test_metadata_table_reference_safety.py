@@ -27,6 +27,53 @@ def project(tmp_path, expression):
     return model, report
 
 
+@pytest.mark.parametrize("name", ["Fiscal 4-4-5", "FiscalCalendar"])
+def test_named_calendar_resolves_to_owner_columns_without_global_gap(tmp_path, name):
+    model, report = project(tmp_path, 'ROW("x", 1)')
+    tables = model / "definition/tables"
+    with (tables / "Sales.tmdl").open("a") as out:
+        out.write(f"\n\tcalendar '{name}'\n\t\tcalendarColumnGroup = date\n\t\t\tprimaryColumn: Amount\n")
+    (tables / "Time.tmdl").write_text(
+        f"table Time\n\tcalculationGroup\n\t\tcalculationItem YTD = TOTALYTD(SELECTEDMEASURE(), '{name}')\n")
+    analysis = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
+    assert analysis["coverage"]["complete"]
+    revenue = next(row for row in analysis["items"] if row["item"].name == "Revenue")
+    assert revenue["removal_risk"] == "Safe"
+    refs = analyzer.parse_unsupported_metadata_refs(model)
+    consumer = next(ref for ref in refs if ref.feature == "calculation item expression")
+    assert consumer.item_keys == {("Sales", "Amount"), ("Sales", "Category")}
+    assert not consumer.unresolved_targets
+    policy = evaluate_deletion_policy(model, [report], [{"action": "delete", "table": "Sales",
+        "name": "Category", "item_type": "Column"}])
+    assert not policy["ok"] and any(v["rule_id"] == "SMC-D006" for v in policy["violations"])
+    assert evaluate_deletion_policy(model, [report], [{"action": "delete", "table": "Metrics",
+        "name": "Revenue", "item_type": "Measure"}])["ok"]
+
+
+@pytest.mark.parametrize("case", ["missing", "duplicate", "table_collision"])
+def test_calendar_ambiguity_keeps_shared_coverage_guard(tmp_path, case):
+    model, report = project(tmp_path, 'ROW("x", 1)')
+    tables = model / "definition/tables"
+    if case != "missing":
+        with (tables / "Sales.tmdl").open("a") as out:
+            out.write("\n\tcalendar Fiscal\n")
+    if case == "duplicate":
+        with (tables / "Metrics.tmdl").open("a") as out:
+            out.write("\n\tcalendar Fiscal\n")
+    if case == "table_collision":
+        (tables / "Fiscal.tmdl").write_text("table Fiscal\n\tcolumn Date\n")
+    (tables / "Time.tmdl").write_text(
+        "table Time\n\tcalculationGroup\n\t\tcalculationItem YTD = TOTALYTD(SELECTEDMEASURE(), 'Fiscal')\n")
+    assert not analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])["coverage"]["complete"]
+
+
+def test_calendar_words_in_comments_or_dax_are_not_declarations(tmp_path):
+    model, _ = project(tmp_path, 'ROW("calendar Fiscal", 1)')
+    with (model / "definition/tables/Sales.tmdl").open("a") as out:
+        out.write('\n\t// calendar Fiscal\n\tmeasure Label = "calendar Fiscal"\n')
+    assert analyzer.parse_calendar_tables(model) == {}
+
+
 @pytest.mark.parametrize("expression", [
     "'Sales'",
     "Sales",

@@ -154,8 +154,10 @@ references and consumers outside the measure group can keep it at `Review`.
 
 Calculation items using only selected value/format context no longer impose a
 shared limitation on unrelated items. Explicit references remain protected;
-name-based branching (`SELECTEDMEASURENAME()`), unresolved references, and bare
-table expressions still require review. Runtime DAX is not evaluated.
+name-based branching (`SELECTEDMEASURENAME()`), unresolved references, and unsupported bare
+table expressions still require review. Unique declared named calendars resolve to all
+columns of their declaring table; those columns remain protected. Unknown or ambiguous
+calendar names keep shared coverage incomplete. Runtime DAX is not evaluated.
 
 All query commands accept `-o`/`--output` for UTF-8 output relative to CWD;
 the same response is also printed to stdout. Output inside `.SemanticModel` or

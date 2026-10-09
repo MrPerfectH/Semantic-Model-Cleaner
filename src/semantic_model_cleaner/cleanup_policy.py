@@ -142,6 +142,15 @@ def _evaluate_deletion_policy(
     # Removing the last model item may remove its table. Bare-table DAX consumers
     # are not represented by item-to-item edges.
     removed_tables = {key[0] for key in targets if all(k in targets for k in rows if k[0] == key[0])}
+    # Calendar declarations survive item-only deletes. Protect all their table
+    # columns until a whole-table plan removes the declaration as well.
+    calendar_tables = {table.casefold() for owners in analyzer.parse_calendar_tables(model_path).values()
+                       for table in owners}
+    for key in sorted(targets):
+        if (key[0] in calendar_tables and key[0] not in removed_tables
+                and rows[key]["item"].item_type in ("Column", "Calculated Column")):
+            reject("SMC-D006", f"Keep {analyzer.format_item_ref(rows[key]['item'].key)}: "
+                   "its table contains a retained named calendar.", *rows[key]["item"].key)
     for source, tables in graphs["tables"].items():
         if not removed(source):
             for table in tables:
