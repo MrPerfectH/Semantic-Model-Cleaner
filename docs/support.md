@@ -2,7 +2,7 @@
 
 Semantic Model Cleaner is a free, MIT-licensed tool that works on local project files. No account or hosted service is required for analysis or cleanup. Start with a copy of your project or a Git branch, choose one semantic model and its reports, and inspect the selected scope before reviewing changes.
 
-The current public beta is [0.4.0b6](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b6). See the [release notes](releases/0.4.0b6.md) for fixes and verification boundaries.
+The current public beta is [0.4.0b7](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b7). See the [release notes](releases/0.4.0b7.md) for fixes and verification boundaries.
 
 ## Inputs
 
@@ -54,7 +54,7 @@ Review decisions and naming conventions can be saved in the repository; see [rev
 ## Installation and reporting problems
 
 Windows users should download the versioned ZIP and checksum from the
-[v0.4.0b6 prerelease](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b6),
+[v0.4.0b7 prerelease](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b7),
 verify the SHA-256 value, extract the entire ZIP, and run the executable from
 the extracted folder. The app opens a local browser UI. Preserve the adjacent
 packaged files, including the release manifest, static assets, schemas, and demo
