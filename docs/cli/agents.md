@@ -1,6 +1,6 @@
 # External AI and automation
 
-Available on main after the 0.4.0b4 release; the existing 0.4.0b4 download does not include these commands.
+Available in the 0.4.0b5 and later public beta downloads.
 
 Run `smc capabilities` for the installed tool version, supported operations version and workflow. Run `smc operations-schema` to obtain the complete standalone JSON Schema (Draft 2020-12). Both work offline and print UTF-8 JSON. Capabilities uses the standard command envelope; operations-schema prints the schema itself so validators can consume it directly.
 

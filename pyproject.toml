@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "semantic-model-cleaner"
-version = "0.4.0b6"
+version = "0.4.0b7"
 description = "Analyze Power BI PBIR + TMDL projects and apply semantic model cleanup actions locally."
 readme = "README.md"
 license = "MIT"
@@ -59,7 +59,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-semantic_model_cleaner = ["templates/*.html", "static/*.js", "static/*.css", "demo_workspace/**/*", "schemas/**/*", "schemas/microsoft-report/LICENSE"]
+semantic_model_cleaner = ["templates/*.html", "static/*.js", "static/*.css", "static/*.svg", "demo_workspace/**/*", "schemas/**/*", "schemas/microsoft-report/LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -2,7 +2,7 @@
 
 Use a disposable copy or Git branch containing one TMDL `.SemanticModel` and its connected PBIR `.Report` folders. Analysis runs locally without Power BI Desktop, an account, or Fabric.
 
-Download [0.4.0b4 public beta](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b4). The steps below cover its first analysis and reviewed recovery workflow. See the [release notes](releases/0.4.0b4.md).
+Download [0.4.0b7 public beta](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b7). The steps below cover its first analysis and reviewed recovery workflow. See the [release notes](releases/0.4.0b7.md).
 
 1. Download the versioned Windows ZIP and its `.sha256` sidecar from the same release. Compare the ZIP's SHA-256 with the sidecar (`Get-FileHash <zip-path> -Algorithm SHA256`).
 2. Extract the **complete ZIP**. Keep the EXE and adjacent files together, then run `Semantic Model Cleaner.exe`. No Python installation is required. The beta is unsigned; Windows reputation prompts vary by machine.
@@ -25,7 +25,7 @@ PBIX binaries are not supported inputs. In Power BI Desktop, save a copy as a Po
 Download the wheel from the same release and install it using Python 3.11 or newer. The Windows GUI EXE is a launcher; CLI commands come from the Python package.
 
 ```powershell
-python -m pip install .\semantic_model_cleaner-0.4.0b4-py3-none-any.whl
+python -m pip install .\semantic_model_cleaner-0.4.0b7-py3-none-any.whl
 smc --version
 smc --help
 smc "C:\Projects\Example" --format json -o "C:\Exports\analysis.json"
