@@ -434,3 +434,38 @@ def test_candidate_and_baseline_share_coherent_service_limitations(tmp_path):
             if item["status"] == "No Use Found In Scope":
                 assert shared <= set(item["analysisLimitationIds"])
                 assert item["removalRisk"] != "Safe"
+
+
+def test_snapshot_alias_paths_preserve_service_identity_and_durable_locations(
+    tmp_path, monkeypatch
+):
+    from contextlib import contextmanager
+    from semantic_model_cleaner import service_analysis
+
+    original = service_analysis.tempfile.TemporaryDirectory
+
+    @contextmanager
+    def aliased_temporary_directory(**kwargs):
+        with original(**kwargs) as directory:
+            # Analyzer paths resolve aliases (also Windows short/long TEMP paths).
+            # An unresolved parent hop reproduces that identity mismatch on Linux.
+            alias = Path(directory) / "alias"
+            alias.mkdir()
+            yield str(alias / "..")
+
+    monkeypatch.setattr(
+        service_analysis.tempfile, "TemporaryDirectory", aliased_temporary_directory
+    )
+    data = transcript()
+    replace_part(
+        data["responses"][2]["body"],
+        "definition/tables/Sales.tmdl",
+        "table Sales\n\tmeasure Spare = 1\n",
+    )
+    result = service_analysis.audit(provider(tmp_path, data))
+    finding = result["report_health"]["findings"][0]
+    assert finding["report_id"] == R
+    assert finding["workspace_id"] == W
+    assert finding["reportPath"].startswith("snapshot://" + result["snapshot"]["id"] + "/")
+    assert "\\" not in finding["reportPath"]
+    assert "smc-service-snapshot-" not in json.dumps(result)

@@ -49,7 +49,7 @@ def snapshot(provider):
         model_definition=None,
     )
     with tempfile.TemporaryDirectory(prefix="smc-service-snapshot-") as temporary:
-        root = Path(temporary)
+        root = Path(temporary).resolve()
         state = Snapshot(root, None, [], result)
         if result["status"] != "failed":
             try:
@@ -194,7 +194,11 @@ def analyze_snapshot(state, model, provider):
         if isinstance(value, list):
             return [durable(item) for item in value]
         if isinstance(value, str):
-            return value.replace(str(state.root), "snapshot://" + state.result["snapshot"]["id"])
+            prefix = str(state.root)
+            uri = "snapshot://" + state.result["snapshot"]["id"]
+            if value.startswith(prefix):
+                return uri + value[len(prefix) :].replace("\\", "/")
+            return value.replace(prefix, uri).replace(state.root.as_posix(), uri)
         return value
 
     exported = durable(exported)
