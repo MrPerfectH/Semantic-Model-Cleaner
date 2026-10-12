@@ -3,7 +3,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   let revision = 0, epoch = 0, jobId = null, pollTimer = null, authTimer = null;
-  let invalidating = Promise.resolve();
+  let invalidating = Promise.resolve(), invalidationError = null;
   const fixture = document.body.dataset.fixture === 'true';
   const fields = ['tenant', 'workspace', 'model', 'scope', 'action', 'candidate', 'repository', 'localModel', 'mapping', 'compareRepo'];
   const node = (tag, text, className) => { const item = document.createElement(tag); if (text !== undefined) item.textContent = text; if (className) item.className = className; return item; };
@@ -29,7 +29,7 @@
       api('sign-in', 'DELETE').catch(() => {});
     }
     summary();
-    invalidating = invalidating.then(() => api('jobs', 'DELETE')).then(data => { revision = data.revision; }).catch(e => { error(e.message); throw e; });
+    invalidating = invalidating.then(() => api('jobs', 'DELETE')).then(data => { revision = data.revision; invalidationError = null; }).catch(e => { invalidationError = e; error(e.message); });
   }
   fields.forEach(id => $(id).addEventListener('input', () => changed(id)));
   $('identity').addEventListener('click', async () => {
@@ -66,12 +66,15 @@
     authTimer = setTimeout(async () => { try { await pollAuth(started, await api('sign-in')); } catch (e) { error(e.message); } }, 800);
   }
   $('cancelSignIn').addEventListener('click', async () => {
-    clearTimeout(authTimer); await api('sign-in', 'DELETE'); $('devicePrompt').hidden = true; $('deviceCode').textContent = ''; $('cancelSignIn').hidden = true; $('authStatus').textContent = 'Sign-in cancelled.';
+    clearTimeout(authTimer);
+    try { await api('sign-in', 'DELETE'); $('devicePrompt').hidden = true; $('deviceCode').textContent = ''; $('cancelSignIn').hidden = true; $('authStatus').textContent = 'Sign-in cancelled.'; } catch (e) { error(e.message); }
   });
   $('models').addEventListener('click', async () => {
     const started = epoch; $('models').disabled = true; $('authStatus').textContent = 'Checking access to this exact workspace…';
     try {
       error(''); await invalidating;
+      if (started !== epoch) return;
+      if (invalidationError) throw invalidationError;
       const data = await api('models', 'POST', {tenant_id: $('tenant').value, workspace_id: $('workspace').value});
       if (started !== epoch) return;
       $('model').replaceChildren(new Option('Select a model by its exact ID', ''));
@@ -83,6 +86,8 @@
     const started = epoch;
     try {
       error(''); await invalidating;
+      if (started !== epoch) return;
+      if (invalidationError) throw invalidationError;
       const payload = {revision, action: $('action').value, tenant_id: $('tenant').value, workspace_id: $('workspace').value, model_id: $('model').value,
         report_workspace_ids: $('scope').value.split(/\s+/).filter(Boolean), candidate: $('candidate').value.trim(), repository: ($('compareRepo').checked || $('action').value === 'compare') ? $('repository').value.trim() : '', local_model: $('localModel').value.trim(), mapping: $('mapping').value.trim()};
       if (!payload.model_id || !payload.report_workspace_ids.length) throw new Error('Select an exact model and at least one report workspace.');
