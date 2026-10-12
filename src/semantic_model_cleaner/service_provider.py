@@ -778,6 +778,11 @@ def public_summary(result):
             key: result["candidate"][key]
             for key in ("sha256", "captured_at", "unchanged_after_run")
         }
+    if result.get("repository_comparison"):
+        summary["repository_comparison_counts"] = {
+            key: len(result["repository_comparison"][key])
+            for key in ("matched", "additional_published", "local_only", "unresolved")
+        }
     return summary
 
 

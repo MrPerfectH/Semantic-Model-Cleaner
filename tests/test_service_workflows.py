@@ -288,3 +288,130 @@ def test_candidate_cli_and_target_validation(tmp_path):
     result = json.loads(completed.stdout)
     assert result["comparison"]["introduced"] == []
     assert result["candidate"]["sha256"]
+
+
+def repository_fixture(tmp_path, count=4):
+    import base64
+    import copy
+    import os
+
+    repo = tmp_path / "Repo"
+    repo.mkdir()
+    model = candidate_dir(repo)
+    data = transcript()
+    template = data["responses"][-1]
+    inventory = []
+    definitions = []
+    mappings = []
+    for index in range(count):
+        report_id = f"00000000-0000-0000-0000-{index + 4:012}"
+        inventory.append(
+            {
+                "id": report_id,
+                "datasetId": M,
+                "reportType": "PowerBIReport",
+                "name": "Same display name",
+            }
+        )
+        definition = copy.deepcopy(template)
+        definition["url"] = definition["url"].replace(R, report_id)
+        definitions.append(definition)
+        if index < 2:
+            local = repo / "Reports" / f"R{index}.Report"
+            local.mkdir(parents=True)
+            for part in definition["body"]["definition"]["parts"]:
+                path = local / part["path"]
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(base64.b64decode(part["payload"]))
+            (local / "definition.pbir").write_text(
+                json.dumps(
+                    {"datasetReference": {"byPath": {"path": os.path.relpath(model, local)}}}
+                )
+            )
+            mappings.append(
+                {
+                    "local_report": str(local.relative_to(repo)),
+                    "workspace_id": W,
+                    "report_id": report_id,
+                }
+            )
+    data["responses"][1]["body"]["value"] = inventory
+    data["responses"] = data["responses"][:3] + definitions
+    mapping = tmp_path / "mapping.json"
+    mapping.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "target": {"tenant_id": T, "workspace_id": W, "model_id": M},
+                "reports": mappings,
+            }
+        )
+    )
+    return repo, model, mapping, data
+
+
+def test_two_repository_reports_plus_two_additional_and_definition_equality(tmp_path):
+    from semantic_model_cleaner.service_analysis import audit
+
+    repo, model, mapping, data = repository_fixture(tmp_path)
+    result = audit(provider(tmp_path, data), repository=repo, local_model=model, mapping=mapping)
+    comparison = result["repository_comparison"]
+    assert len(comparison["matched"]) == 2
+    assert len(comparison["additional_published"]) == 2
+    assert comparison["unresolved"] == []
+    assert comparison["matched"][0]["definition_comparison"]["status"] == "equal_content_bytes"
+    assert comparison["matched"][0]["identity_evidence"] == "explicit_target_bound_mapping"
+    (repo / "Reports/R0.Report/definition/report.json").write_text('{"changed": true}')
+    result = audit(provider(tmp_path, data), repository=repo, local_model=model, mapping=mapping)
+    assert (
+        result["repository_comparison"]["matched"][0]["definition_comparison"]["status"]
+        == "different_content_bytes"
+    )
+
+
+def test_same_names_without_mapping_and_dev_prod_mapping_are_not_identity(tmp_path):
+    from semantic_model_cleaner.service_analysis import audit
+
+    repo, model, mapping, data = repository_fixture(tmp_path)
+    result = audit(provider(tmp_path, data), repository=repo, local_model=model)
+    assert result["repository_comparison"]["matched"] == []
+    assert len(result["repository_comparison"]["unresolved"]) == 2
+    assert result["selected_scope_complete"] is False
+    content = json.loads(mapping.read_text())
+    content["target"]["model_id"] = OTHER
+    mapping.write_text(json.dumps(content))
+    result = audit(provider(tmp_path, data), repository=repo, local_model=model, mapping=mapping)
+    assert "repository_comparison" not in result
+    assert any(
+        g["code"] == "repository_mapping_target_mismatch" for g in result["analysis_limitations"]
+    )
+
+
+def test_local_only_is_only_a_scoped_identity_observation(tmp_path):
+    from semantic_model_cleaner.service_analysis import audit
+
+    repo, model, mapping, data = repository_fixture(tmp_path)
+    content = json.loads(mapping.read_text())
+    content["reports"][0]["report_id"] = "00000000-0000-0000-0000-000000000099"
+    mapping.write_text(json.dumps(content))
+    result = audit(provider(tmp_path, data), repository=repo, local_model=model, mapping=mapping)
+    row = result["repository_comparison"]["local_only"][0]
+    assert row["reason"] == "mapped_identity_not_observed_connected_in_scope"
+    assert "globally unpublished" in result["repository_comparison"]["limitations"][0]
+
+
+def test_duplicate_or_escaping_mappings_are_not_accepted(tmp_path):
+    from semantic_model_cleaner.service_analysis import audit
+
+    repo, model, mapping, data = repository_fixture(tmp_path)
+    content = json.loads(mapping.read_text())
+    content["reports"].append(content["reports"][0])
+    mapping.write_text(json.dumps(content))
+    result = audit(provider(tmp_path, data), repository=repo, local_model=model, mapping=mapping)
+    assert any(g["code"] == "repository_mapping_ambiguous" for g in result["analysis_limitations"])
+    content["reports"] = [dict(content["reports"][0], local_report="../elsewhere.Report")]
+    mapping.write_text(json.dumps(content))
+    result = audit(provider(tmp_path, data), repository=repo, local_model=model, mapping=mapping)
+    assert any(
+        g["code"] == "repository_mapping_path_invalid" for g in result["analysis_limitations"]
+    )

@@ -110,3 +110,47 @@ Expression-only and relationship changes are not proven compatible merely
 because references resolve. Static metadata validation never proves runtime
 behavior or universal consumer coverage. Inaccessible/unsupported Reports and
 parser limitations propagate through both analyses and take exit-code priority.
+
+## Repository versus published consumers (#120)
+
+`smc service compare` takes the same target/scope options, plus
+`--repository PROJECT --local-model EXACT_MODEL_PATH --mapping MAPPING.json`.
+The same optional repository arguments work with `audit` and `validate`;
+validation uses its explicit candidate as the local model unless overridden.
+
+Mappings are environment-specific and must name the exact target:
+
+```json
+{
+  "schema_version": 1,
+  "target": {
+    "tenant_id": "TENANT_GUID",
+    "workspace_id": "TARGET_WORKSPACE_GUID",
+    "model_id": "TARGET_MODEL_GUID"
+  },
+  "reports": [
+    {"local_report": "Reports/Executive.Report", "workspace_id": "REPORT_WORKSPACE_GUID", "report_id": "REPORT_GUID"}
+  ]
+}
+```
+
+The private result separates matched, additional published, local-only,
+unresolved and excluded local Reports, with identity evidence for each match.
+Local connections must point to the selected exact local model path or exact
+service model ID. Duplicate mappings, target mismatches and path escapes are
+rejected. Missing mappings remain unresolved, even if names or `.platform`
+logical IDs look identical. Unresolved local identities can correspond to
+otherwise unmatched published Reports; “additional” means no confirmed
+repository match in this inspected scope, not a universal identity claim.
+
+Local-only means the explicitly mapped Report was not observed connected in a
+fully enumerated selected workspace; it never means globally unpublished.
+Denied or unsearched workspaces instead leave the mapping unresolved.
+
+Identity confirmation is separate from definition comparison. Where both
+snapshots are available, `enhanced-pbir-content-bytes/v1` hashes sorted relative
+paths and exact bytes under `definition/` and `StaticResources/`. It excludes
+`definition.pbir` (connection), `.platform` (logical identity), local caches,
+diagram layout and unrelated files. Equal content bytes means only equality of
+that documented subset, not equal binding, runtime behavior or all service
+metadata. Other cases explicitly say `not_checked`.

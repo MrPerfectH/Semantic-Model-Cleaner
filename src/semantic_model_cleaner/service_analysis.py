@@ -254,9 +254,28 @@ def audit_state(state, provider):
     return result
 
 
-def audit(provider):
+def audit(provider, *, repository=None, local_model=None, mapping=None):
     with snapshot(provider) as state:
-        return audit_state(state, provider)
+        result = audit_state(state, provider)
+        attach_repository(state, provider, repository, local_model, mapping)
+        return result
+
+
+def attach_repository(state, provider, repository, local_model, mapping):
+    if repository is None:
+        return
+    from .service_repository import compare_repository
+
+    try:
+        if local_model is None:
+            raise ProbeError("repository_local_model_required")
+        compare_repository(state, provider, repository, local_model, mapping)
+    except ProbeError as exc:
+        add_gap(state.result, str(exc), "local_repository")
+    if state.result.get("coverage"):
+        state.result["coverage"]["selected_scope_complete"] = state.result[
+            "selected_scope_complete"
+        ]
 
 
 def tree_digest(root, *, copy_to=None):
@@ -307,7 +326,7 @@ def finding_key(finding):
     )
 
 
-def validate_candidate(provider, candidate):
+def validate_candidate(provider, candidate, *, repository=None, local_model=None, mapping=None):
     with snapshot(provider) as state:
         result = audit_state(state, provider)
         result["command"] = "service validate"
@@ -394,4 +413,5 @@ def validate_candidate(provider, candidate):
             if isinstance(exc, AnalysisCancelled):
                 raise
             add_gap(result, "candidate_analysis_failed", "local_candidate")
+        attach_repository(state, provider, repository, local_model or candidate, mapping)
         return result

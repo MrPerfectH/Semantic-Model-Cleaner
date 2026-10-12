@@ -23,11 +23,22 @@ def parser_for():
         description="Experimental read-only service validation. Live API compatibility remains unverified.",
         json_errors=True,
     )
-    parser.add_argument("action", choices=["discover", "audit", "validate"])
+    parser.add_argument("action", choices=["discover", "audit", "validate", "compare"])
     parser.add_argument(
         "--candidate",
         type=Path,
         help="Exact local TMDL Semantic Model directory; required for validate.",
+    )
+    parser.add_argument(
+        "--repository",
+        type=Path,
+        help="Optional exact local Power BI Project for identity comparison.",
+    )
+    parser.add_argument(
+        "--local-model", type=Path, help="Exact local model whose connected Reports are compared."
+    )
+    parser.add_argument(
+        "--mapping", type=Path, help="Target-bound explicit Report identity mapping JSON."
     )
     parser.add_argument("--tenant-id", required=True)
     parser.add_argument("--workspace-id", required=True, help="Exact model workspace GUID.")
@@ -77,6 +88,10 @@ def render_text(result):
         for category in ("pre_existing", "introduced", "resolved"):
             lines.append(f"  {category}: {len(result['comparison'][category])}")
         lines.extend(result.get("validation_limits", []))
+    if result.get("repository_comparison"):
+        lines.append("Repository comparison:")
+        for category in ("matched", "additional_published", "local_only", "unresolved"):
+            lines.append(f"  {category}: {len(result['repository_comparison'][category])}")
     lines.append("Report Health:")
     for finding in result.get("report_health", {}).get("findings", []):
         lines.append(
@@ -103,11 +118,23 @@ def execute(args, *, progress=None):
             raise ProbeError("candidate_requires_exact_tmdl_model_directory")
         from .service_analysis import validate_candidate
 
-        return validate_candidate(provider, args.candidate)
-    if args.action == "audit":
+        return validate_candidate(
+            provider,
+            args.candidate,
+            repository=args.repository,
+            local_model=args.local_model,
+            mapping=args.mapping,
+        )
+    if args.action in {"audit", "compare"}:
+        if args.action == "compare" and not args.repository:
+            raise ProbeError("repository_directory_required")
         from .service_analysis import audit
 
-        return audit(provider)
+        result = audit(
+            provider, repository=args.repository, local_model=args.local_model, mapping=args.mapping
+        )
+        result["command"] = f"service {args.action}"
+        return result
     return provider.discover()
 
 
