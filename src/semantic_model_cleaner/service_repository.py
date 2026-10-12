@@ -32,7 +32,8 @@ def comparable_report_digest(root):
         raise ProbeError("repository_report_format_unsupported")
     total = 0
     for path in sorted(files):
-        data = path.read_bytes()
+        with path.open("rb") as stream:
+            data = stream.read(64 * 1024 * 1024 - total + 1)
         total += len(data)
         if total > 64 * 1024 * 1024:
             raise ProbeError("repository_report_size_limit")

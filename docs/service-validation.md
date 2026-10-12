@@ -194,3 +194,47 @@ For a synthetic browser check only, start the server with
 `SMC_SERVICE_FIXTURE=/absolute/path/to/supported.json smc-web --port 8765`.
 The page prominently labels fixture mode. A browser request cannot turn fixture
 mode on or supply credentials. No fixture execution establishes live acceptance.
+
+## Independent checks and acceptance boundary (#122)
+
+Run the complete repository suite and lint, build the distribution, then execute
+both installed-wheel checks outside the checkout:
+
+```bash
+python -m ruff check .
+python -m pytest
+python -m build
+python scripts/smoke_wheel.py dist/*.whl
+python scripts/smoke_service_wheel.py dist/*.whl
+```
+
+The service wheel smoke creates a fresh environment with resolved dependencies
+and runs all four actual CLI commands plus the installed HTTP application. It
+checks real analysis against synthetic definitions, exits 0/1/2, candidate
+breakage, repository identity/definition comparison, partial access, source
+hashes, sanitized/private exports, CLI/API agreement and expired results.
+`--root NEW_DIRECTORY` retains that synthetic installation for a T3 browser
+check. The existing wheel smoke checks offline CLI/baseline contracts and the
+original application assets. CI runs the service wheel smoke on Linux; Windows
+unit tests are automated platform checks, not native owner acceptance.
+
+Unit fixtures additionally cover LROs/pagination, throttling, encrypted and
+unsupported definitions, binding drift, cross-workspace identity, authentication
+failures, parser gaps, candidate additions/removals, repeated runs, cancellation,
+local HTTP isolation and target invalidation. None establish live permissions,
+service completeness, visual rendering correctness or runtime DAX behavior.
+
+All service workflows remain **experimental**. #116 remains open pending Linux
+sign-in and authenticated inspection of the authorized workspace's actual model
+candidates; the tenant and selected model must then be recorded privately by ID.
+The remaining live gate includes non-admin owner access and permission/API
+compatibility, same/cross-workspace Reports, good/broken/partial cases, candidate
+and repository comparisons, cancellation/repeated runs and exported provenance.
+Do not treat owner impact-analysis visibility as definition API permission.
+
+#122 additionally requires CI on the final integrated revision, native Windows
+package and supported macOS installation/launch evidence, disposable-project
+cleanup regression evidence, and the owner's explicit go/no-go for that exact
+build. Linux source, wheel and T3 browser fixtures do not replace those gates.
+The integration PR stays draft with auto-merge disabled, and no service issue is
+closed or main merge authorized by these independent checks.

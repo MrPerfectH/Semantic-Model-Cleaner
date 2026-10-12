@@ -13,6 +13,7 @@ COMMAND_GUIDE = """Commands (use COMMAND --help for details):
   smc cleanup-groups PROJECT      Preview dead measure deletion groups
   smc capabilities                Discover query options and reviewed operations
   smc check PROJECT               Read-only CI checks (JSON by default)
+  smc service ACTION              Experimental read-only service discovery/audit/validate/compare
   smc operations-schema           Standalone JSON Schema for versioned operations
   smc clean-stale PROJECT          Discover stale Report metadata (read-only)
   smc plan PROJECT --operations FILE -o PLAN

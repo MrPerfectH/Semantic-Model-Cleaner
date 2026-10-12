@@ -108,11 +108,48 @@ def snapshot(provider):
         try:
             yield state
         finally:
+            finalize_coverage(result)
             for row in result["reports"]:
                 row.pop("_snapshot_path", None)
             result["snapshot"]["finished_at"] = now()
             result["finished_at"] = now()
             result["requests"] = provider.evidence.data["requests"]
+
+
+def finalize_coverage(result):
+    """Keep every service projection's limitation units/IDs coherent at publication."""
+    result["analysis_limitations"] = list(
+        {gap["id"]: gap for gap in result["analysis_limitations"]}.values()
+    )
+    shared_ids = [gap["id"] for gap in result["analysis_limitations"] if gap["scope"] == "shared"]
+    if "analysis" not in result:
+        return
+    result["coverage"] = {
+        "complete": False,
+        "selected_scope_complete": result["selected_scope_complete"],
+        "limitations": result["analysis_limitations"],
+    }
+    for key in ("analysis", "candidate_analysis"):
+        analysis = result.get(key)
+        if not analysis:
+            continue
+        analysis["coverage"] = result["coverage"]
+        analysis["analysisLimitations"] = result["analysis_limitations"]
+        for item in analysis["items"]:
+            if item["status"] == "No Use Found In Scope":
+                item["analysisLimitationIds"] = list(
+                    dict.fromkeys([*item["analysisLimitationIds"], *shared_ids])
+                )
+                if item["removalRisk"] == "Safe":
+                    item["removalRisk"] = "Review"
+        analysis["analysisLimitationSummary"] = {
+            "distinct_count": len(result["analysis_limitations"]),
+            "shared_count": len(shared_ids),
+            "targeted_count": len(result["analysis_limitations"]) - len(shared_ids),
+            "affected_item_count": sum(
+                bool(item["analysisLimitationIds"]) for item in analysis["items"]
+            ),
+        }
 
 
 def analyze_snapshot(state, model, provider):
@@ -292,7 +329,8 @@ def tree_digest(root, *, copy_to=None):
             raise ProbeError("candidate_symlinks_not_supported")
         if not path.is_file():
             continue
-        data = path.read_bytes()
+        with path.open("rb") as stream:
+            data = stream.read(MAX_BYTES - total + 1)
         total += len(data)
         if total > MAX_BYTES:
             raise ProbeError("candidate_size_limit")

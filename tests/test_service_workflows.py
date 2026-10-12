@@ -415,3 +415,22 @@ def test_duplicate_or_escaping_mappings_are_not_accepted(tmp_path):
     assert any(
         g["code"] == "repository_mapping_path_invalid" for g in result["analysis_limitations"]
     )
+
+
+def test_candidate_and_baseline_share_coherent_service_limitations(tmp_path):
+    from semantic_model_cleaner.service_analysis import validate_candidate
+
+    data = transcript()
+    data["responses"][-1].update(status=403, body={})
+    result = validate_candidate(provider(tmp_path, data), candidate_dir(tmp_path))
+    shared = {g["id"] for g in result["analysis_limitations"] if g["scope"] == "shared"}
+    for key in ("analysis", "candidate_analysis"):
+        analysis = result[key]
+        assert analysis["coverage"]["complete"] is False
+        assert analysis["analysisLimitationSummary"]["distinct_count"] == len(
+            result["analysis_limitations"]
+        )
+        for item in analysis["items"]:
+            if item["status"] == "No Use Found In Scope":
+                assert shared <= set(item["analysisLimitationIds"])
+                assert item["removalRisk"] != "Safe"
