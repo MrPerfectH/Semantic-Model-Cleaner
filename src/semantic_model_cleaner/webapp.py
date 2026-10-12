@@ -2247,5 +2247,17 @@ def api_naming_preview():
         return jsonify({'ok': False, 'error': str(exc)}), 400
 
 
+# Service jobs/results are isolated from _state["last_results"] and every cleanup route.
+from .service_web import install_service_routes
+
+
+def _service_local_context():
+    selected = _state.get("model_paths") or []
+    return {"candidate": str(selected[0]) if selected else "", "repository": _state.get("workspace") or ""}
+
+
+_service_jobs = install_service_routes(app, _service_local_context)
+
+
 if __name__ == "__main__":
     main()

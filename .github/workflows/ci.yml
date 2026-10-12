@@ -40,6 +40,10 @@ jobs:
         if: matrix.python-version == '3.11'
         run: python scripts/smoke_wheel.py dist/*.whl
 
+      - name: Smoke-test experimental service workflows from installed wheel (fixtures)
+        if: matrix.python-version == '3.11'
+        run: python scripts/smoke_service_wheel.py dist/*.whl
+
   test-windows:
     runs-on: windows-latest
 
