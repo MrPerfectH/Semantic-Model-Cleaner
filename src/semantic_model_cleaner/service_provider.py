@@ -767,6 +767,17 @@ def public_summary(result):
             key: result["model_definition"][key]
             for key in ("format", "sha256", "retrieved_at", "cached")
         }
+    if result.get("comparison"):
+        summary["comparison_counts"] = {
+            key: len(result["comparison"][key])
+            for key in ("pre_existing", "introduced", "resolved")
+        }
+        summary["validation_limits"] = result.get("validation_limits", [])
+    if result.get("candidate"):
+        summary["candidate"] = {
+            key: result["candidate"][key]
+            for key in ("sha256", "captured_at", "unchanged_after_run")
+        }
     return summary
 
 

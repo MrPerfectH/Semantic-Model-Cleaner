@@ -194,3 +194,97 @@ def test_audit_command_executes_real_analyzer():
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert json.loads(completed.stdout)["analysis"]["summary"]["total_usage_refs"] == 1
+
+
+def candidate_dir(tmp_path, table="table Sales\n\tmeasure Revenue = 1\n\tmeasure Spare = 2\n"):
+    model = tmp_path / "Candidate.SemanticModel"
+    (model / "definition/tables").mkdir(parents=True)
+    (model / "definition/model.tmdl").write_text("model Model\n")
+    (model / "definition/tables/Sales.tmdl").write_text(table)
+    return model
+
+
+@pytest.mark.parametrize(
+    "table,introduced",
+    [
+        ("table Sales\n\tmeasure Revenue = 2\n\tmeasure Spare = 2\n", 0),
+        ("table Sales\n\tmeasure Revenue = 1\n\tmeasure Added = 3\n", 0),
+        ("table Sales\n\tmeasure Renamed = 1\n", 1),
+        ("table Different\n\tmeasure Revenue = 1\n", 1),
+    ],
+)
+def test_candidate_measure_expression_addition_rename_and_table_removal(
+    tmp_path, table, introduced
+):
+    from semantic_model_cleaner.service_analysis import validate_candidate, tree_digest
+    from semantic_model_cleaner.service_provider import result_exit
+
+    model = candidate_dir(tmp_path, table)
+    before = tree_digest(model)
+    result = validate_candidate(provider(tmp_path), model)
+    assert result["comparison"]["same_report_snapshot"] is True
+    assert len(result["comparison"]["introduced"]) == introduced
+    assert result_exit(result) == (1 if introduced else 0)
+    assert result["candidate"]["unchanged_after_run"] is True
+    assert tree_digest(model) == before
+    assert result["candidate"]["source_kind"] == "local_candidate"
+    assert result["model_definition"]["model_id"] == M
+    assert result["comparison"]["static_reference_check_only"] is True
+    assert result["validation_limits"]
+
+
+def test_candidate_existing_problem_separate_from_introduced(tmp_path):
+    from semantic_model_cleaner.service_analysis import validate_candidate
+
+    data = transcript()
+    replace_part(
+        data["responses"][2]["body"],
+        "definition/tables/Sales.tmdl",
+        "table Sales\n\tmeasure Spare = 2\n",
+    )
+    model = candidate_dir(tmp_path, "table Sales\n\tmeasure Spare = 3\n")
+    result = validate_candidate(provider(tmp_path, data), model)
+    assert len(result["comparison"]["pre_existing"]) == 1
+    assert result["comparison"]["introduced"] == []
+
+
+def test_candidate_column_removal_against_same_reports(tmp_path):
+    import base64
+    from semantic_model_cleaner.service_analysis import validate_candidate
+
+    data = transcript()
+    replace_part(
+        data["responses"][2]["body"],
+        "definition/tables/Sales.tmdl",
+        "table Sales\n\tcolumn Revenue\n\t\tdataType: int64\n",
+    )
+    parts = data["responses"][-1]["body"]["definition"]["parts"]
+    visual = next(part for part in parts if part["path"].endswith("visual.json"))
+    content = base64.b64decode(visual["payload"]).decode().replace('"Measure"', '"Column"')
+    visual["payload"] = base64.b64encode(content.encode()).decode()
+    result = validate_candidate(
+        provider(tmp_path, data),
+        candidate_dir(tmp_path, "table Sales\n\tcolumn Different\n\t\tdataType: int64\n"),
+    )
+    assert len(result["comparison"]["introduced"]) == 1
+    assert result["comparison"]["introduced"][0]["refType"] == "Column"
+
+
+def test_candidate_cli_and_target_validation(tmp_path):
+    model = candidate_dir(tmp_path)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "semantic_model_cleaner",
+            *cli_args("validate"),
+            "--candidate",
+            str(model),
+        ],
+        text=True,
+        capture_output=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    result = json.loads(completed.stdout)
+    assert result["comparison"]["introduced"] == []
+    assert result["candidate"]["sha256"]

@@ -257,3 +257,141 @@ def audit_state(state, provider):
 def audit(provider):
     with snapshot(provider) as state:
         return audit_state(state, provider)
+
+
+def tree_digest(root, *, copy_to=None):
+    """Hash exact source bytes; optionally snapshot them without following symlinks."""
+    import hashlib
+    from .service_provider import MAX_BYTES
+
+    root = Path(root)
+    if root.is_symlink() or not root.is_dir() or not (root / "definition/model.tmdl").is_file():
+        raise ProbeError("candidate_requires_exact_tmdl_model_directory")
+    digest, total = hashlib.sha256(), 0
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise ProbeError("candidate_symlinks_not_supported")
+        if not path.is_file():
+            continue
+        data = path.read_bytes()
+        total += len(data)
+        if total > MAX_BYTES:
+            raise ProbeError("candidate_size_limit")
+        relative = path.relative_to(root).as_posix()
+        digest.update(relative.encode() + b"\0" + data + b"\0")
+        if copy_to:
+            destination = copy_to / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(data)
+    return digest.hexdigest()
+
+
+def finding_key(finding):
+    """Same retrieved Report location/reference, independent of model snapshot paths."""
+    return tuple(
+        finding.get(key, "")
+        for key in (
+            "workspace_id",
+            "report_id",
+            "issueType",
+            "page",
+            "visualId",
+            "context",
+            "table",
+            "name",
+            "refType",
+            "artifactKind",
+            "sourcePath",
+            "selectorValue",
+        )
+    )
+
+
+def validate_candidate(provider, candidate):
+    with snapshot(provider) as state:
+        result = audit_state(state, provider)
+        result["command"] = "service validate"
+        result["validation_limits"] = [
+            "Static metadata reference validation does not prove expression semantics, relationship behavior, DAX execution, rendering or data correctness.",
+            "The local candidate is explicitly compared with this deployment; no environment equivalence is inferred.",
+        ]
+        if "analysis" not in result:
+            return result
+        try:
+            provider.progress("Snapshotting local TMDL candidate")
+            copied = state.root / "Candidate.SemanticModel"
+            candidate = Path(candidate)
+            digest = tree_digest(candidate, copy_to=copied)
+            result["candidate"] = {
+                "source_kind": "local_candidate",
+                "path": str(candidate.absolute()),
+                "sha256": digest,
+                "captured_at": now(),
+                "unchanged_after_run": None,
+            }
+            candidate_analysis = analyze_snapshot(state, copied, provider)
+            baseline_findings = result["report_health"]["findings"]
+            candidate_findings = candidate_analysis["reportIssues"]
+            baseline = {finding_key(f): f for f in baseline_findings}
+            proposed = {finding_key(f): f for f in candidate_findings}
+            result["comparison"] = {
+                "pre_existing": [proposed[k] for k in proposed.keys() & baseline.keys()],
+                "introduced": [proposed[k] for k in proposed.keys() - baseline.keys()],
+                "resolved": [baseline[k] for k in baseline.keys() - proposed.keys()],
+                "published_baseline_findings": baseline_findings,
+                "same_report_snapshot": True,
+                "report_definition_hashes": [
+                    row["definition"]["sha256"]
+                    for row in result["reports"]
+                    if row.get("_snapshot_path")
+                ],
+                "static_reference_check_only": True,
+            }
+            # Sort for deterministic exports regardless of hash randomization.
+            for category in ("pre_existing", "introduced", "resolved"):
+                result["comparison"][category].sort(key=lambda f: repr(finding_key(f)))
+            result["report_health"] = {
+                "checked": bool(state.reports),
+                "findings": candidate_findings,
+            }
+            if not candidate_analysis["coverage"]["complete"]:
+                result["selected_scope_complete"] = False
+            for gap in candidate_analysis["analysisLimitations"]:
+                result["analysis_limitations"].append(
+                    {
+                        **gap,
+                        "id": "candidate:" + gap["id"],
+                        "code": "candidate_parser_analysis_limitation",
+                    }
+                )
+            result["candidate"]["unchanged_after_run"] = tree_digest(candidate) == digest
+            if not result["candidate"]["unchanged_after_run"]:
+                add_gap(result, "candidate_changed_during_validation", "local_candidate")
+            candidate_analysis["parser_coverage"] = candidate_analysis["coverage"]
+            candidate_analysis["coverage"] = {
+                "complete": False,
+                "limitations": result["analysis_limitations"],
+            }
+            result["candidate_analysis"] = candidate_analysis
+            result["coverage"]["selected_scope_complete"] = result["selected_scope_complete"]
+            result["status"] = (
+                "complete_within_selected_scope"
+                if result["selected_scope_complete"]
+                else "incomplete"
+            )
+        except (ProbeError, OSError) as exc:
+            code = str(exc) if isinstance(exc, ProbeError) else "candidate_unreadable"
+            add_gap(result, code, "local_candidate")
+            result["errors"].append(
+                {
+                    "code": code,
+                    "message": "Choose an exact readable TMDL candidate directory. Local files were not changed.",
+                }
+            )
+        except Exception as exc:
+            from .analysis_jobs import AnalysisCancelled
+
+            if isinstance(exc, AnalysisCancelled):
+                raise
+            add_gap(result, "candidate_analysis_failed", "local_candidate")
+        return result

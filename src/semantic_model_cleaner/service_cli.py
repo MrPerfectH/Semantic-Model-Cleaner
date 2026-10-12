@@ -23,7 +23,12 @@ def parser_for():
         description="Experimental read-only service validation. Live API compatibility remains unverified.",
         json_errors=True,
     )
-    parser.add_argument("action", choices=["discover", "audit"])
+    parser.add_argument("action", choices=["discover", "audit", "validate"])
+    parser.add_argument(
+        "--candidate",
+        type=Path,
+        help="Exact local TMDL Semantic Model directory; required for validate.",
+    )
     parser.add_argument("--tenant-id", required=True)
     parser.add_argument("--workspace-id", required=True, help="Exact model workspace GUID.")
     parser.add_argument(
@@ -67,6 +72,11 @@ def render_text(result):
         lines.append(f"Workspace {ws['workspace_id']}: {ws['status']}")
     for report in result.get("reports", []):
         lines.append(f"Report {report['report_id']} ({report['name']}): {report['status']}")
+    if result.get("comparison"):
+        lines.append("Candidate comparison (same retrieved Reports):")
+        for category in ("pre_existing", "introduced", "resolved"):
+            lines.append(f"  {category}: {len(result['comparison'][category])}")
+        lines.extend(result.get("validation_limits", []))
     lines.append("Report Health:")
     for finding in result.get("report_health", {}).get("findings", []):
         lines.append(
@@ -88,6 +98,12 @@ def execute(args, *, progress=None):
         args.tenant_id, args.workspace_id, args.model_id, tuple(args.report_workspace_id)
     )
     provider = ServiceProvider(target, fixture=args.fixture, progress=progress)
+    if args.action == "validate":
+        if not args.candidate:
+            raise ProbeError("candidate_requires_exact_tmdl_model_directory")
+        from .service_analysis import validate_candidate
+
+        return validate_candidate(provider, args.candidate)
     if args.action == "audit":
         from .service_analysis import audit
 

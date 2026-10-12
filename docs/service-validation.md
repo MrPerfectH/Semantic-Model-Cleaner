@@ -85,3 +85,28 @@ at least Review, with shared limitation IDs. Parser-only coverage is separately
 named `parser_coverage`, and existing offline contracts remain unchanged.
 The sanitized export retains definition digests/times and counts, not service
 names, source IDs or reference text. Full private JSON remains available locally.
+
+## Local candidate validation (#119)
+
+```bash
+smc service validate --candidate /path/to/Candidate.SemanticModel \
+  --tenant-id TENANT_GUID --workspace-id TARGET_WORKSPACE_GUID \
+  --model-id TARGET_MODEL_GUID --report-workspace-id REPORT_WORKSPACE_GUID
+```
+
+The candidate must be an exact TMDL model directory containing
+`definition/model.tmdl`. It is copied into the private snapshot without following
+symlinks. Its source path, capture time and byte hash are separate from published
+target identity and hash. Source bytes are checked again after validation;
+concurrent candidate changes make the result incomplete. No local file is edited.
+
+Baseline and candidate are analyzed against the **same retrieved Report files**.
+`comparison` separates pre-existing, introduced and resolved Report Health
+findings by stable Report identity and reference location, with the exact Report
+hashes used. Both analyses remain available in private JSON. A removed/renamed
+measure, column or table produces affected Report locations when supported
+references break; additions and unchanged references do not manufacture errors.
+Expression-only and relationship changes are not proven compatible merely
+because references resolve. Static metadata validation never proves runtime
+behavior or universal consumer coverage. Inaccessible/unsupported Reports and
+parser limitations propagate through both analyses and take exit-code priority.
