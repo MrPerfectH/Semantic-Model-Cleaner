@@ -154,3 +154,43 @@ paths and exact bytes under `definition/` and `StaticResources/`. It excludes
 diagram layout and unrelated files. Equal content bytes means only equality of
 that documented subset, not equal binding, runtime behavior or all service
 metadata. Other cases explicitly say `not_checked`.
+
+## Application workflow (#121)
+
+Open **Service validation · Experimental** from either application layout.
+The offline **Open Power BI Project** flow remains available without sign-in.
+The service page has its own jobs, scope revision and results; it never replaces
+local analysis or feeds local cleanup/repair controls.
+
+Check an existing local sign-in, or explicitly start device sign-in on this
+computer. Device sign-in invokes an already installed Azure CLI for the exact
+tenant using `az login --use-device-code --allow-no-subscriptions --output none`.
+Only Microsoft's fixed sign-in link and short user challenge are displayed;
+raw CLI output and access tokens are never returned. Cancel terminates the local
+login process and removes the challenge. If CLI or the existing client scopes
+are unavailable, the page explains that blocker. No registration, consent grant,
+permission escalation, password collection or credential copying is performed.
+Obtaining tokens does not yet establish workspace or definition access.
+
+Enter the tenant and workspace GUIDs, load visible model candidates and select
+an exact model. Enter each authorized Report workspace explicitly. Choose
+published audit, local candidate validation, repository comparison or discovery.
+Local candidate/project/mapping paths can be supplied directly; an open local
+model is offered when available. Repository comparison is opt-in. Progress and
+cancellation are shown; the current bounded service/authentication request may
+finish before cancellation takes effect. Results cannot be exported until a job
+completes. Changing selection cancels work and invalidates previous results and
+exports; changing tenant/workspace also clears the old model/scope selection.
+
+Results retain the selected IDs, discovered/analyzed states, direct service
+Report links, affected reference locations, candidate changes and repository
+coverage. Report Health and Analysis Limitations have separate sections.
+**Export sanitized summary** is safe for sharing source-free counts, digests,
+times and capability codes. **Export private result** preserves CLI-equivalent
+full provenance and findings; keep it private. All endpoints use the existing
+loopback/origin/token boundary and no-store responses.
+
+For a synthetic browser check only, start the server with
+`SMC_SERVICE_FIXTURE=/absolute/path/to/supported.json smc-web --port 8765`.
+The page prominently labels fixture mode. A browser request cannot turn fixture
+mode on or supply credentials. No fixture execution establishes live acceptance.

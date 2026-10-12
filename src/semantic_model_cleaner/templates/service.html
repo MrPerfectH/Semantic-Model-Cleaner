@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service validation · Semantic Model Cleaner</title>
+<meta name="smc-local-token" content="{{ local_request_token }}">
+<link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='service.css') }}">
+<script src="{{ url_for('static', filename='local-http.js') }}"></script>
+<script src="{{ url_for('static', filename='service.js') }}" defer></script>
+</head>
+<body data-fixture="{{ 'true' if fixture_mode else 'false' }}">
+<header><a href="/">← Open Power BI Project</a><span>Semantic Model Cleaner</span></header>
+<main>
+<div class="heading"><div><p class="eyebrow">READ-ONLY · EXPERIMENTAL</p><h1>Service validation</h1><p>Inspect a published model, or check a local candidate against its published Reports.</p></div></div>
+<aside class="notice"><strong>Live service compatibility is unverified.</strong> Results cover supported metadata in your selected accessible workspaces. They do not establish global non-use, runtime correctness or cleanup safety. No service artifacts or local source files are changed.</aside>
+{% if fixture_mode %}<aside class="notice fixture"><strong>Synthetic fixture mode.</strong> No live authentication or service requests are made. These results are not live acceptance evidence.</aside>{% endif %}
+<section aria-labelledby="target-title"><h2 id="target-title">1. Select the deployment</h2>
+<div class="grid">
+<label>Tenant ID<input id="tenant" autocomplete="off" placeholder="Exact tenant GUID"></label>
+<label>Model workspace ID<input id="workspace" autocomplete="off" placeholder="Exact workspace GUID"></label>
+</div>
+<div class="actions"><button id="identity" type="button">Check local sign-in</button><button id="signIn" type="button">Sign in on this computer</button><button id="cancelSignIn" type="button" hidden>Cancel sign-in</button><button id="models" type="button">Load workspace models</button></div>
+<p id="authStatus" role="status">Use an existing local sign-in, or sign in with Azure CLI on this computer. No credentials are copied from another machine.</p>
+<div id="devicePrompt" hidden><a href="https://microsoft.com/devicelogin" target="_blank" rel="noreferrer">Open Microsoft device sign-in</a><p>Enter this code: <strong id="deviceCode"></strong></p></div>
+<label>Published Semantic Model<select id="model"><option value="">Load the workspace and select an exact model</option></select></label>
+<label>Report workspace IDs <small>One exact GUID per line. Include the model workspace to search it.</small><textarea id="scope" rows="3" placeholder="Explicit accessible workspace GUIDs"></textarea></label>
+<p class="muted">Model names are labels. Tenant, workspace and model IDs determine the target; DEV and PROD are never matched by name.</p>
+</section>
+<section aria-labelledby="workflow-title"><h2 id="workflow-title">2. Choose the check</h2>
+<label>Workflow<select id="action"><option value="audit">Audit the published model</option><option value="validate">Validate a local candidate</option><option value="compare">Compare repository consumers</option><option value="discover">Discover connected Reports</option></select></label>
+<div id="candidateFields" hidden><label>Local TMDL candidate directory<input id="candidate" value="{{ candidate }}" placeholder="/path/to/Candidate.SemanticModel"></label><p class="muted">Both models use the same retrieved Report snapshot. This checks static references, not expression or relationship behavior.</p></div>
+<details id="repoFields"><summary>Optional repository comparison</summary><label><input id="compareRepo" type="checkbox"> Include repository consumers in this check</label><div class="grid"><label>Power BI Project directory<input id="repository" value="{{ repository }}" placeholder="/path/to/project"></label><label>Exact local model directory<input id="localModel" value="{{ candidate }}" placeholder="/path/to/Model.SemanticModel"></label></div><label>Target-specific identity mapping JSON<input id="mapping" placeholder="/path/to/service-mapping.json"></label><p class="muted">Without explicit Report mappings, identity stays unresolved. Definition equality is checked separately.</p></details>
+<div id="targetSummary" class="target" aria-live="polite">No deployment selected.</div>
+<div class="actions"><button id="run" class="primary" type="button">Run read-only check</button><button id="cancel" type="button" hidden>Cancel check</button></div>
+<p id="progress" role="status" aria-live="polite"></p><p id="error" role="alert" hidden></p>
+</section>
+<section id="results" hidden aria-labelledby="results-title"><div class="result-head"><h2 id="results-title">Results</h2><div class="actions"><button id="export" type="button">Export sanitized summary</button><button id="privateExport" type="button">Export private result</button></div></div>
+<p class="muted">Private results include source IDs and metadata. Keep them out of public issues and logs.</p>
+<div id="resultSummary"></div>
+<h3>Report inventory</h3><div class="table-scroll"><table><thead><tr><th>Report</th><th>Workspace / identity</th><th>State</th><th>Definition</th></tr></thead><tbody id="reports"></tbody></table></div>
+<div id="candidateComparison" hidden><h3>Candidate reference changes</h3><div id="candidateCounts"></div><div id="candidateFindings"></div></div>
+<div id="repositoryComparison" hidden><h3>Repository consumers</h3><div id="repositoryResults"></div></div>
+<h3>Report Health</h3><div id="health"></div>
+<h3>Analysis Limitations</h3><div id="limitations"></div>
+<details><summary>Snapshot provenance and boundaries</summary><pre id="provenance"></pre></details>
+</section>
+</main></body></html>
