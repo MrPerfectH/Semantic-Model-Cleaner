@@ -1,0 +1,87 @@
+{
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "responses": [
+    {
+      "method": "GET",
+      "url": "https://api.fabric.microsoft.com/v1/workspaces/00000000-0000-0000-0000-000000000002/semanticModels",
+      "body": {
+        "value": [
+          {
+            "id": "00000000-0000-0000-0000-000000000003",
+            "workspaceId": "00000000-0000-0000-0000-000000000002",
+            "displayName": "Synthetic model"
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "url": "https://api.powerbi.com/v1.0/myorg/groups/00000000-0000-0000-0000-000000000002/reports",
+      "body": {
+        "value": [
+          {
+            "id": "00000000-0000-0000-0000-000000000004",
+            "datasetId": "00000000-0000-0000-0000-000000000003",
+            "reportType": "PowerBIReport",
+            "name": "Synthetic report"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "url": "https://api.fabric.microsoft.com/v1/workspaces/00000000-0000-0000-0000-000000000002/semanticModels/00000000-0000-0000-0000-000000000003/getDefinition?format=TMDL",
+      "body": {
+        "definition": {
+          "parts": [
+            {
+              "path": "definition/model.tmdl",
+              "payloadType": "InlineBase64",
+              "payload": "bW9kZWwgTW9kZWwK"
+            },
+            {
+              "path": "definition/tables/Sales.tmdl",
+              "payloadType": "InlineBase64",
+              "payload": "dGFibGUgU2FsZXMKCW1lYXN1cmUgUmV2ZW51ZSA9IDEKCW1lYXN1cmUgU3BhcmUgPSAyCg=="
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "url": "https://api.fabric.microsoft.com/v1/workspaces/00000000-0000-0000-0000-000000000002/reports/00000000-0000-0000-0000-000000000004/getDefinition",
+      "body": {
+        "definition": {
+          "parts": [
+            {
+              "path": "definition.pbir",
+              "payloadType": "InlineBase64",
+              "payload": "eyJ2ZXJzaW9uIjogIjQuMCIsICJkYXRhc2V0UmVmZXJlbmNlIjogeyJieUNvbm5lY3Rpb24iOiB7ImNvbm5lY3Rpb25TdHJpbmciOiAic2VtYW50aWNtb2RlbGlkPTAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMyJ9fX0="
+            },
+            {
+              "path": "definition/report.json",
+              "payloadType": "InlineBase64",
+              "payload": "e30="
+            },
+            {
+              "path": "definition/pages/pages.json",
+              "payloadType": "InlineBase64",
+              "payload": "eyJwYWdlT3JkZXIiOiBbIlBhZ2UxIl19"
+            },
+            {
+              "path": "definition/pages/Page1/page.json",
+              "payloadType": "InlineBase64",
+              "payload": "eyJuYW1lIjogIlBhZ2UxIiwgImRpc3BsYXlOYW1lIjogIkZpeHR1cmUgcGFnZSJ9"
+            },
+            {
+              "path": "definition/pages/Page1/visuals/v1/visual.json",
+              "payloadType": "InlineBase64",
+              "payload": "eyJuYW1lIjogInYxIiwgInZpc3VhbCI6IHsidmlzdWFsVHlwZSI6ICJjYXJkIiwgInF1ZXJ5IjogeyJxdWVyeVN0YXRlIjogeyJWYWx1ZXMiOiB7InByb2plY3Rpb25zIjogW3siZmllbGQiOiB7Ik1lYXN1cmUiOiB7IkV4cHJlc3Npb24iOiB7IlNvdXJjZVJlZiI6IHsiRW50aXR5IjogIlNhbGVzIn19LCAiUHJvcGVydHkiOiAiUmV2ZW51ZSJ9fSwgInF1ZXJ5UmVmIjogIlNhbGVzLlJldmVudWUifV19fX19fQ=="
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
