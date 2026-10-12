@@ -110,3 +110,87 @@ def test_real_cli_dispatch_preserves_versioned_discovery():
     result = json.loads(completed.stdout)
     assert result["schema_version"] == "service-validation/1"
     assert result["target"]["tenant_id"] == T
+
+
+def test_audit_real_analyzer_isolated_snapshot_and_no_cleanup(tmp_path):
+    from semantic_model_cleaner.service_analysis import audit
+
+    result = audit(provider(tmp_path))
+    assert result["command"] == "service audit"
+    assert result["selected_scope_complete"] is True
+    assert result["coverage"]["complete"] is False
+    assert result["report_health"]["findings"] == []
+    assert result["reports"][0]["status"] == "analyzed"
+    assert result["model_definition"]["format"] == "TMDL"
+    assert result["reports"][0]["definition"]["format"] == "PBIR"
+    assert result["snapshot"]["cached"] is False
+    spare = next(row for row in result["analysis"]["items"] if row["name"] == "Spare")
+    assert spare["status"] == "No Use Found In Scope"
+    assert spare["removalRisk"] == "Review"
+    assert "_snapshot_path" not in result["reports"][0]
+    assert "/tmp/smc-service-snapshot-" not in json.dumps(result)
+    assert result["cleanup_available"] is False
+
+
+def replace_part(data, path, text):
+    import base64
+
+    for part in data["definition"]["parts"]:
+        if part["path"] == path:
+            part["payload"] = base64.b64encode(text.encode()).decode()
+            return
+    raise AssertionError(path)
+
+
+def test_audit_broken_reference_has_report_location_and_findings_exit(tmp_path):
+    from semantic_model_cleaner.service_analysis import audit
+    from semantic_model_cleaner.service_provider import result_exit
+
+    data = transcript()
+    replace_part(
+        data["responses"][2]["body"],
+        "definition/tables/Sales.tmdl",
+        "table Sales\n\tmeasure Spare = 1\n",
+    )
+    result = audit(provider(tmp_path, data))
+    assert result_exit(result) == 1
+    findings = result["report_health"]["findings"]
+    assert findings[0]["report_id"] == R
+    assert findings[0]["visualId"] == "v1"
+    assert findings[0]["name"] == "Revenue"
+    assert findings[0]["page"]
+
+
+def test_partial_access_stays_incomplete_not_pass(tmp_path):
+    from semantic_model_cleaner.service_analysis import audit
+    from semantic_model_cleaner.service_provider import result_exit
+
+    data = transcript()
+    data["responses"][-1].update(status=403, body={})
+    result = audit(provider(tmp_path, data))
+    assert result_exit(result) == 2
+    assert result["report_health"]["checked"] is False
+    assert result["reports"][0]["status"] == "inaccessible"
+    assert result["analysis_limitations"]
+
+
+def test_snapshot_cleanup_even_when_cancelled(tmp_path):
+    from semantic_model_cleaner.service_analysis import snapshot
+    from semantic_model_cleaner.analysis_jobs import AnalysisCancelled
+
+    with pytest.raises(AnalysisCancelled):
+        with snapshot(provider(tmp_path)) as state:
+            root = state.root
+            assert root.exists()
+            raise AnalysisCancelled()
+    assert not root.exists()
+
+
+def test_audit_command_executes_real_analyzer():
+    completed = subprocess.run(
+        [sys.executable, "-m", "semantic_model_cleaner", *cli_args("audit")],
+        text=True,
+        capture_output=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert json.loads(completed.stdout)["analysis"]["summary"]["total_usage_refs"] == 1

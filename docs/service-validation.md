@@ -58,3 +58,30 @@ Transport, pagination, retrieval/path safety and identity handling are shared
 with the #116 probe, not separate implementations. API permissions and current
 Microsoft source links are in the feasibility guide. No live demonstration has
 yet been completed.
+
+## Published model audit (#118)
+
+Use the same required identity/scope options with `smc service audit`. Definitions
+are retrieved fresh into an owner-only temporary snapshot and deleted even on
+failure/cancellation; no project files or persistent service cache are used.
+Model and Report receipts record format, retrieval time, hash and `cached:false`.
+LROs, inaccessible/encrypted/unsupported definitions and malformed Report parts
+remain visible, rather than becoming empty successful scans.
+
+The existing analyzer supplies Live/Stale Report Reference interpretation,
+Report Extension Measures, dependency evidence and exact Report/page/visual or
+metadata locations. `report_health.findings` is separate from
+`analysis_limitations`. Durable `snapshot://` locations replace temporary paths;
+Report findings carry exact workspace/report IDs and service links in private
+results. Missing definitions reduce selected coverage; normal Report Health
+findings cause exit 1 only when the rest of the selected supported scan completed.
+Incomplete coverage takes precedence and exits 2. A clean fixture scan exits 0,
+explicitly labeled synthetic and experimental.
+
+`coverage.complete` stays false for cleanup because service consumer discovery
+is bounded. `selected_scope_complete` describes supported validation of the
+selected visible scope; it never implies tenant completeness. No-use items are
+at least Review, with shared limitation IDs. Parser-only coverage is separately
+named `parser_coverage`, and existing offline contracts remain unchanged.
+The sanitized export retains definition digests/times and counts, not service
+names, source IDs or reference text. Full private JSON remains available locally.

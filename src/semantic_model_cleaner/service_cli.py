@@ -23,7 +23,7 @@ def parser_for():
         description="Experimental read-only service validation. Live API compatibility remains unverified.",
         json_errors=True,
     )
-    parser.add_argument("action", choices=["discover"])
+    parser.add_argument("action", choices=["discover", "audit"])
     parser.add_argument("--tenant-id", required=True)
     parser.add_argument("--workspace-id", required=True, help="Exact model workspace GUID.")
     parser.add_argument(
@@ -67,6 +67,11 @@ def render_text(result):
         lines.append(f"Workspace {ws['workspace_id']}: {ws['status']}")
     for report in result.get("reports", []):
         lines.append(f"Report {report['report_id']} ({report['name']}): {report['status']}")
+    lines.append("Report Health:")
+    for finding in result.get("report_health", {}).get("findings", []):
+        lines.append(
+            f"  {finding.get('report_id', '')} | {finding.get('page', '')} | {finding.get('visualId', '')}: {finding.get('message', '')}"
+        )
     lines.append("Analysis Limitations:")
     lines.extend(
         "  " + row.get("code", row.get("feature", "unknown"))
@@ -83,6 +88,10 @@ def execute(args, *, progress=None):
         args.tenant_id, args.workspace_id, args.model_id, tuple(args.report_workspace_id)
     )
     provider = ServiceProvider(target, fixture=args.fixture, progress=progress)
+    if args.action == "audit":
+        from .service_analysis import audit
+
+        return audit(provider)
     return provider.discover()
 
 

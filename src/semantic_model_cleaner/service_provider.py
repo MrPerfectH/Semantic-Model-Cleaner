@@ -730,7 +730,7 @@ class ServiceProvider:
 
 def public_summary(result):
     """Strict allowlist for shareable evidence: no source IDs, names, paths or payloads."""
-    return {
+    summary = {
         "schema_version": result["schema_version"],
         "command": result["command"],
         "experimental": True,
@@ -752,6 +752,22 @@ def public_summary(result):
         "error_codes": [e["code"] for e in result["errors"]],
         "boundaries": result["boundaries"],
     }
+    summary["report_health_finding_count"] = len(result["report_health"]["findings"])
+    summary["definition_receipts"] = [
+        {
+            key: row["definition"][key]
+            for key in ("format", "sha256", "retrieved_at", "cached")
+            if key in row["definition"]
+        }
+        for row in result["reports"]
+        if row.get("definition")
+    ]
+    if result.get("model_definition"):
+        summary["model_definition"] = {
+            key: result["model_definition"][key]
+            for key in ("format", "sha256", "retrieved_at", "cached")
+        }
+    return summary
 
 
 def result_exit(result):
