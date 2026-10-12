@@ -1,510 +1,42 @@
-"""Read-only, bounded service feasibility probe (#116); not a cleanup workflow.
-
-Run with ``python -m semantic_model_cleaner.service_probe --help``.
-Credentials and service definitions are never included in public evidence.
-"""
+"""Read-only service feasibility probe; uses the shared service provider."""
 
 from __future__ import annotations
 
 import argparse
-import base64
 from collections import Counter
 from contextlib import redirect_stderr, redirect_stdout
-from datetime import datetime, timezone
-import hashlib
 import io
 import json
 import os
-from pathlib import Path, PurePosixPath
-import re
-import shutil
-import subprocess
+from pathlib import Path
 import tempfile
 import time
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
-from uuid import UUID
 
-FABRIC = "https://api.fabric.microsoft.com/v1"
-POWERBI = "https://api.powerbi.com/v1.0/myorg"
-RESOURCES = {
-    "fabric": "https://api.fabric.microsoft.com",
-    "powerbi": "https://analysis.windows.net/powerbi/api",
-}
-MAX_BYTES = 64 * 1024 * 1024
-MAX_PAGES = 100
-KNOWN_SCOPES = {
-    "Workspace.Read.All",
-    "Workspace.ReadWrite.All",
-    "SemanticModel.Read.All",
-    "SemanticModel.ReadWrite.All",
-    "Item.Read.All",
-    "Item.ReadWrite.All",
-    "Report.Read.All",
-    "Report.ReadWrite.All",
-}
-BOUNDARIES = [
-    "Only direct Power BI Report consumers visible in explicitly selected workspaces are searched.",
-    "Unknown or inaccessible workspaces/reports cannot be counted; absence is not proof of non-use.",
-    "Indirect/composite models, dashboards, Excel, XMLA and other consumers are outside scope.",
-    "Impact-analysis UI visibility does not grant API discovery or definition access.",
-    "Retrievals are separate observations, not a transactionally consistent snapshot.",
-    "Metadata analysis does not validate rendering, DAX execution or data correctness.",
-    "Encrypted sensitivity labels block definition retrieval; generic API errors do not prove encryption.",
-]
-
-
-def now():
-    return datetime.now(timezone.utc).isoformat()
-
-
-class ProbeError(Exception):
-    """Only fixed, non-sensitive codes may escape the boundary."""
-
-
-def guid(value):
-    try:
-        return str(UUID(value))
-    except (ValueError, TypeError, AttributeError):
-        raise ProbeError("invalid_identity") from None
-
-
-class NoRedirect(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
-class LiveTransport:
-    def __init__(self, tokens):
-        self.tokens = tokens
-        self.opener = build_opener(NoRedirect())
-
-    def __call__(self, method, url):
-        service = "fabric" if url.startswith(FABRIC + "/") else "powerbi"
-        request = Request(
-            url,
-            method=method,
-            headers={
-                "Authorization": "Bearer " + self.tokens[service],
-                "Accept": "application/json",
-            },
-            data=b"" if method == "POST" else None,
-        )
-        try:
-            try:
-                response = self.opener.open(request, timeout=30)
-            except HTTPError as exc:
-                response = exc
-            with response:
-                payload = response.read(MAX_BYTES + 1)
-                if len(payload) > MAX_BYTES:
-                    raise ProbeError("response_size_limit")
-                status = response.code
-                headers = dict(response.headers.items())
-                try:
-                    body = json.loads(payload) if payload else {}
-                except (ValueError, UnicodeError):
-                    if status >= 400:
-                        return status, headers, {}
-                    raise ProbeError("invalid_response_json") from None
-                if not isinstance(body, dict):
-                    raise ProbeError("invalid_response_shape")
-                return status, headers, body
-        except (URLError, TimeoutError, OSError):
-            raise ProbeError("network_unavailable") from None
-
-
-class FixtureTransport:
-    def __init__(self, fixture):
-        self.responses = iter(fixture["responses"])
-
-    def __call__(self, method, url):
-        try:
-            row = next(self.responses)
-        except StopIteration:
-            raise ProbeError("fixture_exhausted") from None
-        if (method, url) != (row["method"], row["url"]):
-            raise ProbeError("fixture_request_mismatch")
-        return row.get("status", 200), row.get("headers", {}), row.get("body", {})
-
-
-class Evidence:
-    def __init__(self, mode):
-        self.identities = {}
-        self.data = {
-            "schema_version": 1,
-            "evidence_kind": mode,
-            "started_at": now(),
-            "status": "incomplete",
-            "live_acceptance": "unverified",
-            "global_completeness": False,
-            "selected_scope_complete": False,
-            "boundaries": BOUNDARIES,
-            "requests": [],
-            "workspaces": [],
-            "reports": [],
-            "analysis_limitations": [],
-            "report_health": {"issue_count": 0, "checked": False},
-            "permission_observations": {
-                "workspace_roles": "unverified",
-                "item_permissions": "unverified",
-                "tenant_configuration": "unverified",
-                "non_admin_owner": "unverified",
-                "definition_access_denial": "unverified",
-                "encrypted_items": "unverified",
-                "note": "API success observes a capability; it does not establish role or ownership.",
-            },
-        }
-
-    def alias(self, kind, identity):
-        key = (kind, identity)
-        if key not in self.identities:
-            count = sum(k[0] == kind for k in self.identities) + 1
-            self.identities[key] = f"{kind}-{count}"
-        return self.identities[key]
-
-    def limitation(self, code, owner="selected-scope"):
-        row = {
-            "code": code,
-            "owner": owner,
-            "scope": "shared",
-            "checked": "Only successful operations and parser counts recorded in this evidence were checked.",
-            "unchecked": "The capability identified by this code is incomplete or outside the selected scope.",
-            "effect": "No Use Found In Scope requires Review; cleanup safety is not established.",
-        }
-        if row not in self.data["analysis_limitations"]:
-            self.data["analysis_limitations"].append(row)
-
-
-class Client:
-    def __init__(self, transport, evidence, *, sleep=time.sleep, max_seconds=300):
-        self.transport, self.evidence, self.sleep = transport, evidence, sleep
-        self.deadline = time.monotonic() + max_seconds
-
-    def pause(self, headers):
-        try:
-            delay = max(1, int(headers.get("retry-after", "1")))
-        except ValueError:
-            raise ProbeError("invalid_retry_after") from None
-        if delay > 60 or time.monotonic() + delay >= self.deadline:
-            raise ProbeError("retry_budget_exceeded")
-        self.sleep(delay)
-
-    def request(self, method, url, operation, owner):
-        # Fixed read operations only, including the read-only POST getDefinition.
-        parsed = urlsplit(url)
-        uuid = r"[0-9a-fA-F-]{36}"
-        allowed = (
-            parsed.scheme == "https"
-            and not parsed.fragment
-            and (
-                (
-                    parsed.netloc == "api.fabric.microsoft.com"
-                    and (
-                        method == "GET"
-                        and re.fullmatch(
-                            rf"/v1/(workspaces/{uuid}/semanticModels|operations/{uuid}(/result)?)",
-                            parsed.path,
-                        )
-                        or method == "POST"
-                        and re.fullmatch(
-                            rf"/v1/workspaces/{uuid}/(semanticModels|reports)/{uuid}/getDefinition",
-                            parsed.path,
-                        )
-                    )
-                )
-                or (
-                    parsed.netloc == "api.powerbi.com"
-                    and method == "GET"
-                    and re.fullmatch(rf"/v1.0/myorg/groups/{uuid}/reports", parsed.path)
-                )
-            )
-        )
-        if not allowed:
-            raise ProbeError("request_outside_read_allowlist")
-        for attempt in range(4):
-            if time.monotonic() >= self.deadline:
-                raise ProbeError("request_budget_exceeded")
-            receipt = {
-                "method": method,
-                "operation": operation,
-                "owner": owner,
-                "status": None,
-                "at": now(),
-            }
-            self.evidence.data["requests"].append(receipt)
-            try:
-                status, headers, body = self.transport(method, url)
-            except ProbeError as exc:
-                receipt["failure"] = str(exc)
-                raise
-            finally:
-                receipt["finished_at"] = now()
-            receipt["status"] = status
-            headers = {k.lower(): v for k, v in headers.items()}
-            if status == 429 and attempt < 3:
-                self.pause(headers)
-                continue
-            if status not in (200, 202):
-                code = {
-                    401: "authentication_rejected",
-                    403: "access_denied",
-                    404: "not_found_or_inaccessible",
-                    429: "rate_limited",
-                }.get(status, "api_request_failed")
-                if body.get("errorCode") == "OperationNotSupportedForItem":
-                    code = "definition_not_supported_possible_encryption"
-                raise ProbeError(code)
-            return status, headers, body
-        raise ProbeError("rate_limited")
-
-    def items(self, url, operation, owner):
-        original = urlsplit(url)
-        seen = set()
-        for _ in range(MAX_PAGES):
-            parsed = urlsplit(url)
-            if (parsed.scheme, parsed.netloc, parsed.path, parsed.fragment) != (
-                original.scheme,
-                original.netloc,
-                original.path,
-                "",
-            ) or url in seen:
-                raise ProbeError("invalid_pagination")
-            seen.add(url)
-            status, _, body = self.request("GET", url, operation, owner)
-            if status != 200 or not isinstance(body.get("value"), list):
-                raise ProbeError("invalid_collection")
-            for row in body["value"]:
-                if not isinstance(row, dict):
-                    raise ProbeError("invalid_collection")
-                yield row
-            next_url = (
-                body.get("continuationUri")
-                or body.get("@odata.nextLink")
-                or body.get("odata.nextLink")
-            )
-            if not next_url and body.get("continuationToken"):
-                next_url = original._replace(
-                    query=urlencode({"continuationToken": body["continuationToken"]})
-                ).geturl()
-            if not next_url:
-                return
-            if not isinstance(next_url, str):
-                raise ProbeError("invalid_pagination")
-            url = next_url
-        raise ProbeError("pagination_limit")
-
-    def definition(self, workspace, kind, identity, owner):
-        url = f"{FABRIC}/workspaces/{workspace}/{kind}/{identity}/getDefinition"
-        if kind == "semanticModels":
-            url += "?format=TMDL"
-        status, headers, body = self.request("POST", url, "get_definition", owner)
-        if status == 200:
-            return body
-        operation = headers.get("location")
-        if not operation and headers.get("x-ms-operation-id"):
-            operation = FABRIC + "/operations/" + guid(headers["x-ms-operation-id"])
-        if not isinstance(operation, str) or not re.fullmatch(
-            re.escape(FABRIC) + r"/operations/[0-9a-fA-F-]{36}", operation
-        ):
-            raise ProbeError("invalid_operation_location")
-        for _ in range(60):
-            self.pause(headers)
-            _, headers, body = self.request("GET", operation, "operation_state", owner)
-            state = body.get("status")
-            if state in {"Failed", "Cancelled", "Canceled"}:
-                raise ProbeError("definition_operation_failed")
-            if state == "Succeeded":
-                result_url = headers.get("location", operation + "/result")
-                if result_url != operation + "/result":
-                    raise ProbeError("invalid_operation_location")
-                status, _, result = self.request("GET", result_url, "operation_result", owner)
-                if status != 200:
-                    raise ProbeError("definition_result_incomplete")
-                return result
-            if state not in {"NotStarted", "Running"}:
-                raise ProbeError("unknown_operation_state")
-        raise ProbeError("operation_poll_limit")
-
-
-def token_claims(token, service):
-    try:
-        part = token.split(".")[1]
-        claims = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
-        tenant, subject = guid(claims["tid"]), guid(claims["oid"])
-        if float(claims["exp"]) <= time.time() + 30:
-            raise ProbeError("token_expired")
-        audiences = {RESOURCES[service], RESOURCES[service] + "/"}
-        if service == "powerbi":
-            audiences.add("00000009-0000-0000-c000-000000000000")
-        if claims.get("aud") not in audiences:
-            raise ProbeError("token_audience_mismatch")
-        scopes = sorted(set(claims.get("scp", "").split()) & KNOWN_SCOPES)
-        return tenant, subject, scopes, "delegated_user" if claims.get("scp") else "application"
-    except (ValueError, KeyError, IndexError, TypeError, AttributeError):
-        raise ProbeError("token_claims_unavailable") from None
-
-
-def authenticate():
-    tokens, observations = {}, {}
-    for service in RESOURCES:
-        token = os.environ.get("SMC_" + service.upper() + "_TOKEN")
-        if not token:
-            if not shutil.which("az"):
-                raise ProbeError("linux_sign_in_required")
-            try:
-                result = subprocess.run(
-                    [
-                        "az",
-                        "account",
-                        "get-access-token",
-                        "--resource",
-                        RESOURCES[service],
-                        "--output",
-                        "json",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                    check=True,
-                )
-                token = json.loads(result.stdout)["accessToken"]
-            except (subprocess.SubprocessError, OSError, ValueError, KeyError):
-                raise ProbeError("linux_sign_in_required") from None
-        observations[service] = token_claims(token, service)
-        tokens[service] = token
-    if observations["fabric"][:2] != observations["powerbi"][:2]:
-        raise ProbeError("credential_identity_mismatch")
-    return tokens, observations
-
-
-def unpack_definition(body, destination, kind):
-    """Validate all paths before writing into a private temporary directory."""
-    definition = body.get("definition")
-    if not isinstance(definition, dict) or not isinstance(definition.get("parts"), list):
-        raise ProbeError("invalid_definition")
-    files, total = {}, 0
-    for part in definition["parts"]:
-        if not isinstance(part, dict):
-            raise ProbeError("invalid_definition")
-        path = part.get("path")
-        if (
-            not isinstance(path, str)
-            or not path
-            or "\\" in path
-            or ":" in path
-            or "\x00" in path
-            or any(p in {"", ".", ".."} for p in path.split("/"))
-        ):
-            raise ProbeError("unsafe_definition_path")
-        pure = PurePosixPath(path)
-        if pure.is_absolute() or path.casefold() in {p.casefold() for p in files}:
-            raise ProbeError("unsafe_definition_path")
-        if part.get("payloadType") != "InlineBase64":
-            raise ProbeError("unsupported_payload_type")
-        try:
-            data = base64.b64decode(part["payload"], validate=True)
-        except (ValueError, KeyError, TypeError):
-            raise ProbeError("invalid_definition_payload") from None
-        total += len(data)
-        if total > MAX_BYTES:
-            raise ProbeError("definition_size_limit")
-        files[path] = data
-    if kind == "model":
-        if (
-            definition.get("format") not in {None, "TMDL"}
-            or "definition/model.tmdl" not in files
-            or "model.bim" in files
-        ):
-            raise ProbeError("unsupported_model_format")
-        format_name = "TMDL"
-    else:
-        if "report.json" in files:
-            raise ProbeError("unsupported_legacy_report")
-        if (
-            definition.get("format") not in {None, "PBIR"}
-            or not {"definition.pbir", "definition/report.json", "definition/pages/pages.json"}
-            <= files.keys()
-        ):
-            raise ProbeError("unsupported_or_incomplete_report")
-        try:
-            pages = json.loads(files["definition/pages/pages.json"].decode("utf-8-sig"))
-            order = pages["pageOrder"]
-            if not isinstance(order, list) or any(
-                not isinstance(page, str)
-                or "/" in page
-                or f"definition/pages/{page}/page.json" not in files
-                for page in order
-            ):
-                raise ProbeError("incomplete_report_pages")
-        except (ValueError, UnicodeError, KeyError, TypeError):
-            raise ProbeError("invalid_report_page_inventory") from None
-        format_name = "PBIR"
-    for path in files:
-        if any(str(parent) in files for parent in PurePosixPath(path).parents):
-            raise ProbeError("unsafe_definition_path")
-    digest = hashlib.sha256()
-    for path, data in sorted(files.items()):
-        target = destination / path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(data)
-        digest.update(path.encode() + b"\0" + data + b"\0")
-    return {
-        "format": format_name,
-        "parts": len(files),
-        "bytes": total,
-        "sha256": digest.hexdigest(),
-        "retrieved_at": now(),
-    }
-
-
-def inspect_models(client, workspace, evidence):
-    alias = evidence.alias("workspace", workspace)
-    rows = list(
-        client.items(f"{FABRIC}/workspaces/{workspace}/semanticModels", "list_models", alias)
-    )
-    models = {}
-    for row in rows:
-        identity = guid(row.get("id"))
-        if row.get("workspaceId") and guid(row["workspaceId"]) != workspace:
-            raise ProbeError("model_workspace_mismatch")
-        models[identity] = {
-            "id": identity,
-            "display_name": row.get("displayName", ""),
-            "alias": evidence.alias("model", identity),
-        }
-    return list(models.values())
-
-
-def verify_report_binding(path, model):
-    """Fail closed if the retrieved definition cannot confirm the inventory binding.
-
-    Do not infer deployment identity from Initial Catalog/display names or byPath.
-    This also detects rebinds between discovery and definition retrieval.
-    """
-    try:
-        reference = json.loads((path / "definition.pbir").read_text(encoding="utf-8-sig"))[
-            "datasetReference"
-        ]
-        if "byPath" in reference:
-            raise ProbeError("report_binding_unverified")
-        connection = reference["byConnection"]
-        identities = []
-        if connection.get("pbiModelDatabaseName"):
-            identities.append(guid(connection["pbiModelDatabaseName"]))
-        for match in re.finditer(
-            r"(?:^|;)\s*semanticmodelid\s*=\s*([^;]+)",
-            connection.get("connectionString", ""),
-            re.IGNORECASE,
-        ):
-            identities.append(guid(match.group(1).strip()))
-        if not identities:
-            raise ProbeError("report_binding_unverified")
-        if any(identity != model for identity in identities):
-            raise ProbeError("report_binding_changed_or_conflicting")
-    except (ValueError, KeyError, TypeError, AttributeError, UnicodeError):
-        raise ProbeError("report_binding_unverified") from None
+# Re-export the original developer probe helpers for compatibility.
+from .service_provider import (  # noqa: F401
+    FABRIC,
+    POWERBI,
+    RESOURCES,
+    MAX_BYTES,
+    MAX_PAGES,
+    BOUNDARIES,
+    ProbeError,
+    NoRedirect,
+    LiveTransport,
+    FixtureTransport,
+    Evidence,
+    Client,
+    guid,
+    now,
+    token_claims,
+    authenticate,
+    unpack_definition,
+    inspect_models,
+    verify_report_binding,
+    shutil,
+    Target,
+    ServiceProvider,
+)
 
 
 def analyze_snapshot(root, model_path, report_paths, evidence):
@@ -535,58 +67,44 @@ def analyze_snapshot(root, model_path, report_paths, evidence):
     return result
 
 
-def probe(client, evidence, workspace, model, report_workspaces):
-    candidates = inspect_models(client, workspace, evidence)
-    if model not in {r["id"] for r in candidates}:
-        raise ProbeError("selected_model_not_visible_in_workspace")
+def probe(client, evidence, workspace, model, report_workspaces, *, tenant):
+    provider = ServiceProvider(
+        Target(tenant, workspace, model, tuple([workspace, *report_workspaces]))
+    )
+    provider.client, provider.evidence = client, evidence
+    inventory = provider.discover()
+    if inventory["errors"]:
+        raise ProbeError(inventory["errors"][0]["code"])
+    candidates = provider.candidates
     evidence.data["selected_model"] = evidence.alias("model", model)
     evidence.limitation("bounded_discovery_not_global")
     connected = []
-    for report_workspace in dict.fromkeys([workspace, *report_workspaces]):
-        owner = evidence.alias("workspace", report_workspace)
-        ws = {"source": owner, "enumeration": "incomplete"}
-        evidence.data["workspaces"].append(ws)
-        seen = {}
-        try:
-            for report in client.items(
-                f"{POWERBI}/groups/{report_workspace}/reports", "list_reports", owner
-            ):
-                identity = guid(report.get("id"))
-                if identity in seen:
-                    if seen[identity] != report:
-                        raise ProbeError("conflicting_report_identity")
-                    continue
-                seen[identity] = report
-                row = {
-                    "source": evidence.alias("report", report_workspace + "/" + identity),
-                    "workspace": owner,
-                    "discovered_at": now(),
-                    "status": "excluded",
-                    "reason": "different_direct_model",
-                }
-                evidence.data["reports"].append(row)
-                dataset = report.get("datasetId")
-                if report.get("reportType") != "PowerBIReport":
-                    row.update(status="excluded", reason="unsupported_or_unknown_report_type")
-                    evidence.limitation(row["reason"], row["source"])
-                elif not dataset:
-                    row.update(status="unknown", reason="direct_model_identity_missing")
-                    evidence.limitation(row["reason"], row["source"])
-                elif guid(dataset) == model:
-                    # datasetWorkspaceId is not guaranteed by Get Reports In Group.
-                    if (
-                        report.get("datasetWorkspaceId")
-                        and guid(report["datasetWorkspaceId"]) != workspace
-                    ):
-                        row.update(status="unknown", reason="model_workspace_conflict")
-                        evidence.limitation(row["reason"], row["source"])
-                    else:
-                        row.update(status="discovered", reason="exact_direct_model_id")
-                        connected.append((report_workspace, identity, row))
-            ws["enumeration"] = "completed_for_visible_items"
-        except ProbeError as exc:
-            ws["reason"] = str(exc)
-            evidence.limitation(str(exc), owner)
+    for workspace_row in inventory["workspaces"]:
+        alias = evidence.alias("workspace", workspace_row["workspace_id"])
+        row = {
+            "source": alias,
+            "enumeration": "completed_for_visible_items"
+            if workspace_row["status"] in {"enumerated", "empty"}
+            else "incomplete",
+        }
+        if workspace_row.get("error"):
+            row["reason"] = workspace_row["error"]
+            evidence.limitation(row["reason"], alias)
+        evidence.data["workspaces"].append(row)
+    for report in inventory["reports"]:
+        report_workspace, identity = report["workspace_id"], report["report_id"]
+        row = {
+            "source": evidence.alias("report", report_workspace + "/" + identity),
+            "workspace": evidence.alias("workspace", report_workspace),
+            "discovered_at": report["discovered_at"],
+            "status": report["status"],
+            "reason": report.get("reason", "exact_direct_model_id"),
+        }
+        evidence.data["reports"].append(row)
+        if report["connection"] == "exact_model_id":
+            connected.append((report_workspace, identity, row))
+        elif report.get("reason") != "different_direct_model":
+            evidence.limitation(row["reason"], row["source"])
     with tempfile.TemporaryDirectory(prefix="smc-service-probe-") as temporary:
         root = Path(temporary)
         model_path = root / "Selected.SemanticModel"
@@ -713,6 +231,7 @@ def main(argv=None):
                 workspace,
                 guid(args.model_id),
                 [guid(w) for w in args.report_workspace_id],
+                tenant=tenant,
             )
             code = 0 if evidence.data["status"] == "bounded_probe_completed" else 2
         if not args.fixture:

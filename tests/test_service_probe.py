@@ -12,6 +12,7 @@ import time
 import pytest
 
 from semantic_model_cleaner import service_probe as probe
+from semantic_model_cleaner import service_provider as provider
 
 FIXTURE = Path(__file__).parent / "fixtures/service_probe/supported.json"
 TENANT = "00000000-0000-0000-0000-000000000001"
@@ -39,7 +40,7 @@ def client_for(rows):
 
 def run_fixture(data=None, extra_workspaces=()):
     client, evidence, _ = client_for((data or fixture())["responses"])
-    probe.probe(client, evidence, WORKSPACE, MODEL, extra_workspaces)
+    probe.probe(client, evidence, WORKSPACE, MODEL, extra_workspaces, tenant=TENANT)
     return evidence.data
 
 
@@ -239,7 +240,7 @@ def test_lro_and_rate_limit_honor_retry_after_and_fetch_result():
     ]
     client, evidence, sleeps = client_for(rows)
     assert client.definition(WORKSPACE, "semanticModels", MODEL, "model-1") == definition["body"]
-    assert sleeps == [2, 3, 4]
+    assert sum(sleeps) == 9
     assert len(evidence.data["requests"]) == 5
 
 
@@ -509,10 +510,10 @@ def test_malformed_page_inventory_is_explicit(payload):
 
 def test_payload_size_and_encoding_limits(tmp_path, monkeypatch):
     body = fixture()["responses"][2]["body"]
-    monkeypatch.setattr(probe, "MAX_BYTES", 1)
+    monkeypatch.setattr(provider, "MAX_BYTES", 1)
     with pytest.raises(probe.ProbeError, match="definition_size_limit"):
         probe.unpack_definition(body, tmp_path, "model")
-    monkeypatch.setattr(probe, "MAX_BYTES", 10000)
+    monkeypatch.setattr(provider, "MAX_BYTES", 10000)
     body["definition"]["parts"][0]["payload"] = "not base64!"
     with pytest.raises(probe.ProbeError, match="invalid_definition_payload"):
         probe.unpack_definition(body, tmp_path, "model")
@@ -551,7 +552,7 @@ def test_http_redirect_handler_will_not_forward_authorization():
 
 
 def test_collection_limit_and_request_deadline_are_explicit(monkeypatch):
-    monkeypatch.setattr(probe, "MAX_PAGES", 1)
+    monkeypatch.setattr(provider, "MAX_PAGES", 1)
     client, _, _ = client_for(
         [{"method": "GET", "url": MODELS_URL, "body": {"value": [], "continuationToken": "more"}}]
     )

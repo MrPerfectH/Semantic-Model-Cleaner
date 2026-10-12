@@ -8,6 +8,9 @@ from .console import configure_console_output
 def main(argv: list[str] | None = None):
     configure_console_output()
     args = list(sys.argv[1:] if argv is None else argv)
+    if args and args[0] == "service":
+        from .service_cli import main as service_main
+        raise SystemExit(service_main(args[1:]))
     if args and args[0] in {"items", "usage", "summary", "review", "capabilities", "cleanup-groups"}:
         from .insights_cli import main as insights_main
         raise SystemExit(insights_main(args))
