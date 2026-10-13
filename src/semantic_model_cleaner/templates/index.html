@@ -382,18 +382,20 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
 .role-fact-like { background: #dbeafe; color: #1e40af; }
 .role-mixed { background: #fef3c7; color: #92400e; }
 .role-calculation-group { background: #ede9fe; color: #5b21b6; }
-.limitation-summary { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 8px; font-size: 12px; color: #92400e; }
-.limitation-summary strong { font-size: 15px; color: var(--text); margin-right: 3px; }
-.limitation-groups { display: grid; gap: 8px; }
-#analysisLimitationsList { max-height: 45vh; overflow-y: auto; }
-.limitation-card { padding: 8px 12px; border: 1px solid #fde68a; border-radius: 9px; background: #fff; }
-.limitation-card > summary { cursor: pointer; list-style: none; }
+.limitation-groups { display: grid; gap: 4px; }
+.limitation-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 220px) minmax(170px, 230px); gap: 12px; align-items: baseline; font-size: 12px; }
+.limitation-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.limitation-row-header { padding: 0 12px 2px 26px; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); }
+.limitation-card { padding: 6px 12px; border: 1px solid #fde68a; border-radius: 8px; background: #fff; }
+.limitation-card > summary { cursor: pointer; list-style: none; position: relative; padding-left: 14px; }
 .limitation-card > summary::-webkit-details-marker { display: none; }
-.limitation-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.limitation-title { font-weight: 650; color: var(--text); font-size: 12px; }
+.limitation-card > summary::before { content: '\25B8'; position: absolute; left: 0; color: var(--text-faint); font-size: 10px; }
+.limitation-card[open] > summary::before { content: '\25BE'; }
+.limitation-row .limitation-construct strong { font-size: inherit; font-weight: 650; color: var(--text); }
 .limitation-owner { font-weight: 500; color: var(--text-light); }
-.limitation-meta { margin-top: 2px; color: #92400e; font-size: 11px; }
-.limitation-badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.limitation-location { color: #92400e; font-family: var(--mono); font-size: 11px; }
+.limitation-effect { color: #b45309; font-weight: 550; }
+#analysisLimitationsList { max-height: 45vh; overflow-y: auto; }
 .limitation-facts { margin: 8px 0 2px; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 12px; color: var(--text); }
 .limitation-facts dt { font-weight: 600; color: var(--text-light); }
 .cleanup-lead { font-weight: 600; color: var(--text); line-height: 1.45; }
@@ -637,7 +639,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       <h3>Analysis limitations <span id="analysisLimitationsCount"></span></h3>
       <span class="report-health-toggle-hint" id="analysisLimitationsHint"></span>
     </summary>
-    <div class="warning-note">Features Semantic Model Cleaner detects but cannot fully check, such as calculation items, KPI expressions or an unreadable report file. They are analysis gaps, not report problems and not broken Power BI configuration. Each one names the construct, its exact source location, what was checked, what remains unchecked and how it affects the Cleanup Recommendation. Counts are distinct limitations and affected items, never repeated per item.</div>
+    <div class="warning-note">Model features the analyzer detects but cannot fully check. They are analysis gaps, not broken Power BI configuration: each one keeps the items it touches at Review instead of Safe. Open a row for the source, what was checked and the affected items.</div>
     <div id="analysisLimitationsList"></div>
   </details>
   <div class="filters-bar hidden" id="filtersSection">
