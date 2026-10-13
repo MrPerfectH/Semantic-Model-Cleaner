@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import sys
 
-from . import analyzer, change_plan, model_compare
+from . import analyzer, change_plan
 from .analysis_export import validate_export_destination
 from .cli_contract import ArgumentParser, emit_json, json_requested
 from .operations_contract import parse_operations
@@ -32,9 +32,8 @@ def main(argv=None):
         cmd = sub.add_parser(name)
         cmd.add_argument('plan_file')
         cmd.add_argument('--journal-dir', default=str(_directory()))
-    diff = sub.add_parser('diff', help='Show reviewed plan diff, or compare two semantic models.')
-    diff.add_argument('baseline')
-    diff.add_argument('candidate', nargs='?')
+    diff = sub.add_parser('diff', help='Show reviewed cleanup plan diff.')
+    diff.add_argument('plan_file')
     hist = sub.add_parser('history', help='List local operation receipts.')
     hist.add_argument('--journal-dir', default=str(_directory()))
     for command_parser in sub.choices.values():
@@ -84,16 +83,13 @@ def main(argv=None):
         elif args.command == 'history':
             emit({'receipts': [json.loads(p.read_text(encoding="utf-8")) for p in sorted(Path(args.journal_dir).glob('*.receipt.json'))]})
         elif args.command == 'diff':
-            if args.candidate:
-                emit(model_compare.compare_models(Path(args.baseline), Path(args.candidate)))
+            result = change_plan.load_plan(args.plan_file)
+            diff_text = ''.join(c['diff'] for c in result['changes'])
+            if machine:
+                emit({'id': result['id'], 'diff': diff_text,
+                      'changes': [{'path': c['path'], 'diff': c['diff']} for c in result['changes']]})
             else:
-                result = change_plan.load_plan(args.baseline)
-                diff_text = ''.join(c['diff'] for c in result['changes'])
-                if machine:
-                    emit({'id': result['id'], 'diff': diff_text,
-                          'changes': [{'path': c['path'], 'diff': c['diff']} for c in result['changes']]})
-                else:
-                    print(diff_text)
+                print(diff_text)
         else:
             plan = change_plan.load_plan(args.plan_file)
             if args.command == 'verify':

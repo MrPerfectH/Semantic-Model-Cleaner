@@ -269,10 +269,9 @@ pwsh -File packaging/windows/build.ps1
 
 - Version `0.4.0b7` defaults to the `beta` release channel without an environment variable.
 - Developers can set `SMC_RELEASE_CHANNEL=stable` to inspect the stable-gated UI during compatibility testing.
-- Enable one or more experiments with `SMC_EXPERIMENTS=compare-models` (comma-separated for multiple keys). The web UI also accepts `--experimental compare-models` when you launch `semantic-model-cleaner-web`.
 - The public beta shows a `Beta` banner. Experiments remain separately opt-in.
 
-See `tests/test_experiments.py` for the supported experiment keys and release-channel logic.
+No experimental features are currently registered. See `tests/test_experiments.py` for release-channel logic.
 
 See the [five-minute repository quick start](docs/quickstart.md), [CI check
 contract](docs/cli/check.md), and [support matrix](docs/support.md).

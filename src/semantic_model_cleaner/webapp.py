@@ -24,7 +24,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
 
-from . import __version__, analyzer, experiments, model_compare, report_writer, tmdl_writer
+from . import __version__, analyzer, experiments, report_writer, tmdl_writer
 from . import change_plan, cleanup_policy
 from .analysis_jobs import AnalysisJobs
 from .local_http import install_local_http_boundary, loopback_host
@@ -117,7 +117,6 @@ _state = {
     "model_paths": [],
     "report_paths": [],
     "backup_path": None,
-    "last_compare_results": None,
 }
 
 _WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:(?![\\/])")
@@ -1619,91 +1618,6 @@ def api_analysis_job(identity):
         return jsonify({"error": "Analysis job not found or expired."}), 404
 
 
-@app.route("/api/compare", methods=["POST"])
-def api_compare():
-    """Run a model-to-model TMDL comparison and return JSON results."""
-    try:
-        data = request.get_json(silent=True) or {}
-        baseline_path_str = (
-            data.get("baseline_model_path")
-            or data.get("baselineModelPath")
-            or data.get("baseline_path")
-        )
-        candidate_path_str = (
-            data.get("candidate_model_path")
-            or data.get("candidateModelPath")
-            or data.get("candidate_path")
-        )
-
-        if not baseline_path_str or not candidate_path_str:
-            return jsonify({"error": "Baseline and candidate model paths are required."}), 400
-
-        results = model_compare.compare_models(
-            Path(_normalize_browse_path(str(baseline_path_str))),
-            Path(_normalize_browse_path(str(candidate_path_str))),
-        )
-        _state["last_compare_results"] = results
-        return jsonify(results)
-    except model_compare.UnsupportedCompareModelError as e:
-        return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-def _compare_download_basename(results: dict) -> str:
-    baseline = str(results.get("baselineModel", {}).get("name", "Baseline") or "Baseline")
-    candidate = str(results.get("candidateModel", {}).get("name", "Candidate") or "Candidate")
-
-    def clean(value: str) -> str:
-        cleaned = re.sub(r"[^A-Za-z0-9]+", "_", value).strip("_")
-        return cleaned or "Model"
-
-    return f"{clean(baseline)}_vs_{clean(candidate)}_model_compare"
-
-
-@app.route("/api/compare/export", methods=["GET"])
-def api_compare_export():
-    """Download the latest model compare results for review."""
-    try:
-        results = _state.get("last_compare_results")
-        if not results:
-            return jsonify({"error": "No compare results available. Run compare first."}), 400
-
-        export_format = request.args.get("format", "").strip().lower()
-        base_name = _compare_download_basename(results)
-
-        if export_format == "json":
-            payload = json.dumps(results, indent=2).encode("utf-8")
-            return send_file(
-                io.BytesIO(payload),
-                mimetype="application/json",
-                as_attachment=True,
-                download_name=f"{base_name}.json",
-            )
-
-        if export_format in {"md", "markdown"}:
-            payload = model_compare.format_markdown_output(results).encode("utf-8")
-            return send_file(
-                io.BytesIO(payload),
-                mimetype="text/markdown",
-                as_attachment=True,
-                download_name=f"{base_name}.md",
-            )
-
-        if export_format == "csv":
-            payload = model_compare.format_csv_output(results).encode("utf-8")
-            return send_file(
-                io.BytesIO(payload),
-                mimetype="text/csv",
-                as_attachment=True,
-                download_name=f"{base_name}.csv",
-            )
-
-        return jsonify({"error": f"Unsupported compare export format: {export_format or '(empty)'}"}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
 @app.route("/api/export", methods=["GET"])
 def api_export():
     """Download the latest analysis as JSON or XLSX."""
@@ -2092,7 +2006,7 @@ def main():
         "--experimental",
         action="append",
         default=[],
-        help="Enable an experimental feature key such as compare-models",
+        help="Enable an experimental feature key",
     )
 
     args = parser.parse_args()

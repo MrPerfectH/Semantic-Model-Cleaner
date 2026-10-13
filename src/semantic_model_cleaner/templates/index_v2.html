@@ -28,8 +28,6 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); font
 ::-webkit-scrollbar-track { background: transparent; }
 code { font-family: var(--mono); font-size: .92em; }
 .hidden { display: none !important; }
-body.app-flow-compare .cleanup-flow { display: none !important; }
-body.app-flow-cleanup #compareFlow { display: none !important; }
 
 /* ===== top bar ===== */
 .header { flex: none; height: 52px; background: #fff; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; gap: 12px; padding: 0 16px; color: var(--text); z-index: 60; }
@@ -48,7 +46,6 @@ body.app-flow-cleanup #compareFlow { display: none !important; }
 .topbar-right .ui-switch-link:hover { color: var(--text); border-color: var(--text-faint); background: var(--row-hover); }
 .setup-export-actions { display: flex; gap: 8px; align-items: center; }
 .header .build-stamp { font-size: 10.5px; color: var(--text-faint); font-family: var(--mono); white-space: nowrap; }
-.app-flow-switcher { display: none !important; }
 
 /* ===== shell / rail ===== */
 .shell { flex: 1; min-height: 0; display: flex; }
@@ -56,11 +53,8 @@ body.app-flow-cleanup #compareFlow { display: none !important; }
 .view-tabs { display: flex; flex-direction: column; gap: 1px; }
 .view-tab { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px; border: 1px solid transparent; font-size: 13px; font-weight: 500; color: var(--text-mid); cursor: pointer; user-select: none; white-space: nowrap; }
 .view-tab:hover { background: #f1f5f9; }
-body.app-flow-cleanup .view-tab.active { background: #eff4ff; border-color: #dbe4fe; color: #1d4ed8; font-weight: 650; }
 .view-tab .tab-count { margin-left: auto; font-family: var(--mono); font-size: 11.5px; font-weight: 400; color: var(--text-faint); opacity: 1; }
-body.app-flow-cleanup .view-tab.active .tab-count { color: #1d4ed8; }
 .view-tab.detail-tab { display: none; }
-body.app-flow-cleanup .view-tab.detail-tab.active { display: flex; }
 .rail-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px; border: 1px solid transparent; font-size: 13px; font-weight: 500; color: var(--text-mid); cursor: pointer; user-select: none; white-space: nowrap; }
 .rail-item:hover { background: #f1f5f9; }
 .rail-item.active { background: #eff4ff; border-color: #dbe4fe; color: #1d4ed8; font-weight: 650; }
@@ -350,55 +344,6 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ===== compare ===== */
-.compare-workspace { display: grid; gap: 12px; }
-.compare-panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 15px 16px; box-shadow: var(--shadow-card); }
-.compare-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-.compare-header h2 { font-size: 14px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
-.compare-header .detail-meta { margin: 3px 0 0; }
-.compare-setup-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(220px, .55fr); gap: 12px; align-items: stretch; }
-.compare-model-card { min-width: 0; padding: 12px; border: 1px solid var(--border-soft); border-radius: 10px; background: #fbfcfe; display: grid; gap: 8px; align-content: start; }
-.compare-model-card h3 { font-size: 10.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
-.compare-model-card .pill-list { margin-bottom: 0; background: #fff; }
-.compare-action-card { min-width: 0; padding: 12px; border: 1px solid var(--primary-border); border-radius: 10px; background: var(--primary-soft); display: grid; gap: 8px; align-content: start; }
-.compare-status { color: var(--text-light); font-size: 12px; line-height: 1.45; }
-.compare-scope-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
-.compare-scope-item { min-height: 42px; padding: 9px 11px; border: 1px solid var(--border-soft); border-radius: 9px; background: #fbfcfe; color: var(--text-mid); font-size: 12px; font-weight: 600; display: flex; align-items: center; }
-.compare-result-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.compare-result-tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; background: #fff; overflow: hidden; padding: 0; gap: 0; margin-bottom: 12px; }
-.compare-result-tab { border: 0; border-left: 1px solid var(--border-soft); padding: 7px 12px; background: transparent; color: var(--text-light); font-size: 12px; font-weight: 550; font-family: inherit; cursor: pointer; }
-.compare-result-tab:first-child { border-left: 0; }
-.compare-result-tab.active { background: var(--primary-soft); color: #1d4ed8; font-weight: 650; }
-.compare-view.hidden { display: none !important; }
-.compare-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
-.compare-summary-card { min-width: 0; padding: 12px; border: 1px solid var(--border-soft); border-radius: 10px; background: #fbfcfe; }
-.compare-summary-total { font-size: 22px; line-height: 1; font-weight: 680; color: var(--primary); font-family: var(--mono); }
-.compare-summary-label { margin-top: 5px; font-size: 10.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
-.compare-summary-metrics { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; color: var(--text-light); font-size: 12px; }
-.compare-summary-metrics span { padding: 2px 8px; border-radius: 999px; background: #fff; border: 1px solid var(--border-soft); white-space: nowrap; }
-.compare-review-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
-.compare-review-card { min-width: 0; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 10px; background: #fff; }
-.compare-review-value { font-size: 18px; font-weight: 680; color: var(--text); font-family: var(--mono); }
-.compare-review-label { margin-top: 3px; color: var(--text-light); font-size: 12px; line-height: 1.35; }
-.compare-filter-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-.compare-filter-group { display: flex; flex-direction: column; gap: 3px; min-width: 150px; }
-.compare-filter-group label { font-size: 10.5px; color: var(--text-faint); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
-.compare-filter-group select { min-height: 32px; padding: 6px 26px 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text-mid); font-size: 12.5px; font-family: inherit; }
-.compare-visible-count { margin-left: auto; color: var(--text-faint); font-size: 11.5px; font-family: var(--mono); }
-.compare-diff-table-container { max-height: 420px; min-height: 160px; flex: none !important; }
-.compare-diff-table { min-width: 980px; }
-.compare-diff-table th[data-comparecol="change"] { width: 120px; }
-.compare-diff-table th[data-comparecol="object"] { width: 260px; }
-.compare-diff-table th[data-comparecol="properties"] { width: 460px; }
-.compare-diff-table th[data-comparecol="source"] { width: 220px; }
-.compare-object-cell, .compare-property-list, .compare-source-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.compare-object-title { font-weight: 650; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.compare-object-meta, .compare-source-cell { color: var(--text-light); font-size: 12px; line-height: 1.35; }
-.compare-property-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px; align-items: start; }
-.compare-property-name { color: var(--text); font-weight: 650; }
-.compare-property-values { color: var(--text-light); overflow-wrap: anywhere; }
-.compare-empty { color: var(--text-light); text-align: center; padding: 24px 12px; }
-
 /* ===== pills ===== */
 .pill-list { display: flex; flex-wrap: wrap; gap: 6px; min-height: 36px; padding: 8px; background: #fbfcfe; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
 .pill-list.empty { align-items: center; justify-content: flex-start; color: var(--text-faint); font-size: 12px; font-style: normal; }
@@ -602,7 +547,6 @@ body.scope-open .scope-drawer { transform: translateX(0); }
 @media (max-width: 1000px) {
   .rail { width: 176px; }
   .filters-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .compare-setup-grid, .compare-summary-grid { grid-template-columns: 1fr; }
   .report-health-controls { grid-template-columns: 1fr; }
   .detail-workbench-grid, .detail-inspector-grid { grid-template-columns: 1fr; }
   .detail-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -614,7 +558,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
 <link rel="stylesheet" href="{{ url_for('static', filename='result-overview.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='accessibility.css') }}">
 </head>
-<body class="app-flow-cleanup">
+<body>
 <div class="header">
   <div class="brand">
     <div class="brand-logo"></div>
@@ -638,10 +582,6 @@ body.scope-open .scope-drawer { transform: translateX(0); }
     <div class="build-stamp" title="UI build identifier">{{ build_stamp }}</div>
   </div>
 </div>
-<div class="app-flow-switcher hidden" id="appFlowSwitcher" aria-label="Workspace flow">
-  <button type="button" class="app-flow-tab active" id="btnCleanupFlow" data-app-flow="cleanup">Usage &amp; Cleanup</button>
-  <button type="button" class="app-flow-tab" id="btnCompareFlow" data-app-flow="compare">Semantic Model Compare (1:1)</button>
-</div>
 <div class="shell">
   <aside class="rail">
     <nav class="view-tabs" id="viewTabs" aria-label="Views">
@@ -651,9 +591,8 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <button type="button" class="view-tab" data-view="refs" id="tabRefs">References <span class="tab-count" id="tabRefsCount"></span></button>
       <button type="button" class="view-tab detail-tab" data-view="item" id="tabItem">&#8627; Item page</button>
       <button type="button" class="view-tab detail-tab" data-view="table" id="tabTable">&#8627; Table page</button>
-      <button type="button" class="rail-item{% if not runtime.betaEnabled %} hidden{% endif %}" data-app-flow="compare" id="railCompare">Compare <span class="rail-beta">Beta</span></button>
     </nav>
-    <div class="rail-summary hidden cleanup-flow" id="summarySection">
+    <div class="rail-summary hidden" id="summarySection">
       <div class="rail-divider"></div>
       <div class="rail-heading">Cleanup</div>
       <div class="rail-row" title="Items that look low-risk to clean up"><span class="rail-dot" style="background:#16a34a"></span>Safe<span class="value" id="sumSafe">0</span></div>
@@ -690,7 +629,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
         {% endif %}
       </div>
       {% endif %}
-      <div class="welcome-card cleanup-flow" id="welcomeCard">
+      <div class="welcome-card" id="welcomeCard">
         <div class="welcome-logo"></div>
         <h2>Start with a Power BI Project</h2>
         <p>Open a folder containing your Semantic Model and Reports, or explore a disposable demo. Review what will be checked before analyzing. Setup does not change your project files.</p>
@@ -698,124 +637,25 @@ body.scope-open .scope-drawer { transform: translateX(0); }
         <button class="btn btn-secondary" type="button" onclick="smcLoadDemo()">Try demo</button>
         <p><button class="btn btn-secondary btn-sm" type="button" onclick="smcOpenScope()">Choose model and report folders separately</button></p>
       </div>
-  <section class="compare-workspace" id="compareFlow" aria-label="Semantic Model Compare (1:1)">
-    <div class="compare-panel">
-      <div class="compare-header">
-        <div>
-          <h2>Semantic Model Compare (1:1)</h2>
-          <div class="detail-meta">Baseline and candidate model pair for a model-to-model review.</div>
-        </div>
-      </div>
-      <div class="compare-setup-grid">
-        <div class="compare-model-card">
-          <h3>Baseline Semantic Model</h3>
-          <div class="pill-list empty" id="compareBaselinePills">No baseline model selected</div>
-          <button class="btn btn-secondary btn-sm" id="btnBrowseCompareBaseline" title="Pick the baseline .SemanticModel folder">Choose baseline...</button>
-        </div>
-        <div class="compare-model-card">
-          <h3>Candidate Semantic Model</h3>
-          <div class="pill-list empty" id="compareCandidatePills">No candidate model selected</div>
-          <button class="btn btn-secondary btn-sm" id="btnBrowseCompareCandidate" title="Pick the candidate .SemanticModel folder">Choose candidate...</button>
-        </div>
-        <div class="compare-action-card">
-          <button class="btn btn-primary" id="btnRunCompare" disabled title="Compare execution will be enabled with the model diff engine">Compare</button>
-          <div class="compare-status" id="compareStatus">Select a baseline and candidate semantic model.</div>
-        </div>
-      </div>
-    </div>
-    <div class="compare-panel">
-      <div class="compare-header">
-        <div>
-          <h2>Compare Scope</h2>
-          <div class="detail-meta">Tables, measures, columns, display folders, hidden flags, and key DAX/property changes.</div>
-        </div>
-      </div>
-      <div class="compare-scope-grid">
-        <div class="compare-scope-item">Tables</div>
-        <div class="compare-scope-item">Measures</div>
-        <div class="compare-scope-item">Columns</div>
-        <div class="compare-scope-item">Display folders</div>
-        <div class="compare-scope-item">Hidden flags</div>
-        <div class="compare-scope-item">DAX/properties</div>
-      </div>
-    </div>
-    <div class="compare-panel hidden" id="compareResultSection">
-      <div class="compare-header">
-        <div>
-          <h2>Compare Results</h2>
-          <div class="detail-meta" id="compareResultMeta"></div>
-        </div>
-        <div class="compare-result-actions">
-          <button class="btn btn-secondary btn-sm" id="btnExportCompareMarkdown" title="Download compare results as Markdown">Export Markdown</button>
-          <button class="btn btn-secondary btn-sm" id="btnExportCompareCsv" title="Download compare differences as CSV">Export CSV</button>
-          <button class="btn btn-secondary btn-sm" id="btnExportCompareJson" title="Download compare results as JSON">Export JSON</button>
-        </div>
-      </div>
-      <div class="compare-result-tabs" id="compareResultTabs" aria-label="Compare result view">
-        <button type="button" class="compare-result-tab active" data-compare-view="summary">Summary</button>
-        <button type="button" class="compare-result-tab" data-compare-view="details">Detailed differences</button>
-      </div>
-      <div class="compare-view" id="compareSummaryView">
-        <div class="compare-summary-grid" id="compareSummaryCards"></div>
-        <div class="compare-review-summary" id="compareReviewSummary"></div>
-      </div>
-      <div class="compare-view hidden" id="compareDetailsView">
-        <div class="compare-filter-bar">
-          <div class="compare-filter-group">
-            <label for="compareStatusFilter">Change</label>
-            <select id="compareStatusFilter">
-              <option value="all">All changes</option>
-              <option value="added">Added</option>
-              <option value="removed">Removed</option>
-              <option value="changed">Changed</option>
-            </select>
-          </div>
-          <div class="compare-filter-group">
-            <label for="compareCategoryFilter">Area</label>
-            <select id="compareCategoryFilter">
-              <option value="all">All areas</option>
-              <option value="tables">Tables</option>
-              <option value="measures">Measures</option>
-              <option value="columns">Columns</option>
-            </select>
-          </div>
-          <div class="compare-visible-count" id="compareVisibleCount">0 differences shown</div>
-        </div>
-        <div class="table-container compare-diff-table-container">
-          <table class="compare-diff-table">
-            <thead>
-              <tr>
-                <th data-comparecol="change">Change</th>
-                <th data-comparecol="object">Object</th>
-                <th data-comparecol="properties">Properties</th>
-                <th data-comparecol="source">Source</th>
-              </tr>
-            </thead>
-            <tbody id="compareDiffBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </section>
-  <section id="resultOverview" class="result-overview hidden cleanup-flow" aria-label="Analysis overview"></section>
-  <details class="result-guide hidden cleanup-flow" id="resultGuideSection">
+  <section id="resultOverview" class="result-overview hidden" aria-label="Analysis overview"></section>
+  <details class="result-guide hidden" id="resultGuideSection">
     <summary>
       <span class="result-guide-title">How to read these results</span>
       <span class="result-guide-subtitle">Summary cards, filters, status badges, issue states, and cleanup recommendations.</span>
     </summary>
     <div class="result-guide-body" id="resultGuideBody"></div>
   </details>
-  <div class="backup-banner hidden cleanup-flow" id="backupBanner">Backup created: <span class="path" id="backupPath"></span></div>
-  <div class="git-warning hidden cleanup-flow" id="gitWarning"></div>
-  <div class="post-refresh-banner hidden cleanup-flow" id="postRefreshBanner">
+  <div class="backup-banner hidden" id="backupBanner">Backup created: <span class="path" id="backupPath"></span></div>
+  <div class="git-warning hidden" id="gitWarning"></div>
+  <div class="post-refresh-banner hidden" id="postRefreshBanner">
     <strong>Post-refresh disclaimer:</strong> dependency safety and usage classifications can change after deleting measures because downstream DAX dependencies may no longer exist.
   </div>
-  <div class="warning-banner hidden cleanup-flow" id="warningBanner">
+  <div class="warning-banner hidden" id="warningBanner">
     <h3>Analyzer Warnings</h3>
     <div class="warning-note">Warnings mean the analyzer found ambiguous or unsupported metadata patterns. Results are still usable, but some usage links may be incomplete or conservative.</div>
     <div id="warningList"></div>
   </div>
-  <details class="warning-banner hidden cleanup-flow" id="reportHealthBanner">
+  <details class="warning-banner hidden" id="reportHealthBanner">
     <summary class="report-health-toggle">
       <h3>Report Health <span id="reportHealthCount"></span></h3>
       <span class="report-health-toggle-hint" id="reportHealthSummaryHint"></span>
@@ -825,7 +665,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
     <div class="report-health-status" id="reportHealthActionStatus"></div>
     <div class="report-health-preview" id="reportHealthPreviewList"></div>
   </details>
-  <details class="warning-banner hidden cleanup-flow limitation-banner" id="analysisLimitationsBanner">
+  <details class="warning-banner hidden limitation-banner" id="analysisLimitationsBanner">
     <summary class="report-health-toggle">
       <h3>Analysis limitations <span id="analysisLimitationsCount"></span></h3>
       <span class="report-health-toggle-hint" id="analysisLimitationsHint"></span>
@@ -834,7 +674,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
     <div id="analysisLimitationsList"></div>
   </details>
   <div class="main-toolbar">
-  <div class="filters-bar hidden cleanup-flow" id="filtersSection">
+  <div class="filters-bar hidden" id="filtersSection">
     <div class="search-wrap"><input type="text" id="filterSearch" aria-label="Search items, tables and references" placeholder="Search name or table" autocomplete="off"></div>
     <button type="button" class="btn-filters" id="btnToggleFilters" onclick="smcToggleFilters()">Filters &#9662;</button>
     <div class="filters-panel hidden" id="filtersPanel">
@@ -849,7 +689,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <div class="filter-group"><label>Source</label><div class="filter-dropdown" id="filterSource"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
     </div>
   </div>
-  <div class="view-toolbar hidden cleanup-flow" id="viewToolbar">
+  <div class="view-toolbar hidden" id="viewToolbar">
     <div class="table-tools" id="tableToolsSection">
       <label class="rows-control" title="Limit how many rows are rendered at once. Lower values keep the page responsive on larger models.">Rows
         <select id="pageSizeSelect">
@@ -869,7 +709,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
     </div>
   </div>
 </div>
-  <div class="table-container hidden cleanup-flow" id="tableSection">
+  <div class="table-container hidden" id="tableSection">
     <table>
       <thead><tr>
         <th style="width:36px"><input type="checkbox" id="checkAll" aria-label="Select all items on this page"></th>
@@ -893,7 +733,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <tbody id="tableBody"></tbody>
     </table>
   </div>
-  <div class="table-container hidden cleanup-flow" id="tablesOverviewSection">
+  <div class="table-container hidden" id="tablesOverviewSection">
     <table>
       <thead><tr>
         <th style="width:36px"><input type="checkbox" id="checkAllTables" aria-label="Select all tables on this page"></th>
@@ -914,7 +754,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <tbody id="tablesOverviewBody"></tbody>
     </table>
   </div>
-  <div class="table-container hidden cleanup-flow" id="refsTableSection">
+  <div class="table-container hidden" id="refsTableSection">
     <table>
       <thead><tr>
         <th data-refcol="type">Type <span class="sort-arrow"></span></th>
@@ -935,7 +775,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <tbody id="refsTableBody"></tbody>
     </table>
   </div>
-  <div class="table-container hidden cleanup-flow" id="reportsTableSection">
+  <div class="table-container hidden" id="reportsTableSection">
     <div class="report-health-toolbar">
       <div class="report-health-summary" id="reportHealthSummary"></div>
       <div class="report-health-controls">
@@ -968,7 +808,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <tbody id="reportsTableBody"></tbody>
     </table>
   </div>
-  <div class="detail-panel hidden cleanup-flow" id="itemDetailSection">
+  <div class="detail-panel hidden" id="itemDetailSection">
     <div class="detail-pagenav"><button type="button" class="btn btn-secondary btn-sm" onclick="switchView('details')">&larr; Items</button><span class="pagenav-gap"></span><button type="button" class="btn btn-secondary btn-sm" onclick="smcStepItem(-1)">&uarr; Prev</button><button type="button" class="btn btn-secondary btn-sm" onclick="smcStepItem(1)">&darr; Next</button></div>
     <div class="detail-header">
       <div class="detail-header-main">
@@ -1108,7 +948,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <div id="detailUsageList"></div>
     </div>
   </div>
-  <div class="detail-panel hidden cleanup-flow" id="tableDetailSection">
+  <div class="detail-panel hidden" id="tableDetailSection">
     <div class="detail-pagenav"><button type="button" class="btn btn-secondary btn-sm" onclick="switchView('tables')">&larr; Tables</button><span class="pagenav-gap"></span><button type="button" class="btn btn-secondary btn-sm" onclick="smcStepTable(-1)">&uarr; Prev</button><button type="button" class="btn btn-secondary btn-sm" onclick="smcStepTable(1)">&darr; Next</button></div>
     <h3 id="tableDetailTitle">Table Details</h3>
     <div class="detail-meta" id="tableDetailMeta">Select a table to inspect table-level usage patterns.</div>
@@ -1191,13 +1031,13 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <div id="tableDetailRelationshipList"></div>
     </div>
   </div>
-  <div class="status-log hidden cleanup-flow" id="statusLog">
+  <div class="status-log hidden" id="statusLog">
     <h3>Action Log</h3>
     <div id="logEntries"></div>
   </div>
     </div>
 
-  <div class="action-bar hidden cleanup-flow" id="actionSection">
+  <div class="action-bar hidden" id="actionSection">
     <div class="action-plan-preview hidden" id="actionPlanPreview">
       <div class="action-plan-head">
         <div>
@@ -1389,13 +1229,6 @@ var columnRepairPreview = null;
 var currentView = 'details';
 var chosenModels = (initialConfig.initialModels || []).slice();
 var chosenReports = (initialConfig.initialReports || []).slice();
-var currentAppFlow = 'cleanup';
-var compareBaselineModel = null;
-var compareCandidateModel = null;
-var compareResults = null;
-var compareResultView = 'summary';
-var compareStatusFilter = 'all';
-var compareCategoryFilter = 'all';
 var pendingActions = new Map();
 var actionStatus = new Map();
 var selectedTableNames = new Set();
@@ -1503,272 +1336,8 @@ var currentPageByView = { details: 1, tables: 1, reports: 1, refs: 1 };
 
 function $(id) { return document.getElementById(id); }
 
-function setAppFlow(flow) {
-  currentAppFlow = flow === 'compare' ? 'compare' : 'cleanup';
-  document.body.classList.toggle('app-flow-cleanup', currentAppFlow === 'cleanup');
-  document.body.classList.toggle('app-flow-compare', currentAppFlow === 'compare');
-  document.querySelectorAll('[data-app-flow]').forEach(function(button) {
-    var active = button.dataset.appFlow === currentAppFlow;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-pressed', active ? 'true' : 'false');
-  });
-  renderCompareSelection();
-  updateColumnActionButtons();
-}
-
-function compareModelPillHtml(model, side) {
-  if (!model) return '';
-  return '<span class="pill" title="' + esc(model.path) + '">'
-    + esc(model.name)
-    + ' <span class="pill-remove" data-compare-side="' + esc(side) + '">&times;</span></span>';
-}
-
-function renderCompareModelSlot(id, model, side, emptyText) {
-  var el = $(id);
-  if (!model) {
-    el.className = 'pill-list empty';
-    el.textContent = emptyText;
-    return;
-  }
-  el.className = 'pill-list';
-  el.innerHTML = compareModelPillHtml(model, side);
-  el.querySelectorAll('.pill-remove').forEach(function(btn) {
-    btn.onclick = function(e) {
-      e.stopPropagation();
-      if (btn.dataset.compareSide === 'baseline') compareBaselineModel = null;
-      if (btn.dataset.compareSide === 'candidate') compareCandidateModel = null;
-      clearCompareResults();
-      renderCompareSelection();
-    };
-  });
-}
-
-function renderCompareSelection() {
-  renderCompareModelSlot('compareBaselinePills', compareBaselineModel, 'baseline', 'No baseline model selected');
-  renderCompareModelSlot('compareCandidatePills', compareCandidateModel, 'candidate', 'No candidate model selected');
-  var ready = !!(compareBaselineModel && compareCandidateModel);
-  $('btnRunCompare').disabled = !ready;
-  $('btnRunCompare').title = ready
-    ? 'Compare the selected baseline and candidate semantic models'
-    : 'Select a baseline and candidate semantic model first';
-  $('compareStatus').textContent = ready
-    ? 'Model pair ready.'
-    : 'Select a baseline and candidate semantic model.';
-}
-
-function clearCompareResults() {
-  compareResults = null;
-  compareResultView = 'summary';
-  compareStatusFilter = 'all';
-  compareCategoryFilter = 'all';
-  $('compareResultSection').classList.add('hidden');
-  $('compareSummaryCards').innerHTML = '';
-  $('compareReviewSummary').innerHTML = '';
-  $('compareDiffBody').innerHTML = '';
-  $('compareResultMeta').textContent = '';
-  $('compareVisibleCount').textContent = '0 differences shown';
-  $('compareStatusFilter').value = 'all';
-  $('compareCategoryFilter').value = 'all';
-  setCompareResultView('summary');
-}
-
-function setCompareResultView(view) {
-  compareResultView = view === 'details' ? 'details' : 'summary';
-  document.querySelectorAll('[data-compare-view]').forEach(function(button) {
-    var active = button.dataset.compareView === compareResultView;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-pressed', active ? 'true' : 'false');
-  });
-  $('compareSummaryView').classList.toggle('hidden', compareResultView !== 'summary');
-  $('compareDetailsView').classList.toggle('hidden', compareResultView !== 'details');
-}
-
-function compareCategoryLabel(category) {
-  if (category === 'tables') return 'Tables';
-  if (category === 'measures') return 'Measures';
-  if (category === 'columns') return 'Columns';
-  return category || '';
-}
-
-function compareStatusLabel(status) {
-  if (status === 'added') return 'Added';
-  if (status === 'removed') return 'Removed';
-  if (status === 'changed') return 'Changed';
-  return status || '';
-}
-
-function compareStatusBadgeClass(status) {
-  if (status === 'added') return 'badge-used';
-  if (status === 'removed') return 'badge-caution';
-  if (status === 'changed') return 'badge-review';
-  return 'badge-muted';
-}
-
-function compareSummaryTotal(summary) {
-  return (summary.added || 0) + (summary.removed || 0) + (summary.changed || 0);
-}
-
-function compareSummaryMetric(summary, metric) {
-  return ((summary.tables && summary.tables[metric]) || 0)
-    + ((summary.measures && summary.measures[metric]) || 0)
-    + ((summary.columns && summary.columns[metric]) || 0);
-}
-
-function compareValueText(value) {
-  if (value === true) return 'true';
-  if (value === false) return 'false';
-  if (value === null || value === undefined || value === '') return '(blank)';
-  return String(value);
-}
-
-function compareShortPath(path) {
-  if (!path) return '';
-  var parts = String(path).split(/[\\\/]+/).filter(Boolean);
-  return parts.slice(-3).join('/');
-}
-
-function comparePropertiesHtml(diff) {
-  var props = diff.properties || [];
-  if (!props.length) {
-    return '<span class="compare-property-values">' + esc(compareStatusLabel(diff.status)) + '</span>';
-  }
-  return props.map(function(prop) {
-    return '<div class="compare-property-row">'
-      + '<span class="compare-property-name">' + esc(prop.name) + '</span>'
-      + '<span class="compare-property-values">'
-      + esc(compareValueText(prop.baseline)) + ' -> ' + esc(compareValueText(prop.candidate))
-      + '</span>'
-      + '</div>';
-  }).join('');
-}
-
-function compareSourceHtml(diff) {
-  var baseline = diff.baselineSourceFile || '';
-  var candidate = diff.candidateSourceFile || '';
-  if (diff.status === 'added') {
-    return '<span title="' + esc(candidate) + '">Candidate: ' + esc(compareShortPath(candidate)) + '</span>';
-  }
-  if (diff.status === 'removed') {
-    return '<span title="' + esc(baseline) + '">Baseline: ' + esc(compareShortPath(baseline)) + '</span>';
-  }
-  return '<span title="' + esc(baseline) + '">Baseline: ' + esc(compareShortPath(baseline)) + '</span>'
-    + '<span title="' + esc(candidate) + '">Candidate: ' + esc(compareShortPath(candidate)) + '</span>';
-}
-
-function filteredCompareDiffs() {
-  if (!compareResults) return [];
-  return (compareResults.diffs || []).filter(function(diff) {
-    if (compareStatusFilter !== 'all' && diff.status !== compareStatusFilter) return false;
-    if (compareCategoryFilter !== 'all' && diff.category !== compareCategoryFilter) return false;
-    return true;
-  });
-}
-
-function renderCompareSummary(data) {
-  var summary = data.summary || {};
-  var categories = [
-    { key: 'tables', label: 'Tables' },
-    { key: 'measures', label: 'Measures' },
-    { key: 'columns', label: 'Columns' }
-  ];
-  $('compareSummaryCards').innerHTML = categories.map(function(category) {
-    var values = summary[category.key] || {};
-    return '<div class="compare-summary-card">'
-      + '<div class="compare-summary-total">' + compareSummaryTotal(values) + '</div>'
-      + '<div class="compare-summary-label">' + esc(category.label) + '</div>'
-      + '<div class="compare-summary-metrics">'
-      + '<span>+' + (values.added || 0) + '</span>'
-      + '<span>-' + (values.removed || 0) + '</span>'
-      + '<span>Changed ' + (values.changed || 0) + '</span>'
-      + '<span>Same ' + (values.unchanged || 0) + '</span>'
-      + '</div>'
-      + '</div>';
-  }).join('');
-  var changedProperties = (data.diffs || []).reduce(function(total, diff) {
-    return total + ((diff.properties || []).length || 0);
-  }, 0);
-  $('compareReviewSummary').innerHTML = [
-    { value: summary.totalDifferences || 0, label: 'Objects needing review' },
-    { value: compareSummaryMetric(summary, 'added'), label: 'Added objects' },
-    { value: compareSummaryMetric(summary, 'removed'), label: 'Removed objects' },
-    { value: changedProperties, label: 'Property-level changes' }
-  ].map(function(item) {
-    return '<div class="compare-review-card">'
-      + '<div class="compare-review-value">' + item.value + '</div>'
-      + '<div class="compare-review-label">' + esc(item.label) + '</div>'
-      + '</div>';
-  }).join('');
-}
-
-function renderCompareDetails() {
-  var diffs = filteredCompareDiffs();
-  var total = compareResults && compareResults.diffs ? compareResults.diffs.length : 0;
-  $('compareVisibleCount').textContent = diffs.length + ' of ' + total + ' differences shown';
-  if (!diffs.length) {
-    $('compareDiffBody').innerHTML = '<tr><td colspan="4" class="compare-empty">No differences found</td></tr>';
-  } else {
-    $('compareDiffBody').innerHTML = diffs.map(function(diff) {
-      return '<tr>'
-        + '<td><span class="badge ' + compareStatusBadgeClass(diff.status) + '">' + esc(compareStatusLabel(diff.status)) + '</span></td>'
-        + '<td><div class="compare-object-cell">'
-        + '<span class="compare-object-title" title="' + esc(diff.displayName || diff.name || '') + '">' + esc(diff.displayName || diff.name || '') + '</span>'
-        + '<span class="compare-object-meta">' + esc(compareCategoryLabel(diff.category)) + '</span>'
-        + '</div></td>'
-        + '<td><div class="compare-property-list">' + comparePropertiesHtml(diff) + '</div></td>'
-        + '<td><div class="compare-source-cell">' + compareSourceHtml(diff) + '</div></td>'
-        + '</tr>';
-    }).join('');
-  }
-}
-
-function renderCompareResults(data) {
-  compareResults = data;
-  compareResultView = 'summary';
-  compareStatusFilter = 'all';
-  compareCategoryFilter = 'all';
-  $('compareStatusFilter').value = 'all';
-  $('compareCategoryFilter').value = 'all';
-  $('compareResultMeta').textContent = (data.baselineModel ? data.baselineModel.name : 'Baseline')
-    + ' -> ' + (data.candidateModel ? data.candidateModel.name : 'Candidate');
-  renderCompareSummary(data);
-  renderCompareDetails();
-  setCompareResultView('summary');
-  $('compareResultSection').classList.remove('hidden');
-}
-
-function exportCompareResults(format) {
-  if (!compareResults) return;
-  smcDownload('/api/compare/export?format=' + encodeURIComponent(format));
-}
-
-async function runSemanticModelCompare() {
-  if (!(compareBaselineModel && compareCandidateModel)) return;
-  $('btnRunCompare').disabled = true;
-  $('btnRunCompare').innerHTML = '<span class="spinner"></span>Comparing...';
-  $('compareStatus').textContent = 'Comparing selected semantic models...';
-  try {
-    var data = await apiPost('/api/compare', {
-      baseline_model_path: compareBaselineModel.path,
-      candidate_model_path: compareCandidateModel.path
-    });
-    if (data.error) {
-      clearCompareResults();
-      $('compareStatus').textContent = 'Compare failed: ' + data.error;
-      return;
-    }
-    renderCompareResults(data);
-    $('compareStatus').textContent = 'Compare complete. ' + (data.summary.totalDifferences || 0) + ' difference(s).';
-  } catch (err) {
-    clearCompareResults();
-    $('compareStatus').textContent = 'Compare failed: ' + (err && err.message ? err.message : err);
-  } finally {
-    $('btnRunCompare').disabled = !(compareBaselineModel && compareCandidateModel);
-    $('btnRunCompare').textContent = 'Compare';
-  }
-}
-
 function isModelExplorerMode(mode) {
-  return mode === 'model' || mode === 'compareBaseline' || mode === 'compareCandidate';
+  return mode === 'model';
 }
 
 function isExplorerEntrySelectable(entry) {
@@ -2946,7 +2515,7 @@ function explorerStartPath(mode, existing) {
   var savedDefault = (mode === 'folder' || mode === 'project') ? '' : readExplorerDefaultPath(mode);
   if (existing.length) return parentDir(existing[0].path);
   if (savedDefault) return savedDefault;
-  if (mode === 'model' || mode === 'compareBaseline' || mode === 'compareCandidate') {
+  if (mode === 'model') {
     return initialConfig.modelBrowseRoot || initialConfig.defaultRoot || '';
   }
   if (mode === 'report' && chosenModels.length) return reportStartPathFromModel(chosenModels[0].path);
@@ -2960,15 +2529,9 @@ function explorerStartPath(mode, existing) {
 
 function openExplorer(mode) {
   explorerMode = mode;
-  $('explorerTitle').textContent = mode === 'project' ? 'Open Power BI Project — choose its folder' : mode === 'compareBaseline'
-    ? 'Choose Baseline Semantic Model'
-    : (mode === 'compareCandidate'
-      ? 'Choose Candidate Semantic Model'
-      : (mode === 'model' ? 'Choose Semantic Model' : ((mode === 'folder' || mode === 'project') ? 'Choose Search Folder' : 'Browse for Reports')));
+  $('explorerTitle').textContent = mode === 'project' ? 'Open Power BI Project — choose its folder' : (mode === 'model' ? 'Choose Semantic Model' : (mode === 'folder' ? 'Choose Search Folder' : 'Browse for Reports'));
   explorerPicked.clear();
-  var existing = mode === 'compareBaseline'
-    ? (compareBaselineModel ? [compareBaselineModel] : [])
-    : (mode === 'compareCandidate' ? (compareCandidateModel ? [compareCandidateModel] : []) : (mode === 'model' ? chosenModels : (mode === 'report' ? chosenReports : [])));
+  var existing = mode === 'model' ? chosenModels : (mode === 'report' ? chosenReports : []);
   existing.forEach(function(it) { explorerPicked.set(it.path, it); });
   $('explorerSelectedSummary').textContent = (mode === 'folder' || mode === 'project') ? 'Current folder will be used' : '0 selected';
   $('explorerModal').classList.remove('hidden');
@@ -3162,39 +2725,14 @@ $('btnExplorerDone').onclick = function() {
     else pickedReports.push(item);
   });
   if (explorerMode === 'model') chosenModels = pickedModels.slice(0, 1);
-  if (explorerMode === 'compareBaseline') {
-    compareBaselineModel = pickedModels[0] || null;
-    clearCompareResults();
-  }
-  if (explorerMode === 'compareCandidate') {
-    compareCandidateModel = pickedModels[0] || null;
-    clearCompareResults();
-  }
   if (explorerMode === 'report') chosenReports = pickedReports;
   renderPills();
-  renderCompareSelection();
   $('explorerModal').classList.add('hidden');
 };
 
 $('btnBrowseModels').onclick = function() { openExplorer('model'); };
 $('btnBrowseReports').onclick = function() { openExplorer('report'); };
 $('btnBrowseConnectedReportRoot').onclick = function() { openExplorer('folder'); };
-$('btnBrowseCompareBaseline').onclick = function() { openExplorer('compareBaseline'); };
-$('btnBrowseCompareCandidate').onclick = function() { openExplorer('compareCandidate'); };
-document.querySelectorAll('[data-compare-view]').forEach(function(button) {
-  button.onclick = function() { setCompareResultView(button.dataset.compareView); };
-});
-$('compareStatusFilter').onchange = function() {
-  compareStatusFilter = $('compareStatusFilter').value;
-  renderCompareDetails();
-};
-$('compareCategoryFilter').onchange = function() {
-  compareCategoryFilter = $('compareCategoryFilter').value;
-  renderCompareDetails();
-};
-$('btnExportCompareMarkdown').onclick = function() { exportCompareResults('md'); };
-$('btnExportCompareCsv').onclick = function() { exportCompareResults('csv'); };
-$('btnExportCompareJson').onclick = function() { exportCompareResults('json'); };
 async function findConnectedReports() {
   if (!chosenModels.length) {
     alert('Select a semantic model first');
@@ -7200,12 +6738,6 @@ $('wrapTableTextCheckbox').onchange = function() {
 $('showActionLogCheckbox').onchange = function() {
   setActionLogVisible($('showActionLogCheckbox').checked);
 };
-document.querySelectorAll('[data-app-flow]').forEach(function(button) {
-  button.onclick = function() {
-    setAppFlow(button.dataset.appFlow);
-  };
-});
-$('btnRunCompare').onclick = runSemanticModelCompare;
 
 setupFilterDropdowns();
 initializeHeaderTooltips();
@@ -7219,8 +6751,6 @@ if (initialConfig.initialModelExclusions.length) {
   allWarnings = initialConfig.initialModelExclusions;
   renderWarnings();
 }
-renderCompareSelection();
-setAppFlow('cleanup');
 </script>
 <script>
 (function() {
@@ -7279,12 +6809,6 @@ setAppFlow('cleanup');
   };
   // drawer stays expanded regardless of the stored collapse preference
   try { if (typeof setSetupCollapsed === 'function') setSetupCollapsed(false); } catch (e) { /* noop */ }
-  // clicking any view tab returns to the cleanup flow
-  document.querySelectorAll('.view-tab').forEach(function(t) {
-    t.addEventListener('click', function() {
-      try { setAppFlow('cleanup'); } catch (e) { /* noop */ }
-    });
-  });
   // keep chip fresh whenever the pills re-render
   try {
     if (typeof renderPills === 'function') {

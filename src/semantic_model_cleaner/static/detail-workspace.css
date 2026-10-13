@@ -130,8 +130,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .brand-logo { width:27px; height:27px; }
 .rail { width:184px; padding:23px 12px; background:#fff; border-color:var(--border); }
 .rail .view-tab,.rail .rail-item { padding:10px 12px; font-size:12px; border-radius:5px; }
-body.app-flow-cleanup .view-tab.active { background:#efedff; border-color:transparent; color:#514ad5; }
-body.app-flow-cleanup .view-tab.active .tab-count { color:#514ad5; }
+body .view-tab.active { background:#efedff; border-color:transparent; color:#514ad5; }
+body .view-tab.active .tab-count { color:#514ad5; }
 .container { padding:22px 30px 40px; }
 .btn { border-radius:5px; font-size:12px; font-weight:550; box-shadow:none; }
 .btn-sm { font-size:11px; }

@@ -15,13 +15,7 @@ class Experiment:
     description: str
 
 
-KNOWN_EXPERIMENTS = {
-    "compare-models": Experiment(
-        key="compare-models",
-        label="Model Compare",
-        description="Early-access model comparison flow and prerelease UI surfaces.",
-    ),
-}
+KNOWN_EXPERIMENTS: dict[str, Experiment] = {}
 
 
 def release_channel(raw: str | None = None) -> str:
