@@ -59,7 +59,7 @@ OPTION_B_ITEM_KEY = "Measure:::Sales:::Revenue"
 OPTION_B_TAB_CONTENT = {
     "Definition": ("Definition",),
     "References": ("Report usage", "TestReport", "PAGE", "VISUAL"),
-    "Dependencies": ("Depends on", "Used by"),
+    "Dependencies": ("Calculation lineage", "Uses", "Used in calculations"),
     "Changes": ("Plan a change",),
 }
 

@@ -138,6 +138,7 @@ class RelationshipInfo:
     from_cardinality: str = ""
     to_cardinality: str = ""
     is_active: bool = True
+    cross_filtering_behavior: str = "oneDirection"
 
 
 @dataclass
@@ -2354,6 +2355,7 @@ def parse_relationship_details(model_path: Path) -> list[RelationshipInfo]:
             to_table=to_ref[0],
             to_column=to_ref[1],
             # TOM SingleColumnRelationship defaults (verified with SDK 19.114.0).
+            cross_filtering_behavior=unquote_tmdl_name(props.get("crossFilteringBehavior", "oneDirection")).strip(),
             from_cardinality=unquote_tmdl_name(props.get("fromCardinality", "many")).strip().lower(),
             to_cardinality=unquote_tmdl_name(props.get("toCardinality", "one")).strip().lower(),
             is_active=is_active_raw not in ("false", "0", "no"),
@@ -4452,11 +4454,12 @@ def build_table_summaries(
                 role = "unknown"
 
             cardinality_label = ""
-            if from_cardinality and to_cardinality:
-                cardinality_label = ("1" if from_cardinality == "one" else "*") + ":" + ("1" if to_cardinality == "one" else "*")
+            if local_cardinality and other_cardinality:
+                cardinality_label = ("1" if local_cardinality == "one" else "*") + ":" + ("1" if other_cardinality == "one" else "*")
 
             relationship_items.append({
                 "name": rel.name,
+                "filter_direction": "Both directions" if rel.cross_filtering_behavior.casefold() == "bothdirections" else (f"{rel.to_table} → {rel.from_table}" if rel.cross_filtering_behavior.casefold() == "onedirection" else rel.cross_filtering_behavior),
                 "local_column": format_item_ref((table, local_column)),
                 "other_table": other_table,
                 "other_column": format_item_ref((other_table, other_column)),
