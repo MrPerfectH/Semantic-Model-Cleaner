@@ -82,7 +82,8 @@ def test_item_header_offers_explicit_parent_actions_with_accurate_wording():
     source = JS.read_text(encoding="utf-8")
     assert 'Inspect table source' not in source
     assert "'Open calculation group' : 'Open table'" in source
-    assert 'data-object-action="definition">View definition tab' in source
+    # Overview is summary only: the expression lives on the Definition tab (#134).
+    assert '<h4>DAX expression</h4>' not in source
     assert "parentLink(item.table, item.table), 'html'" in source
     assert 'object-parent-action' in source
     assert "backFromTable" in source and "tableReturnTo" in source
