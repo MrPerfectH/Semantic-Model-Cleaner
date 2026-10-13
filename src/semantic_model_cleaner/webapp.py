@@ -520,7 +520,8 @@ def _build_report_health(report_issues: list[dict], items: list[dict]) -> dict:
             "Stale PBIR selectors no longer match live visual or bookmark query fields. "
         )
         description += (
-            f"{entry_count} cleanup {'entry' if entry_count == 1 else 'entries'} can be previewed before applying repairs."
+            f"{entry_count} {'reference' if entry_count == 1 else 'references'} can be removed automatically; "
+            "removal does not change what the report shows."
             if entry_count else
             "No supported cleanup action exists for these findings; review them in the report."
         )

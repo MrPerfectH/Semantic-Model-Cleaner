@@ -52,19 +52,50 @@
     return { lead: lead, next: nextAction(item), triggers: triggers, specific: specific, shared: shared, limitations: limitations };
   }
 
-  function limitationRowHtml(limitation, compact) {
-    var scope = limitation.scope === 'shared' ? 'Shared · affects every item without use in scope' : 'Targeted · affects referenced items only';
-    var affected = limitation.affectedItemCount != null ? plural(limitation.affectedItemCount, 'affected item') : '';
-    var head = '<div class="limitation-head"><div><div class="limitation-title">' + text(limitation.feature || limitation.area) + (limitation.owner ? ' <span class="limitation-owner">of ' + text(limitation.owner) + '</span>' : '') + '</div>'
-      + '<div class="limitation-meta">' + text(limitation.location || limitation.source_file || '') + ' · ' + text(limitation.area || '') + '</div></div>'
-      + '<div class="limitation-badges"><span class="badge badge-review">' + text(scope) + '</span>' + (affected ? '<span class="badge badge-muted">' + text(affected) + '</span>' : '') + '</div></div>';
+  /* What a limitation does to Cleanup, in plain words: both kinds keep items at Review. */
+  function effectLabel(limitation) {
+    if (limitation.scope === 'shared') return 'Keeps every unused item at Review';
+    var count = limitation.affectedItemCount != null ? limitation.affectedItemCount : (limitation.targets || []).length;
+    return count ? 'Keeps ' + plural(count, 'item') + ' at Review' : 'No items affected';
+  }
+  function fileLabel(location) {
+    var value = String(location || '');
+    return value.split(/[\\/]/).pop() || value;
+  }
+  function affectedItemsHtml(limitation) {
+    var rows = Array.isArray(limitation.affectedItems) ? limitation.affectedItems : [];
+    if (!rows.length) return limitation.targets && limitation.targets.length ? text(limitation.targets.join(', ')) : '';
+    var links = rows.map(function (row) {
+      var label = (row.table ? row.table + '[' + row.name + ']' : row.name);
+      return '<a href="#" class="detail-link detail-item-link" data-item-key="' + text(row.type + ':::' + row.table + ':::' + row.name) + '">' + text(label) + '</a>';
+    });
+    var more = (limitation.affectedItemCount || 0) - rows.length;
+    return links.join(', ') + (more > 0 ? ' and ' + plural(more, 'more item') : '');
+  }
+
+  /* One line per limitation; the evidence stays one click away. */
+  function limitationRowHtml(limitation) {
+    var construct = text(limitation.feature || limitation.area);
+    var owner = limitation.owner ? text(limitation.owner) : '';
+    var location = limitation.location || limitation.source_file || '';
+    var summary = '<summary class="limitation-row">'
+      + '<span class="limitation-construct" title="' + construct + (owner ? ' of ' + owner : '') + '"><strong>' + construct + '</strong>' + (owner ? ' <span class="limitation-owner">' + owner + '</span>' : '') + '</span>'
+      + '<span class="limitation-location" title="' + text(location) + '">' + text(fileLabel(location)) + '</span>'
+      + '<span class="limitation-effect">' + text(effectLabel(limitation)) + '</span>'
+      + '</summary>';
+    var affected = affectedItemsHtml(limitation);
     var body = '<dl class="limitation-facts">'
+      + '<dt>Source</dt><dd>' + text(location) + (limitation.area ? ' · ' + text(limitation.area) : '') + '</dd>'
       + '<dt>Checked</dt><dd>' + text(limitation.checked || '') + '</dd>'
       + '<dt>Not checked</dt><dd>' + text(limitation.unchecked || '') + '</dd>'
       + '<dt>Effect on Cleanup</dt><dd>' + text(limitation.effect || '') + '</dd>'
-      + (limitation.targets && limitation.targets.length ? '<dt>Referenced items</dt><dd>' + text(limitation.targets.join(', ')) + '</dd>' : '')
+      + (affected ? '<dt>Affected items</dt><dd>' + affected + '</dd>' : '')
       + '</dl>';
-    return '<details class="limitation-card"' + (compact ? '' : '') + '><summary>' + head + '</summary>' + body + '</details>';
+    return '<details class="limitation-card">' + summary + body + '</details>';
+  }
+  function limitationListHeader() {
+    return '<div class="limitation-row limitation-row-header" aria-hidden="true"><span>Construct</span><span>Source</span>'
+      + '<span title="Items whose Cleanup Recommendation stays at Review because of this limitation">Effect on Cleanup</span></div>';
   }
 
   function explanationHtml(item, options) {
@@ -77,7 +108,7 @@
       details += '<ul class="detail-list cleanup-triggers">' + explanation.triggers.map(function (trigger) { return '<li>' + text(trigger) + '</li>'; }).join('') + '</ul>';
     }
     if (explanation.limitations.length) {
-      details += '<p class="object-note">' + plural(explanation.limitations.length, 'analysis limitation') + ' affecting this item</p>' + explanation.limitations.map(function (limitation) { return limitationRowHtml(limitation, true); }).join('');
+      details += '<p class="object-note">' + plural(explanation.limitations.length, 'analysis limitation') + ' affecting this item</p>' + '<div class="limitation-groups">' + explanation.limitations.map(limitationRowHtml).join('') + '</div>';
     }
     if (details) html += '<details class="cleanup-technical"' + (options.open ? ' open' : '') + '><summary>Technical details and source evidence</summary>' + details + '</details>';
     return html;
@@ -96,19 +127,20 @@
     var count = document.getElementById('analysisLimitationsCount');
     var hint = document.getElementById('analysisLimitationsHint');
     var current = state();
+    var tab = document.getElementById('tabLimitations');
+    var tabCount = document.getElementById('tabLimitationsCount');
+    if (tab) tab.classList.toggle('hidden', !current.limitations.length);
+    if (tabCount) tabCount.textContent = current.limitations.length ? '(' + current.distinctCount + ')' : '';
     list.innerHTML = '';
     if (!current.limitations.length) { banner.classList.add('hidden'); if (count) count.textContent = ''; if (hint) hint.textContent = ''; return; }
     banner.classList.remove('hidden');
     if (count) count.textContent = '(' + plural(current.distinctCount, 'distinct limitation') + ' · ' + plural(current.affectedItemCount, 'affected item') + ')';
     if (hint) hint.textContent = plural(current.sharedCount, 'shared', 'shared') + ' keep every unused item at Review · ' + plural(current.targetedCount, 'targeted', 'targeted') + ' affect referenced items only';
-    var intro = document.createElement('div');
-    intro.className = 'limitation-summary';
-    intro.innerHTML = '<div><strong>' + text(current.distinctCount) + '</strong> distinct limitations</div><div><strong>' + text(current.affectedItemCount) + '</strong> affected items</div><div><strong>' + text(current.sharedCount) + '</strong> shared</div><div><strong>' + text(current.targetedCount) + '</strong> targeted</div>';
-    list.appendChild(intro);
     var wrap = document.createElement('div');
     wrap.className = 'limitation-groups';
-    wrap.innerHTML = current.limitations.map(function (limitation) { return limitationRowHtml(limitation, false); }).join('');
+    wrap.innerHTML = limitationListHeader() + current.limitations.map(limitationRowHtml).join('');
     list.appendChild(wrap);
+    if (typeof bindDetailLinks === 'function') bindDetailLinks(wrap);
   }
 
   window.smcRenderAnalysisLimitations = render;

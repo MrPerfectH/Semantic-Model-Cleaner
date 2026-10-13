@@ -75,7 +75,7 @@ code { font-family: var(--mono); font-size: .92em; }
 .right-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .container { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; padding: 14px 16px 16px; position: relative; }
 .container > * { flex-shrink: 0; }
-.table-container, .detail-panel { flex-shrink: 1 !important; }
+.detail-panel { flex-shrink: 1 !important; }
 
 /* ===== welcome ===== */
 .welcome-card { margin: 56px auto; max-width: 520px; text-align: center; background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 40px 38px; box-shadow: var(--shadow-card), 0 14px 34px -14px rgba(15,23,42,.1); }
@@ -117,7 +117,8 @@ details[open] > .report-health-toggle { margin-bottom: 8px; }
 .report-health-body { margin-top: 8px; display: grid; gap: 4px; }
 .report-health-row { color: var(--text-light); font-size: 12px; line-height: 1.45; }
 .report-health-actions { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.report-health-status { font-size: 12px; color: #92400e; }
+.report-health-status { font-size: 12px; color: #92400e; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.report-health-status:not(:empty) { margin-top: 8px; }
 .report-health-preview { margin-top: 8px; display: grid; gap: 4px; font-size: 12px; color: var(--text-light); }
 .report-health-preview-row { padding: 6px 8px; border: 1px solid #fde68a; border-radius: 6px; background: #fffbeb; line-height: 1.45; word-break: break-word; }
 
@@ -195,11 +196,13 @@ details[open] > .report-health-toggle { margin-bottom: 8px; }
 .btn-danger:hover:not(:disabled) { background: var(--caution); }
 .btn-warning { background: #fffbeb; color: #b45309; border-color: #fde68a; font-weight: 600; }
 .btn-warning:hover:not(:disabled) { background: var(--review); }
+.btn-link { background: none; border-color: transparent; color: var(--primary); padding-left: 4px; padding-right: 4px; }
+.btn-link:hover:not(:disabled) { text-decoration: underline; }
 .btn-success { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; font-weight: 600; }
 .btn-success:hover:not(:disabled) { background: var(--safe); }
 
 /* ===== tables ===== */
-.table-container { background: var(--card); border: 1px solid var(--border); border-radius: 12px; position: relative; overflow-y: auto; overflow-x: auto; flex: 1 1 0; min-height: 320px; box-shadow: var(--shadow-card); }
+.table-container { background: var(--card); border: 1px solid var(--border); border-radius: 12px; position: relative; overflow-y: auto; overflow-x: auto; flex: none; height: max(420px, calc(100dvh - 210px)); box-shadow: var(--shadow-card); }
 table { width: 100%; border-collapse: collapse; font-size: 12.5px; table-layout: fixed; }
 #tableSection table { min-width: 1400px; }
 #tablesOverviewSection table { min-width: 1250px; }
@@ -403,18 +406,23 @@ body.scope-open .scope-drawer { transform: translateX(0); }
 .role-fact-like { background: #dbeafe; color: #1e40af; }
 .role-mixed { background: var(--review); color: #b45309; }
 .role-calculation-group { background: #ede9fe; color: #5b21b6; }
-.limitation-summary { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 8px; font-size: 12px; color: #92400e; }
-.limitation-summary strong { font-size: 15px; color: var(--text); margin-right: 3px; }
-.limitation-groups { display: grid; gap: 8px; }
-#analysisLimitationsList { max-height: 45vh; overflow-y: auto; }
-.limitation-card { padding: 8px 12px; border: 1px solid #fde68a; border-radius: 9px; background: #fff; }
-.limitation-card > summary { cursor: pointer; list-style: none; }
+.limitation-groups { display: grid; gap: 4px; }
+.limitation-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 220px) minmax(170px, 230px); gap: 12px; align-items: baseline; font-size: 12px; }
+.limitation-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.limitation-row-header { padding: 0 12px 2px 26px; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); }
+.limitation-card { padding: 6px 12px; border: 1px solid #fde68a; border-radius: 8px; background: #fff; }
+.limitation-card > summary { cursor: pointer; list-style: none; position: relative; padding-left: 14px; }
 .limitation-card > summary::-webkit-details-marker { display: none; }
-.limitation-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.limitation-title { font-weight: 650; color: var(--text); font-size: 12px; }
+.limitation-card > summary::before { content: '\25B8'; position: absolute; left: 0; color: var(--text-faint); font-size: 10px; }
+.limitation-card[open] > summary::before { content: '\25BE'; }
+.limitation-row .limitation-construct strong { font-size: inherit; font-weight: 650; color: var(--text); }
 .limitation-owner { font-weight: 500; color: var(--text-light); }
-.limitation-meta { margin-top: 2px; color: #92400e; font-size: 11px; }
-.limitation-badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.limitation-location { color: #92400e; font-family: var(--mono); font-size: 11px; }
+.limitation-effect { color: #b45309; font-weight: 550; }
+#analysisLimitationsList { max-height: 45vh; overflow-y: auto; }
+body:not(.limitations-view) #analysisLimitationsBanner { display: none !important; }
+body.limitations-view #analysisLimitationsList { max-height: none; overflow: visible; }
+body.limitations-view #resultOverview, body.limitations-view #resultGuideSection, body.limitations-view #reportHealthBanner, body.limitations-view .main-toolbar { display: none !important; }
 .limitation-facts { margin: 8px 0 2px; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 12px; color: var(--text); }
 .limitation-facts dt { font-weight: 600; color: var(--text-light); }
 .cleanup-lead { font-weight: 600; color: var(--text); line-height: 1.45; }
@@ -590,6 +598,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <button type="button" class="view-tab active" data-view="details" id="tabDetails">Items <span class="tab-count" id="tabDetailsCount"></span></button>
       <button type="button" class="view-tab" data-view="tables" id="tabTables">Tables <span class="tab-count" id="tabTablesCount"></span></button>
       <button type="button" class="view-tab" data-view="reports" id="tabReports">Report health <span class="tab-count" id="tabReportsCount"></span></button>
+      <button type="button" class="view-tab hidden" data-view="limitations" id="tabLimitations">Analysis limitations <span class="tab-count" id="tabLimitationsCount"></span></button>
       <button type="button" class="view-tab" data-view="refs" id="tabRefs">References <span class="tab-count" id="tabRefsCount"></span></button>
       <button type="button" class="view-tab detail-tab" data-view="item" id="tabItem">&#8627; Item page</button>
       <button type="button" class="view-tab detail-tab" data-view="table" id="tabTable">&#8627; Table page</button>
@@ -665,14 +674,13 @@ body.scope-open .scope-drawer { transform: translateX(0); }
     <div class="warning-note">These problems live in the report files (PBIR), not the semantic model: references to measures that no longer exist, stale formatting selectors and invalid JSON. They matter because they downgrade Cleanup recommendations to Review and can make Usage look stronger or weaker than what report authors actually see. The repair actions here fix the report files. Model analysis gaps are listed separately under Analysis limitations.</div>
     <div id="reportHealthList"></div>
     <div class="report-health-status" id="reportHealthActionStatus"></div>
-    <div class="report-health-preview" id="reportHealthPreviewList"></div>
   </details>
   <details class="warning-banner hidden limitation-banner" id="analysisLimitationsBanner">
     <summary class="report-health-toggle">
       <h3>Analysis limitations <span id="analysisLimitationsCount"></span></h3>
       <span class="report-health-toggle-hint" id="analysisLimitationsHint"></span>
     </summary>
-    <div class="warning-note">Features Semantic Model Cleaner detects but cannot fully check, such as calculation items, KPI expressions or an unreadable report file. They are analysis gaps, not report problems and not broken Power BI configuration. Each one names the construct, its exact source location, what was checked, what remains unchecked and how it affects the Cleanup Recommendation. Counts are distinct limitations and affected items, never repeated per item.</div>
+    <div class="warning-note">Model features the analyzer detects but cannot fully check. They are analysis gaps, not broken Power BI configuration: each one keeps the items it touches at Review instead of Safe. Open a row for the source, what was checked and the affected items.</div>
     <div id="analysisLimitationsList"></div>
   </details>
   <div class="main-toolbar">
@@ -941,7 +949,7 @@ body.scope-open .scope-drawer { transform: translateX(0); }
       <h4>Stale Report References</h4>
       <div id="detailStaleUsageList"></div>
       <div class="detail-actions" style="margin-top:10px">
-        <button class="btn btn-secondary btn-sm" id="detailBtnCleanStale" title="Remove stale formatting selectors for this item from the selected report PBIR files">Clean stale PBIR</button>
+        <button class="btn btn-secondary btn-sm" id="detailBtnCleanStale" title="Remove stale formatting selectors for this item from the selected report PBIR files">Clean stale references</button>
       </div>
       <div class="detail-action-status" id="detailStaleStatus"></div>
     </div>
@@ -1238,8 +1246,6 @@ var allWarnings = [];
 var allAnalysisLimitations = { distinctCount: 0, sharedCount: 0, targetedCount: 0, affectedItemCount: 0, coverageComplete: true, limitations: [] };
 var allReportIssues = [];
 var allReportHealth = { totalIssueCount: 0, groups: [] };
-var reportHealthStaleCleanupEntries = [];
-var reportHealthStaleCleanupPreview = null;
 var usageOrder = { 'Used': 0, 'Indirect': 1, 'Stale only': 2, 'Unused': 3 };
 var issueOrder = { 'Broken': 0, 'Broken + Stale': 1, 'Stale': 2, '': 3 };
 var deleteSafetyOrder = { 'Safe': 0, 'Review': 1, 'Blocked': 2, 'Keep': 3 };
@@ -2957,12 +2963,8 @@ function renderReportHealth() {
   var count = $('reportHealthCount');
   var list = $('reportHealthList');
   var status = $('reportHealthActionStatus');
-  var previewList = $('reportHealthPreviewList');
   list.innerHTML = '';
   status.textContent = '';
-  previewList.innerHTML = '';
-  reportHealthStaleCleanupEntries = [];
-  reportHealthStaleCleanupPreview = null;
   count.textContent = '';
   banner.classList.add('hidden');
   var groups = (allReportHealth && allReportHealth.groups) ? allReportHealth.groups : [];
@@ -3015,9 +3017,12 @@ function renderReportHealth() {
     }
     var actionHtml = '';
     if (group.action && group.action.type === 'cleanup_stale') {
+      // Stale Report References no longer affect the report, so cleanup is one click
+      // through a validated plan; the file diff stays one link away.
+      var staleEntryCount = group.action.entryCount || 0;
       actionHtml = '<div class="report-health-actions">'
-        + '<button class="btn btn-secondary btn-sm" data-report-health-action="cleanup_stale">' + esc(group.action.label || 'Preview cleanup') + '</button>'
-        + '<button class="btn btn-warning btn-sm" data-report-health-action="apply_stale" disabled>Apply stale cleanup</button>'
+        + '<button class="btn btn-primary btn-sm" data-report-health-action="clean_stale">Clean stale references' + (staleEntryCount ? ' (' + esc(String(staleEntryCount)) + ')' : '') + '</button>'
+        + '<button class="btn btn-link btn-sm" data-report-health-action="review_stale">Review changes first</button>'
         + '</div>';
     }
     div.innerHTML = ''
@@ -3029,11 +3034,11 @@ function renderReportHealth() {
     wrap.appendChild(div);
   });
   list.appendChild(wrap);
-  list.querySelectorAll('[data-report-health-action="cleanup_stale"]').forEach(function(button) {
-    button.onclick = function() { previewReportHealthStaleCleanup(); };
+  list.querySelectorAll('[data-report-health-action="clean_stale"]').forEach(function(button) {
+    button.onclick = function() { cleanReportHealthStale(); };
   });
-  list.querySelectorAll('[data-report-health-action="apply_stale"]').forEach(function(button) {
-    button.onclick = function() { applyReportHealthStaleCleanup(); };
+  list.querySelectorAll('[data-report-health-action="review_stale"]').forEach(function(button) {
+    button.onclick = function() { reviewReportHealthStale(); };
   });
 }
 
@@ -3253,6 +3258,9 @@ function switchView(view) {
   $('refsTableSection').classList.toggle('hidden', view !== 'refs');
   $('itemDetailSection').classList.toggle('hidden', view !== 'item');
   $('tableDetailSection').classList.toggle('hidden', view !== 'table');
+  // Analysis Limitations have their own view instead of a banner on every page.
+  document.body.classList.toggle('limitations-view', view === 'limitations');
+  if (view === 'limitations') $('analysisLimitationsBanner').open = true;
   updateActionBarForView();
   updateColumnActionButtons();
   updateFilterCounts();
@@ -6377,102 +6385,8 @@ function staleCleanupEntriesForItems(items) {
   return entries;
 }
 
-function setReportHealthApplyEnabled(enabled) {
-  document.querySelectorAll('[data-report-health-action="apply_stale"]').forEach(function(button) {
-    button.disabled = !enabled;
-  });
-}
-
-function renderReportHealthStalePreview(result) {
-  var list = $('reportHealthPreviewList');
-  list.innerHTML = '';
-  var removed = result && result.removed_entries ? result.removed_entries : [];
-  var files = result && result.updated_files ? result.updated_files : [];
-  files.slice(0, 4).forEach(function(file) {
-    var div = document.createElement('div');
-    div.className = 'report-health-preview-row';
-    div.textContent = 'File: ' + file;
-    list.appendChild(div);
-  });
-  removed.slice(0, 6).forEach(function(entry) {
-    var div = document.createElement('div');
-    div.className = 'report-health-preview-row';
-    var selector = entry.selector_value || 'bookmark projection';
-    var path = entry.path || 'unknown path';
-    var file = entry.file ? ' in ' + entry.file : '';
-    div.textContent = 'Reference: ' + selector + ' at ' + path + file;
-    list.appendChild(div);
-  });
-  var remaining = Math.max(0, files.length + removed.length - 10);
-  if (remaining) {
-    var more = document.createElement('div');
-    more.className = 'report-health-preview-row';
-    more.textContent = '+' + remaining + ' more affected file/reference entries';
-    list.appendChild(more);
-  }
-}
-
-async function previewReportHealthStaleCleanup() {
-  var entries = staleCleanupEntriesForItems(allItems);
-  if (!entries.length) {
-    $('reportHealthActionStatus').textContent = 'Could not resolve stale references to the selected report files.';
-    setReportHealthApplyEnabled(false);
-    return;
-  }
-  $('reportHealthActionStatus').textContent = 'Previewing stale PBIR cleanup...';
-  $('reportHealthPreviewList').innerHTML = '';
-  setReportHealthApplyEnabled(false);
-  try {
-    var data = await apiPost('/api/report/cleanup-stale', {
-      entries: entries,
-      dry_run: true
-    });
-    if (data.error) throw new Error(data.error);
-    var files = data.result && data.result.updated_files ? data.result.updated_files.length : 0;
-    $('reportHealthActionStatus').textContent = 'Preview: ' + (data.removed_count || 0) + ' stale selector(s) in ' + files + ' PBIR file(s).';
-    reportHealthStaleCleanupEntries = entries;
-    reportHealthStaleCleanupPreview = data.result || null;
-    renderReportHealthStalePreview(data.result || {});
-    setReportHealthApplyEnabled((data.removed_count || 0) > 0);
-    logEntry('Previewed stale PBIR cleanup for ' + (data.removed_count || 0) + ' selector(s)', 'info');
-  } catch (err) {
-    $('reportHealthActionStatus').textContent = 'Stale cleanup preview failed: ' + (err && err.message ? err.message : err);
-    reportHealthStaleCleanupEntries = [];
-    reportHealthStaleCleanupPreview = null;
-    setReportHealthApplyEnabled(false);
-    logEntry('Stale cleanup preview failed: ' + (err && err.message ? err.message : err), 'err');
-  }
-}
-
-async function applyReportHealthStaleCleanup() {
-  if (!reportHealthStaleCleanupEntries.length || !reportHealthStaleCleanupPreview) {
-    $('reportHealthActionStatus').textContent = 'Preview stale cleanup before applying.';
-    return;
-  }
-  $('reportHealthActionStatus').textContent = 'Applying stale PBIR cleanup...';
-  setReportHealthApplyEnabled(false);
-  try {
-    var data = await apiPost('/api/report/cleanup-stale', {
-      entries: reportHealthStaleCleanupEntries,
-      create_backup: $('applyBackupCheckbox').checked
-    });
-    if (data.error) throw new Error(data.error);
-    if (data.backup_paths && data.backup_paths.length) {
-      $('backupBanner').classList.remove('hidden');
-      $('backupPath').textContent = data.backup_paths.join(' | ');
-    }
-    $('reportHealthActionStatus').textContent = 'Applied stale cleanup. Re-analyzing...';
-    logEntry('Removed ' + (data.removed_count || 0) + ' stale PBIR selector(s) from Report Health', 'ok');
-    reportHealthStaleCleanupEntries = [];
-    reportHealthStaleCleanupPreview = null;
-    await reAnalyze({});
-    $('reportHealthActionStatus').textContent = 'Stale PBIR selectors cleaned.';
-  } catch (err) {
-    $('reportHealthActionStatus').textContent = 'Stale cleanup failed: ' + (err && err.message ? err.message : err);
-    setReportHealthApplyEnabled(true);
-    logEntry('Stale cleanup failed: ' + (err && err.message ? err.message : err), 'err');
-  }
-}
+function cleanReportHealthStale() {}
+function reviewReportHealthStale() {}
 
 async function cleanCurrentItemStaleRefs() {
   var item = getItemByKey(detailItemKey);

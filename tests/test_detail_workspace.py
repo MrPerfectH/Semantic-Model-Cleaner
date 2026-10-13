@@ -21,3 +21,10 @@ def test_v2_navigation_uses_native_buttons():
     html = app.test_client().get('/?ui=v2').get_data(as_text=True)
     assert '<div class="view-tab' not in html
     assert 'data-view="details" id="tabDetails"' in html
+
+
+def test_v2_analysis_limitations_have_their_own_view_not_a_banner_everywhere():
+    html = app.test_client().get('/?ui=v2').get_data(as_text=True)
+    assert 'data-view="limitations" id="tabLimitations"' in html
+    assert 'body:not(.limitations-view) #analysisLimitationsBanner { display: none !important; }' in html
+    assert "document.body.classList.toggle('limitations-view', view === 'limitations');" in html
