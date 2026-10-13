@@ -500,6 +500,12 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
 .detail-ref-tree .tree-hint { flex: 0 0 auto; color: var(--primary); font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; }
 .detail-ref-tree .tree-body { padding: 0 12px 10px 28px; }
 .detail-ref-tree .tree-body details { margin-top: 8px; }
+.usage-table { margin: 0; background: #fff; border-top: 1px solid var(--border-soft); }
+.usage-table td, .usage-table th { padding: 7px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; }
+.usage-table tbody tr:last-child td { border-bottom: 0; }
+.usage-table .usage-visual-name { display: block; color: var(--text); font-weight: 550; }
+.usage-table .usage-visual-id { display: block; margin-top: 2px; color: var(--text-faint); font-family: var(--mono); font-size: 10.5px; }
+.usage-table .badge { margin: 0 4px 2px 0; }
 .detail-ref-leaf { padding: 8px 0; border-top: 1px solid var(--border-soft); font-size: 12.5px; line-height: 1.45; }
 .detail-ref-leaf:first-child { border-top: 0; }
 .detail-ref-contexts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
@@ -954,7 +960,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
       <div class="detail-action-status" id="detailStaleStatus"></div>
     </div>
     <div class="detail-card" id="detailUsageSection">
-      <h4>Report Reference Tree</h4>
+      <h4>Report usage</h4>
       <div id="detailUsageList"></div>
     </div>
   </div>
@@ -4948,127 +4954,96 @@ function summarizeUsageLocation(usage) {
   return location.join(' / ');
 }
 
+// Report authors know visuals by their names in the Power BI visual picker, not PBIR codes.
+function friendlyVisualType(type) {
+  if (!type) return '';
+  var VISUAL_TYPE_LABELS = {
+    pivotTable: 'Matrix', tableEx: 'Table', card: 'Card', cardVisual: 'Card', multiRowCard: 'Multi-row card', kpi: 'KPI',
+    slicer: 'Slicer', advancedSlicerVisual: 'Button slicer', listSlicer: 'List slicer', textSlicer: 'Text slicer',
+    clusteredColumnChart: 'Clustered column chart', clusteredBarChart: 'Clustered bar chart', columnChart: 'Stacked column chart',
+    barChart: 'Stacked bar chart', hundredPercentStackedColumnChart: '100% stacked column chart', hundredPercentStackedBarChart: '100% stacked bar chart',
+    lineChart: 'Line chart', areaChart: 'Area chart', stackedAreaChart: 'Stacked area chart', hundredPercentStackedAreaChart: '100% stacked area chart',
+    lineClusteredColumnComboChart: 'Line and clustered column chart', lineStackedColumnComboChart: 'Line and stacked column chart',
+    ribbonChart: 'Ribbon chart', waterfallChart: 'Waterfall chart', funnel: 'Funnel', scatterChart: 'Scatter chart', pieChart: 'Pie chart',
+    donutChart: 'Donut chart', treemap: 'Treemap', map: 'Map', filledMap: 'Filled map', shapeMap: 'Shape map', azureMap: 'Azure map',
+    gauge: 'Gauge', textbox: 'Text box', image: 'Image', shape: 'Shape', actionButton: 'Button', decompositionTreeVisual: 'Decomposition tree',
+    keyDriversVisual: 'Key influencers', qnaVisual: 'Q&A', scriptVisual: 'R script visual', pythonVisual: 'Python visual',
+    pageNavigator: 'Page navigator', bookmarkNavigator: 'Bookmark navigator', visualGroup: 'Group'
+  };
+  if (VISUAL_TYPE_LABELS[type]) return VISUAL_TYPE_LABELS[type];
+  var words = String(type).replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1).toLowerCase();
+}
+function fieldRoleLabel(context) {
+  var FIELD_ROLE_LABELS = { Category: 'Axis / category', Series: 'Legend', Formatting: 'Formatting', Aggregation: 'Conditional formatting', Other: 'Other metadata' };
+  return FIELD_ROLE_LABELS[context] || context || '';
+}
+// PBIR stores pixel positions on the default 1280x720 canvas; a coarse area tells untitled visuals apart.
+function visualPositionLabel(usage) {
+  var x = Number(usage && usage.visualX), y = Number(usage && usage.visualY);
+  if (!isFinite(x) || !isFinite(y) || usage.visualX == null || usage.visualY == null) return '';
+  var row = y < 240 ? 'top' : y < 480 ? 'middle' : 'bottom';
+  var column = x < 427 ? 'left' : x < 853 ? 'centre' : 'right';
+  return row === 'middle' && column === 'centre' ? 'centre' : row + ' ' + column;
+}
+function usageVisualLabel(usage) {
+  if (usage.artifactKind === 'Bookmark') return 'Bookmark: ' + (usage.visualTitle || usage.visualId || 'Unnamed');
+  if (usage.visualTitle) return usage.visualTitle;
+  var type = friendlyVisualType(usage.visualType);
+  if (!type) return usage.artifactKind && usage.artifactKind !== 'Visual' ? usage.artifactKind : 'Report metadata';
+  var position = visualPositionLabel(usage);
+  return 'Untitled ' + type.toLowerCase() + (position ? ' (' + position + ')' : '');
+}
+
 function renderUsageDetails(item) {
   if (!item || !item.usageDetails || !item.usageDetails.length) return '<div class="detail-empty">No direct report references recorded.</div>';
   var reports = [];
   item.usageDetails.forEach(function(usage) {
-    var reportName = usage.report || 'Report metadata';
     var reportIdentity = reportReferenceId(usage);
     var report = reports.find(function(entry) { return entry.identity === reportIdentity; });
     if (!report) {
-      report = { name: reportName, identity: reportIdentity, path: usage.reportPath || '', count: 0, pages: [] };
+      report = { name: usage.report || 'Report metadata', identity: reportIdentity, path: usage.reportPath || '', count: 0, pageSet: new Set(), visuals: [] };
       reports.push(report);
     }
     report.count += 1;
-
-    var pageName = usage.page || 'Report-level metadata';
-    var page = report.pages.find(function(entry) { return entry.name === pageName; });
-    if (!page) {
-      page = {
-        name: pageName,
-        hidden: !!usage.pageHidden,
-        count: 0,
-        visuals: [],
-        contextSet: new Set(),
-        contexts: [],
-        visualNameSet: new Set(),
-        visualNames: [],
-      };
-      report.pages.push(page);
-    }
-    page.count += 1;
-
-    var visualName = usage.artifactKind === 'Bookmark'
-      ? 'Bookmark: ' + (usage.visualTitle || usage.visualId || 'Unnamed')
-      : (usage.visualTitle || usage.visualType || usage.artifactKind || 'Metadata');
-    if (usage.context && !page.contextSet.has(usage.context)) {
-      page.contextSet.add(usage.context);
-      page.contexts.push(usage.context);
-    }
-    if (visualName && !page.visualNameSet.has(visualName)) {
-      page.visualNameSet.add(visualName);
-      page.visualNames.push(visualName);
-    }
+    report.pageSet.add(usage.page || 'Report-level metadata');
     var visualKey = usageLocationKey(usage);
-    var visual = page.visuals.find(function(entry) { return entry.key === visualKey; });
+    var visual = report.visuals.find(function(entry) { return entry.key === visualKey; });
     if (!visual) {
-      visual = {
-        key: visualKey,
-        name: visualName,
-        usage: usage,
-        count: 0,
-        contexts: [],
-        contextSet: new Set(),
-        sourcePaths: [],
-        sourcePathSet: new Set(),
-        refTypes: [],
-        refTypeSet: new Set(),
-      };
-      page.visuals.push(visual);
+      visual = { key: visualKey, usage: usage, count: 0, contexts: [], sourcePaths: [] };
+      report.visuals.push(visual);
     }
     visual.count += 1;
-    if (usage.context && !visual.contextSet.has(usage.context)) {
-      visual.contextSet.add(usage.context);
-      visual.contexts.push(usage.context);
-    }
-    if (usage.sourcePath && !visual.sourcePathSet.has(usage.sourcePath)) {
-      visual.sourcePathSet.add(usage.sourcePath);
-      visual.sourcePaths.push(usage.sourcePath);
-    }
-    if (usage.refType && !visual.refTypeSet.has(usage.refType)) {
-      visual.refTypeSet.add(usage.refType);
-      visual.refTypes.push(usage.refType);
-    }
+    if (usage.context && visual.contexts.indexOf(usage.context) < 0) visual.contexts.push(usage.context);
+    if (usage.sourcePath && visual.sourcePaths.indexOf(usage.sourcePath) < 0) visual.sourcePaths.push(usage.sourcePath);
   });
 
-  function countBadge(count, label) {
-    return '<span class="tree-count">' + esc(String(count)) + ' ' + esc(label) + '</span>';
-  }
-
-  function treeLabel(title, meta) {
-    return '<span class="tree-label"><span class="tree-label-main">' + esc(title) + '</span>'
-      + (meta ? '<span class="tree-label-meta">' + esc(meta) + '</span>' : '')
-      + '</span>';
-  }
-
-  function visualHtml(visual) {
+  function rowHtml(visual) {
     var usage = visual.usage;
-    var meta = [];
-    if (usage.visualType && usage.artifactKind !== 'Bookmark') meta.push('Visual: ' + usage.visualType);
-    if (usage.pageHidden) meta.push('Page hidden');
-    if (usage.visualHidden) meta.push('Visual hidden');
-    if (usage.visualId) meta.push('Visual ID: ' + usage.visualId);
-    if (visual.refTypes.length) meta.push('Match: ' + visual.refTypes.join(', '));
-    var contexts = visual.contexts.length
-      ? '<div class="detail-ref-contexts">' + visual.contexts.map(function(context) {
-          return '<span class="badge badge-muted">' + esc(context) + '</span>';
-        }).join('') + '</div>'
-      : '';
-    var paths = visual.sourcePaths.length
-      ? '<div class="detail-ref-paths"><strong>JSON path' + (visual.sourcePaths.length > 1 ? 's' : '') + ':</strong> '
-        + visual.sourcePaths.map(function(path) { return '<code>' + esc(path) + '</code>'; }).join(', ')
-        + '</div>'
-      : '';
-    return '<div class="detail-ref-leaf">'
-      + '<div class="detail-ref-title">' + esc(visual.name) + '</div>'
-      + (meta.length ? '<div class="detail-ref-meta">' + esc(meta.join(' | ')) + '</div>' : '')
-      + contexts
-      + paths
-      + (visual.count > 1 ? '<div class="detail-ref-meta">References: ' + esc(String(visual.count)) + '</div>' : '')
-      + '</div>';
+    var status = [];
+    if (usage.pageHidden) status.push('<span class="badge badge-muted">Page hidden</span>');
+    if (usage.visualHidden) status.push('<span class="badge badge-muted">Visual hidden</span>');
+    if (usage.artifactKind === 'Bookmark') status.push('<span class="badge badge-muted">Bookmark</span>');
+    if (visual.count > 1) status.push('<span class="tree-count">' + esc(String(visual.count)) + ' refs</span>');
+    var technical = [usage.visualId ? 'Visual ID: ' + usage.visualId : '', usage.artifactPath ? 'PBIR file: ' + usage.artifactPath : '']
+      .concat(visual.sourcePaths.map(function(path) { return 'JSON path: ' + path; })).filter(Boolean).join('\n');
+    return '<tr>'
+      + '<td>' + esc(usage.page || 'Report-level metadata') + '</td>'
+      + '<td title="' + esc(technical) + '"><span class="usage-visual-name">' + esc(usageVisualLabel(usage)) + '</span>'
+      + (usage.visualId ? '<span class="usage-visual-id">' + esc(usage.visualId) + '</span>' : '') + '</td>'
+      + '<td>' + esc(usage.artifactKind === 'Bookmark' ? 'Bookmark' : friendlyVisualType(usage.visualType) || usage.artifactKind || '') + '</td>'
+      + '<td>' + esc(visual.contexts.map(fieldRoleLabel).join(', ')) + '</td>'
+      + '<td>' + status.join(' ') + '</td>'
+      + '</tr>';
   }
 
   return '<div class="detail-ref-tree">' + reports.map(function(report) {
-    var reportMeta = report.pages.length + ' page' + (report.pages.length === 1 ? '' : 's') + (report.path ? ' · ' + report.path : '');
-    return '<details open><summary>' + treeLabel(report.name, reportMeta) + countBadge(report.count, report.count === 1 ? 'ref' : 'refs') + '</summary>'
-      + '<div class="tree-body">' + report.pages.map(function(page) {
-        var pageMeta = [];
-        if (page.hidden) pageMeta.push('Page hidden');
-        if (page.visualNames.length) pageMeta.push(page.visualNames.slice(0, 3).join(', ') + (page.visualNames.length > 3 ? ', ...' : ''));
-        if (page.contexts.length) pageMeta.push('Context: ' + page.contexts.slice(0, 4).join(', ') + (page.contexts.length > 4 ? ', ...' : ''));
-        return '<details><summary>' + treeLabel(page.name, pageMeta.join(' | ')) + countBadge(page.count, page.count === 1 ? 'ref' : 'refs') + '<span class="tree-hint">Details</span></summary>'
-          + '<div class="tree-body">' + page.visuals.map(visualHtml).join('') + '</div></details>';
-      }).join('') + '</div></details>';
+    var pages = report.pageSet.size;
+    return '<details open><summary><span class="tree-label"><span class="tree-label-main">' + esc(report.name) + '</span>'
+      + '<span class="tree-label-meta">' + esc(pages + ' page' + (pages === 1 ? '' : 's') + ' · ' + report.visuals.length + ' visual' + (report.visuals.length === 1 ? '' : 's') + (report.path ? ' · ' + report.path : '')) + '</span></span>'
+      + '<span class="tree-count">' + esc(String(report.count)) + ' ' + (report.count === 1 ? 'ref' : 'refs') + '</span></summary>'
+      + '<table class="detail-reference-table usage-table"><thead><tr><th>Page</th><th>Visual</th><th>Visual type</th><th>Field role</th><th>Status</th></tr></thead><tbody>'
+      + report.visuals.map(rowHtml).join('') + '</tbody></table></details>';
   }).join('') + '</div>';
 }
 
@@ -5079,44 +5054,30 @@ function renderStaleUsageDetails(item) {
     var key = usageLocatorKey(usage) + '||' + (usage.selectorValue || '');
     var bucket = grouped.find(function(entry) { return entry.key === key; });
     if (!bucket) {
-      bucket = {
-        key: key,
-        usage: usage,
-        sourcePaths: [],
-        sourcePathSet: new Set(),
-        count: 0,
-      };
+      bucket = { key: key, usage: usage, sourcePaths: [], count: 0 };
       grouped.push(bucket);
     }
     bucket.count += 1;
-    if (usage.sourcePath && !bucket.sourcePathSet.has(usage.sourcePath)) {
-      bucket.sourcePathSet.add(usage.sourcePath);
-      bucket.sourcePaths.push(usage.sourcePath);
-    }
+    if (usage.sourcePath && bucket.sourcePaths.indexOf(usage.sourcePath) < 0) bucket.sourcePaths.push(usage.sourcePath);
   });
-  return '<ul class="detail-list">' + grouped.map(function(entry) {
+  return '<table class="detail-reference-table usage-table"><thead><tr><th>Report</th><th>Page</th><th>Visual</th><th>Stale selector</th><th>Status</th></tr></thead><tbody>' + grouped.map(function(entry) {
     var usage = entry.usage;
-    var summary = summarizeUsageLocation(usage);
-    var details = [];
-    if (usage.reportPath) details.push('<div class="detail-subtle"><strong>Report:</strong> ' + esc(usage.reportPath) + '</div>');
-    if (usage.pageHidden) details.push('<div class="detail-subtle">Page hidden</div>');
-    if (usage.visualHidden) details.push('<div class="detail-subtle">Visual hidden</div>');
-    if (usage.staleKind === 'bookmark_projection_entry' && usage.selectorValue) {
-      details.push('<div class="detail-subtle"><strong>Bucket:</strong> <code>' + esc(usage.selectorValue) + '</code></div>');
-    } else if (usage.selectorValue) {
-      details.push('<div class="detail-subtle"><strong>Stale selector:</strong> <code>' + esc(usage.selectorValue) + '</code></div>');
-    }
-    if (usage.visualType && usage.artifactKind !== 'Bookmark') details.push('<div class="detail-subtle"><strong>Visual:</strong> ' + esc(usage.visualType) + '</div>');
-    if (usage.visualId) details.push('<div class="detail-subtle"><strong>Visual ID:</strong> <code>' + esc(usage.visualId) + '</code></div>');
-    if (usage.artifactPath) details.push('<div class="detail-subtle"><strong>PBIR file:</strong> <code>' + esc(usage.artifactPath) + '</code></div>');
-    if (entry.sourcePaths.length) {
-      details.push('<div class="detail-subtle"><strong>JSON path' + (entry.sourcePaths.length > 1 ? 's' : '') + ':</strong> '
-        + entry.sourcePaths.map(function(path) { return '<code>' + esc(path) + '</code>'; }).join(', ')
-        + '</div>');
-    }
-    if (entry.count > 1) details.push('<div class="detail-subtle"><strong>Matches:</strong> ' + esc(String(entry.count)) + '</div>');
-    return '<li><strong>' + esc(summary || 'Report metadata') + '</strong>' + details.join('') + '</li>';
-  }).join('') + '</ul>';
+    var status = [];
+    if (usage.pageHidden) status.push('<span class="badge badge-muted">Page hidden</span>');
+    if (usage.visualHidden) status.push('<span class="badge badge-muted">Visual hidden</span>');
+    if (usage.cleanupEligible === false) status.push('<span class="badge badge-muted">Manual review</span>');
+    if (entry.count > 1) status.push('<span class="tree-count">' + esc(String(entry.count)) + ' matches</span>');
+    var technical = [usage.visualId ? 'Visual ID: ' + usage.visualId : '', usage.artifactPath ? 'PBIR file: ' + usage.artifactPath : '']
+      .concat(entry.sourcePaths.map(function(path) { return 'JSON path: ' + path; })).filter(Boolean).join('\n');
+    return '<tr>'
+      + '<td title="' + esc(usage.reportPath || '') + '">' + esc(usage.report || 'Report') + '</td>'
+      + '<td>' + esc(usage.page || 'Report-level metadata') + '</td>'
+      + '<td title="' + esc(technical) + '"><span class="usage-visual-name">' + esc(usageVisualLabel(usage)) + '</span>'
+      + (usage.visualId ? '<span class="usage-visual-id">' + esc(usage.visualId) + '</span>' : '') + '</td>'
+      + '<td>' + (usage.selectorValue ? '<code>' + esc(usage.selectorValue) + '</code>' : '') + '</td>'
+      + '<td>' + status.join(' ') + '</td>'
+      + '</tr>';
+  }).join('') + '</tbody></table>';
 }
 
 function uniqueCount(values) {
@@ -5284,7 +5245,7 @@ function detailInspectorListsHtml(item) {
 
 function detailWorkbenchReferencesHtml(item) {
   return '<div class="detail-card">'
-    + '<div class="detail-section-head"><div><h4>Report Reference Tree</h4><p>Collapsed view keeps reports and pages scannable; expand a page to inspect visuals, contexts, and JSON paths.</p></div></div>'
+    + '<div class="detail-section-head"><div><h4>Report usage</h4><p>One row per visual. Hover a visual for its PBIR file and JSON paths.</p></div></div>'
     + renderUsageDetails(item)
     + '</div>';
 }

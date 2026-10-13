@@ -79,7 +79,7 @@ tableSearch='unknown';renderChildGrid();assert(nodes.objectTableGrid.innerHTML.i
 
 def test_live_and_stale_evidence_keep_hidden_labels_and_source_identity(tmp_path):
     source = TEMPLATE.read_text(encoding="utf-8")
-    names = ['usageLocationKey', 'usageLocatorKey', 'summarizeUsageLocation', 'renderUsageDetails', 'renderStaleUsageDetails']
+    names = ['friendlyVisualType', 'fieldRoleLabel', 'visualPositionLabel', 'usageVisualLabel', 'usageLocationKey', 'usageLocatorKey', 'summarizeUsageLocation', 'renderUsageDetails', 'renderStaleUsageDetails']
     run_js(tmp_path, """
 function esc(s){return String(s||'');}function reportReferenceId(r){return r.reportPath;}
 """ + '\n'.join(function(source, name, '') for name in names) + """
@@ -87,6 +87,12 @@ var usage={report:'Executive',reportPath:'/A/Executive.Report',page:'Hidden',pag
 var live=renderUsageDetails({usageDetails:[usage]});var stale=renderStaleUsageDetails({staleUsageDetails:[usage]});
 for(const html of [live,stale]){assert(html.includes('Page hidden'));assert(html.includes('Visual hidden'));assert(html.includes('/A/Executive.Report'));assert(html.includes('visual.query'));}
 assert(live.includes('1 ref'));
+// Readable visual identity instead of PBIR codes (#135).
+assert.equal(friendlyVisualType('pivotTable'),'Matrix');assert.equal(friendlyVisualType('someCustomVisual'),'Some custom visual');
+assert.equal(usageVisualLabel({visualType:'pivotTable',visualX:20,visualY:30,artifactKind:'Visual'}),'Untitled matrix (top left)');
+assert.equal(usageVisualLabel({visualType:'tableEx',visualTitle:'P&L by Country',artifactKind:'Visual'}),'P&L by Country');
+var table=renderUsageDetails({usageDetails:[{...usage,visualTitle:'',visualType:'pivotTable',context:'Values'}]});
+assert(table.includes('<th>Visual type</th>')&&table.includes('<td>Matrix</td>')&&!table.includes('>pivotTable<'));
 """)
 
 
