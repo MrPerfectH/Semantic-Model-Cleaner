@@ -1,0 +1,37 @@
+name: VS Code extension
+
+on:
+  push:
+    paths: ['vscode-extension/**', 'src/semantic_model_cleaner/**', 'tests/test_vscode_host.py', '.github/workflows/vscode-extension.yml']
+  pull_request:
+    paths: ['vscode-extension/**', 'src/semantic_model_cleaner/**', 'tests/test_vscode_host.py', '.github/workflows/vscode-extension.yml']
+
+jobs:
+  extension:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -e .[dev]
+      - run: python -m pytest tests/test_local_http_security.py tests/test_vscode_host.py
+      - run: npm ci
+        working-directory: vscode-extension
+      - run: npm test
+        working-directory: vscode-extension
+      - run: npm run package
+        working-directory: vscode-extension
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cleaner-vsix-${{ matrix.os }}
+          path: vscode-extension/*.vsix

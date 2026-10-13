@@ -6,7 +6,9 @@
 <title>Semantic Model Cleaner</title>
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
 <meta name="smc-local-token" content="{{ local_request_token }}">
+{% if config.get('SMC_WEBVIEW_ANCESTORS') %}<meta name="smc-embedded-host" content="vscode">{% endif %}
 <script src="{{ url_for('static', filename='local-http.js') }}"></script>
+<script src="{{ url_for('static', filename='host-dialogs.js') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='classic-plans.css') }}">
 <style>
 :root {
@@ -3716,7 +3718,7 @@ async function applyRepair() {
     return;
   }
   var previewedRefs = repairPreview.updated_reference_count || 0;
-  if (!confirm('This will rewrite ' + previewedRefs + ' reference(s) across '
+  if (!await smcConfirm('This will rewrite ' + previewedRefs + ' reference(s) across '
     + (repairPreview.updated_file_count || 0) + ' file(s), pointing them at "' + repairTargetTable
     + '". The model is not changed. Continue?')) return;
   try {
@@ -3881,7 +3883,7 @@ async function applyColumnRepair() {
     return;
   }
   var previewedRefs = columnRepairPreview.updated_reference_count || 0;
-  if (!confirm('This will rewrite ' + previewedRefs + ' column reference(s) across '
+  if (!await smcConfirm('This will rewrite ' + previewedRefs + ' column reference(s) across '
     + (columnRepairPreview.updated_file_count || 0) + ' file(s). The model is not changed. Continue?')) return;
   try {
     var data = await columnRepairRequest(group, false);
@@ -4143,7 +4145,7 @@ async function cleanVisibleReportStaleIssues() {
     alert('Select one or more cleanup rows first.');
     return;
   }
-  if (!confirm('Clean ' + totalEntries + ' selected report cleanup row(s)?')) return;
+  if (!await smcConfirm('Clean ' + totalEntries + ' selected report cleanup row(s)?')) return;
   await cleanReportIssueCleanupEntries(entries.stale, entries.remove);
 }
 
@@ -4154,7 +4156,7 @@ async function cleanAllReportCleanupIssues() {
     alert('No cleanup rows were found.');
     return;
   }
-  if (!confirm('Clean all ' + totalEntries + ' report cleanup row(s) in the selected reports?')) return;
+  if (!await smcConfirm('Clean all ' + totalEntries + ' report cleanup row(s) in the selected reports?')) return;
   await cleanReportIssueCleanupEntries(entries.stale, entries.remove);
 }
 
@@ -4287,7 +4289,7 @@ async function confirmRemoveWithPreview(entries, label) {
   var extra = refCount > entries.length
     ? '\n\nThis includes ' + (refCount - entries.length) + ' related reference(s) to the same item in the same file(s) that were not individually selected.'
     : '';
-  if (!confirm('This will permanently remove ' + refCount + ' report reference(s) across ' + fileCount + ' file(s).' + extra + '\n\nContinue?')) return;
+  if (!await smcConfirm('This will permanently remove ' + refCount + ' report reference(s) across ' + fileCount + ' file(s).' + extra + '\n\nContinue?')) return;
   await applyReportIssueActions(entries, label);
 }
 
@@ -4326,7 +4328,7 @@ async function applyVisibleReportSuggestions() {
     alert('Select one or more rows with suggestions first.');
     return;
   }
-  if (!confirm('Apply top suggestions for ' + entries.length + ' selected report issue(s)?')) return;
+  if (!await smcConfirm('Apply top suggestions for ' + entries.length + ' selected report issue(s)?')) return;
   await applyReportIssueActions(entries, 'Applied selected report suggestions');
 }
 
@@ -5793,7 +5795,7 @@ async function queueSelectedTableDeletes() {
     alert('No items found in the selected tables');
     return;
   }
-  var confirmed = window.confirm(
+  var confirmed = await smcConfirm(
     'Queue delete for ' + tables.length + ' selected tables? This will queue '
       + plan.allItems.length + ' items total (' + plan.inTableItems.length
       + ' in selected tables, ' + plan.dependentItems.length + ' dependent).'
@@ -5932,11 +5934,11 @@ async function previewQueuedActionPlan(modelPath, actions, createBackup, autoRef
   return data;
 }
 
-function confirmActionPlanApply(plan) {
+async function confirmActionPlanApply(plan) {
   var files = plan && plan.affected_files ? plan.affected_files.length : 0;
   var invalid = plan && plan.invalid_action_count ? plan.invalid_action_count : 0;
   if (invalid) return false;
-  return window.confirm(
+  return await smcConfirm(
     'Apply cleanup action plan?\n'
       + 'Actions: ' + (plan.action_count || 0) + '\n'
       + 'Destructive: ' + (plan.destructive_action_count || 0) + '\n'
@@ -5980,7 +5982,7 @@ async function applyQueuedActions() {
       });
       return;
     }
-    if (!confirmActionPlanApply(preview.plan)) {
+    if (!await confirmActionPlanApply(preview.plan)) {
       logEntry('Apply canceled after preview', 'info');
       return;
     }
@@ -6125,7 +6127,7 @@ async function moveCurrentMeasureToTable() {
       + 'Selected reports: ' + chosenReports.length + '\n'
       + reportPreviewMessageLines(reportResult).join('\n') + '\n\n'
       + 'Only the currently selected reports will be updated.';
-    if (!window.confirm(message)) {
+    if (!await smcConfirm(message)) {
       $('detailActionStatus').textContent = 'Measure move canceled.';
       return;
     }
@@ -6204,7 +6206,7 @@ async function renameCurrentMeasure() {
       + 'Selected reports: ' + chosenReports.length + '\n'
       + reportPreviewMessageLines(reportResult).join('\n') + '\n\n'
       + 'Only the currently selected reports will be updated.';
-    if (!window.confirm(message)) {
+    if (!await smcConfirm(message)) {
       $('detailActionStatus').textContent = 'Measure rename canceled.';
       return;
     }
@@ -6574,7 +6576,7 @@ async function renameCurrentTable() {
       + 'Selected reports: ' + chosenReports.length + '\n'
       + reportPreviewMessageLines(reportResult).join('\n') + '\n\n'
       + 'Only the currently selected reports will be updated.';
-    if (!window.confirm(message)) {
+    if (!await smcConfirm(message)) {
       $('tableActionStatus').textContent = 'Table rename canceled.';
       return;
     }
