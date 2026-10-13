@@ -6,7 +6,7 @@
     var sources = new Map();
     payload.tables.forEach(function (table) { sources.set(table.name, table.mSourceDetails); table.items = table.itemIndices.map(function (i) { return payload.items[i]; }); delete table.itemIndices; });
     var common = ['type','table','name','sourceKind','sourceArtifact','sourceFile','isHidden','displayFolder','formatString','status','usageState','issueState','removalRisk','deleteSafety','reviewTriggers','brokenDaxRefs','brokenDaxRefDetails'];
-    var empty = {report:'',reportPath:'',page:'',pageHidden:false,visualHidden:false,visualType:'',visualTitle:'',visualId:'',context:'',sourcePath:'',artifactKind:'',artifactPath:'',selectorValue:'',staleKind:''};
+    var empty = {report:'',reportPath:'',page:'',pageHidden:false,visualHidden:false,visualType:'',visualTitle:'',visualId:'',visualX:null,visualY:null,context:'',sourcePath:'',artifactKind:'',artifactPath:'',selectorValue:'',staleKind:''};
     payload.references = [];
     payload.items.forEach(function (item) {
       item.ref = item.table + '[' + item.name + ']';

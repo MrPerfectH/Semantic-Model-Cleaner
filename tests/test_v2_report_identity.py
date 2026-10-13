@@ -21,7 +21,7 @@ def test_v2_same_named_reports_have_distinct_keys_filters_counts_and_mutation_pa
     source = TEMPLATE.read_text(encoding="utf-8")
     names = ['itemKey','reportIssueKey','reportReferenceId','reportReferenceLabel','getReportPathByName',
              'getReportPathForReference','reportIssueCleanupEntry','reportIssueActionEntry',
-             'usageLocationKey','usageLocatorKey','renderUsageDetails','uniqueCount','detailCounts', 'filterReportIssues']
+             'friendlyVisualType','fieldRoleLabel','visualPositionLabel','usageVisualLabel','usageLocationKey','usageLocatorKey','renderUsageDetails','uniqueCount','detailCounts', 'filterReportIssues']
     harness = tmp_path / 'v2-identity.cjs'
     harness.write_text("const assert = require('node:assert/strict');\n"
         "var chosenReports=[{name:'Same',path:'/A/Same.Report'},{name:'Same',path:'/B/Same.Report'}];\n"
