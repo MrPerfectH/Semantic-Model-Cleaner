@@ -893,6 +893,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             "reviewBasis": r.get("review_basis", "") or None,
             "entityKind": r.get("entity_kind", "") or None,
             "analysisLimitationIds": r.get("analysis_limitation_ids", []),
+            "metadataConsumers": r.get("metadata_consumers", []),
             "perspectiveMemberships": [
                 {"perspective": member["perspective"], "sourceFile": member["source_file"]}
                 for member in r.get("perspectives", [])

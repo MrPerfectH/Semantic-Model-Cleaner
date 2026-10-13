@@ -161,7 +161,7 @@ def test_translations_are_not_analysis_limitations(results, payload):
     assert not any(limitation["area"] == "Cultures/translations" or "cultures/" in limitation["source_file"]
                    for limitation in results["analysis_limitations"])
     # Adding the culture file leaves the distinct limitation counts unchanged.
-    assert payload["analysisLimitations"]["distinctCount"] == 7
+    assert payload["analysisLimitations"]["distinctCount"] == 4  # resolved KPI expressions are consumers (#131)
     assert payload["analysisLimitations"]["sharedCount"] == 4
     goal = item(payload, "Sales", "Revenue Goal")
     assert goal["usageCount"] == 0  # a translation is never a Report Reference
