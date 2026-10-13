@@ -18,10 +18,9 @@ reloading an open tab; stale tokens fail closed with HTTP 403.
 
 Before any route executes:
 
-- Flask validates Host against `localhost`, `127.0.0.1`, and `[::1]`. Untrusted
+- Flask validates Host against `localhost` and `127.0.0.1`. Untrusted
   hosts cannot bootstrap a token or reach filesystem APIs. The supported
-  launchers bind IPv4; the IPv6 Host is accepted for separately embedded
-  loopback-only WSGI servers.
+  launchers bind IPv4; IPv6 Host values are rejected.
 - If Origin is present, its scheme, hostname, and port must match the request
   origin exactly. `null`, malformed origins, other loopback ports, and a different
   loopback hostname are rejected.
@@ -98,3 +97,33 @@ Tests use disposable data for saved-plan rejection and authenticated round
 trips. Domain API tests send real credentials via their test client; boundary
 tests use the raw Flask client to verify absent and hostile credentials. The
 Windows and wheel smoke clients bootstrap through the actual HTTP protocol.
+
+## Opt-in desktop VS Code embedding
+
+The extension launch protocol is separate from normal browser launches. Only
+`--vscode --host 127.0.0.1 --port 0`, with a valid in-memory launch configuration,
+enables it. An OS-assigned port avoids a free-port/rebind race. The parent owns
+stdin; EOF stops the server if the extension host disappears.
+
+The extension supplies a fresh 256-bit token and the exact measured desktop
+webview ancestor origins through environment variables (removed after reading).
+Only concrete `https://<id>.vscode-cdn.net`, `vscode-webview://<id>` and the desktop
+shell `vscode-file://vscode-app` sources are accepted, never wildcards, arbitrary
+websites, scheme-only sources or user-provided CSP text. The server's HTML CSP
+lists these ancestors and omits X-Frame-Options only for successful root HTML.
+Every ancestor must satisfy that CSP. Cross-site iframe navigation is allowed
+only for `GET /`, with Fetch Mode `navigate` and Destination `iframe`; a supplied
+Origin must be one of the exact ancestors or the app origin. HTML navigation
+without an Origin still relies on the browser's enforced frame-ancestors policy.
+
+All API and resource requests retain the ordinary Origin and Fetch Metadata
+checks. There is no CORS grant. Host must additionally match the chosen loopback
+port. `/api/vscode/ready` requires the token and returns protocol version 1 plus
+its SHA-256 instance fingerprint, so the extension cannot accidentally reuse a
+foreign server. The readiness route is unavailable in normal host mode.
+
+The preview supports local desktop VS Code only; remote/browser hosts are
+rejected before startup. See the [extension README](../vscode-extension/README.md)
+for installation, lifetime, dialog and test details. Defaults remain unchanged
+unless the explicit host flag is used; merely setting environment variables
+cannot enable embedding.

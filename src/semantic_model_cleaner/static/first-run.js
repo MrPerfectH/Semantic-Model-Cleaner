@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var generation = 0, loadVersion = 0, checkedKey = '', pending = false;
-  var projectModels = [], projectReports = [];
+  var projectModels = [], projectReports = [], projectRoot = initialConfig.defaultRoot;
   var originalRender = renderPills;
   var originalAnalyze = runAnalyze;
   function key() { return JSON.stringify([chosenModels, chosenReports]); }
@@ -54,11 +54,13 @@
   }
   function propose(data) {
     projectModels = data.models || []; projectReports = data.reports || [];
+    if (data.workspace) projectRoot = data.workspace;
     var choice = $('projectModelChoice'), select = $('projectModelSelect');
     select.replaceChildren(); text(select, 'option', 'Choose a Semantic Model…').value = '';
     projectModels.forEach(function (m) { var option = text(select, 'option', m.name + ' — ' + m.path); option.value = m.path; });
-    choice.hidden = projectModels.length < 2;
+    choice.hidden = projectModels.length === 0;
     chosenModels = projectModels.length === 1 ? projectModels.slice() : [];
+    select.value = chosenModels.length ? chosenModels[0].path : '';
     chosenReports = chosenModels.length ? projectReports.slice() : []; checkedKey = ''; renderPills();
     if (projectModels.length > 1) $('projectStatus').textContent = 'Multiple Semantic Models found. Choose one to review its connected Reports.';
   }
@@ -72,6 +74,7 @@
   }
   window.smcDiscoverProject = async function (path) {
     var version = beginLoad();
+    projectRoot = path;
     openSetup(); $('projectStatus').textContent = 'Finding Semantic Models and Reports…';
     try {
       var data = await apiPost('/api/discover', {model_roots:[path], report_roots:[path]});
@@ -99,10 +102,12 @@
     finally { loadingDemo = false; $('btnLoadDemo').disabled = false; }
   };
   $('btnLoadDemo').onclick = window.smcLoadDemo;
-  // Offer a choice for ambiguous startup roots instead of taking the first model.
-  if (initialConfig.availableModels.length > 1) {
-    propose({models:initialConfig.availableModels, reports:initialConfig.availableReports});
-  } else if (chosenModels.length) {
-    chosenReports = initialConfig.availableReports.slice(); review();
+  $('btnRefreshProject').onclick = function () { window.smcDiscoverProject(projectRoot); };
+  // Always populate repository scope, including a sole model and empty roots.
+  propose({models:initialConfig.availableModels, reports:initialConfig.availableReports});
+  if (!projectModels.length) {
+    $('projectStatus').textContent = 'No supported Semantic Model found in ' + projectRoot + '. Refresh repository after adding files, or choose a Power BI Project folder.';
+  } else if (projectModels.length === 1) {
+    $('projectStatus').textContent = 'Project: ' + projectRoot;
   }
 })();

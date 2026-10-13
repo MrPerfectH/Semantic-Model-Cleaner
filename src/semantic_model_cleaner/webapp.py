@@ -2002,6 +2002,8 @@ def main():
                         help="Local bind address: 127.0.0.1 or localhost (default: 127.0.0.1)")
     parser.add_argument("--debug", action="store_true",
                         help="Enable Flask debug mode and auto-reload")
+    parser.add_argument("--vscode", action="store_true",
+                        help="Owned desktop VS Code host (extension launch only; ephemeral port)")
     parser.add_argument(
         "--experimental",
         action="append",
@@ -2011,12 +2013,24 @@ def main():
 
     args = parser.parse_args()
 
+    if args.vscode:
+        from . import vscode_host
+        if args.debug or args.host != '127.0.0.1' or args.port != 0:
+            parser.error('--vscode requires --host 127.0.0.1 --port 0 and no --debug')
+        try:
+            vscode_host.configure_host(app)
+        except ValueError as error:
+            parser.error(str(error))
+
     _state["runtime"] = experiments.runtime_config(extra_experiments=args.experimental)
     configure_runtime(
         workspace=args.workspace,
         models_path=args.models_path,
         reports_path=args.reports_path,
     )
+    if args.vscode:
+        vscode_host.serve(app)
+        return
     print_startup_banner(args.host, args.port, debug=args.debug)
 
     app.run(host=args.host, port=args.port, debug=args.debug)
