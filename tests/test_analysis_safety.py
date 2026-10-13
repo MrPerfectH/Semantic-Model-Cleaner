@@ -59,8 +59,15 @@ def test_calculation_item_unqualified_reference_is_resolved(project):
     assert refs[0].item_keys == {("Sales", "Revenue")}
     assert not refs[0].unresolved_targets
     result = analyze(project)
-    assert row(result, "Revenue")["removal_risk"] == "Review"
+    # A resolved calculation item is a real consumer (#131): Revenue is blocked by it,
+    # not left at Review behind an Analysis Limitation.
+    revenue = row(result, "Revenue")
+    assert revenue["removal_risk"] == "Caution"
+    assert any(t.startswith("Required by retained calculation item expression of calculation item 'Current'")
+               for t in revenue["review_triggers"])
+    assert not result["analysis_limitations"]
     assert row(result, "Spare")["removal_risk"] == "Safe"
+    assert not evaluate_deletion_policy(model, [project[2]], [delete("Revenue")])["ok"]
 
 
 @pytest.mark.parametrize("expression", ["SELECTEDMEASURENAME()", "[Unknown]", "[Revenue] + [Unknown]", "Sales[Unknown]"])
@@ -145,4 +152,4 @@ def test_selected_measure_context_does_not_retain_unrelated_items(project, expre
     assert result["coverage"]["complete"]
     assert row(result, "Spare")["removal_risk"] == "Safe"
     if "Revenue" in expression:
-        assert row(result, "Revenue")["removal_risk"] == "Review"
+        assert row(result, "Revenue")["removal_risk"] == "Caution"

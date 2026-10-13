@@ -89,13 +89,13 @@ def test_cli_dispatch_json_and_baseline_write(tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)["ok"]
 
 
-def test_unsupported_metadata_is_visible_even_with_resolved_targets(tmp_path):
+def test_resolved_metadata_is_not_a_ci_coverage_gap(tmp_path):
     model, _ = project(tmp_path)
     (model / "definition/tables/Time.tmdl").write_text(
         "table Time\n\tcalculationGroup\n\t\tcalculationItem Current = [Broken]\n", encoding="utf-8")
     _, output = run_check(tmp_path)
     metadata = [f for f in output["findings"] if f["rule_id"] == "SMC003"]
-    assert len(metadata) == 1 and metadata[0]["severity"] == "warning"
+    assert metadata == []
 
 
 def test_cli_plan_dispatch_propagates_exit_code(monkeypatch):

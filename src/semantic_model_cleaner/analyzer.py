@@ -188,6 +188,11 @@ class UnsupportedMetadataRef:
     are the model items its expression references; `unresolved_targets` means the
     expression may depend on items the analyzer could not identify, so the gap
     limits cleanup confidence for every item without a use in scope.
+
+    `resolved` means every reference was matched to exactly one model item and
+    nothing in the construct is dynamic beyond the invoking measure. A resolved
+    construct is a metadata consumer, a real dependency of its targets, and not
+    an Analysis Limitation.
     """
     area: str
     item_keys: set[tuple[str, str]]
@@ -201,6 +206,9 @@ class UnsupportedMetadataRef:
     table: str = ""
     line: int = 0
     dynamic: bool = False
+    resolved: bool = False
+    owner_kind: str = ""
+    owner_name: str = ""
 
     @property
     def id(self) -> str:
@@ -1021,8 +1029,8 @@ def _expression_uses_dynamic_measure_context(expression: str) -> bool:
 def parse_calendar_tables(model_path: Path) -> dict[str, list[str]]:
     """Index genuine named-calendar declarations; duplicates remain ambiguous.
 
-    Calendar column categories are not interpreted. Consumers conservatively
-    protect all columns of the declaring table instead of guessing categories.
+    Column mappings are read separately (_calendar_mapped_columns); when they
+    cannot be read, consumers protect all columns of the declaring table.
     """
     calendars: dict[str, list[str]] = defaultdict(list)
     for path in sorted((Path(model_path) / "definition/tables").glob("*.tmdl")):
@@ -1031,6 +1039,39 @@ def parse_calendar_tables(model_path: Path) -> dict[str, list[str]]:
                     and node.parent.keyword == "table" and node.name):
                 calendars[node.name.casefold()].append(node.parent.name)
     return dict(calendars)
+
+
+_CALENDAR_COLUMN_PROPERTIES = {"primarycolumn", "associatedcolumn", "column"}
+
+
+def _calendar_mapped_columns(calendar: TmdlDeclaration) -> tuple[set[str], bool]:
+    """Columns a calendar declaration maps, and whether every mapping was understood.
+
+    A `calendarColumnGroup` names its columns either as continuation lines
+    (`calendarColumnGroup = year` + `primaryColumn: Year`) or as child values
+    (`column: 'Holiday Name'`). Anything else under a group fails closed.
+    """
+    columns: set[str] = set()
+    complete = True
+    for group in calendar.children:
+        if group.keyword != "calendarColumnGroup":
+            continue
+        if group.kind == "expression":
+            entries = [line.split(":", 1) for line in group.expression_lines[1:] if line.strip()]
+        else:
+            entries = [[child.keyword, child.value] for child in group.children]
+        for entry in entries:
+            if len(entry) != 2 or entry[0].strip().casefold() not in _CALENDAR_COLUMN_PROPERTIES:
+                if len(entry) == 2 and entry[0].strip().casefold() in {"lineagetag", "annotation", "changedproperty"}:
+                    continue
+                complete = False
+                continue
+            name = unquote_tmdl_name(entry[1].strip())
+            if name:
+                columns.add(name)
+            else:
+                complete = False
+    return columns, complete and bool(columns)
 
 
 def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedMetadataRef]:
@@ -1055,22 +1096,38 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
     for item in model_items:
         if item.item_type == "Measure":
             measure_names[item.name.casefold()].add(item.key)
+    columns_by_table: dict[str, dict[str, tuple[str, str]]] = defaultdict(dict)
+    for item in model_items:
+        if item.item_type in ("Column", "Calculated Column"):
+            columns_by_table[item.table.casefold()][item.name.casefold()] = item.key
+    # Calendar name -> the columns it maps, when every mapping resolves.
+    calendar_columns: dict[str, set[tuple[str, str]]] = {}
 
     for filepath in sorted(tables_dir.glob("*.tmdl")):
         text = filepath.read_text(encoding="utf-8-sig")
         for node in scan_tmdl_declarations(text):
             if (node.keyword == "calendar" and node.kind == "object" and node.parent
                     and node.parent.keyword == "table"):
-                targets = {item.key for item in model_items
-                           if item.table.casefold() == node.parent.name.casefold()
-                           and item.item_type in ("Column", "Calculated Column")}
+                table_columns = columns_by_table.get(node.parent.name.casefold(), {})
+                names, complete = _calendar_mapped_columns(node)
+                mapped = {table_columns[name.casefold()] for name in names if name.casefold() in table_columns}
+                resolved = complete and len(mapped) == len(names)
+                # An unparsed mapping keeps the old fail-closed scope: every column of the table.
+                targets = mapped if resolved else set(table_columns.values())
+                if resolved and len(calendars.get(node.name.casefold(), [])) == 1:
+                    calendar_columns[node.name.casefold()] = mapped
                 ref = _unsupported_ref("Calendars", targets, filepath, model_path)
                 ref.feature = "named calendar declaration"
                 ref.construct = "table/calendar"
                 ref.owner = f"calendar '{node.name}' in '{node.parent.name}'"
+                ref.owner_kind = "calendar"
+                ref.owner_name = node.name
                 ref.table = node.parent.name
                 ref.line = node.line
+                ref.resolved = resolved
                 refs.append(ref)
+    for filepath in sorted(tables_dir.glob("*.tmdl")):
+        text = filepath.read_text(encoding="utf-8-sig")
         features, _ = extract_feature_expressions(text)
         for feature in features:
             expression = feature.expression
@@ -1087,9 +1144,9 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
                 for name in bare_refs:
                     owners = calendars.get(name.casefold(), [])
                     if len(owners) == 1 and name.casefold() not in table_names:
-                        targets = {item.key for item in model_items
-                                   if item.table.casefold() == owners[0].casefold()
-                                   and item.item_type in ("Column", "Calculated Column")}
+                        # A calendar reference needs the columns the calendar maps.
+                        targets = calendar_columns.get(name.casefold()) or set(
+                            columns_by_table.get(owners[0].casefold(), {}).values())
                         item_keys.update(targets)
                         if not targets:
                             unresolved = True
@@ -1114,9 +1171,10 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
                 # A calculation item without any identifiable reference is still
                 # applied to arbitrary measures at runtime.
                 unresolved = True
-            if feature.owner.startswith("calculation item ") and not item_keys and not unresolved:
-                # Nothing remains unchecked for item deletion: selected value
-                # and format context alone do not retain any named model item.
+            if expression and not item_keys and not unresolved:
+                # Nothing remains unchecked for item deletion: the expression was
+                # parsed and retains no named model item (for example a KPI trend
+                # of literals, or a calculation item using only the selected measure).
                 continue
             ref = _unsupported_ref(feature.area, item_keys, filepath, model_path)
             ref.unresolved_targets = unresolved
@@ -1126,6 +1184,9 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
             ref.table = feature.table
             ref.line = feature.line
             ref.dynamic = feature.dynamic
+            ref.owner_kind = feature.owner_kind
+            ref.owner_name = feature.owner_name
+            ref.resolved = bool(expression) and bool(item_keys) and not unresolved
             refs.append(ref)
 
     return refs
@@ -1343,7 +1404,55 @@ def entity_type_trigger(kind: str, table: str, *, after_plan: bool = False) -> s
             f"to confirm before deletion. {scope}")
 
 
-_RETAINED_DECLARATION_PREFIXES = ("Sort column required by retained ", "Column belongs to retained hierarchy ")
+_RETAINED_DECLARATION_PREFIXES = ("Sort column required by retained ", "Column belongs to retained hierarchy ",
+                                  "Required by retained ")
+
+
+def _metadata_consumer_trigger(ref: UnsupportedMetadataRef) -> str:
+    return f"Required by retained {ref.feature} of {ref.owner} ({_limitation_location(ref)})"
+
+
+def _metadata_consumer_record(ref: UnsupportedMetadataRef) -> dict:
+    return {"feature": ref.feature, "owner": ref.owner, "owner_kind": ref.owner_kind,
+            "owner_name": ref.owner_name, "table": ref.table, "location": _limitation_location(ref),
+            "targets": sorted(ref.item_keys)}
+
+
+def _metadata_consumer_index(refs: list[UnsupportedMetadataRef], items: list[ModelItem]):
+    """Index resolved metadata constructs as consumers of their target items.
+
+    Returns ({normalized target key: [refs]}, {owner identity: {target identities}}).
+    A measure or column owns its own KPI, detail-rows and format-string
+    expressions. A calculation group, a table default and a partition belong to
+    their whole table, so any item of that table that is needed keeps the targets
+    needed. A calendar declaration has no usage signal of its own: it only blocks.
+    """
+    model_items = [item for item in items if item.source_kind == "model"]
+    identity_by_key = {normalize_key(*item.key): item_identity(item) for item in model_items}
+    identities_by_table: dict[str, set] = defaultdict(set)
+    for item in model_items:
+        identities_by_table[item.table.casefold()].add(item_identity(item))
+    by_key: dict[tuple[str, str], list[UnsupportedMetadataRef]] = defaultdict(list)
+    edges: dict[tuple, set] = defaultdict(set)
+    for ref in refs:
+        if not ref.resolved:
+            continue
+        # A measure's own KPI or format string naming the measure is not a consumer of it.
+        own_key = normalize_key(ref.table, ref.owner_name) if ref.owner_kind in ("measure", "column") else None
+        keys = {normalize_key(*key) for key in ref.item_keys} - {own_key}
+        targets = {identity_by_key[key] for key in keys if key in identity_by_key}
+        for key in keys:
+            by_key[key].append(ref)
+        if ref.owner_kind in ("measure", "column"):
+            owner = identity_by_key.get(normalize_key(ref.table, ref.owner_name))
+            owners = {owner} if owner else set()
+        elif ref.owner_kind in ("calculationItem", "calculationGroup", "table", "partition"):
+            owners = identities_by_table.get(ref.table.casefold(), set())
+        else:
+            owners = set()
+        for owner in owners:
+            edges[owner] |= targets - {owner}
+    return by_key, edges
 
 
 def _apply_tool_entity_review(
@@ -4790,6 +4899,10 @@ def analyze(
     dax_deps, dax_col_deps, dax_table_deps, broken_dax_refs = (
         graphs[name] for name in ("measures", "columns", "tables", "broken"))
     items_by_identity = {item_identity(item): item for item in all_items}
+    # Resolved metadata expressions (calculation items, KPI expressions, calendar
+    # mappings, ...) are real consumers of the items they name. They keep those
+    # items needed while their owner is needed, and block deleting them.
+    metadata_consumers_by_key, metadata_edges = _metadata_consumer_index(all_unsupported_metadata_refs, all_items)
     directly_used = {
         item_identity(item) for item in all_items
         if any(_usage_belongs_to_item(item, usage) for usage in usage_index.get(normalize_key(*item.key), []))
@@ -4799,7 +4912,8 @@ def analyze(
     queue = list(needed)
     while queue:
         source = queue.pop()
-        for target in dax_deps.get(source, set()) | dax_col_deps.get(source, set()):
+        for target in (dax_deps.get(source, set()) | dax_col_deps.get(source, set())
+                       | metadata_edges.get(source, set())):
             if target not in needed:
                 needed.add(target)
                 queue.append(target)
@@ -4808,6 +4922,9 @@ def analyze(
     for source in items_by_identity:
         for target in dax_deps.get(source, set()) | dax_col_deps.get(source, set()):
             dependents[target].add(source)
+            if source in needed and target not in directly_used:
+                indirect[target].add(source)
+        for target in metadata_edges.get(source, set()):
             if source in needed and target not in directly_used:
                 indirect[target].add(source)
 
@@ -4843,6 +4960,8 @@ def analyze(
     # ── Unsupported metadata index ──
     unsupported_metadata_by_key: dict[tuple[str, str], list[UnsupportedMetadataRef]] = defaultdict(list)
     for ref in all_unsupported_metadata_refs:
+        if ref.resolved:
+            continue
         for key in ref.item_keys:
             unsupported_metadata_by_key[normalize_key(*key)].append(ref)
 
@@ -4856,7 +4975,8 @@ def analyze(
     analysis_limitations: list[dict] = []
     seen_limitation_ids: set[str] = set()
     for limitation in ([_report_scan_limitation(issue) for issue in invalid_report_issues]
-                       + [_limitation_explanation(ref) for ref in all_unsupported_metadata_refs]):
+                       + [_limitation_explanation(ref) for ref in all_unsupported_metadata_refs
+                          if not ref.resolved]):
         if limitation["id"] in seen_limitation_ids:
             continue
         seen_limitation_ids.add(limitation["id"])
@@ -4976,6 +5096,7 @@ def analyze(
         else:
             # Check if any other item's DAX references this item
             has_dax_dependents = bool(dependents.get(identity))
+            metadata_consumers = metadata_consumers_by_key.get(nkey, []) if item.source_kind == "model" else []
             if item.is_hidden:
                 review_triggers.append("Item is hidden")
             if item.is_key:
@@ -4996,7 +5117,7 @@ def analyze(
                 review_triggers.append(shared_limitation_trigger)
             if review_triggers:
                 removal_risk = "Review"
-            elif (has_dax_dependents or identity in retained_parameter_targets
+            elif (has_dax_dependents or metadata_consumers or identity in retained_parameter_targets
                   or sort_sources or hierarchy_names):
                 removal_risk = "Caution"
             else:
@@ -5009,6 +5130,7 @@ def analyze(
                 for name in sort_sources
             )
             review_triggers.extend(f"Column belongs to retained hierarchy {name}" for name in hierarchy_names)
+            review_triggers.extend(_metadata_consumer_trigger(ref) for ref in metadata_consumers)
 
         targeted_limitation_ids = [ref.id for ref in unsupported_metadata_by_key.get(nkey, [])]
         limitation_ids = targeted_limitation_ids + (
@@ -5028,6 +5150,10 @@ def analyze(
             "status": status,
             "usages": usages,
             "stale_usages": stale_usages,
+            "metadata_consumers": [
+                _metadata_consumer_record(ref)
+                for ref in (metadata_consumers_by_key.get(nkey, []) if item.source_kind == "model" else [])
+            ],
             "has_direct_usage": has_direct_usage,
             "removal_risk": removal_risk,
             "review_triggers": review_triggers,
@@ -5166,9 +5292,11 @@ def analyze(
             {"area": ref.area, "source_file": ref.source_file, "feature": ref.feature,
              "construct": ref.construct, "owner": ref.owner, "line": ref.line, "id": ref.id,
              "targets": [format_item_ref(key) for key in sorted(ref.item_keys)],
-             "unresolved_targets": ref.unresolved_targets}
+             "unresolved_targets": ref.unresolved_targets, "resolved": ref.resolved}
             for ref in all_unsupported_metadata_refs
         ],
+        "metadata_consumers": [_metadata_consumer_record(ref) for ref in all_unsupported_metadata_refs
+                               if ref.resolved],
         "model_metadata": {
             "calculation_groups": model_metadata.calculation_groups,
             "perspectives": sorted({member.perspective for member in model_metadata.perspective_members},

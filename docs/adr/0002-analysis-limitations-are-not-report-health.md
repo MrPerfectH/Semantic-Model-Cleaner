@@ -101,3 +101,9 @@ Two detection faults made it worse (issues #82 and #83):
   entry, shown in the plan preview, rather than an `SMC-D005` violation.
   Partial plans keep the item-alone reasons, and every guard on objects
   outside the entity still applies.
+
+- Resolved metadata expressions and named calendar mappings are consumers,
+  rather than coverage gaps (issue #131). Retained owners block deletion of
+  their targets; owners needed by the selected scope propagate indirect use.
+  Dynamic and unresolved constructs remain Analysis Limitations. KPI children
+  remain separate from the owning measure’s DAX expression (issue #92).

@@ -142,10 +142,30 @@ def _evaluate_deletion_policy(
     # Removing the last model item may remove its table. Bare-table DAX consumers
     # are not represented by item-to-item edges.
     removed_tables = {key[0] for key in targets if all(k in targets for k in rows if k[0] == key[0])}
-    # Calendar declarations survive item-only deletes. Protect all their table
-    # columns until a whole-table plan removes the declaration as well.
-    calendar_tables = {table.casefold() for owners in analyzer.parse_calendar_tables(model_path).values()
-                       for table in owners}
+    # Resolved metadata constructs (calculation items, KPI, detail-rows, format-string
+    # and coverage expressions, calendar mappings) need their targets while the
+    # construct itself remains. Table-owned constructs go only with their table.
+    for consumer in analysis.get("metadata_consumers", []):
+        owner_table = consumer["table"].casefold()
+        if consumer["owner_kind"] in ("measure", "column"):
+            owner_removed = analyzer.normalize_key(consumer["table"], consumer["owner_name"]) in targets
+        else:
+            owner_removed = owner_table in removed_tables
+        if owner_removed:
+            continue
+        for key in consumer["targets"]:
+            target = analyzer.normalize_key(*key)
+            if target in targets:
+                reject("SMC-D006", f"{analyzer.format_item_ref(tuple(key))} is required by retained "
+                       f"{consumer['feature']} of {consumer['owner']} ({consumer['location']}).", *key)
+    # Calendar declarations survive item-only deletes. When a calendar's column
+    # mappings could not be read, protect all its table columns until a
+    # whole-table plan removes the declaration as well.
+    resolved_calendars = {(consumer["table"].casefold(), consumer["owner_name"].casefold())
+                          for consumer in analysis.get("metadata_consumers", [])
+                          if consumer["owner_kind"] == "calendar"}
+    calendar_tables = {table.casefold() for name, owners in analyzer.parse_calendar_tables(model_path).items()
+                       for table in owners if (table.casefold(), name) not in resolved_calendars}
     for key in sorted(targets):
         if (key[0] in calendar_tables and key[0] not in removed_tables
                 and rows[key]["item"].item_type in ("Column", "Calculated Column")):
