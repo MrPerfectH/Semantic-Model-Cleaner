@@ -3408,9 +3408,8 @@ function renderWarnings() {
 }
 
 function showReportBinding(binding) {
-  if (!binding || !binding.excluded.length) return;
-  $('connectedReportSearchStatus').textContent = binding.selected.length + ' connected report(s) selected. Excluded: '
-    + binding.excluded.map(function(row) { return row.name + ': ' + row.message; }).join(' | ');
+  if (!binding) return;
+  $('connectedReportSearchStatus').textContent = binding.selected.length + ' connected report(s) selected.';
 }
 
 function renderReportHealth() {
