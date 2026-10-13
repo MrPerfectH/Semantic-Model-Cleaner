@@ -1,0 +1,12 @@
+.vscode/**
+.vscode-test/**
+src/**
+test/**
+scripts/**
+integration-artifacts/**
+node_modules/**
+*.vsix
+*.vsix.sha256
+tsconfig.json
+package-lock.json
+.gitignore

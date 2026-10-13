@@ -1,0 +1,108 @@
+{
+  "name": "semantic-model-cleaner",
+  "displayName": "Semantic Model Cleaner (Preview)",
+  "description": "Run Semantic Model Cleaner's local Power BI Project UI inside VS Code.",
+  "version": "0.1.1",
+  "publisher": "smc-local-preview",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MrPerfectH/Semantic-Model-Cleaner.git",
+    "directory": "vscode-extension"
+  },
+  "engines": {
+    "vscode": "^1.95.0",
+    "node": ">=22"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Opening or restarting Cleaner requires Workspace Trust.",
+      "restrictedConfigurations": [
+        "semanticModelCleaner.executable",
+        "semanticModelCleaner.pythonPath"
+      ]
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Cleaner requires local filesystem access and a Python process."
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "semanticModelCleaner.open",
+        "title": "Open Cleaner",
+        "category": "Semantic Model Cleaner",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "semanticModelCleaner.restart",
+        "title": "Restart Server",
+        "category": "Semantic Model Cleaner",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "semanticModelCleaner.stop",
+        "title": "Stop Server",
+        "category": "Semantic Model Cleaner"
+      },
+      {
+        "command": "semanticModelCleaner.showLogs",
+        "title": "Show Logs",
+        "category": "Semantic Model Cleaner"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "semanticModelCleaner.open",
+          "when": "explorerResourceIsFolder && resourceScheme == file && isWorkspaceTrusted",
+          "group": "navigation@99"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Semantic Model Cleaner",
+      "properties": {
+        "semanticModelCleaner.executable": {
+          "type": "string",
+          "default": "smc-web",
+          "scope": "resource",
+          "restricted": true,
+          "markdownDescription": "Installed `smc-web` executable (absolute path recommended). Must support `--vscode`. A single executable, not a shell command. Ignored when pythonPath is set."
+        },
+        "semanticModelCleaner.pythonPath": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "restricted": true,
+          "markdownDescription": "Python executable from an environment with this checkout's Semantic Model Cleaner installed. Runs `python -I -m semantic_model_cleaner.web`. Nothing is installed automatically."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "test": "npm run compile && node --test test/*.test.cjs",
+    "test:integration": "npm run compile && node scripts/integration.cjs",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package --pre-release --no-dependencies --out semantic-model-cleaner-0.1.1.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "1.95.0",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^4.0.0",
+    "playwright-core": "^1.56.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -347,35 +347,16 @@ def _discover_artifact_dirs(search_roots: list[Path], suffix: str, conventional_
         if not root.is_dir():
             continue
 
-        if suffix == ".Report":
-            # Search every visible descendant, even when a conventional Reports
-            # folder exists. Prune hidden checkouts/caches before traversing them.
-            for current, directories, _ in os.walk(root):
-                parent = Path(current)
-                directories[:] = [name for name in directories
-                                  if not _skip_discovery_path(parent / name, root, source_root=source_root)]
-                artifacts = [name for name in directories if name.endswith(suffix)]
-                discovered.extend(parent / name for name in artifacts)
-                directories[:] = [name for name in directories if name not in artifacts]
-            continue
-
-        # Fast path for common workspace layout.
-        conventional = root / conventional_dir
-        if conventional.exists() and conventional.is_dir():
-            conventional_hits = [
-                p for p in conventional.iterdir()
-                if p.is_dir() and p.name.endswith(suffix) and not _skip_discovery_path(p, root, source_root=source_root)
-            ]
-            discovered.extend(conventional_hits)
-            if conventional_hits:
-                # Prefer explicit workspace layout and avoid over-scanning.
-                continue
-
-        # Fallback recursive discovery for non-standard layouts.
-        discovered.extend(
-            p for p in root.rglob(f"*{suffix}")
-            if p.is_dir() and not _skip_discovery_path(p, root, source_root=source_root)
-        )
+        # Every visible artifact belongs to repository discovery, regardless of
+        # whether a conventional Models/ or Reports/ folder also exists.
+        for current, directories, _ in os.walk(root):
+            parent = Path(current)
+            directories[:] = [name for name in directories
+                              if not _skip_discovery_path(parent / name, root, source_root=source_root)
+                              and name != "node_modules"]
+            artifacts = [name for name in directories if name.endswith(suffix)]
+            discovered.extend(parent / name for name in artifacts)
+            directories[:] = [name for name in directories if name not in artifacts]
 
     return _unique_sorted_paths(discovered)
 
