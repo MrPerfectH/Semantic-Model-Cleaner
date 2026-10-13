@@ -1395,13 +1395,21 @@ def test_unsupported_metadata_areas_downgrade_safe_items_to_review(tmp_path):
         "FormatTarget": "Format string definitions",
         "CoverageTarget": "Data coverage definitions",
     }
+    # Fully resolved expressions are metadata consumers (#131): their targets name
+    # the construct that requires them. The detail-rows expression also scans the
+    # bare table Sales; that unresolved, shared gap keeps every unused item at Review.
+    resolved = {"CalcGroupTarget", "KpiTarget", "FormatTarget", "CoverageTarget"}
     for measure_name, area in expectations.items():
         item = _find_item(results, "Sales", measure_name, "Measure")
         assert item["status"] == "NOT USED"
         assert item["removal_risk"] == "Review"
-        assert any(area in trigger for trigger in item["review_triggers"])
-        assert any(trigger.startswith("Referenced by the ") for trigger in item["review_triggers"])
-        assert any("Dependency checking is incomplete" in trigger for trigger in item["review_triggers"])
+        if measure_name in resolved:
+            assert any(trigger.startswith("Required by retained ") for trigger in item["review_triggers"])
+            assert not any(trigger.startswith("Referenced by the ") for trigger in item["review_triggers"])
+            assert not any("Dependency checking is incomplete" in trigger for trigger in item["review_triggers"])
+        else:
+            assert any(area in trigger for trigger in item["review_triggers"])
+            assert any(trigger.startswith("Referenced by the ") for trigger in item["review_triggers"])
     kpi_target = _find_item(results, "Sales", "KpiTarget", "Measure")
     assert any(
         "KPI target expression of measure 'KpiMetadata'[KpiCarrier] (definition/tables/KpiMetadata.tmdl:4)" in trigger
@@ -1475,8 +1483,10 @@ def test_unsupported_tmdl_metadata_does_not_review_unrelated_file_refs(tmp_path)
     assert ordinary_target["removal_risk"] == "Caution"
     assert ordinary_target["review_triggers"] == []
     assert format_target["status"] == "NOT USED"
-    assert format_target["removal_risk"] == "Review"
-    assert any("Format string definitions" in trigger for trigger in format_target["review_triggers"])
+    assert format_target["removal_risk"] == "Caution"
+    assert format_target["review_triggers"] == [
+        "Required by retained measure format-string expression of measure 'MetadataCarrier'[FormatCarrier] "
+        "(definition/tables/MetadataCarrier.tmdl:4)"]
 
 
 def test_report_extension_measures_are_analyzed_and_promote_model_dependencies(tmp_path):
