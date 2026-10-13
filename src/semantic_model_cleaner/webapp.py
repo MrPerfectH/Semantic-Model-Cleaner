@@ -1203,6 +1203,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             "relationships": [
                 {
                     "name": rel.get("name", ""),
+                    "filterDirection": rel.get("filter_direction", ""),
                     "localColumn": rel.get("local_column", ""),
                     "otherTable": rel.get("other_table", ""),
                     "otherColumn": rel.get("other_column", ""),

@@ -19,6 +19,24 @@
   var tableReturnTo = null;
   var tablesScroll = 0;
   function card(title, content) { return '<section class="detail-card"><h4>' + esc(title) + '</h4>' + content + '</section>'; }
+  function lineage(item, inputs, consumers) {
+    function branch(refs, role, label) {
+      return '<div class="lineage-branch lineage-' + role + '"><h5>' + label + '</h5>' + (refs.length ? refs.map(function (ref) { var matches = getItemsByRefText(ref); var label = typeof ref === 'object' ? ref.table + '[' + ref.name + ']' : ref; return '<div class="lineage-node">' + (matches.length === 1 ? '<a href="#" class="detail-link detail-item-link" data-item-key="' + esc(itemKey(matches[0])) + '">' + esc(label) + '</a>' : esc(label)) + (typeof ref === 'object' && ref.sourceKind === 'report' ? '<small>Report Extension Measure</small>' : '') + '</div>';  }).join('') : empty('None recorded')) + '</div>';
+    }
+    return '<p class="object-note">Direct dependencies · Purple inputs → selected item → blue consumers. Select a node to follow its dependencies.</p><div class="lineage-graph">' + branch(inputs, 'upstream', 'Uses') + '<span class="lineage-arrow" aria-hidden="true">→</span><div class="lineage-node lineage-focus"><strong>' + esc(item.name) + '</strong><small>' + esc(item.table) + ' · ' + esc(item.type) + '</small></div><span class="lineage-arrow" aria-hidden="true">→</span>' + branch(consumers, 'downstream', 'Used in calculations') + '</div>';
+  }
+  function metadataConsumerCards(item) {
+    var refs = item.metadataConsumers || [];
+    return refs.length ? card('Required by model metadata', '<div class="metadata-consumers">' + refs.map(function (ref) {
+      var link = ref.owner_kind === 'measure' || ref.owner_kind === 'column' ? formatLinkedRef({table: ref.table, name: ref.owner_name}) : parentLink(ref.table, ref.owner);
+      return '<div class="lineage-node lineage-downstream">' + link + '<small>' + esc(ref.feature) + ' · ' + esc(ref.location) + '</small></div>';
+    }).join('') + '</div>') : '';
+  }
+  function relationshipCards(table) {
+    return '<div class="relationship-graph"><div class="lineage-node lineage-focus"><strong>' + esc(table.name) + '</strong><small>Selected table</small></div><div class="relationship-branches">' + (table.relationships || []).map(function (rel) {
+      return '<article class="relationship-node ' + (rel.role === 'one-side' ? 'lineage-upstream' : 'lineage-downstream') + (rel.isActive ? '' : ' relationship-inactive') + '">' + parentLink(rel.otherTable, rel.otherTable) + '<span class="badge badge-muted">' + esc(rel.cardinality || 'Not recorded') + '</span><small>' + formatLinkedRef(rel.localColumn) + ' → ' + formatLinkedRef(rel.otherColumn) + '</small><small>' + (rel.isActive ? 'Active' : 'Inactive') + ' · ' + esc(rel.filterDirection || 'Direction not recorded') + '</small></article>';
+    }).join('') + '</div></div>';
+  }
   function empty(text) { return '<p class="detail-empty">' + esc(text) + '</p>'; }
   function properties(entries) {
     return '<dl class="object-properties">' + entries.filter(function (e) { return e[1] !== undefined && e[1] !== null && e[1] !== ''; }).map(function (e) {
@@ -164,7 +182,7 @@
     var translationCard = (item.translationMemberships || []).length
       ? card('Translation membership — metadata evidence', '<p class="object-note">Informational only: removing the item also removes its translation. A translation never changes the cleanup recommendation.</p>' + formatDetailList(item.translationMemberships.map(function (translation) { return translation.culture + ' (' + translation.location + ')'; })))
       : '';
-    $('item-pane-dependencies').innerHTML = '<div class="object-stack">' + card('Depends on — inputs to this item', formatDetailList(dependencies, { linkItems: true })) + card('Used by — downstream consumers', formatDetailList(item.dependentItems || item.usedByItems || [], { linkItems: true })) + parentCard + perspectiveCard + translationCard + card('Model role and retention', '<p class="object-note">' + esc(usageHelpText(item)) + '</p>' + formatDetailList(roles(item))) + card('Reference problems', formatBrokenRefDetails(item.brokenDaxRefDetails || [], item.brokenDaxRefs || [])) + '</div>';
+    $('item-pane-dependencies').innerHTML = '<div class="object-stack">' + card('Calculation lineage', lineage(item, dependencies, item.dependentItems || item.usedByItems || [])) + metadataConsumerCards(item) + parentCard + perspectiveCard + translationCard + card('Model role and retention', '<p class="object-note">' + esc(usageHelpText(item)) + '</p>' + formatDetailList(roles(item))) + card('Reference problems', formatBrokenRefDetails(item.brokenDaxRefDetails || [], item.brokenDaxRefs || [])) + '</div>';
     $('detailSharedActions').classList.toggle('hidden', isReportItem(item));
     var canRenameColumn = !isReportItem(item) && (item.type === 'Column' || item.type === 'Calculated Column');
     $('objectColumnRenameGroup').classList.toggle('hidden', !canRenameColumn);
@@ -290,6 +308,11 @@
     var virtual = children.length && children.every(isReportItem);
     ['tableBtnDelete', 'tableBtnRename', 'tableBtnMoveToTableGroup'].forEach(function (id) { $(id).disabled = !!virtual; });
     if (virtual) $('tableDetailMeta').textContent = 'Report-only virtual table · model table edits unavailable';
+    $('tableDetailRelationshipList').innerHTML = (table.relationships || []).length ? relationshipCards(table) : empty('No relationships recorded');
+    var calculationConsumers = [];
+    children.forEach(function (child) { (child.dependentItems || []).forEach(function (ref) { if (!calculationConsumers.some(function (existing) { return JSON.stringify(existing) === JSON.stringify(ref); })) calculationConsumers.push(ref); }); });
+    $('tableDetailExternalConsumers').innerHTML = card('Used in calculations', formatDetailList(calculationConsumers.concat(consumers), {linkItems: true}));
+    bindDetailLinks($('table-pane-dependencies'));
     renderChildGrid();
     bindDetailLinks($('objectTableKind'));
   };
