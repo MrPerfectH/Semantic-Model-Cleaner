@@ -57,7 +57,7 @@ def test_table_summaries_carry_navigation_hint_without_changing_classification(p
     assert calc['calculation_group_targets'] == ['Sales[Amount]']
     assert calc['calculation_group_unresolved'] is False
     rows = {row['item'].name: row for row in result['items']}
-    assert rows['Amount']['removal_risk'] == 'Review'
+    assert rows['Amount']['removal_risk'] == 'Caution'  # blocked by the resolved calculation item (#131)
     assert rows['Spare']['removal_risk'] == 'Safe'
     payload = web_app._serialize_results(result, [str(model)])
     tables = {table['name']: table for table in payload['tables']}

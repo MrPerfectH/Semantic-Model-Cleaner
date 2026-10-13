@@ -40,12 +40,19 @@ def test_named_calendar_resolves_to_owner_columns_without_global_gap(tmp_path, n
     revenue = next(row for row in analysis["items"] if row["item"].name == "Revenue")
     assert revenue["removal_risk"] == "Safe"
     refs = analyzer.parse_unsupported_metadata_refs(model)
+    # The calendar maps only its primaryColumn, so a calendar reference needs exactly that (#131).
     consumer = next(ref for ref in refs if ref.feature == "calculation item expression")
-    assert consumer.item_keys == {("Sales", "Amount"), ("Sales", "Category")}
-    assert not consumer.unresolved_targets
+    assert consumer.item_keys == {("Sales", "Amount")}
+    assert not consumer.unresolved_targets and consumer.resolved
+    calendar = next(ref for ref in refs if ref.feature == "named calendar declaration")
+    assert calendar.resolved and calendar.item_keys == {("Sales", "Amount")}
+    assert not analysis["analysis_limitations"]
     policy = evaluate_deletion_policy(model, [report], [{"action": "delete", "table": "Sales",
-        "name": "Category", "item_type": "Column"}])
+        "name": "Amount", "item_type": "Column"}])
     assert not policy["ok"] and any(v["rule_id"] == "SMC-D006" for v in policy["violations"])
+    # An unmapped column of the calendar table is no longer protected by the calendar.
+    assert evaluate_deletion_policy(model, [report], [{"action": "delete", "table": "Sales",
+        "name": "Category", "item_type": "Column"}])["ok"]
     assert evaluate_deletion_policy(model, [report], [{"action": "delete", "table": "Metrics",
         "name": "Revenue", "item_type": "Measure"}])["ok"]
 
@@ -140,7 +147,7 @@ def test_partition_coverage_blocks_deleting_referenced_column(tmp_path, coverage
     assert features[0].expression == "Sales[Amount] > 0"
     analysis = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
     amount = next(row for row in analysis["items"] if row["item"].name == "Amount")
-    assert amount["removal_risk"] == "Review"
+    assert amount["removal_risk"] == "Caution"  # blocked by the resolved coverage expression (#131)
     assert any("partition 'Cold'" in trigger for trigger in amount["review_triggers"])
     assert not evaluate_deletion_policy(model, [report], [{
         "action": "delete", "item_type": "Column", "table": "Sales", "name": "Amount",

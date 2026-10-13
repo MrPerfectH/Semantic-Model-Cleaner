@@ -118,6 +118,8 @@ def run_check(
                 issue.get("table", ""), issue.get("name", ""),
                 issue_type + ":" + issue.get("sourcePath", ""))
         for metadata in result.get("unsupported_metadata", []):
+            if metadata.get("resolved"):
+                continue
             owner = f" of {metadata['owner']}" if metadata.get("owner") else ""
             add("SMC003", "error" if metadata["unresolved_targets"] else "warning",
                 f"Analysis limitation ({metadata['area']}): dependency checking is incomplete for the "

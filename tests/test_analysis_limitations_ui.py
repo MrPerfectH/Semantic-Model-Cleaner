@@ -61,14 +61,14 @@ vm.createContext(context);
 vm.runInContext(fs.readFileSync(process.argv[3], 'utf8'), context);
 context.window.smcRenderAnalysisLimitations();
 assert.equal(nodes.analysisLimitationsBanner.classList.names.has('hidden'), false);
-assert.equal(nodes.analysisLimitationsCount.textContent, '(7 distinct limitations · ' + data.analysisLimitations.affectedItemCount + ' affected items)');
+assert.equal(nodes.analysisLimitationsCount.textContent, '(4 distinct limitations · ' + data.analysisLimitations.affectedItemCount + ' affected items)');
 assert.ok(nodes.analysisLimitationsHint.textContent.startsWith('4 shared keep every unused item at Review'));
 const cards = nodes.analysisLimitationsList.children[0].innerHTML;
 // One labelled line per limitation; the effect column says what happens to Cleanup (#132).
 assert.ok(cards.includes('limitation-row-header') && cards.includes('Effect on Cleanup</span>'));
 assert.ok(cards.includes('Keeps every unused item at Review'));
 assert.ok(!cards.includes('Targeted · affects referenced items only'));
-assert.equal((cards.match(/<details class="limitation-card"/g) || []).length, 7);
+assert.equal((cards.match(/<details class="limitation-card"/g) || []).length, 4);
 assert.ok(cards.includes('definition/tables/Time Intelligence.tmdl:8'));
 assert.ok(cards.includes('Checked</dt>') && cards.includes('Not checked</dt>') && cards.includes('Effect on Cleanup</dt>'));
 // A table named 'KPI Selector' never produces a limitation (#82); it may still be an affected item.

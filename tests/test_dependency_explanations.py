@@ -221,9 +221,11 @@ def test_perspective_members_come_from_declarations_only():
 def test_kpi_selector_table_creates_no_kpi_limitation(results, payload):
     limitations = results["analysis_limitations"]
     assert not any("KPI Selector" in limitation["source_file"] for limitation in limitations)
-    kpi_areas = [limitation for limitation in limitations if limitation["area"] == "KPI expressions"]
-    assert {limitation["owner"] for limitation in kpi_areas} == {"measure 'Targets'[Target]"}
-    assert {limitation["line"] for limitation in kpi_areas} == {4, 5, 9}
+    # Genuine KPI expressions resolve fully, so they are metadata consumers, not limitations (#131).
+    assert not [limitation for limitation in limitations if limitation["area"] == "KPI expressions"]
+    kpi = [c for c in results["metadata_consumers"] if c["feature"].startswith("KPI ")]
+    assert {c["owner"] for c in kpi} == {"measure 'Targets'[Target]"}
+    assert {c["location"] for c in kpi} == {"definition/tables/Targets.tmdl:4", "definition/tables/Targets.tmdl:5"}
     for name in ("KPI Name", "KPI Flag", "KPI Label", "KPI Count"):
         triggers = row(results, "KPI Selector", name)["review_triggers"]
         assert not any("KPI" in trigger and "Referenced by" in trigger for trigger in triggers), triggers
@@ -235,13 +237,16 @@ def test_kpi_selector_table_creates_no_kpi_limitation(results, payload):
 def test_genuine_kpi_reference_is_evidence_on_the_referenced_item(results, payload):
     goal = row(results, "Sales", "Revenue Goal")
     assert goal["status"] == "NOT USED"
+    # The shared calculation-item gap keeps every unused item at Review.
     assert goal["removal_risk"] == "Review"
-    # The KPI target is evidence, not a DAX dependency of the owning measure (#92):
-    # the item stays Unused with exactly one targeted KPI trigger.
+    # The KPI target is not a DAX dependency of the owning measure (#92); it is a
+    # metadata consumer that names the KPI (#131).
     kpi_triggers = [trigger for trigger in goal["review_triggers"] if "KPI" in trigger]
-    assert len(kpi_triggers) == 1
-    assert kpi_triggers[0].startswith("Referenced by the KPI target expression of measure 'Targets'[Target] "
-                                      "(definition/tables/Targets.tmdl:4)")
+    assert kpi_triggers == ["Required by retained KPI target expression of measure 'Targets'[Target] "
+                            "(definition/tables/Targets.tmdl:4)"]
+    assert goal["metadata_consumers"][0]["owner"] == "measure 'Targets'[Target]"
+    # A KPI naming its own measure is not a consumer of that measure.
+    assert row(results, "Targets", "Target")["metadata_consumers"] == []
     browser = item(payload, "Sales", "Revenue Goal")
     assert browser["usageState"] == "Unused"
     assert browser["deleteSafety"] == "Review"
@@ -679,11 +684,12 @@ def test_used_field_parameter_is_not_review_by_entity_type(tmp_path):
 def test_limitation_counts_use_distinct_units(results, payload):
     summary = results["analysis_limitation_summary"]
     limitations = payload["analysisLimitations"]
-    # 3 calculation items + 1 calculation-item format string (shared, dynamic);
-    # KPI target, status and trend expressions (targeted).
-    assert summary["distinct_count"] == limitations["distinctCount"] == 7
+    # 3 calculation items + 1 calculation-item format string (shared, dynamic).
+    # KPI target and status expressions resolve fully and are metadata consumers;
+    # the KPI trend expression names nothing (#131).
+    assert summary["distinct_count"] == limitations["distinctCount"] == 4
     assert summary["shared_count"] == limitations["sharedCount"] == 4
-    assert summary["targeted_count"] == limitations["targetedCount"] == 3
+    assert summary["targeted_count"] == limitations["targetedCount"] == 0
     unused = [r for r in results["items"] if r["status"] == "NOT USED"]
     assert summary["affected_item_count"] == limitations["affectedItemCount"] == len(unused)
     # Repeating a shared reason on every item must not inflate the distinct count.
@@ -701,13 +707,7 @@ def test_each_limitation_explains_feature_location_and_effect(payload):
     assert "invalid" not in format_string["message"].lower()
     assert format_string["scope"] == "shared"
     assert format_string["checked"] and format_string["unchecked"] and format_string["effect"]
-    kpi = by_owner[("KPI expressions", "measure 'Targets'[Target]", 4)]
-    assert kpi["scope"] == "targeted"
-    assert kpi["targets"] == ["Sales[Revenue Goal]"]
-    assert kpi["affectedItems"] == [{"type": "Measure", "table": "Sales", "name": "Revenue Goal"}]
-    assert kpi["effect"] == "Only the referenced items are affected; they stay at Review."
-    trend = by_owner[("KPI expressions", "measure 'Targets'[Target]", 9)]
-    assert trend["scope"] == "targeted" and trend["targets"] == [] and trend["affectedItemCount"] == 0
+    assert not any(area == "KPI expressions" for area, _, _ in by_owner)
 
 
 def test_report_health_excludes_model_limitations(payload):
@@ -736,12 +736,11 @@ def test_exports_and_ci_agree_with_browser_counts(results, payload, tmp_path):
     assert selector["analysisLimitationIds"]
     markdown = analyzer.format_full(results)
     assert "## Analysis Limitations" in markdown
-    assert "7 distinct limitations" in markdown
+    assert "4 distinct limitations" in markdown
     assert "KPI Selector" not in markdown.split("## Summary")[0]
     code, check = ci.run_check(FIXTURE, model_path=MODEL, report_paths=[REPORT])
     assert code == 1
     smc003 = [f for f in check["findings"] if f["rule_id"] == "SMC003"]
-    assert len(smc003) == 7
+    assert len(smc003) == 4
     assert not any("KPI Selector" in f["path"] for f in smc003)
-    assert any(f["message"].startswith("Analysis limitation (KPI expressions): dependency checking is incomplete for the "
-                                       "KPI target expression of measure 'Targets'[Target]") for f in smc003)
+    assert not any("KPI target expression" in f["message"] for f in smc003)
