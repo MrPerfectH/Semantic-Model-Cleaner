@@ -13,10 +13,12 @@
       + '<button type="button" class="btn btn-secondary btn-sm" id="overviewHistory">Changes &amp; history</button></div>'
       + '<details class="result-scope"><summary>' + reports.length + ' checked Report(s) · inspect scope</summary><ul>' + reports.map(function (r) { return '<li>' + esc(r.name) + ' <span>' + esc(r.path) + '</span></li>'; }).join('') + '</ul></details>'
       + '<div class="result-facts"><div><strong>' + safe + ' Safe · ' + review + ' Review</strong><span>Cleanup Recommendations</span></div>'
-      + '<div><strong>' + (limits.distinctCount || 0) + ' distinct limitation(s)</strong><span>' + (limits.coverageComplete === false ? 'Incomplete analysis coverage' : 'No shared coverage gap detected') + '</span></div>'
+      + '<div><strong>' + (limits.distinctCount && document.getElementById('tabLimitations') ? '<a href="#" class="detail-link" id="overviewLimitations">' + limits.distinctCount + ' distinct limitation(s)</a>' : (limits.distinctCount || 0) + ' distinct limitation(s)') + '</strong><span>' + (limits.coverageComplete === false ? 'Incomplete analysis coverage' : 'No shared coverage gap detected') + '</span></div>'
       + '<div><strong>' + issues + ' Report Health issue(s)</strong><span>Report metadata findings</span></div></div>'
       + '<p><strong>Safe applies to supported scanned metadata in this scope.</strong> Other Reports and Power BI runtime behavior are not verified.</p>'
       + '<p class="result-next">' + (safe ? 'Next: open a candidate to inspect Usage and dependency evidence, then prepare and review the exact file changes.' : 'No Safe cleanup candidates in this scope. Inspect item evidence and any Analysis Limitations before deciding on a change.') + '</p>';
+    var limitationsLink = document.getElementById('overviewLimitations');
+    if (limitationsLink) limitationsLink.onclick = function (event) { event.preventDefault(); switchView('limitations'); };
     document.getElementById('overviewHistory').onclick = function () {
       document.getElementById('objectHistoryButton') ? document.getElementById('objectHistoryButton').click() : window.ClassicPlans.history();
     };

@@ -421,9 +421,12 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
 
                 page.goto(base + "/?ui=v2", wait_until="networkidle")
                 page.get_by_role("button", name="Try demo", exact=True).filter(visible=True).first.click()
-                page.wait_for_function("!document.querySelector('#scopeReview').hidden && !document.querySelector('#btnAnalyze').disabled")
+                page.wait_for_function(
+                    "chosenModels.length === 1 && chosenReports.length > 0 "
+                    "&& !document.querySelector('#btnAnalyze').disabled"
+                )
                 if not page.locator('#viewToolbar').evaluate("e => e.classList.contains('hidden')"):
-                    raise RuntimeError("Demo skipped the explicit scope review")
+                    raise RuntimeError("Demo started analysis before explicit user confirmation")
                 demo_job = _run_browser_analysis(
                     page,
                     lambda: page.locator("#btnAnalyze").click(),

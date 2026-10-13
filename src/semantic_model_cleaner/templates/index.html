@@ -6,7 +6,9 @@
 <title>Semantic Model Cleaner</title>
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
 <meta name="smc-local-token" content="{{ local_request_token }}">
+{% if config.get('SMC_WEBVIEW_ANCESTORS') %}<meta name="smc-embedded-host" content="vscode">{% endif %}
 <script src="{{ url_for('static', filename='local-http.js') }}"></script>
+<script src="{{ url_for('static', filename='host-dialogs.js') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='classic-plans.css') }}">
 <style>
 :root {
@@ -382,18 +384,20 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
 .role-fact-like { background: #dbeafe; color: #1e40af; }
 .role-mixed { background: #fef3c7; color: #92400e; }
 .role-calculation-group { background: #ede9fe; color: #5b21b6; }
-.limitation-summary { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 8px; font-size: 12px; color: #92400e; }
-.limitation-summary strong { font-size: 15px; color: var(--text); margin-right: 3px; }
-.limitation-groups { display: grid; gap: 8px; }
-#analysisLimitationsList { max-height: 45vh; overflow-y: auto; }
-.limitation-card { padding: 8px 12px; border: 1px solid #fde68a; border-radius: 9px; background: #fff; }
-.limitation-card > summary { cursor: pointer; list-style: none; }
+.limitation-groups { display: grid; gap: 4px; }
+.limitation-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 220px) minmax(170px, 230px); gap: 12px; align-items: baseline; font-size: 12px; }
+.limitation-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.limitation-row-header { padding: 0 12px 2px 26px; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); }
+.limitation-card { padding: 6px 12px; border: 1px solid #fde68a; border-radius: 8px; background: #fff; }
+.limitation-card > summary { cursor: pointer; list-style: none; position: relative; padding-left: 14px; }
 .limitation-card > summary::-webkit-details-marker { display: none; }
-.limitation-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.limitation-title { font-weight: 650; color: var(--text); font-size: 12px; }
+.limitation-card > summary::before { content: '\25B8'; position: absolute; left: 0; color: var(--text-faint); font-size: 10px; }
+.limitation-card[open] > summary::before { content: '\25BE'; }
+.limitation-row .limitation-construct strong { font-size: inherit; font-weight: 650; color: var(--text); }
 .limitation-owner { font-weight: 500; color: var(--text-light); }
-.limitation-meta { margin-top: 2px; color: #92400e; font-size: 11px; }
-.limitation-badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.limitation-location { color: #92400e; font-family: var(--mono); font-size: 11px; }
+.limitation-effect { color: #b45309; font-weight: 550; }
+#analysisLimitationsList { max-height: 45vh; overflow-y: auto; }
 .limitation-facts { margin: 8px 0 2px; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 12px; color: var(--text); }
 .limitation-facts dt { font-weight: 600; color: var(--text-light); }
 .cleanup-lead { font-weight: 600; color: var(--text); line-height: 1.45; }
@@ -637,7 +641,7 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
       <h3>Analysis limitations <span id="analysisLimitationsCount"></span></h3>
       <span class="report-health-toggle-hint" id="analysisLimitationsHint"></span>
     </summary>
-    <div class="warning-note">Features Semantic Model Cleaner detects but cannot fully check, such as calculation items, KPI expressions or an unreadable report file. They are analysis gaps, not report problems and not broken Power BI configuration. Each one names the construct, its exact source location, what was checked, what remains unchecked and how it affects the Cleanup Recommendation. Counts are distinct limitations and affected items, never repeated per item.</div>
+    <div class="warning-note">Model features the analyzer detects but cannot fully check. They are analysis gaps, not broken Power BI configuration: each one keeps the items it touches at Review instead of Safe. Open a row for the source, what was checked and the affected items.</div>
     <div id="analysisLimitationsList"></div>
   </details>
   <div class="filters-bar hidden" id="filtersSection">
@@ -3714,7 +3718,7 @@ async function applyRepair() {
     return;
   }
   var previewedRefs = repairPreview.updated_reference_count || 0;
-  if (!confirm('This will rewrite ' + previewedRefs + ' reference(s) across '
+  if (!await smcConfirm('This will rewrite ' + previewedRefs + ' reference(s) across '
     + (repairPreview.updated_file_count || 0) + ' file(s), pointing them at "' + repairTargetTable
     + '". The model is not changed. Continue?')) return;
   try {
@@ -3879,7 +3883,7 @@ async function applyColumnRepair() {
     return;
   }
   var previewedRefs = columnRepairPreview.updated_reference_count || 0;
-  if (!confirm('This will rewrite ' + previewedRefs + ' column reference(s) across '
+  if (!await smcConfirm('This will rewrite ' + previewedRefs + ' column reference(s) across '
     + (columnRepairPreview.updated_file_count || 0) + ' file(s). The model is not changed. Continue?')) return;
   try {
     var data = await columnRepairRequest(group, false);
@@ -4141,7 +4145,7 @@ async function cleanVisibleReportStaleIssues() {
     alert('Select one or more cleanup rows first.');
     return;
   }
-  if (!confirm('Clean ' + totalEntries + ' selected report cleanup row(s)?')) return;
+  if (!await smcConfirm('Clean ' + totalEntries + ' selected report cleanup row(s)?')) return;
   await cleanReportIssueCleanupEntries(entries.stale, entries.remove);
 }
 
@@ -4152,7 +4156,7 @@ async function cleanAllReportCleanupIssues() {
     alert('No cleanup rows were found.');
     return;
   }
-  if (!confirm('Clean all ' + totalEntries + ' report cleanup row(s) in the selected reports?')) return;
+  if (!await smcConfirm('Clean all ' + totalEntries + ' report cleanup row(s) in the selected reports?')) return;
   await cleanReportIssueCleanupEntries(entries.stale, entries.remove);
 }
 
@@ -4285,7 +4289,7 @@ async function confirmRemoveWithPreview(entries, label) {
   var extra = refCount > entries.length
     ? '\n\nThis includes ' + (refCount - entries.length) + ' related reference(s) to the same item in the same file(s) that were not individually selected.'
     : '';
-  if (!confirm('This will permanently remove ' + refCount + ' report reference(s) across ' + fileCount + ' file(s).' + extra + '\n\nContinue?')) return;
+  if (!await smcConfirm('This will permanently remove ' + refCount + ' report reference(s) across ' + fileCount + ' file(s).' + extra + '\n\nContinue?')) return;
   await applyReportIssueActions(entries, label);
 }
 
@@ -4324,7 +4328,7 @@ async function applyVisibleReportSuggestions() {
     alert('Select one or more rows with suggestions first.');
     return;
   }
-  if (!confirm('Apply top suggestions for ' + entries.length + ' selected report issue(s)?')) return;
+  if (!await smcConfirm('Apply top suggestions for ' + entries.length + ' selected report issue(s)?')) return;
   await applyReportIssueActions(entries, 'Applied selected report suggestions');
 }
 
@@ -5791,7 +5795,7 @@ async function queueSelectedTableDeletes() {
     alert('No items found in the selected tables');
     return;
   }
-  var confirmed = window.confirm(
+  var confirmed = await smcConfirm(
     'Queue delete for ' + tables.length + ' selected tables? This will queue '
       + plan.allItems.length + ' items total (' + plan.inTableItems.length
       + ' in selected tables, ' + plan.dependentItems.length + ' dependent).'
@@ -5930,11 +5934,11 @@ async function previewQueuedActionPlan(modelPath, actions, createBackup, autoRef
   return data;
 }
 
-function confirmActionPlanApply(plan) {
+async function confirmActionPlanApply(plan) {
   var files = plan && plan.affected_files ? plan.affected_files.length : 0;
   var invalid = plan && plan.invalid_action_count ? plan.invalid_action_count : 0;
   if (invalid) return false;
-  return window.confirm(
+  return await smcConfirm(
     'Apply cleanup action plan?\n'
       + 'Actions: ' + (plan.action_count || 0) + '\n'
       + 'Destructive: ' + (plan.destructive_action_count || 0) + '\n'
@@ -5978,7 +5982,7 @@ async function applyQueuedActions() {
       });
       return;
     }
-    if (!confirmActionPlanApply(preview.plan)) {
+    if (!await confirmActionPlanApply(preview.plan)) {
       logEntry('Apply canceled after preview', 'info');
       return;
     }
@@ -6123,7 +6127,7 @@ async function moveCurrentMeasureToTable() {
       + 'Selected reports: ' + chosenReports.length + '\n'
       + reportPreviewMessageLines(reportResult).join('\n') + '\n\n'
       + 'Only the currently selected reports will be updated.';
-    if (!window.confirm(message)) {
+    if (!await smcConfirm(message)) {
       $('detailActionStatus').textContent = 'Measure move canceled.';
       return;
     }
@@ -6202,7 +6206,7 @@ async function renameCurrentMeasure() {
       + 'Selected reports: ' + chosenReports.length + '\n'
       + reportPreviewMessageLines(reportResult).join('\n') + '\n\n'
       + 'Only the currently selected reports will be updated.';
-    if (!window.confirm(message)) {
+    if (!await smcConfirm(message)) {
       $('detailActionStatus').textContent = 'Measure rename canceled.';
       return;
     }
@@ -6572,7 +6576,7 @@ async function renameCurrentTable() {
       + 'Selected reports: ' + chosenReports.length + '\n'
       + reportPreviewMessageLines(reportResult).join('\n') + '\n\n'
       + 'Only the currently selected reports will be updated.';
-    if (!window.confirm(message)) {
+    if (!await smcConfirm(message)) {
       $('tableActionStatus').textContent = 'Table rename canceled.';
       return;
     }

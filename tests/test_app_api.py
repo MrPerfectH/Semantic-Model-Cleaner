@@ -2324,14 +2324,9 @@ def test_index_renders_empty_selection_state():
     assert "function renderActionPlanPreview(plan) {" in html
     assert "function confirmActionPlanApply(plan) {" in html
     assert "/api/action/preview" in html
-    assert "var reportHealthStaleCleanupEntries = [];" in html
     assert "function renderReportHealth() {" in html
-    assert "function previewReportHealthStaleCleanup() {" in html
-    assert "function applyReportHealthStaleCleanup() {" in html
-    assert "function renderReportHealthStalePreview(result) {" in html
-    assert 'id="reportHealthPreviewList"' in html
-    assert "data-report-health-action=\"cleanup_stale\"" in html
-    assert "data-report-health-action=\"apply_stale\"" in html
+    assert "data-report-health-action=\"clean_stale\"" in html
+    assert "data-report-health-action=\"review_stale\"" in html
     assert 'id="filterCounts"' not in html
     assert "Dropdown filters support multi-select" not in html
     assert 'data-col="usageState"' in html
