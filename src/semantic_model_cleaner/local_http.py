@@ -1,5 +1,6 @@
 """Browser request boundary for the single-user, loopback-only HTTP interface."""
 import argparse
+import hashlib
 import ipaddress
 import secrets
 from urllib.parse import urlsplit
@@ -47,17 +48,30 @@ def install_local_http_boundary(app):
                     return reject('This application accepts local connections only.')
             except ValueError:
                 return reject('This application accepts local connections only.')
+        ancestors = app.config.get('SMC_WEBVIEW_ANCESTORS', ())
+        # Only the HTML navigation may cross the embedding boundary. Fetches,
+        # static resources and every API retain the normal same-origin rules.
+        embedded_document = bool(
+            ancestors and request.path == '/' and request.method == 'GET'
+            and request.headers.get('Sec-Fetch-Dest') == 'iframe'
+            and request.headers.get('Sec-Fetch-Mode') == 'navigate'
+        )
+        port = app.config.get('SMC_WEBVIEW_PORT')
+        if port and request.host not in {f'127.0.0.1:{port}', f'localhost:{port}'}:
+            return reject('Unexpected local server authority.')
         origin = request.headers.get('Origin')
         if origin is not None:
             try:
-                if _origin(origin) != _origin(request.host_url.rstrip('/')):
+                if not (embedded_document and origin in ancestors) and (
+                        _origin(origin) != _origin(request.host_url.rstrip('/'))):
                     return reject('Cross-origin requests are not allowed.')
             except ValueError:
                 return reject('Cross-origin requests are not allowed.')
         site = request.headers.get('Sec-Fetch-Site')
-        if site is not None and site not in {'same-origin', 'none'}:
+        if site is not None and site not in {'same-origin', 'none'} and not embedded_document:
             return reject('Cross-site browser requests are not allowed.')
-        if request.headers.get('Sec-Fetch-Dest') in {'iframe', 'frame', 'object', 'embed'}:
+        if (request.headers.get('Sec-Fetch-Dest') in {'iframe', 'frame', 'object', 'embed'}
+                and not embedded_document):
             return reject('Embedding this application is not allowed.')
         if not request.path.startswith('/api/'):
             return None
@@ -81,10 +95,24 @@ def install_local_http_boundary(app):
         # Foreign origins cannot read this response (no CORS, plus checks above).
         return jsonify(token=app.config['SMC_LOCAL_TOKEN'])
 
+    @app.get('/api/vscode/ready')
+    def vscode_ready():
+        if not app.config.get('SMC_WEBVIEW_ANCESTORS'):
+            return jsonify(error='VS Code host mode is not enabled.'), 404
+        return jsonify(protocol=1, instance=hashlib.sha256(
+            app.config['SMC_LOCAL_TOKEN'].encode('utf-8')).hexdigest())
+
     @app.after_request
     def local_response_headers(response):
         response.headers['Content-Security-Policy'] = "frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
         response.headers['X-Frame-Options'] = 'DENY'
+        ancestors = app.config.get('SMC_WEBVIEW_ANCESTORS')
+        if ancestors and request.path == '/' and response.status_code == 200:
+            # CSP checks every ancestor, including the VS Code desktop shell.
+            # No wildcard, scheme-only source, CORS permission or API exception.
+            response.headers['Content-Security-Policy'] = (
+                'frame-ancestors ' + ' '.join(ancestors) + "; base-uri 'self'; object-src 'none'")
+            del response.headers['X-Frame-Options']
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Cross-Origin-Resource-Policy'] = 'same-origin'
         response.headers['Referrer-Policy'] = 'no-referrer'

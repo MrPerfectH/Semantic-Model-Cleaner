@@ -42,6 +42,10 @@ and TMDL.
 
 ## Install
 
+An unpublished local desktop [VS Code extension preview](vscode-extension/README.md)
+wraps the existing Python/UI. It requires the matching engine from this checkout;
+see the extension instructions for VSIX packaging, setup and acceptance limits.
+
 Runtime install:
 
 ```bash

@@ -15,7 +15,7 @@ with sync_playwright() as p:
   page.on('pageerror',lambda e:errors.append(str(e)))
   page.goto(BASE+'/?ui='+layout)
   page.get_by_role('button',name='Try demo',exact=True).filter(visible=True).first.click()
-  page.wait_for_function("!document.querySelector('#scopeReview').hidden && !document.querySelector('#btnAnalyze').disabled")
+  page.wait_for_function("chosenModels.length === 1 && chosenReports.length > 0 && !document.querySelector('#btnAnalyze').disabled")
   paths=page.evaluate('chosenModels.concat(chosenReports).map(x=>x.path)'); before=hashes(paths)
   page.locator('#btnAnalyze').click();page.locator('#resultOverview').wait_for(state='visible')
   if layout=='classic':page.locator('#btnToggleSetup').click()

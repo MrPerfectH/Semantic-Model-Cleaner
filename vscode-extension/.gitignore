@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.vsix
+*.vsix.sha256
+.vscode-test/
+integration-artifacts/
