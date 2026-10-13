@@ -1,4 +1,4 @@
-/* Shared first-run flow: prepare scope, review binding evidence, then analyze. */
+/* Shared first-run flow: prepare connected Report scope, then analyze. */
 (function () {
   'use strict';
   var generation = 0, loadVersion = 0, checkedKey = '', pending = false;
@@ -14,13 +14,8 @@
     var el = document.createElement(tag); el.textContent = value; parent.appendChild(el); return el;
   }
   function showBinding(binding) {
-    var panel = $('scopeReview'); panel.hidden = false; panel.replaceChildren();
-    text(panel, 'h3', 'Review analysis scope');
-    text(panel, 'p', binding.selected.length + ' connected Report(s) selected; ' + binding.excluded.length + ' excluded.');
-    var list = document.createElement('ul'); list.style.paddingLeft = '18px'; panel.appendChild(list);
-    binding.selected.forEach(function (row) { text(list, 'li', 'Selected — ' + row.name + ': ' + row.message); });
-    binding.excluded.forEach(function (row) { text(list, 'li', 'Excluded — ' + row.name + ': ' + row.message); });
-    text(panel, 'p', 'Only selected Reports are checked. Other Reports may use these items. Analysis limitations are identified during analysis; this scope review does not establish complete coverage.');
+    var panel = $('scopeReview'); panel.replaceChildren();
+    panel.hidden = binding.selected.length > 0;
     if (!binding.selected.length) text(panel, 'p', 'Add connected Reports below, or choose a different Semantic Model.');
   }
   async function review() {
