@@ -442,6 +442,53 @@
 
   }
   window.smcReviewOperations = reviewOperations;
+  function showPlanChanges(plan, title) {
+    if (dialog.open) return;
+    $('objectReviewTitle').textContent = title || 'Changes'; $('objectReviewBody').innerHTML = planHtml(plan);
+    $('objectReviewApply').hidden = true; $('objectReviewStatus').textContent = 'These changes were applied. Undo restores the previous files.';
+    dialog.showModal();
+  }
+  // Stale Report References no longer affect report behaviour, so cleaning them is one
+  // click: the same validated plan is created and applied, and the result offers Undo.
+  // Plans that need a human confirmation still open the review drawer.
+  var quickCleanBusy = false;
+  async function quickCleanStale(entries, status, title) {
+    if (quickCleanBusy || !entries.length) return;
+    if (!analysisIsCurrent || !analyzedScope || scopeIdentity(analyzedScope) !== scopeIdentity(selectedScope())) return reviewOperations([{ kind: 'clean_stale', entries: entries }], title);
+    function setStatus(html) { var el = status(); if (el) el.innerHTML = html; return el; }
+    quickCleanBusy = true; setStatus('Cleaning ' + entries.length + ' stale reference(s)…');
+    try {
+      var response = await apiPost('/api/plans', { operations: [{ kind: 'clean_stale', entries: entries }], model_path: getModelPath(), report_paths: chosenReports.map(function (report) { return report.path; }) });
+      if (!response.ok || !response.plan) throw new Error(response.error || 'Could not prepare the cleanup.');
+      var plan = response.plan;
+      if (((plan.validation || {}).confirmations || []).length) { quickCleanBusy = false; setStatus(''); return reviewOperations([{ kind: 'clean_stale', entries: entries }], title); }
+      if (!(plan.changes || []).length) { setStatus('Nothing to clean: the stale references are already gone.'); return; }
+      var result = await apiPost('/api/plans/' + encodeURIComponent(plan.id) + '/apply', {});
+      if (!result.ok) throw new Error(result.error || 'Cleanup was not applied. Open Changes & history for recovery status.');
+      analysisIsCurrent = false; window.smcUpdateScopeChip();
+      logEntry('Removed ' + entries.length + ' stale report reference(s) from ' + plan.changes.length + ' file(s)', 'ok');
+      await reAnalyze({});
+      var el = setStatus('<span>Removed ' + entries.length + ' stale reference(s) from ' + plan.changes.length + ' report file(s).</span>'
+        + '<button type="button" class="btn btn-link btn-sm" data-stale-undo>Undo</button>'
+        + '<button type="button" class="btn btn-link btn-sm" data-stale-show>Show changes</button>');
+      if (!el) return;
+      el.querySelector('[data-stale-show]').onclick = function () { showPlanChanges(plan, title); };
+      el.querySelector('[data-stale-undo]').onclick = async function () {
+        if (quickCleanBusy) return; quickCleanBusy = true; setStatus('Restoring the previous report files…');
+        try {
+          var restored = await apiPost('/api/plans/' + encodeURIComponent(plan.id) + '/restore', {});
+          if (!restored.ok) throw new Error(restored.error || 'Undo failed. Open Changes & history for recovery status.');
+          analysisIsCurrent = false; window.smcUpdateScopeChip(); logEntry('Restored stale report references', 'ok');
+          await reAnalyze({}); setStatus('Undone: the report files are back as they were.');
+        } catch (error) { setStatus(esc(error.message)); } finally { quickCleanBusy = false; }
+      };
+    } catch (error) { setStatus('Stale cleanup failed: ' + esc(error.message) + ' No changes were applied.'); }
+    finally { quickCleanBusy = false; }
+  }
+  window.smcQuickCleanStale = quickCleanStale;
+  function reportHealthStaleEntries() { return staleCleanupEntriesForItems(allItems); }
+  cleanReportHealthStale = function () { return quickCleanStale(reportHealthStaleEntries(), function () { return $('reportHealthActionStatus'); }, 'Clean stale report metadata'); };
+  reviewReportHealthStale = function () { var entries = reportHealthStaleEntries(); if (entries.length) return reviewOperations([{ kind: 'clean_stale', entries: entries }], 'Clean stale report metadata'); };
   function currentItemOperation(make, title, after) { var item = getItemByKey(detailItemKey); if (!item) return; var operation = make(item); if (operation) return reviewOperations([operation], title, function () { if (after) after(item, operation); }); }
   applyQueuedActions = function () { if (!pendingActions.size) return; return reviewOperations([{ kind: 'actions', actions: Array.from(pendingActions.values()) }], 'Review queued changes', function () { pendingActions.forEach(function (action, key) { actionStatus.set(key, 'Applied: ' + actionLabel(action)); }); pendingActions.clear(); clearActionPlanPreview(); updateApplyButtonState(); }); };
   renameCurrentMeasure = function () { return currentItemOperation(function (item) { return { kind: 'rename', measure_renames: [{ table: item.table, name: item.name, target_name: $('detailMeasureRenameInput').value.trim() }] }; }, 'Rename measure', function (item, operation) { detailItemKey = item.type + ':::' + item.table + ':::' + operation.measure_renames[0].target_name; }); };
@@ -449,10 +496,9 @@
   renameCurrentTable = function () { return reviewOperations([{ kind: 'rename', table_renames: [{ table: detailTableName, target_table: $('tableRenameInput').value.trim() }] }], 'Rename table', function () { detailTableName = $('tableRenameInput').value.trim(); }); };
   saveCurrentItemDax = function () { return currentItemOperation(function (item) { return { kind: 'dax', table: item.table, name: item.name, item_type: item.type, dax_expression: $('detailDaxEditor').value, source_file: item.sourceFile }; }, 'Review DAX change'); };
   migrateCurrentReportMeasure = function () { return currentItemOperation(function (item) { return { kind: 'promote', report_path: (item.sourceFile || '').replace(/[\\/]definition[\\/]reportExtensions\.json$/i, ''), table: item.table, name: item.name, target_table: $('objectPromotionTable').value, target_name: $('objectPromotionName').value, include_dependencies: $('objectPromotionDependencies').checked }; }, 'Review report extension promotion'); };
-  cleanCurrentItemStaleRefs = function () { return currentItemOperation(function (item) { return { kind: 'clean_stale', entries: staleCleanupEntriesForItems([item]) }; }, 'Clean stale report metadata'); };
+  cleanCurrentItemStaleRefs = function () { var item = getItemByKey(detailItemKey); if (item) return quickCleanStale(staleCleanupEntriesForItems([item]), function () { return $('detailStaleStatus'); }, 'Clean stale report metadata'); };
   applyReportIssueActions = function (entries, label) { if (entries.length) return reviewOperations([{ kind: 'report_issues', entries: entries }], label || 'Review report changes', function () { selectedReportIssueKeys.clear(); }); };
   confirmRemoveWithPreview = function (entries, label) { return applyReportIssueActions(entries, label); };
-  applyReportHealthStaleCleanup = function () { if (reportHealthStaleCleanupEntries.length) return reviewOperations([{ kind: 'clean_stale', entries: reportHealthStaleCleanupEntries }], 'Clean stale report metadata'); };
   applyRepair = function () { var group = activeRootCauseGroup(); if (group) return reviewOperations([{ kind: 'report_repair', table_renames: [{ table: group.targetLabel, target_table: repairTargetTable }] }], 'Repair table references in reports'); };
   applyColumnRepair = function () { var group = activeRootCauseGroup(); if (group) return reviewOperations([{ kind: 'report_repair', column_renames: buildColumnRenames(group) }], 'Repair column references in reports'); };
   cleanReportIssueEntries = function (entries) { if (entries.length) return reviewOperations([{ kind: 'clean_stale', entries: entries }], 'Clean stale report metadata', function () { selectedReportIssueKeys.clear(); }); };
