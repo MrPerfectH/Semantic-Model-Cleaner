@@ -166,8 +166,8 @@ def test_index_renders_packaged_template():
     assert response.status_code == 200
     assert b"Semantic Model Cleaner" in response.data
     assert b"Find connected reports" in response.data
-    assert b"compareResultSection" in response.data
-    assert b"runSemanticModelCompare" in response.data
+    assert b"compareResultSection" not in response.data
+    assert b"runSemanticModelCompare" not in response.data
 
 
 def test_default_model_browse_root_prefers_users_directory(monkeypatch, tmp_path):
@@ -214,7 +214,7 @@ def test_index_shows_beta_banner_when_runtime_enabled():
 
     assert response.status_code == 200
     assert b"Beta channel enabled" in response.data
-    assert b"Model Compare" in response.data
+    assert b"Model Compare" not in response.data
     assert b"UI build identifier" in response.data
 
 
@@ -981,165 +981,10 @@ def test_api_analyze_rejects_tmsl_model_bim_with_clear_message(tmp_path):
     assert "Convert the Semantic Model to TMDL" in error
 
 
-def test_api_compare_returns_model_to_model_diffs(tmp_path):
-    baseline_model = tmp_path / "Baseline.SemanticModel"
-    candidate_model = tmp_path / "Candidate.SemanticModel"
-    baseline_tables_dir = baseline_model / "definition" / "tables"
-    candidate_tables_dir = candidate_model / "definition" / "tables"
-    baseline_tables_dir.mkdir(parents=True)
-    candidate_tables_dir.mkdir(parents=True)
-
-    (baseline_tables_dir / "Sales.tmdl").write_text(
-        "table Sales\n"
-        "\tcolumn Amount\n"
-        "\t\tdataType: int64\n"
-        "\t\tsourceColumn: Amount\n"
-        "\tmeasure Revenue = SUM(Sales[Amount])\n"
-        "\t\tdisplayFolder: Finance\n"
-        "\tmeasure Obsolete = 1\n",
-        encoding="utf-8",
-    )
-    (baseline_tables_dir / "Legacy.tmdl").write_text(
-        "table Legacy\n"
-        "\tcolumn LegacyKey\n",
-        encoding="utf-8",
-    )
-    (candidate_tables_dir / "Sales.tmdl").write_text(
-        "table Sales\n"
-        "\tcolumn Amount\n"
-        "\t\tdataType: decimal\n"
-        "\t\tsourceColumn: Amount\n"
-        "\t\thidden\n"
-        "\tmeasure Revenue = SUMX(Sales, Sales[Amount])\n"
-        "\t\tdisplayFolder: Executive\n"
-        "\t\tisHidden: true\n"
-        "\tmeasure 'New Margin' = DIVIDE([Revenue], 100)\n",
-        encoding="utf-8",
-    )
-    (candidate_tables_dir / "Store.tmdl").write_text(
-        "table Store\n"
-        "\tcolumn StoreKey\n",
-        encoding="utf-8",
-    )
-
+def test_removed_compare_endpoints_return_not_found():
     client = web_app.app.test_client()
-    response = client.post(
-        "/api/compare",
-        json={
-            "baseline_model_path": str(baseline_model),
-            "candidate_model_path": str(candidate_model),
-        },
-    )
-
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert payload["summary"]["tables"] == {
-        "added": 1,
-        "removed": 1,
-        "changed": 0,
-        "unchanged": 1,
-    }
-    assert payload["summary"]["measures"] == {
-        "added": 1,
-        "removed": 1,
-        "changed": 1,
-        "unchanged": 0,
-    }
-    assert payload["summary"]["columns"] == {
-        "added": 1,
-        "removed": 1,
-        "changed": 1,
-        "unchanged": 0,
-    }
-    assert payload["summary"]["totalDifferences"] == 8
-
-    revenue_diff = next(
-        diff for diff in payload["diffs"]
-        if diff["category"] == "measures" and diff["table"] == "Sales" and diff["name"] == "Revenue"
-    )
-    assert revenue_diff["status"] == "changed"
-    assert revenue_diff["properties"] == [
-        {"name": "expression", "baseline": "SUM(Sales[Amount])", "candidate": "SUMX(Sales, Sales[Amount])"},
-        {"name": "displayFolder", "baseline": "Finance", "candidate": "Executive"},
-        {"name": "isHidden", "baseline": False, "candidate": True},
-    ]
-
-    amount_diff = next(
-        diff for diff in payload["diffs"]
-        if diff["category"] == "columns" and diff["table"] == "Sales" and diff["name"] == "Amount"
-    )
-    assert amount_diff["properties"] == [
-        {"name": "dataType", "baseline": "int64", "candidate": "decimal"},
-        {"name": "isHidden", "baseline": False, "candidate": True},
-    ]
-    assert any(diff["category"] == "tables" and diff["status"] == "added" and diff["table"] == "Store" for diff in payload["diffs"])
-    assert any(diff["category"] == "tables" and diff["status"] == "removed" and diff["table"] == "Legacy" for diff in payload["diffs"])
-
-
-def test_api_compare_export_downloads_review_formats(tmp_path):
-    baseline_model = tmp_path / "Baseline.SemanticModel"
-    candidate_model = tmp_path / "Candidate.SemanticModel"
-    baseline_tables_dir = baseline_model / "definition" / "tables"
-    candidate_tables_dir = candidate_model / "definition" / "tables"
-    baseline_tables_dir.mkdir(parents=True)
-    candidate_tables_dir.mkdir(parents=True)
-    (baseline_tables_dir / "Sales.tmdl").write_text(
-        "table Sales\n"
-        "\tmeasure Revenue = SUM(Sales[Amount])\n"
-        "\t\tdisplayFolder: Finance\n",
-        encoding="utf-8",
-    )
-    (candidate_tables_dir / "Sales.tmdl").write_text(
-        "table Sales\n"
-        "\tmeasure Revenue = SUMX(Sales, Sales[Amount])\n"
-        "\t\tdisplayFolder: Executive\n"
-        "\t\tisHidden: true\n",
-        encoding="utf-8",
-    )
-
-    client = web_app.app.test_client()
-    compare_response = client.post(
-        "/api/compare",
-        json={
-            "baseline_model_path": str(baseline_model),
-            "candidate_model_path": str(candidate_model),
-        },
-    )
-    assert compare_response.status_code == 200
-
-    markdown = client.get("/api/compare/export?format=md")
-    assert markdown.status_code == 200
-    assert markdown.headers["Content-Disposition"].endswith('filename=Baseline_vs_Candidate_model_compare.md')
-    markdown_text = markdown.get_data(as_text=True)
-    assert "# Semantic Model Compare: Baseline -> Candidate" in markdown_text
-    assert "| Measures | 0 | 0 | 1 | 0 |" in markdown_text
-    assert "Sales[Revenue]" in markdown_text
-    assert "displayFolder" in markdown_text
-
-    csv_response = client.get("/api/compare/export?format=csv")
-    assert csv_response.status_code == 200
-    csv_text = csv_response.get_data(as_text=True)
-    assert "category,status,type,table,name,property,baseline,candidate" in csv_text
-    assert "measures,changed,Measure,Sales,Revenue,expression,SUM(Sales[Amount]),\"SUMX(Sales, Sales[Amount])\"" in csv_text
-
-    json_response = client.get("/api/compare/export?format=json")
-    assert json_response.status_code == 200
-    json_payload = json.loads(json_response.get_data(as_text=True))
-    assert json_payload["summary"]["totalDifferences"] == 1
-    assert json_payload["diffs"][0]["properties"][0]["name"] == "expression"
-
-
-def test_api_compare_export_requires_compare_results():
-    previous_results = web_app._state.get("last_compare_results")
-    web_app._state["last_compare_results"] = None
-    try:
-        client = web_app.app.test_client()
-        response = client.get("/api/compare/export?format=json")
-
-        assert response.status_code == 400
-        assert "No compare results available" in response.get_json()["error"]
-    finally:
-        web_app._state["last_compare_results"] = previous_results
+    assert client.post("/api/compare", json={}).status_code == 404
+    assert client.get("/api/compare/export?format=json").status_code == 404
 
 
 def test_api_cleanup_stale_report_metadata_can_preview_without_writing(tmp_path):
@@ -2465,53 +2310,6 @@ def test_index_renders_empty_selection_state():
     assert "definition: cleanupHelpText('Blocked')" in html
     assert "definition: cleanupHelpText('Keep')" in html
     assert "$('resultGuideSection').classList.remove('hidden');" in html
-    assert 'id="appFlowSwitcher"' in html
-    assert 'data-app-flow="cleanup"' in html
-    assert 'data-app-flow="compare"' in html
-    assert 'id="compareFlow"' in html
-    assert "Semantic Model Compare (1:1)" in html
-    assert 'id="compareBaselinePills"' in html
-    assert 'id="compareCandidatePills"' in html
-    assert 'id="btnBrowseCompareBaseline"' in html
-    assert 'id="btnBrowseCompareCandidate"' in html
-    assert 'id="btnRunCompare"' in html
-    assert 'id="compareResultSection"' in html
-    assert 'id="compareResultTabs"' in html
-    assert 'data-compare-view="summary"' in html
-    assert 'data-compare-view="details"' in html
-    assert 'id="compareSummaryView"' in html
-    assert 'id="compareDetailsView"' in html
-    assert 'id="compareSummaryCards"' in html
-    assert 'id="compareDiffBody"' in html
-    assert 'id="compareStatusFilter"' in html
-    assert 'id="compareCategoryFilter"' in html
-    assert 'id="compareVisibleCount"' in html
-    assert 'id="btnExportCompareJson"' in html
-    assert 'id="btnExportCompareMarkdown"' in html
-    assert 'id="btnExportCompareCsv"' in html
-    assert "var compareBaselineModel = null;" in html
-    assert "var compareCandidateModel = null;" in html
-    assert "var compareResults = null;" in html
-    assert "var compareResultView = 'summary';" in html
-    assert "var compareStatusFilter = 'all';" in html
-    assert "var compareCategoryFilter = 'all';" in html
-    assert "function setAppFlow(flow) {" in html
-    assert "function renderCompareSelection() {" in html
-    assert "function setCompareResultView(view) {" in html
-    assert "function filteredCompareDiffs() {" in html
-    assert "function renderCompareResults(data) {" in html
-    assert "async function runSemanticModelCompare() {" in html
-    assert "function clearCompareResults() {" in html
-    assert "function compareModelPillHtml(model, side) {" in html
-    assert "function isModelExplorerMode(mode) {" in html
-    assert "explorerMode === 'compareBaseline'" in html
-    assert "explorerMode === 'compareCandidate'" in html
-    assert "$('btnBrowseCompareBaseline').onclick = function() { openExplorer('compareBaseline'); };" in html
-    assert "$('btnBrowseCompareCandidate').onclick = function() { openExplorer('compareCandidate'); };" in html
-    assert "if (explorerMode === 'compareBaseline') {" in html
-    assert "if (explorerMode === 'compareCandidate') {" in html
-    assert "clearCompareResults();" in html
-    assert "$('btnRunCompare').onclick = runSemanticModelCompare;" in html
     assert 'id="reportHealthBanner"' in html
     assert 'id="reportHealthCount"' in html
     assert 'id="reportHealthList"' in html
@@ -2760,22 +2558,16 @@ def test_api_find_connected_reports_tolerates_path_case_differences(tmp_path):
     assert payload["reports"][0]["status"] == "connected"
 
 
-def test_index_hides_compare_flow_switcher_on_stable_channel():
-    web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="stable")
+def test_compare_is_absent_in_both_layouts_and_release_channels():
     client = web_app.app.test_client()
-    response = client.get("/?ui=classic")
-
-    assert response.status_code == 200
-    assert b'class="app-flow-switcher hidden"' in response.data
-
-
-def test_index_shows_compare_flow_switcher_on_beta_channel():
-    web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel="beta")
-    client = web_app.app.test_client()
-    response = client.get("/?ui=classic")
-
-    assert response.status_code == 200
-    assert b'class="app-flow-switcher"' in response.data
+    for channel in ("stable", "beta"):
+        web_app._state["runtime"] = web_app.experiments.runtime_config(raw_channel=channel)
+        for layout in ("classic", "new"):
+            response = client.get("/?ui=" + layout)
+            assert response.status_code == 200
+            for removed in (b"railCompare", b"compareFlow", b"appFlowSwitcher", b"runSemanticModelCompare", b"/api/compare"):
+                assert removed not in response.data
+            assert b"btnBrowseModels" in response.data
 
 
 def _write_live_connection_pbir(report_dir, catalog):

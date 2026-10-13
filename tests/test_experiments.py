@@ -24,17 +24,11 @@ def test_runtime_config_enables_beta_channel():
     assert runtime["betaEnabled"] is True
 
 
-def test_runtime_config_collects_known_experiments():
+def test_removed_compare_experiment_cannot_enable_beta():
     runtime = experiments.runtime_config(
         raw_channel="stable",
-        extra_experiments=["compare-models", "unknown-feature", "compare-models"],
+        raw_experiments="compare-models",
+        extra_experiments=["compare-models", "unknown-feature"],
     )
-
-    assert runtime["betaEnabled"] is True
-    assert runtime["activeExperiments"] == [
-        {
-            "key": "compare-models",
-            "label": "Model Compare",
-            "description": "Early-access model comparison flow and prerelease UI surfaces.",
-        }
-    ]
+    assert runtime["betaEnabled"] is False
+    assert runtime["activeExperiments"] == []
