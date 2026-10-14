@@ -2,7 +2,7 @@
 
 Status: **not conducted — zero participants**. Automated UI checks and the maintainer's own use are not independent research. This ready-to-run study needs 2–3 first-time participants; no invitations have been sent.
 
-Recruit one occasional Power BI author, one regular model maintainer, and, if possible, one CLI/automation user. Use the public 0.4.0b4 Windows beta and its bundled demo for UI tasks. Record version, Windows/display scaling, Power BI familiarity and prior exposure. For the new AI contract use a build from the follow-up commit and record that separately; it is not in 0.4.0b4.
+Recruit one occasional Power BI author, one regular model maintainer, and, if possible, one CLI/automation user. Use the public 0.4.0b8 Windows beta and its bundled demo for UI tasks. Record version, Windows/display scaling, Power BI familiarity and prior exposure. For the new AI contract use a build from the follow-up commit and record that separately; it is not in 0.4.0b8.
 
 ## Invitation draft
 
