@@ -31,6 +31,11 @@ Reader tests cover comments, Unicode, escaped identifiers and large M input.
 
 Private source-backed validation and audit artifacts are deliberately excluded
 from this repository. Source and browser proof do not establish installed native
-webview acceptance. Independent review and installed native verification remain
-release gates; this change does not publish an extension or apply model/report
+webview acceptance. The local preview was approved by the user. Independent review and installed
+native verification remain release gates; this change does not publish an extension or apply model/report
 changes. A combined Viewer/Cleaner product remains discovery only.
+
+Review follow-up preserves discovered connected-report candidates on model changes,
+allows explicit model-only refresh, lists analyzed reports with zero findings and
+per-report schema coverage, and scopes measure coloring to model/report identity.
+The packaging smoke follows the setup wizard and compact detail layout.

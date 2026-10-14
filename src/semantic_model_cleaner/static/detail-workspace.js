@@ -322,7 +322,7 @@
     $('objectCopyFormatted').hidden = isM || editing;
     $('objectCopyFormatted').textContent = 'Copy formatted';
     if (!editing && window.SmcDefinition) {
-      var rendered = SmcDefinition.render(isM ? $('objectMSource') : $('objectDaxSource'), text, isM ? 'm' : 'dax', !isM && $('objectFormatDax').checked);
+      var rendered = SmcDefinition.render(isM ? $('objectMSource') : $('objectDaxSource'), text, isM ? 'm' : 'dax', !isM && $('objectFormatDax').checked, SmcDefinition.measureHomes(allItems, item));
       if (rendered && rendered.error) $('objectDefinitionState').textContent = rendered.error;
       else if (rendered && rendered.formatted) $('objectDefinitionState').textContent = 'Formatted display · source and draft unchanged';
     }

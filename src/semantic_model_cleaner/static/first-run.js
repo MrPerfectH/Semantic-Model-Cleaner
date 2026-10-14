@@ -5,7 +5,7 @@
   var projectModels = [], projectReports = [], projectRoot = initialConfig.defaultRoot;
   var originalRender = renderPills;
   var originalAnalyze = runAnalyze;
-  var previousModel = '';
+  var previousModel = '', reviewCandidates = null;
   function modelOnly() { return !!($('scopeModelOnly') && $('scopeModelOnly').checked); }
   function key() { return JSON.stringify([chosenModels, chosenReports, modelOnly()]); }
   function openSetup() {
@@ -18,7 +18,7 @@
   function showBinding(binding) {
     var panel = $('scopeReview'); panel.replaceChildren();
     panel.hidden = false;
-    text(panel, 'p', chosenModels.length ? chosenModels[0].name + ' · ' + binding.selected.length + ' connected report(s) selected.' : 'Choose a semantic model.');
+    text(panel, 'p', chosenModels.length ? chosenModels[0].name + ' Â· ' + binding.selected.length + ' connected report(s) selected.' : 'Choose a semantic model.');
     if (!binding.selected.length) text(panel, 'p', modelOnly() ? 'Model-only scope: report usage is not checked.' : 'Choose connected or separate report folders, or explicitly select model-only analysis.');
     if (window.smcRenderScopeSteps) window.smcRenderScopeSteps();
   }
@@ -30,11 +30,12 @@
       pending = false; checkedKey = currentKey; $('scopeReview').hidden = true; return false;
     }
     if (modelOnly()) { pending = false; chosenReports = []; checkedKey = key(); originalRender(); $('btnAnalyze').disabled = false; showBinding({selected: []}); return true; }
-    $('scopeReview').hidden = false; $('scopeReview').textContent = 'Checking connected Reports…';
+    $('scopeReview').hidden = false; $('scopeReview').textContent = 'Checking connected Reportsâ€¦';
     try {
-      var data = await apiPost('/api/scope', {model_paths: chosenModels.map(function (m) { return m.path; }), report_paths: chosenReports.map(function (r) { return r.path; })});
+      var data = await apiPost('/api/scope', {model_paths: chosenModels.map(function (m) { return m.path; }), report_paths: (reviewCandidates || chosenReports).map(function (r) { return r.path; })});
       if (version !== generation || currentKey !== key()) return false;
       if (data.error) throw new Error(data.error);
+      reviewCandidates = null;
       chosenReports = data.reportBinding.selected.map(function (r) { return {path:r.path, name:r.name}; });
       checkedKey = key(); pending = false; originalRender(); showBinding(data.reportBinding);
       return chosenReports.length > 0;
@@ -49,11 +50,12 @@
   renderPills = function () {
     var selectedModel = chosenModels.map(function (m) { return m.path; }).join('|');
     if (previousModel && previousModel !== selectedModel) {
-      chosenReports = []; checkedKey = '';
+      chosenReports = []; checkedKey = ''; reviewCandidates = projectReports.slice();
       if ($('scopeModelOnly')) $('scopeModelOnly').checked = false;
     }
     previousModel = selectedModel;
     ++loadVersion; originalRender(); review();
+    if (modelOnly() && chosenModels.length === 1 && !pending) $('btnAnalyze').disabled = false;
     if (window.smcRenderScopeSteps) window.smcRenderScopeSteps();
   };
   runAnalyze = async function () {
@@ -64,14 +66,14 @@
   window.smcOpenProject = function () { openSetup(); openExplorer('project'); };
   function chooseModel() {
     chosenModels = projectModels.filter(function (m) { return m.path === $('projectModelSelect').value; });
-    chosenReports = []; checkedKey = ''; renderPills();
+    chosenReports = []; checkedKey = ''; reviewCandidates = projectReports.slice(); renderPills();
   }
   function propose(data) {
     projectModels = data.models || []; projectReports = data.reports || [];
     if (data.workspace) projectRoot = data.workspace;
     var choice = $('projectModelChoice'), select = $('projectModelSelect');
-    select.replaceChildren(); text(select, 'option', 'Choose a Semantic Model…').value = '';
-    projectModels.forEach(function (m) { var option = text(select, 'option', m.name + ' — ' + m.path); option.value = m.path; });
+    select.replaceChildren(); text(select, 'option', 'Choose a Semantic Modelâ€¦').value = '';
+    projectModels.forEach(function (m) { var option = text(select, 'option', m.name + ' â€” ' + m.path); option.value = m.path; });
     choice.hidden = projectModels.length === 0;
     chosenModels = projectModels.length === 1 ? projectModels.slice() : [];
     select.value = chosenModels.length ? chosenModels[0].path : '';
@@ -82,14 +84,14 @@
   function beginLoad() {
     var version = ++loadVersion;
     ++generation; pending = false; checkedKey = '';
-    chosenModels = []; chosenReports = []; originalRender();
+    chosenModels = []; chosenReports = []; previousModel = ''; reviewCandidates = null; originalRender();
     $('scopeReview').hidden = true; $('projectModelChoice').hidden = true;
     return version;
   }
   window.smcDiscoverProject = async function (path) {
     var version = beginLoad();
     projectRoot = path;
-    openSetup(); $('projectStatus').textContent = 'Finding Semantic Models and Reports…';
+    openSetup(); $('projectStatus').textContent = 'Finding Semantic Models and Reportsâ€¦';
     try {
       var data = await apiPost('/api/discover', {model_roots:[path], report_roots:[path]});
       if (version !== loadVersion) return;
@@ -105,7 +107,7 @@
     if (loadingDemo) return;
     var version = beginLoad();
     loadingDemo = true; openSetup(); $('btnLoadDemo').disabled = true;
-    $('projectStatus').textContent = 'Preparing a disposable demo…';
+    $('projectStatus').textContent = 'Preparing a disposable demoâ€¦';
     try {
       var data = await apiPost('/api/demo', {});
       if (version !== loadVersion) return;

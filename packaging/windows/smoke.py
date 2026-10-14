@@ -38,14 +38,19 @@ ASSETS_BY_LAYOUT = {
         "result-overview.css",
         "accessible-layers.js",
         "accessibility.css",
+        "workspace-navigation.js",
+        "workspace-navigation.css",
+        "definition-reader.js",
+        "viewer-dax-format.js",
+        "viewer-code-tokens.js",
     ),
 }
 EXPECTED_CHANNEL = "beta"
 OPTION_B_ITEM_KEY = "Measure:::Sales:::Revenue"
 OPTION_B_TAB_CONTENT = {
-    "Definition": ("Definition",),
+    "Definition": ("Copy source", "Edit DAX"),
     "References": ("Report usage", "TestReport", "PAGE", "VISUAL"),
-    "Dependencies": ("Calculation lineage", "Uses", "Used in calculations"),
+    "Dependencies": ("Downstream measures", "Direct", "Indirect"),
     "Changes": ("Plan a change",),
 }
 
@@ -173,6 +178,14 @@ def _browser_headers(page) -> dict:
     return {'X-SMC-Token': token}
 
 
+def _review_scope_and_analyze(page) -> None:
+    """Follow the standalone Reports and Review scope steps before Analyze."""
+    page.locator('[data-scope-step="1"]').click()
+    page.locator('[data-scope-step="2"]').click()
+    page.locator("#scopeFinalReview").wait_for(state="visible")
+    page.locator("#btnAnalyze").click()
+
+
 def _run_browser_analysis(page, trigger, timeout: float) -> dict:
     timeout_ms = int(timeout * 1000)
     with page.expect_response(
@@ -217,10 +230,10 @@ def _require_option_b_workspace(state: dict) -> dict:
     if state.get("viewport") != {"width": 1280, "height": 800}:
         problems.append(f"viewport was {state.get('viewport')!r}")
     if not state.get("scope_chip_in_strip"):
-        problems.append("scope chip was not in the dedicated strip")
-    if state.get("history_buttons", 0) < 2 or state.get("visible_history_buttons") != 2:
+        problems.append("scope chip was not retained without duplicating compact detail identity")
+    if state.get("history_buttons") != 1 or state.get("visible_history_buttons") != 1:
         problems.append(
-            "expected two visible Changes & history buttons, got "
+            "expected one visible Changes navigation button, got "
             f"{state.get('visible_history_buttons')}/{state.get('history_buttons')}"
         )
     if not state.get("definition_has_expression"):
@@ -249,11 +262,11 @@ def _exercise_option_b_workspace(page, evidence_dir: Path) -> dict:
         "viewport": page.viewport_size,
         "scope_chip_in_strip": (
             page.locator(".object-scope-strip > #scopeChip").count() == 1
-            and page.locator(".object-scope-strip > #scopeChip").is_visible()
+            and not page.locator(".object-scope-strip > #scopeChip").is_visible()
         ),
         "tabs": {},
     }
-    history = page.get_by_role("button", name="Changes & history", exact=True)
+    history = page.locator("#viewTabs > #objectHistoryButton")
     state["history_buttons"] = history.count()
     state["visible_history_buttons"] = sum(
         history.nth(index).is_visible() for index in range(history.count())
@@ -273,8 +286,8 @@ def _exercise_option_b_workspace(page, evidence_dir: Path) -> dict:
             "visible": pane.is_visible(),
             "content": all(marker in content for marker in markers),
         }
-    expression = page.locator("#item-pane-definition #detailDaxEditor")
-    state["definition_has_expression"] = bool(expression.input_value().strip())
+    expression = page.locator("#item-pane-definition #objectDaxSource")
+    state["definition_has_expression"] = bool(expression.text_content().strip())
     _require_option_b_workspace(state)
 
     tablist.get_by_role("tab", name="Overview", exact=True).click()
@@ -425,7 +438,7 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
                     raise RuntimeError("Demo started analysis before explicit user confirmation")
                 demo_job = _run_browser_analysis(
                     page,
-                    lambda: page.locator("#btnAnalyze").click(),
+                    lambda: _review_scope_and_analyze(page),
                     timeout,
                 )
                 page.locator("#summarySection:not(.hidden)").wait_for(timeout=30_000)
@@ -534,15 +547,14 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
                 report["schema_count"] = bundle["schema_count"]
                 report["checks"].append("offline schema validation")
                 # Exercise the same actual UI actions against the frozen runtime.
-                lifecycle = Path(__file__).resolve().parents[2] / 'docs/audits/windows-ui-2026-10-05/lifecycle.py'
-                if lifecycle.is_file():
-                    child_env = os.environ.copy()
-                    child_env.update(SMC_TEST_URL=base, SMC_TEST_EVIDENCE=str(evidence_dir / 'lifecycle'), PYTHONIOENCODING='utf-8')
-                    completed = subprocess.run([sys.executable, str(lifecycle)], env=child_env, capture_output=True, text=True, encoding='utf-8', timeout=180)
-                    (evidence_dir / 'lifecycle.log').write_text(completed.stdout + completed.stderr, encoding='utf-8')
-                    if completed.returncode:
-                        raise RuntimeError('Packaged UI lifecycle failed; see lifecycle.log')
-                    report['checks'].append('both-layout UI preview/cancel/apply/verify/restore')
+                lifecycle = Path(__file__).with_name('ui_lifecycle.py')
+                child_env = os.environ.copy()
+                child_env.update(SMC_TEST_URL=base, SMC_TEST_EVIDENCE=str(evidence_dir / 'lifecycle'), PYTHONIOENCODING='utf-8')
+                completed = subprocess.run([sys.executable, str(lifecycle)], env=child_env, capture_output=True, text=True, encoding='utf-8', timeout=180)
+                (evidence_dir / 'lifecycle.log').write_text(completed.stdout + completed.stderr, encoding='utf-8')
+                if completed.returncode:
+                    raise RuntimeError('Packaged UI lifecycle failed; see lifecycle.log')
+                report['checks'].append('workspace UI preview/cancel/apply/verify/restore')
                 if page_errors:
                     raise RuntimeError("Browser JavaScript exceptions: " + " | ".join(page_errors))
             except Exception:

@@ -6,7 +6,9 @@ The source may contain uncommitted work; hashes below identify the exact reused 
 
 - viewer-dax-format.js: exact copy of Models/tools/viewer/js/dax-format.js.
 - viewer-code-tokens.js: PowerQuery.tokens IIFE from power-query.js and daxToks
-  from measures.js, adapted only to export standalone globals without the Viewer app.
+  from measures.js, adapted to export standalone globals without the Viewer app
+  and use a prototype-free name index. The reader supplies model measures plus
+  local measures from the selected report identity; ambiguous names stay neutral.
 - Definition reader uses Viewer syntax categories, IBM Plex Mono fallback stack,
   numbered lines and separate source/formatted copying. No M formatter is claimed.
 - MIT license retained in static/viewer-LICENSE.txt and included in Python packages.

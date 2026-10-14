@@ -16,7 +16,7 @@
 })(typeof window !== 'undefined' ? window : globalThis);
 
 (function(g) { g.ViewerDaxTokens = function (dax) {
-      var H = (this.app.model || {}).msrHome || {}, out = [], names = {};
+      var H = (this.app.model || {}).msrHome || {}, out = [], names = Object.create(null);
       Object.keys(H).forEach(function (name) { names[name.toLowerCase()] = name; });
       var re = /(\/\/[^\n]*|--[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"]|"")*")|((?:(?:'(?:[^']|'')+'|[A-Za-z_\u0080-\uffff][A-Za-z0-9_.\u0080-\uffff]*)\s*)?\[(?:[^\]\r\n]|\]\])+\])/g;
       var pushTxt = function (s) {

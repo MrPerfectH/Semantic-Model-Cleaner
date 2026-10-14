@@ -19,12 +19,13 @@ def js_function(source, name):
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js unavailable')
 def test_v2_same_named_reports_have_distinct_keys_filters_counts_and_mutation_paths(tmp_path):
     source = TEMPLATE.read_text(encoding="utf-8")
-    names = ['itemKey','reportIssueKey','reportReferenceId','reportReferenceLabel','getReportPathByName',
+    names = ['itemKey','reportIssueKey','reportReferenceId','reportInventoryRows','reportReferenceLabel','getReportPathByName',
              'getReportPathForReference','reportIssueCleanupEntry','reportIssueActionEntry',
              'friendlyVisualType','fieldRoleLabel','visualPositionLabel','usageVisualLabel','usageLocationKey','usageLocatorKey','renderUsageDetails','uniqueCount','detailCounts', 'filterReportIssues']
     harness = tmp_path / 'v2-identity.cjs'
     harness.write_text("const assert = require('node:assert/strict');\n"
         "var chosenReports=[{name:'Same',path:'/A/Same.Report'},{name:'Same',path:'/B/Same.Report'}];\n"
+        "var allAnalyzedReports=chosenReports.slice(),allReportSchema=null;\n"
         "function isReportItem(item){return item.sourceKind==='report';}\n"
         "function esc(text){return String(text||'');} function issueValue(){return '';}\n"
         "var reportIssueGroupFilter='all',reportIssueRootCauseFilter='__all__',reportIssueReportFilter='/B/Same.Report',reportIssuePageFilter='__all__';\n"

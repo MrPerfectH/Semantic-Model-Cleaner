@@ -211,7 +211,7 @@ def compare_validation(before: dict, after: dict) -> dict:
             'lost_validation': sorted(lost), 'changed_not_validated': sorted(changed_unknown)}
 
 
-def validate_report_paths(report_paths, *, workspace=None, progress=None):
+def validate_report_paths(report_paths, *, workspace=None, progress=None, include_report_identity=False):
     """Read report metadata one file at a time; never retain a whole raw workspace."""
     records = []
     paths = sorted({Path(p).resolve() for p in report_paths})
@@ -230,10 +230,26 @@ def validate_report_paths(report_paths, *, workspace=None, progress=None):
                 # per-report identity so similarly named reports stay distinct.
                 pass
         result = validate_metadata({key: path.read_bytes()})
+        if include_report_identity:
+            for record in result['files']:
+                record['reportPath'] = str(root)
         records.extend(result['files'])
     counts = Counter(record['status'] for record in records)
-    return {'ok': counts['invalid'] == 0,
+    evidence = {'ok': counts['invalid'] == 0,
             'complete': bool(records) and counts['not_validated'] == 0
                         and not any(r['truncated'] or r['reason'] == 'invalid_json' for r in records),
             'counts': {key: counts[key] for key in ('valid', 'invalid', 'not_validated')},
             'files': records, 'bundle': bundle_info()}
+    if include_report_identity:
+        evidence['reports'] = [{
+                'reportPath': str(root),
+                'fileCount': sum(record['reportPath'] == str(root) for record in records),
+                'counts': {status: sum(record['reportPath'] == str(root) and record['status'] == status
+                                      for record in records)
+                           for status in ('valid', 'invalid', 'not_validated')},
+                'complete': any(record['reportPath'] == str(root) for record in records)
+                            and all(record['status'] != 'not_validated' and not record['truncated']
+                                    and record['reason'] != 'invalid_json'
+                                    for record in records if record['reportPath'] == str(root))
+            } for root in paths]
+    return evidence

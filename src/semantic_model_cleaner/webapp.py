@@ -1671,7 +1671,7 @@ def api_start_analysis_job():
                                       report_paths=[Path(p) for p in reports], progress=progress,
                                       allow_model_only=exact, unselected_reports=unselected)
             from .metadata_validation import validate_report_paths
-            schema = validate_report_paths(reports, workspace=workspace, progress=progress)
+            schema = validate_report_paths(reports, workspace=workspace, progress=progress, include_report_identity=True)
             _record_report_scope(result, scope)
             progress("Preparing browser results")
             payload = _compact_browser_results(_serialize_results(result, model_paths=models))
