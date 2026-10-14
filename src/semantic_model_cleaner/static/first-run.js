@@ -5,7 +5,9 @@
   var projectModels = [], projectReports = [], projectRoot = initialConfig.defaultRoot;
   var originalRender = renderPills;
   var originalAnalyze = runAnalyze;
-  function key() { return JSON.stringify([chosenModels, chosenReports]); }
+  var previousModel = '';
+  function modelOnly() { return !!($('scopeModelOnly') && $('scopeModelOnly').checked); }
+  function key() { return JSON.stringify([chosenModels, chosenReports, modelOnly()]); }
   function openSetup() {
     if (window.smcOpenScope) window.smcOpenScope();
     if ($('setupBody').classList.contains('hidden')) $('btnToggleSetup').click();
@@ -15,8 +17,10 @@
   }
   function showBinding(binding) {
     var panel = $('scopeReview'); panel.replaceChildren();
-    panel.hidden = binding.selected.length > 0;
-    if (!binding.selected.length) text(panel, 'p', 'Add connected Reports below, or choose a different Semantic Model.');
+    panel.hidden = false;
+    text(panel, 'p', chosenModels.length ? chosenModels[0].name + ' · ' + binding.selected.length + ' connected report(s) selected.' : 'Choose a semantic model.');
+    if (!binding.selected.length) text(panel, 'p', modelOnly() ? 'Model-only scope: report usage is not checked.' : 'Choose connected or separate report folders, or explicitly select model-only analysis.');
+    if (window.smcRenderScopeSteps) window.smcRenderScopeSteps();
   }
   async function review() {
     var currentKey = key();
@@ -25,6 +29,7 @@
     if (chosenModels.length !== 1) {
       pending = false; checkedKey = currentKey; $('scopeReview').hidden = true; return false;
     }
+    if (modelOnly()) { pending = false; chosenReports = []; checkedKey = key(); originalRender(); $('btnAnalyze').disabled = false; showBinding({selected: []}); return true; }
     $('scopeReview').hidden = false; $('scopeReview').textContent = 'Checking connected Reports…';
     try {
       var data = await apiPost('/api/scope', {model_paths: chosenModels.map(function (m) { return m.path; }), report_paths: chosenReports.map(function (r) { return r.path; })});
@@ -41,16 +46,25 @@
       return false;
     }
   }
-  renderPills = function () { ++loadVersion; originalRender(); review(); };
+  renderPills = function () {
+    var selectedModel = chosenModels.map(function (m) { return m.path; }).join('|');
+    if (previousModel && previousModel !== selectedModel) {
+      chosenReports = []; checkedKey = '';
+      if ($('scopeModelOnly')) $('scopeModelOnly').checked = false;
+    }
+    previousModel = selectedModel;
+    ++loadVersion; originalRender(); review();
+    if (window.smcRenderScopeSteps) window.smcRenderScopeSteps();
+  };
   runAnalyze = async function () {
     if (pending) return;
-    if (await review() && chosenModels.length === 1 && chosenReports.length) await originalAnalyze();
+    if (await review() && chosenModels.length === 1 && (chosenReports.length || modelOnly())) await originalAnalyze();
   };
   $('btnAnalyze').onclick = runAnalyze;
   window.smcOpenProject = function () { openSetup(); openExplorer('project'); };
   function chooseModel() {
     chosenModels = projectModels.filter(function (m) { return m.path === $('projectModelSelect').value; });
-    chosenReports = projectReports.slice(); checkedKey = ''; renderPills();
+    chosenReports = []; checkedKey = ''; renderPills();
   }
   function propose(data) {
     projectModels = data.models || []; projectReports = data.reports || [];
@@ -103,10 +117,10 @@
   };
   $('btnLoadDemo').onclick = window.smcLoadDemo;
   $('btnRefreshProject').onclick = function () { window.smcDiscoverProject(projectRoot); };
-  // Always populate repository scope, including a sole model and empty roots.
+  // Always populate folder scope, including a sole model and empty roots.
   propose({models:initialConfig.availableModels, reports:initialConfig.availableReports});
   if (!projectModels.length) {
-    $('projectStatus').textContent = 'No supported Semantic Model found in ' + projectRoot + '. Refresh repository after adding files, or choose a Power BI Project folder.';
+    $('projectStatus').textContent = 'No supported Semantic Model found in ' + projectRoot + '. Refresh folder after adding files, or choose a Power BI Project folder.';
   } else if (projectModels.length === 1) {
     $('projectStatus').textContent = 'Project: ' + projectRoot;
   }

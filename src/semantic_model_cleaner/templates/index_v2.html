@@ -6,7 +6,7 @@
 <title>Semantic Model Cleaner</title>
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
 <meta name="smc-local-token" content="{{ local_request_token }}">
-{% if config.get('SMC_WEBVIEW_ANCESTORS') %}<meta name="smc-embedded-host" content="vscode">{% endif %}
+{% if config.get('SMC_WEBVIEW_ANCESTORS') %}<meta name="smc-embedded-host" content="vscode"{% if config.get('SMC_VSCODE_HOST_SCOPE') %} data-host-scope="sidebar"{% endif %}>{% endif %}
 <script src="{{ url_for('static', filename='local-http.js') }}"></script>
 <script src="{{ url_for('static', filename='host-dialogs.js') }}"></script>
 <style>
@@ -44,8 +44,6 @@ code { font-family: var(--mono); font-size: .92em; }
 .scope-chip-count { flex: none; font-size: 11px; color: var(--text-light); background: #f1f5f9; border-radius: 5px; padding: 2px 7px; white-space: nowrap; }
 .scope-chip-edit { flex: none; font-size: 11px; color: var(--text-faint); white-space: nowrap; }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-.topbar-right .ui-switch-link { color: var(--text-light); font-size: 12px; font-weight: 500; text-decoration: none; padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; white-space: nowrap; }
-.topbar-right .ui-switch-link:hover { color: var(--text); border-color: var(--text-faint); background: var(--row-hover); }
 .setup-export-actions { display: flex; gap: 8px; align-items: center; }
 .header .build-stamp { font-size: 10.5px; color: var(--text-faint); font-family: var(--mono); white-space: nowrap; }
 
@@ -573,6 +571,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
 <link rel="stylesheet" href="{{ url_for('static', filename='detail-workspace.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='result-overview.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='accessibility.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='workspace-navigation.css') }}">
 </head>
 <body>
 <div class="header">
@@ -594,7 +593,6 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
       <button class="btn btn-secondary btn-sm" id="btnExportJson" title="Download the current analysis as JSON">Export JSON</button>
       <button class="btn btn-secondary btn-sm" id="btnExportExcel" title="Download the current analysis as an Excel workbook">Export Excel</button>
     </div>
-    <a href="/?ui=classic" class="ui-switch-link" title="Return to the classic layout. Your choice is remembered until you switch back.">Classic layout</a>
     <div class="build-stamp" title="UI build identifier">{{ build_stamp }}</div>
   </div>
 </div>
@@ -603,7 +601,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
     <nav class="view-tabs" id="viewTabs" aria-label="Views">
       <button type="button" class="view-tab active" data-view="details" id="tabDetails">Items <span class="tab-count" id="tabDetailsCount"></span></button>
       <button type="button" class="view-tab" data-view="tables" id="tabTables">Tables <span class="tab-count" id="tabTablesCount"></span></button>
-      <button type="button" class="view-tab" data-view="reports" id="tabReports">Report health <span class="tab-count" id="tabReportsCount"></span></button>
+      <button type="button" class="view-tab" data-view="reports" id="tabReports">Reports <span class="tab-count" id="tabReportsCount"></span></button>
       <button type="button" class="view-tab hidden" data-view="limitations" id="tabLimitations">Analysis limitations <span class="tab-count" id="tabLimitationsCount"></span></button>
       <button type="button" class="view-tab" data-view="refs" id="tabRefs">References <span class="tab-count" id="tabRefsCount"></span></button>
       <button type="button" class="view-tab detail-tab" data-view="item" id="tabItem">&#8627; Item page</button>
@@ -674,10 +672,10 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
   </div>
   <details class="warning-banner hidden" id="reportHealthBanner">
     <summary class="report-health-toggle">
-      <h3>Report Health <span id="reportHealthCount"></span></h3>
+      <h3>Report metadata findings <span id="reportHealthCount"></span></h3>
       <span class="report-health-toggle-hint" id="reportHealthSummaryHint"></span>
     </summary>
-    <div class="warning-note">These problems live in the report files (PBIR), not the semantic model: references to measures that no longer exist, stale formatting selectors and invalid JSON. They matter because they downgrade Cleanup recommendations to Review and can make Usage look stronger or weaker than what report authors actually see. The repair actions here fix the report files. Model analysis gaps are listed separately under Analysis limitations.</div>
+    <div class="warning-note">Findings describe report metadata: broken references, stale selectors or invalid JSON. Counts are finding rows and may overlap; they are not unique affected visuals. Fix broken definitions in the source report. Supported cleanup actions require a reviewed plan. Runtime performance, rendered appearance and visual quality are not assessed.</div>
     <div id="reportHealthList"></div>
     <div class="report-health-status" id="reportHealthActionStatus"></div>
   </details>
@@ -686,7 +684,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
       <h3>Analysis limitations <span id="analysisLimitationsCount"></span></h3>
       <span class="report-health-toggle-hint" id="analysisLimitationsHint"></span>
     </summary>
-    <div class="warning-note">Model features the analyzer detects but cannot fully check. They are analysis gaps, not broken Power BI configuration: each one keeps the items it touches at Review instead of Safe. Open a row for the source, what was checked and the affected items.</div>
+    <div class="warning-note">Scan coverage and unsupported metadata. A limitation with no affected items is informational. Shared or unresolved coverage can still prevent a Safe recommendation. Open a row for the exact source, affected objects and recorded cleanup effect.</div>
     <div id="analysisLimitationsList"></div>
   </details>
   <div class="main-toolbar">
@@ -2845,7 +2843,7 @@ $('btnNextPage').onclick = function() {
 
 /* == Analyze == */
 async function runAnalyze() {
-  if (!chosenModels.length || !chosenReports.length) return;
+  if (!chosenModels.length || (!chosenReports.length && !(window.smcModelOnly && window.smcModelOnly()))) return;
   hidePostRefreshDisclaimer();
   $('btnAnalyze').disabled = true;
   $('btnAnalyze').innerHTML = '<span class="spinner"></span>Analyzing...';
@@ -3022,7 +3020,7 @@ function renderReportHealth() {
       body.push('<div class="report-health-row">+' + esc(String(totalRows - shownRows)) + ' more</div>');
     }
     var actionHtml = '';
-    if (group.action && group.action.type === 'cleanup_stale') {
+    if (group.action && group.action.type === 'cleanup_stale' && group.action.entryCount > 0) {
       // Stale Report References no longer affect the report, so cleanup is one click
       // through a validated plan; the file diff stays one link away.
       var staleEntryCount = group.action.entryCount || 0;
@@ -6707,6 +6705,9 @@ if (initialConfig.initialModelExclusions.length) {
 
 })();
 </script>
+<script src="{{ url_for('static', filename='viewer-dax-format.js') }}"></script>
+<script src="{{ url_for('static', filename='viewer-code-tokens.js') }}"></script>
+<script src="{{ url_for('static', filename='definition-reader.js') }}"></script>
 <script src="{{ url_for('static', filename='detail-workspace.js') }}"></script>
 <script src="{{ url_for('static', filename='analysis-jobs.js') }}"></script>
 <script src="{{ url_for('static', filename='schema-evidence.js') }}"></script>
@@ -6715,5 +6716,7 @@ if (initialConfig.initialModelExclusions.length) {
 <script src="{{ url_for('static', filename='first-run.js') }}"></script>
 <script src="{{ url_for('static', filename='result-overview.js') }}"></script>
 <script src="{{ url_for('static', filename='accessible-layers.js') }}"></script>
+<script src="{{ url_for('static', filename='workspace-navigation.js') }}"></script>
+{% if config.get('SMC_WEBVIEW_ANCESTORS') and config.get('SMC_VSCODE_HOST_SCOPE') %}<script src="{{ url_for('static', filename='host-scope.js') }}"></script>{% endif %}
 </body>
 </html>

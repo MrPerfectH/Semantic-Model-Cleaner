@@ -108,7 +108,7 @@ def test_invalid_model_cli_returns_input_error(tmp_path, command):
     assert 'TMDL' in result.stdout + result.stderr
 
 
-@pytest.mark.parametrize('layout', ['classic', 'v2'])
+@pytest.mark.parametrize('layout', ['v2'])
 def test_initial_and_discovery_scope_excludes_invalid_models_with_reasons(tmp_path, monkeypatch, layout):
     model, report = model_project(tmp_path, {})
     valid = tmp_path / 'Valid.SemanticModel'

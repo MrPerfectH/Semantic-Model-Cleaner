@@ -1,4 +1,4 @@
-"""The Analysis limitations surface and collapsed cleanup explanations in both layouts."""
+"""The Analysis limitations surface and collapsed cleanup explanations in the v2 workspace."""
 import json
 from pathlib import Path
 import shutil
@@ -26,13 +26,14 @@ def run_node(tmp_path, program, *args):
     return result.stdout
 
 
-@pytest.mark.parametrize('layout', ['index.html', 'index_v2.html'])
-def test_both_layouts_ship_the_separate_surface(layout):
-    html = webapp.app.test_client().get('/?ui=' + ('v2' if layout == 'index_v2.html' else 'classic')).get_data(as_text=True)
+@pytest.mark.parametrize('layout', ['index_v2.html'])
+def test_v2_ship_the_separate_surface(layout):
+    html = webapp.app.test_client().get('/').get_data(as_text=True)
     assert 'id="analysisLimitationsBanner"' in html
     assert 'analysis-limitations.js' in html
     assert 'metadata the analyzer cannot fully verify' not in html  # Report Health no longer claims model gaps
-    assert 'Model analysis gaps are listed separately under Analysis limitations.' in html
+    assert 'Scan coverage and unsupported metadata.' in html
+    assert 'A limitation with no affected items is informational.' in html
     assert "'calculation-group': 'Calculation group'" in html
     assert 'Analysis limitations vs Report Health' in html
     assert 'id="tableDetailExternalConsumers"' in html
@@ -62,7 +63,7 @@ vm.runInContext(fs.readFileSync(process.argv[3], 'utf8'), context);
 context.window.smcRenderAnalysisLimitations();
 assert.equal(nodes.analysisLimitationsBanner.classList.names.has('hidden'), false);
 assert.equal(nodes.analysisLimitationsCount.textContent, '(4 distinct limitations · ' + data.analysisLimitations.affectedItemCount + ' affected items)');
-assert.ok(nodes.analysisLimitationsHint.textContent.startsWith('4 shared keep every unused item at Review'));
+assert.ok(nodes.analysisLimitationsHint.textContent.startsWith('4 shared coverage gaps'));
 const cards = nodes.analysisLimitationsList.children[0].innerHTML;
 // One labelled line per limitation; the effect column says what happens to Cleanup (#132).
 assert.ok(cards.includes('limitation-row-header') && cards.includes('Effect on Cleanup</span>'));
@@ -98,6 +99,10 @@ const reviewMember = context.window.smcCleanupExplanation({ deleteSafety: 'Revie
 assert.equal(reviewMember.next, 'Next: inspect the evidence below, then decide with a reviewed plan.');
 // Unused wording distinguishes scope from global non-use when coverage is incomplete.
 assert.ok(context.window.smcUnusedScopeNote().includes('not proof of global non-use'));
+context.allAnalysisLimitations = { distinctCount: 1, sharedCount: 0, targetedCount: 1, affectedItemCount: 0, coverageComplete: true, limitations: [{id:'language',feature:'linguisticMetadata',scope:'targeted',affectedItemCount:0,targets:[],effect:'No recommendations changed'}] };
+context.window.smcRenderAnalysisLimitations();
+assert.equal(nodes.analysisLimitationsHint.textContent, 'Informational · no cleanup recommendations changed');
+assert.ok(nodes.analysisLimitationsList.children[0].innerHTML.includes('Informational · no items affected'));
 context.allAnalysisLimitations = { distinctCount: 0, sharedCount: 0, targetedCount: 0, affectedItemCount: 0, coverageComplete: true, limitations: [] };
 context.window.smcRenderAnalysisLimitations();
 assert.equal(nodes.analysisLimitationsBanner.classList.names.has('hidden'), true);

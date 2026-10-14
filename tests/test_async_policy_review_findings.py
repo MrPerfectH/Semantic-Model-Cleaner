@@ -102,7 +102,7 @@ def test_analysis_does_not_overwrite_a_newer_selected_scope(isolated_app, monkey
     assert webapp._state['last_results'] != {'snapshot': 'old_scope'}
 
 
-@pytest.mark.parametrize('layout', ['index.html', 'index_v2.html'])
+@pytest.mark.parametrize('layout', ['index_v2.html'])
 def test_repository_owner_text_cannot_inject_input_attributes(layout):
     """Exercise the actual esc/formField helpers with DOM text serialization."""
     import json

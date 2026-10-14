@@ -24,8 +24,25 @@ export function showApp(panel: vscode.WebviewPanel, port: number, project: strin
   panel.webview.options = { enableScripts: true, enableForms: true, localResourceRoots: [],
     portMapping: [{ webviewPort: port, extensionHostPort: port }] };
   panel.webview.html = document(`<header>Power BI Project: ${escapeHtml(project)}</header>
-<iframe title="Semantic Model Cleaner" src="${origin}/" sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-modals"></iframe>`, '', origin);
+<iframe title="Semantic Model Cleaner" src="${origin}/" sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-modals"></iframe>`, `
+// Relay only: sidebar scope down to the app, page state up to the extension.
+// The app's messages must come from this exact frame and loopback origin.
+const api = acquireVsCodeApi();
+const frame = document.querySelector('iframe');
+const app = ${JSON.stringify(origin)};
+const up = new Set(${JSON.stringify(PAGE_MESSAGES)});
+window.addEventListener('message', event => {
+  const data = event.data;
+  if (!data || typeof data.type !== 'string') return;
+  if (event.source === frame.contentWindow) {
+    if (event.origin === app && up.has(data.type)) api.postMessage(data);
+  } else if (data.type === ${JSON.stringify(HOST_SCOPE)} && frame.contentWindow) {
+    frame.contentWindow.postMessage(data, app);
+  }
+});`, origin);
 }
+export const HOST_SCOPE = 'smc-host-scope';
+export const PAGE_MESSAGES = ['smc-page-ready', 'smc-analysis', 'smc-focus-scope'];
 export function getAncestors(panel: vscode.WebviewPanel, signal: AbortSignal): Promise<string[]> {
   return new Promise((resolve, reject) => {
     let timer: NodeJS.Timeout;

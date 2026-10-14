@@ -78,3 +78,15 @@ test('unrelated HTTP service cannot satisfy readiness', async () => {
   try { await assert.rejects(probe(unrelated.address().port, 'a'.repeat(64), new AbortController().signal), /verification/); }
   finally { await new Promise(resolve => unrelated.close(resolve)); }
 });
+test('authenticated scope requests carry the token, map errors and stop with the server', async () => {
+  const { HttpError } = require('../dist/server');
+  const server = await startServer(config('ok'), origins, new AbortController().signal, () => {}, () => {});
+  try {
+    assert.deepEqual(await server.request('/api/vscode/scope', { model_path: 'm' }),
+      { echo: { model_path: 'm' }, features: 'scope' });
+    await assert.rejects(server.request('/api/vscode/scope', { model_path: 'gone' }),
+      error => error instanceof HttpError && error.status === 409 && error.message === 'Model gone.');
+    await assert.rejects(server.request('/not-api', {}), /Invalid local API path/);
+  } finally { await server.stop(); }
+  await assert.rejects(server.request('/api/vscode/scope', {}), /not running/);
+});

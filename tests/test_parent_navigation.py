@@ -84,8 +84,9 @@ def test_item_header_offers_explicit_parent_actions_with_accurate_wording():
     assert "'Open calculation group' : 'Open table'" in source
     # Overview is summary only: the expression lives on the Definition tab (#134).
     assert '<h4>DAX expression</h4>' not in source
-    assert "parentLink(item.table, item.table), 'html'" in source
-    assert 'object-parent-action' in source
+    assert "$('objectItemBreadcrumb').innerHTML" in source
+    assert 'class="detail-table-link" data-table-name="' in source
+    assert "$('objectItemParent').innerHTML = '';" in source
     assert "backFromTable" in source and "tableReturnTo" in source
 
 

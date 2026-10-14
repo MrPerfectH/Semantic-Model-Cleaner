@@ -39,20 +39,6 @@ ASSETS_BY_LAYOUT = {
         "accessible-layers.js",
         "accessibility.css",
     ),
-    "classic": (
-        "local-http.js",
-        "classic-plans.js",
-        "classic-plans.css",
-        "analysis-jobs.js",
-        "policy-workspace.js",
-        "schema-evidence.js",
-        "first-run.js",
-        "analysis-limitations.js",
-        "result-overview.js",
-        "result-overview.css",
-        "accessible-layers.js",
-        "accessibility.css",
-    ),
 }
 EXPECTED_CHANNEL = "beta"
 OPTION_B_ITEM_KEY = "Measure:::Sales:::Revenue"
@@ -417,7 +403,17 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
                         response = page.request.get(base + "/static/" + asset)
                         if asset not in content or not response.ok or not response.body():
                             raise RuntimeError(f"Missing packaged {layout} asset: {asset}")
-                report["checks"].append("v2/classic UI and packaged assets")
+                # Old bookmarks and persisted choices must open the retained workspace.
+                page.context.add_cookies([{"name": "smc_ui", "value": "classic", "url": base}])
+                page.goto(base + "/?ui=classic", wait_until="networkidle")
+                if page.locator("#scopeChip").count() != 1 or page.locator(".ui-switch-link").count():
+                    raise RuntimeError("Legacy layout selection did not resolve to v2 without a switch")
+                if any(cookie["name"] == "smc_ui" for cookie in page.context.cookies()):
+                    raise RuntimeError("Retired layout preference was not cleared")
+                for asset in ("classic-plans.js", "classic-plans.css"):
+                    if page.request.get(base + "/static/" + asset).status != 404:
+                        raise RuntimeError(f"Retired asset is still packaged: {asset}")
+                report["checks"].append("v2 UI/assets; legacy selections retired")
 
                 page.goto(base + "/?ui=v2", wait_until="networkidle")
                 page.get_by_role("button", name="Try demo", exact=True).filter(visible=True).first.click()

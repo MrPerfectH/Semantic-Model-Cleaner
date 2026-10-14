@@ -38,7 +38,7 @@ def test_ambiguous_startup_requires_explicit_model_choice(tmp_path, monkeypatch)
     shutil.copytree(model, other)
     monkeypatch.setattr(webapp, '_discover_initial_artifacts', lambda: ([model, other], [report]))
     assert webapp._default_model_selection([model, other]) == []
-    for layout in ('v2', 'classic'):
+    for layout in ('v2',):
         response = webapp.app.test_client().get('/?ui=' + layout)
         assert response.status_code == 200
         assert b'initialModels: []' in response.data

@@ -57,7 +57,7 @@ body.object-view .rail-summary { display:none!important; }
 .object-review-content summary { cursor:pointer; font-weight:600; }
 .object-review footer { position:sticky; bottom:0; border-top:1px solid var(--object-border); }
 .object-error { color:#a61b1b; background:#fff4f4; padding:12px; border-radius:5px; }
-@media(max-width:1100px) { .object-grid { grid-template-columns:1fr; } .object-properties { display:grid; grid-template-columns:minmax(110px,1fr) 2fr; gap:10px; } .object-properties dt,.object-properties dd { margin:0; } .topbar-right .build-stamp,.topbar-right .ui-switch-link { display:none; } }
+@media(max-width:1100px) { .object-grid { grid-template-columns:1fr; } .object-properties { display:grid; grid-template-columns:minmax(110px,1fr) 2fr; gap:10px; } .object-properties dt,.object-properties dd { margin:0; } .topbar-right .build-stamp { display:none; } }
 @media(max-width:700px) { .object-workspace h3 { font-size:23px; } .object-card-head { flex-wrap:wrap; } .object-tabs button { padding:10px 9px; } .object-workspace .detail-card { padding:13px; } .object-review header,.object-review footer { padding:13px; flex-wrap:wrap; } }
 body.object-view #resultGuideSection { display:none!important; }
 .object-workspace .detail-header { position:sticky; top:0; z-index:4; background:#fff; padding:10px 0; border-bottom:1px solid var(--object-border); }
@@ -327,3 +327,30 @@ body.object-view #warningBanner.object-notice-open #warningList { max-height:40v
 .relationship-node .badge { float: right; }
 .relationship-inactive { border-style: dashed; opacity: .75; }
 @media (max-width: 760px) { .lineage-graph, .relationship-graph { grid-template-columns: 1fr; } .lineage-arrow { transform: rotate(90deg); } }
+
+/* Item definition: one source reader with an explicit, reversible editing mode. */
+.object-definition-link { display:flex; justify-content:space-between; align-items:center; gap:16px; width:100%; padding:15px 18px; background:var(--card); border:1px solid var(--object-border); border-radius:6px; color:var(--primary); text-align:left; font:inherit; cursor:pointer; }
+.object-definition-link strong { font-size:13px; }
+.object-definition-link small { display:block; color:var(--object-muted); margin-top:5px; font-size:12px; }
+.object-definition-link:hover { border-color:var(--primary); background:var(--primary-soft); }
+.object-reader-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:-15px -15px 0; padding:13px 16px; border-bottom:1px solid var(--object-border); background:#fafafd; }
+.object-reader-toolbar label { display:flex; gap:10px; align-items:center; font-size:12px; font-weight:600; }
+.object-reader-toolbar select { padding:7px; border:1px solid var(--object-border); border-radius:5px; background:white; color:var(--text); font:inherit; }
+.object-reader-toolbar [role="status"] { color:var(--object-muted); font-size:11px; }
+.object-reader-actions { display:flex; gap:7px; margin-left:auto; }
+.object-reader-actions [hidden] { display:none; }
+.object-source-reader .detail-technical-summary { margin:12px 0; }
+.object-source-reader .detail-technical-summary h4,.object-source-reader .detail-technical-body>h4 { display:none; }
+.object-source-reader .detail-technical-body { margin-top:0; }
+.object-source-reader .object-code-reader { min-height:180px; max-height:65vh; padding:20px; border:1px solid var(--border-soft); border-radius:5px; font-size:13px; line-height:1.85; tab-size:4; white-space:pre; overflow:auto; }
+.object-source-reader .detail-editor { width:100%; min-height:360px; max-height:65vh; padding:20px; font:13px/1.85 var(--mono); tab-size:4; white-space:pre; overflow:auto; resize:vertical; }
+.object-reader-footer { display:grid; gap:6px; padding:12px 16px; margin:15px -15px -15px; border-top:1px solid var(--border-soft); background:#fafafd; color:var(--object-muted); font-size:11px; }
+.object-reader-footer .object-source { font-size:10px; }
+@media(max-width:720px) { .object-reader-actions { margin-left:0; } .object-source-reader .object-code-reader { padding:12px; font-size:12px; } }
+
+/* Compact downstream dependency list (#147). */
+.downstream-list input { max-width: 32rem; margin: .5rem 0; }
+.dependency-table-scroll { overflow-x: auto; }
+.dependency-pagination { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; margin-top: .75rem; }
+.dependency-coverage { margin-top: 1rem; }
+.downstream-list td small { display: block; }

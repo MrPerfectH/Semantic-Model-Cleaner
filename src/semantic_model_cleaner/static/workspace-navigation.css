@@ -1,0 +1,78 @@
+/* Neutral, compact workspace surfaces; status meaning always has text. */
+:root { --text:#17212f; --text-mid:#465363; --text-light:#526171; --border:#dce1e7; }
+body { background:#f6f7f9; }
+.header { background:#fff; border-bottom:1px solid var(--border); }
+.rail { background:#fafbfc; min-width:160px; }
+.view-tab { border-radius:6px; min-height:36px; }
+.view-tab.active { color:#1d4ed8; background:#eaf0fb; border-color:#d7e2f7; }
+.rail-bottom details { padding:8px 0; }
+.rail-bottom summary { cursor:pointer; padding:6px 10px; color:var(--text-mid); }
+.workspace-result-counts { display:flex; flex-wrap:wrap; gap:6px 18px; padding:10px 14px; margin-bottom:12px; background:#fff; border:1px solid var(--border); border-radius:8px; }
+.workspace-result-counts .rail-divider,.workspace-result-counts .rail-heading,.workspace-result-counts .rail-subrow { display:none; }
+.workspace-result-counts .rail-row { display:flex; gap:6px; padding:2px; }
+.workspace-result-counts .value { margin-left:3px; }
+.workspace-result-counts .rail-dot { display:none; }
+.object-card-head,.object-summary,.detail-card { border-radius:8px; }
+.object-child-table td,.data-table td { padding-top:7px; padding-bottom:7px; }
+.reports-intro { padding:16px; border-bottom:1px solid var(--border); }
+.reports-intro h2 { margin:0 0 8px; font-size:20px; }
+.reports-intro p { margin:6px 0; line-height:1.5; color:var(--text-mid); max-width:90ch; }
+.workspace-settings { width:min(650px,calc(100vw - 32px)); padding:22px; border:1px solid var(--border); border-radius:10px; }
+.workspace-settings header { display:flex; justify-content:space-between; align-items:center; }
+.workspace-settings::backdrop { background:#0f172a55; }
+.standalone-scope-flow .scope-drawer { width:min(900px,calc(100vw - 48px)); left:50%; right:auto; top:50%; bottom:auto; height:min(760px,calc(100vh - 48px)); max-height:calc(100vh - 48px); transform:translate(-50%,-50%); border:1px solid var(--border); border-radius:10px; visibility:hidden; }
+.standalone-scope-flow.scope-open .scope-drawer { visibility:visible; transform:translate(-50%,-50%); }
+.scope-steps { display:flex; padding:12px 20px; gap:8px; border-bottom:1px solid var(--border); }
+.scope-steps button { flex:1; padding:10px; border:1px solid var(--border); background:#fafbfc; border-radius:6px; font:inherit; color:var(--text-mid); cursor:pointer; }
+.scope-steps [aria-current=step] { color:#1d4ed8; background:#eaf0fb; border-color:#a9bfe7; }
+.scope-model-only { display:flex; align-items:center; gap:8px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border); font-size:13px; }
+.scope-review-final { font-size:14px; line-height:1.6; overflow-wrap:anywhere; }
+.scope-review-final small { display:block; color:var(--text-mid); }
+.setup-footer { gap:10px; }
+.sidebar-owned-scope #scopeDrawer,.sidebar-owned-scope #scopeOverlay,.sidebar-owned-scope .object-scope-strip { display:none!important; }
+:focus-visible { outline:3px solid #2563eb; outline-offset:3px; }
+@media(max-width:760px) {
+ .header { flex-wrap:wrap; gap:8px; padding:12px; }.brand h1{font-size:16px}
+ .shell{display:block}.rail{width:auto;position:static}.view-tabs{flex-direction:row;flex-wrap:wrap}.rail-bottom{display:flex;flex-wrap:wrap}
+ .topbar-right{flex-wrap:wrap}.scope-steps{padding:8px;gap:4px}.scope-steps button{padding:8px 4px;font-size:12px}
+ .standalone-scope-flow .scope-drawer{width:calc(100vw - 20px);height:calc(100vh - 20px);max-height:calc(100vh - 20px)}
+ .object-summary,.object-properties,.scope-chip{min-width:0;overflow-wrap:anywhere}.dependency-pagination{justify-content:space-between}
+}
+
+/* Detail identity and dependency results fit the first screen. */
+body.object-view #summarySection,body.object-view #resultOverview,body.object-view .object-scope-strip { display:none!important; }
+#itemDetailSection .detail-pagenav { display:none; }
+.object-workspace .object-crumbs { margin:0 0 4px; padding:0; }
+.object-workspace .detail-header { position:static; padding:4px 0 8px; margin:0; }
+.object-workspace .detail-header-main { display:flex; align-items:baseline; flex-wrap:wrap; gap:10px; }
+.object-workspace .detail-header h3 { font-size:22px; line-height:1.2; margin:0; }
+.object-workspace .object-summary { margin:8px 0; padding:8px 12px; }
+.object-decision-evidence { font-size:12px; margin-top:4px; }
+.object-decision-evidence summary,.dependency-support summary { cursor:pointer; color:var(--text-mid); }
+.object-tabs { margin:8px 0 0; }
+.object-tabs button { padding:9px 12px; }
+.object-pane { padding-top:8px; }
+.object-workspace .downstream-list { padding:12px; }
+.downstream-list h4 { margin:0 0 5px; }
+.downstream-list .object-note { margin:4px 0; line-height:1.35; }
+.downstream-list label { font-size:12px; }
+.downstream-list input { padding:6px 8px; margin:5px 0; }
+.downstream-list td { padding:6px 10px; line-height:1.35; }
+.dependency-support { padding:8px 12px; border:1px solid var(--border); border-radius:6px; }
+
+.viewer-code-reader { font:12px/1.7 'IBM Plex Mono',ui-monospace,monospace!important; white-space:pre!important; tab-size:4; overflow:auto; padding:12px 16px 12px 48px!important; counter-reset:code-line; background:#f4f7fb!important; border:1px solid #dbe3ee; border-radius:6px; color:#3a414d; max-height:65vh; }
+.viewer-code-line { position:relative; counter-increment:code-line; }
+.viewer-code-line::before { content:counter(code-line); position:absolute; width:30px; left:-40px; text-align:right; color:#68778e; user-select:none; }
+.viewer-comment { color:#68778e; font-style:italic; }.viewer-string{color:#b45309}.viewer-reference{color:#0f766e}.viewer-measure{color:#6d28d9}.viewer-function{color:#0e7490;font-weight:600}.viewer-keyword{color:#334155;font-weight:700}
+.viewer-m-string{color:#166534}.viewer-m-keyword{color:#6d28d9;font-weight:600}
+#objectFormatLabel { display:flex; gap:6px; align-items:center; font-size:12px; }
+.object-reader-actions { flex-wrap:wrap; }
+
+/* Offer only actions that can operate on the current selection. */
+#btnApplyReportSuggestionsShown:disabled,#btnRemoveReportIssuesShown:disabled,
+#btnCleanStaleShown:disabled,#btnCleanAllCleanup:disabled { display:none!important; }
+@media(max-width:720px) {
+  .rail { flex-direction:column; overflow:visible; }
+  .rail .rail-bottom { display:flex!important; flex-direction:row; flex-wrap:wrap; margin:0; padding:0; gap:4px; }
+  .rail .rail-bottom details { padding:0; }
+}

@@ -1,4 +1,4 @@
-/* Analysis limitations surface, shared by both layouts.
+/* Analysis limitations surface, for the workspace.
  *
  * Analysis limitations are model/scan gaps the analyzer detects but cannot fully
  * check (calculation items, KPI expressions, unreadable PBIR files). They are not
@@ -56,7 +56,7 @@
   function effectLabel(limitation) {
     if (limitation.scope === 'shared') return 'Keeps every unused item at Review';
     var count = limitation.affectedItemCount != null ? limitation.affectedItemCount : (limitation.targets || []).length;
-    return count ? 'Keeps ' + plural(count, 'item') + ' at Review' : 'No items affected';
+    return count ? 'Keeps ' + plural(count, 'item') + ' at Review' : 'Informational · no items affected';
   }
   function fileLabel(location) {
     var value = String(location || '');
@@ -135,7 +135,7 @@
     if (!current.limitations.length) { banner.classList.add('hidden'); if (count) count.textContent = ''; if (hint) hint.textContent = ''; return; }
     banner.classList.remove('hidden');
     if (count) count.textContent = '(' + plural(current.distinctCount, 'distinct limitation') + ' · ' + plural(current.affectedItemCount, 'affected item') + ')';
-    if (hint) hint.textContent = plural(current.sharedCount, 'shared', 'shared') + ' keep every unused item at Review · ' + plural(current.targetedCount, 'targeted', 'targeted') + ' affect referenced items only';
+    if (hint) hint.textContent = current.sharedCount ? plural(current.sharedCount, 'shared coverage gap') + ' · review affected items and unknown coverage' : current.affectedItemCount ? plural(current.affectedItemCount, 'affected item') + ' · see item context' : 'Informational · no cleanup recommendations changed';
     var wrap = document.createElement('div');
     wrap.className = 'limitation-groups';
     wrap.innerHTML = limitationListHeader() + current.limitations.map(limitationRowHtml).join('');

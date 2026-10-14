@@ -16,7 +16,7 @@ def js_function(source, name):
     return source[start:source.index('\n}', line_end) + 2]
 
 
-@pytest.mark.parametrize('layout', ['index.html', 'index_v2.html'])
+@pytest.mark.parametrize('layout', ['index_v2.html'])
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js unavailable')
 def test_dependency_navigation_uses_exact_report_owner(tmp_path, layout):
     source = (ROOT / 'src/semantic_model_cleaner/templates' / layout).read_text(encoding="utf-8")

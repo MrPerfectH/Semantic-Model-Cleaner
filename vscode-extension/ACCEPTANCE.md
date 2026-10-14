@@ -1,3 +1,41 @@
+# Acceptance record — 0.1.2 (2026-10-14)
+
+Sidebar scope selection. Same worktree and branch (`t3/vscode-app-plugin`,
+base `e647e58`); no commits, pushes or PRs. All checks below ran on the **MSI
+Windows laptop** (Windows, Python 3.13.2, Node 24.19), on a fresh clone of base
+`e647e58` with this worktree's changes applied. Every changed file was hash-
+compared with the Mac worktree (identical except Windows CRLF checkout).
+**No 0.1.2 test ran on the Mac.** Linux/Omarchy was not used.
+
+- Python suite: **1,239 passed, 8 skipped**; `ruff check .` clean.
+- `npm test`: **27 passed** (scope state, model choice, deselection, stale
+  responses, restart memory, folder reset, payload validation, authenticated
+  scope requests, trust gating of the new commands). `npm audit`: 0.
+- `npm run package` on Windows: `semantic-model-cleaner-0.1.2.vsix`, 15 files,
+  SHA-256 `023af911e7f7e8965d7d9f177c0a91d85458599ebfed533e718bfc5a7b300492`.
+  0.1.0 and 0.1.1 VSIX files are kept unchanged.
+- Native desktop host, twice: source folder, then the **packaged VSIX installed
+  into a disposable extensions directory** (VS Code 1.141.1 win32-x64,
+  disposable profile, `result.json` `installedFromVsix: true`). Project: two
+  models (TestModel with 2 connected reports, ProductQA with 2), one report with
+  a broken binding. All 13 checks passed in both runs: welcome before launch;
+  explicit choice with two models and no editor scope drawer; default all
+  connected, unverified and other-model reports shown; exact 1-of-2 analysis
+  with 0 Safe and the `report_scan:not_selected` limitation; stale banner and
+  inert results after a sidebar change; full re-analysis; zero-report
+  model-only analysis; model switch; change during analysis; restart keeps
+  choices and closes the old port; folder switch resets and auto-selects the
+  sole model; stop closes the port; projects byte-identical.
+- Windows found a pre-existing engine bug: the parent-pipe watcher blocked the
+  git build-stamp subprocess, so the editor stayed blank. Fixed in
+  `vscode_host.serve`; covered by `test_real_host_exits_when_parent_pipe_closes`.
+
+Mac: `code-insiders --install-extension semantic-model-cleaner-0.1.2.vsix`
+into the existing VS Code Insiders profile; `--list-extensions` reports
+`smc-local-preview.semantic-model-cleaner@0.1.2`. No window was reloaded and no
+setting changed. Open windows keep running 0.1.1 until the user reloads.
+Native use in the user's own Insiders window was not exercised.
+
 # Acceptance record — 2026-10-12
 
 ## Checkout and ownership
