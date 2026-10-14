@@ -5,12 +5,12 @@ module.exports = async function verifyReportInventory(page) {
   for (const width of [1280, 900, 720]) {
     await page.setViewportSize({width, height:800});
     await page.evaluate(() => { switchView('reports'); applyTableWidths('reportsTableSection', calculateDefaultWidths('reportsTableSection')); });
-    await page.evaluate(() => scrollTo(0, 0));
+    await page.evaluate(() => { scrollTo(0, 0); document.querySelectorAll('*').forEach(node => { if (node.scrollTop) node.scrollTop = 0; }); });
     const summary = await page.locator('#summarySection').evaluate(node => ({height:node.getBoundingClientRect().height,display:getComputedStyle(node).display,direction:getComputedStyle(node).flexDirection,wrap:getComputedStyle(node).flexWrap,subrows:[...node.querySelectorAll('.rail-subrow')].map(row=>getComputedStyle(row).display),rows:[...node.querySelectorAll('.rail-row:not(.rail-subrow)')].map(row=>({top:row.getBoundingClientRect().top,right:row.getBoundingClientRect().right})),right:node.getBoundingClientRect().right}));
     if (width === 1280) {
       assert(summary.height > 0 && summary.height < 100, JSON.stringify(summary));
       const inventory = await page.locator('#reportInventory thead').boundingBox();
-      assert(inventory.y + inventory.height < 800, JSON.stringify(inventory));
+      assert(inventory.y >= 0 && inventory.y + inventory.height < 800, JSON.stringify(inventory));
     }
     assert.equal(summary.direction, 'row'); assert.equal(summary.wrap, 'wrap');
     assert(summary.subrows.every(display=>display==='none'));
