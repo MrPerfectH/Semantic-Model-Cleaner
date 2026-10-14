@@ -30,7 +30,7 @@ ASSETS_BY_LAYOUT = {
         "detail-workspace.js",
         "detail-workspace.css",
         "analysis-jobs.js",
-        "policy-workspace.js",
+        "report-usage.js",
         "schema-evidence.js",
         "first-run.js",
         "analysis-limitations.js",

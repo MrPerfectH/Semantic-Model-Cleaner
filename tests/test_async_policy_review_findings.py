@@ -103,8 +103,8 @@ def test_analysis_does_not_overwrite_a_newer_selected_scope(isolated_app, monkey
 
 
 @pytest.mark.parametrize('layout', ['index_v2.html'])
-def test_repository_owner_text_cannot_inject_input_attributes(layout):
-    """Exercise the actual esc/formField helpers with DOM text serialization."""
+def test_metadata_text_cannot_inject_input_attributes(layout):
+    """Exercise the actual esc helper with DOM text serialization."""
     import json
     from pathlib import Path
     import shutil
@@ -117,9 +117,6 @@ def test_repository_owner_text_cannot_inject_input_attributes(layout):
     template = (source_root / 'templates' / layout).read_text(encoding="utf-8")
     start = template.index('function esc(s) {')
     escape = template[start:template.index('\nfunction itemKey', start)]
-    script = (source_root / 'static/policy-workspace.js').read_text(encoding="utf-8")
-    start = script.index('  function formField(')
-    field = script[start:script.index('\n  async function call(', start)]
     # A div's innerHTML serializer escapes &, < and > in a text node, but not
     # quote characters. Attribute encoding needs an additional explicit step.
     harness = '''
@@ -127,8 +124,8 @@ const document = {createElement() { return {
   textContent: '',
   get innerHTML() { return this.textContent.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 }; }};
-''' + escape + '\n' + field + '''
-console.log(JSON.stringify(formField('owner','Owner','text','" autofocus onfocus="injected')));
+''' + escape + '''
+console.log(JSON.stringify('<input value="'+esc('" autofocus onfocus="injected')+'">'));
 '''
     output = subprocess.run([node, '-e', harness], capture_output=True, text=True, check=True)
     class Inputs(HTMLParser):

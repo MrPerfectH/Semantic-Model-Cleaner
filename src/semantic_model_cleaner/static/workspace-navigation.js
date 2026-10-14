@@ -11,8 +11,6 @@
   document.querySelectorAll('.object-persistent-review').forEach(function (el) { el.remove(); });
   // Counts live with results; retain original count nodes for existing renderers.
   nav.querySelectorAll('.tab-count').forEach(function (el) { el.hidden = true; });
-  var policy = Array.from(nav.querySelectorAll('button')).find(function (b) { return b.textContent === 'Review policy'; });
-  if (policy) secondary.appendChild(policy);
   var settings = document.createElement('dialog'); settings.id = 'workspaceSettings'; settings.className = 'workspace-settings';
   settings.innerHTML = '<header><h2>Settings</h2><button type="button" class="btn btn-secondary" data-settings-close>Close</button></header>';
   var options = $('autoRefreshAfterApply').closest('.setup-block'); settings.appendChild(options); document.body.appendChild(settings);
@@ -22,7 +20,7 @@
   var summary = $('summarySection'); summary.classList.add('workspace-result-counts'); $('mainArea').insertBefore(summary, $('resultOverview'));
 
   var reportIntro = document.createElement('section'); reportIntro.className = 'reports-intro';
-  reportIntro.innerHTML = '<h2>Reports</h2><p>Metadata findings and scan coverage for the selected reports. This does not assess runtime performance, visual quality or rendered behavior.</p><p>Valid means a file matches its declared supported schema. Invalid means that check failed. Not validated means the schema was missing, unsupported or unavailable.</p><p id="reportsFindingSummary" role="status"></p><div id="reportInventory"></div><button type="button" class="btn btn-secondary btn-sm" id="reportsReferences">Browse report references</button>';
+  reportIntro.innerHTML = '<h2>Reports</h2><p>Metadata findings and scan coverage for the selected reports. This does not assess runtime performance, visual quality or rendered behavior.</p><p>Valid means a file matches its declared supported schema. Invalid means that check failed. Not validated means the schema was missing, unsupported or unavailable.</p><p id="reportsFindingSummary" role="status"></p><div id="reportInventory"></div><button type="button" class="btn btn-secondary btn-sm" id="reportsReferences">Browse report usage</button>';
   $('reportsTableSection').prepend(reportIntro); $('reportsReferences').onclick = function () { switchView('refs'); };
   $('reportsTableSection').insertBefore($('reportHealthBanner'), reportIntro.nextSibling);
   var oldResults = setResultsData;

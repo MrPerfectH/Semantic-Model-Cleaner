@@ -603,7 +603,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
       <button type="button" class="view-tab" data-view="tables" id="tabTables">Tables <span class="tab-count" id="tabTablesCount"></span></button>
       <button type="button" class="view-tab" data-view="reports" id="tabReports">Reports <span class="tab-count" id="tabReportsCount"></span></button>
       <button type="button" class="view-tab hidden" data-view="limitations" id="tabLimitations">Analysis limitations <span class="tab-count" id="tabLimitationsCount"></span></button>
-      <button type="button" class="view-tab" data-view="refs" id="tabRefs">References <span class="tab-count" id="tabRefsCount"></span></button>
+      <button type="button" class="view-tab" data-view="refs" id="tabRefs">Report usage <span class="tab-count" id="tabRefsCount"></span></button>
       <button type="button" class="view-tab detail-tab" data-view="item" id="tabItem">&#8627; Item page</button>
       <button type="button" class="view-tab detail-tab" data-view="table" id="tabTable">&#8627; Table page</button>
     </nav>
@@ -689,7 +689,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
   </details>
   <div class="main-toolbar">
   <div class="filters-bar hidden" id="filtersSection">
-    <div class="search-wrap"><input type="text" id="filterSearch" aria-label="Search items, tables and references" placeholder="Search name or table" autocomplete="off"></div>
+    <div class="search-wrap"><input type="text" id="filterSearch" aria-label="Search items, tables and report usage" placeholder="Search name or table" autocomplete="off"></div>
     <button type="button" class="btn-filters" id="btnToggleFilters" onclick="smcToggleFilters()">Filters &#9662;</button>
     <div class="filters-panel hidden" id="filtersPanel">
       <div class="filter-group"><label>Usage</label><div class="filter-dropdown" id="filterStatus"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
@@ -773,7 +773,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
       <thead><tr>
         <th data-refcol="type">Type <span class="sort-arrow"></span></th>
         <th data-refcol="table">Table <span class="sort-arrow"></span></th>
-        <th data-refcol="name">Name <span class="sort-arrow"></span></th>
+        <th data-refcol="name">Field <span class="sort-arrow"></span></th>
         <th data-refcol="sourceKind">Source <span class="sort-arrow"></span></th>
         <th data-refcol="isHidden">Hidden <span class="sort-arrow"></span></th>
         <th data-refcol="displayFolder">Folder <span class="sort-arrow"></span></th>
@@ -5155,7 +5155,7 @@ function detailDecisionTitle(item) {
 }
 
 function detailDecisionCopy(item) {
-  if (!item) return 'Choose a row from Details or All References to inspect usage, dependencies, and cleanup actions.';
+  if (!item) return 'Choose a row from Items or Report usage to inspect usage, dependencies, and cleanup actions.';
   if (isReportItem(item)) {
     return item.type === 'Measure'
       ? 'This measure is defined in report metadata. Standard model cleanup actions are disabled, but it can be promoted into the semantic model.'
@@ -6748,11 +6748,11 @@ if (initialConfig.initialModelExclusions.length) {
 <script src="{{ url_for('static', filename='analysis-jobs.js') }}"></script>
 <script src="{{ url_for('static', filename='schema-evidence.js') }}"></script>
 <script src="{{ url_for('static', filename='analysis-limitations.js') }}"></script>
-<script src="{{ url_for('static', filename='policy-workspace.js') }}"></script>
 <script src="{{ url_for('static', filename='first-run.js') }}"></script>
 <script src="{{ url_for('static', filename='result-overview.js') }}"></script>
 <script src="{{ url_for('static', filename='accessible-layers.js') }}"></script>
 <script src="{{ url_for('static', filename='workspace-navigation.js') }}"></script>
+<script src="{{ url_for('static', filename='report-usage.js') }}"></script>
 {% if config.get('SMC_WEBVIEW_ANCESTORS') and config.get('SMC_VSCODE_HOST_SCOPE') %}<script src="{{ url_for('static', filename='host-scope.js') }}"></script>{% endif %}
 </body>
 </html>

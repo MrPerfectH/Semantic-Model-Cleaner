@@ -41,3 +41,9 @@ per-report schema coverage, and scopes measure coloring to model/report identity
 The packaging smoke follows the setup wizard and compact detail layout.
 
 The final narrow review follow-up preserves explicit model-only mode only for the same model, restores UTF-8 setup labels, and isolates report-inventory columns from findings-grid preferences. Focused scope/encoding regressions and rendered inventory checks passed at 1280 px and 720 px; all six metadata columns remain available. The reusable browser assertion is `tests/browser/report-inventory.cjs` (call with an analyzed Reports page). The full 1,261-pass suite was recorded before this narrow follow-up; installed native visual verification remains pending.
+
+## Secondary UI
+
+Advanced review recording is not exposed in the browser: the Review policy dialog, saved-decision editor and naming-rule editor are retired for now. Existing `.smc-policy.json` files are preserved. Backend policy evaluation, review APIs, `smc policy` commands, `smc naming preview` and `smc check --policy` remain supported; cleanup eligibility is unchanged.
+
+More → Report usage shows report-backed field rows, including stale entries and repeated uses, with explicit filtered/total counts. Model-only placeholder references remain in the underlying analysis/export data but are not report usage rows. The view distinguishes no analysis, model-only scope, no recorded usage, zero filter matches, loading and unavailable/failed analysis. Failed refreshes retain the previous analysis and label it as previous evidence. Genuine analyzer and coverage warnings remain visible.
