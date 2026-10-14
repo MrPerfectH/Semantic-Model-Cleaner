@@ -22,7 +22,7 @@ and the retained MIT license. There is no M formatter.
 
 ## Verification and acceptance
 
-Windows verification of the integrated source passed 1,259 Python tests with 8
+Windows verification of the integrated source passed 1,261 Python tests with 8
 skips, focused dependency and schema/scope regressions, JavaScript syntax checks,
 and standalone plus sidebar-owned page browser checks. A later CSS-only change
 passed a focused narrow-viewport check. Dependency tests cover branching, long
@@ -39,3 +39,5 @@ Review follow-up preserves discovered connected-report candidates on model chang
 allows explicit model-only refresh, lists analyzed reports with zero findings and
 per-report schema coverage, and scopes measure coloring to model/report identity.
 The packaging smoke follows the setup wizard and compact detail layout.
+
+The final narrow review follow-up preserves explicit model-only mode only for the same model, restores UTF-8 setup labels, and isolates report-inventory columns from findings-grid preferences. Focused scope/encoding regressions and rendered inventory checks passed at 1280 px and 720 px; all six metadata columns remain available. The reusable browser assertion is `tests/browser/report-inventory.cjs` (call with an analyzed Reports page). The full 1,261-pass suite was recorded before this narrow follow-up; installed native visual verification remains pending.

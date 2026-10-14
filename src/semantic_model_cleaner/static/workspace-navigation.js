@@ -48,10 +48,10 @@
   drawer.querySelector('h2').textContent = 'Set up analysis';
   $('btnToggleSetup').hidden = true;
   var steps = document.createElement('nav'); steps.className = 'scope-steps'; steps.setAttribute('aria-label', 'Setup steps');
-  steps.innerHTML = '<button type="button" data-scope-step="0">1 Â· Model</button><button type="button" data-scope-step="1">2 Â· Reports</button><button type="button" data-scope-step="2">3 Â· Review scope</button>';
+  steps.innerHTML = '<button type="button" data-scope-step="0">1 · Model</button><button type="button" data-scope-step="1">2 · Reports</button><button type="button" data-scope-step="2">3 · Review scope</button>';
   body.before(steps);
   var project = $('btnRefreshProject').closest('.setup-block'), model = $('modelPills').closest('.setup-block'), reports = $('reportPills').closest('.setup-block');
-  reports.insertAdjacentHTML('beforeend', '<label class="scope-model-only"><input type="checkbox" id="scopeModelOnly"> Analyze model only â€” do not check report usage</label>');
+  reports.insertAdjacentHTML('beforeend', '<label class="scope-model-only"><input type="checkbox" id="scopeModelOnly"> Analyze model only — do not check report usage</label>');
   var review = document.createElement('section'); review.className = 'scope-review-final'; review.id = 'scopeFinalReview'; body.appendChild(review);
   var back = document.createElement('button'); back.type = 'button'; back.className = 'btn btn-secondary'; back.textContent = 'Back';
   var next = document.createElement('button'); next.type = 'button'; next.className = 'btn btn-primary'; next.textContent = 'Continue';

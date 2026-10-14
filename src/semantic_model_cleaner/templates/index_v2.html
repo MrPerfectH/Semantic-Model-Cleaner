@@ -1465,7 +1465,7 @@ function updateExplorerDefaultUI() {
 function getTableSectionInfo(tableSectionId) {
   var section = $(tableSectionId);
   if (!section) return null;
-  var table = section.querySelector('table');
+  var table = section.querySelector(tableSectionId === 'reportsTableSection' ? 'table.reports-table' : 'table');
   if (!table) return null;
   var headers = Array.from(table.querySelectorAll('thead th'));
   if (!headers.length) return null;

@@ -728,14 +728,14 @@
   Object.keys(compactSpecs).forEach(function (id) {
     var spec = compactSpecs[id]; var stored = null;
     try { stored = JSON.parse(localStorage.getItem(storagePrefix + id)); } catch (_) { /* Optional local preference. */ }
-    visibility[id] = new Set(Array.isArray(stored) ? stored.filter(function (index) { return Number.isInteger(index) && index >= 0 && index < $(id).querySelectorAll('thead th').length; }) : spec.primary);
+    visibility[id] = new Set(Array.isArray(stored) ? stored.filter(function (index) { return Number.isInteger(index) && index >= 0 && index < getTableSectionInfo(id).headers.length; }) : spec.primary);
     spec.required.forEach(function (index) { visibility[id].add(index); });
     $(id).classList.add('compact-inventory');
   });
   function activeInventory() { return { details: 'tableSection', tables: 'tablesOverviewSection', reports: 'reportsTableSection' }[currentView]; }
   function headerLabel(header, index) { if (index === 0) return 'Selection'; var copy = header.cloneNode(true); copy.querySelectorAll('.sort-arrow,.header-help,.col-resizer,.resize-handle').forEach(function (node) { node.remove(); }); return copy.textContent.trim(); }
   function applyVisibility(id) {
-    var section = $(id); var table = section.querySelector('table'); var visible = visibility[id];
+    var table = getTableSectionInfo(id).table; var visible = visibility[id];
     table.querySelectorAll('tr').forEach(function (row) { Array.from(row.children).forEach(function (cell, index) { if (!cell.colSpan || cell.colSpan === 1) cell.classList.toggle('inventory-column-hidden', !visible.has(index)); }); });
     table.querySelectorAll('colgroup col').forEach(function (col, index) { col.classList.toggle('inventory-column-hidden', !visible.has(index)); if (!visible.has(index)) col.style.width = '0px'; });
   }
@@ -757,7 +757,7 @@
   function updateMenu() {
     var id = activeInventory(); columnMenu.hidden = !id;
     if (!id) return;
-    var headers = Array.from($(id).querySelectorAll('thead th')); var spec = compactSpecs[id];
+    var headers = getTableSectionInfo(id).headers; var spec = compactSpecs[id];
     $('inventoryColumnOptions').innerHTML = '<p>Core columns stay visible. Other properties are also available in object details.</p>' + headers.map(function (header, index) {
       if (index === 0) return '';
       return '<label><input type="checkbox" data-inventory-column="' + index + '"' + (visibility[id].has(index) ? ' checked' : '') + (spec.required.includes(index) ? ' disabled' : '') + '> ' + esc(headerLabel(header, index)) + '</label>';
