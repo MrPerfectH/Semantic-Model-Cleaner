@@ -7,8 +7,8 @@ body { background:#f6f7f9; }
 .view-tab.active { color:#1d4ed8; background:#eaf0fb; border-color:#d7e2f7; }
 .rail-bottom details { padding:8px 0; }
 .rail-bottom summary { cursor:pointer; padding:6px 10px; color:var(--text-mid); }
-.workspace-result-counts { display:flex; flex-wrap:wrap; gap:6px 18px; padding:10px 14px; margin-bottom:12px; background:#fff; border:1px solid var(--border); border-radius:8px; }
-.workspace-result-counts .rail-divider,.workspace-result-counts .rail-heading,.workspace-result-counts .rail-subrow { display:none; }
+.workspace-result-counts { display:flex; flex-direction:row; flex-wrap:wrap; gap:6px 18px; padding:10px 14px; margin-bottom:12px; background:#fff; border:1px solid var(--border); border-radius:8px; }
+.workspace-result-counts .rail-divider,.workspace-result-counts .rail-heading,.workspace-result-counts .rail-row.rail-subrow { display:none; }
 .workspace-result-counts .rail-row { display:flex; gap:6px; padding:2px; }
 .workspace-result-counts .value { margin-left:3px; }
 .workspace-result-counts .rail-dot { display:none; }
