@@ -2255,7 +2255,7 @@ def test_index_renders_empty_selection_state():
     assert "Usage vs Cleanup" in html
     assert "Usage describes observed report/model evidence; Cleanup describes the recommended action." in html
     assert "Filters narrow every result view with the same vocabulary shown in badges and the guide." in html
-    assert "summary cards show model/report totals and cleanup recommendations for the current analysis." in html
+    assert "cleanup buttons show totals for the current analysis and filter Items." in html
     assert "definition: usageHelpText({ usageState: 'Used' })" in html
     assert "definition: usageHelpText({ usageState: 'Indirect' })" in html
     assert "definition: usageHelpText({ usageState: 'Stale only' })" in html

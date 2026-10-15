@@ -27,7 +27,14 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   const loaded=await page.evaluate(()=>({raw:allRefs.length,total:allRefs.filter(SmcReportUsage.isReportRow).length,filtered:filteredRefs.length,scope:{model_paths:chosenModels.map(m=>m.path),report_paths:chosenReports.map(r=>r.path)}}));
   assert(loaded.total>0);assert.equal(loaded.filtered,loaded.total);
   const syncResponse=await page.evaluate(async scope=>{const response=await smcFetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(scope)});return {ok:response.ok,data:await response.json()};},loaded.scope);assert(syncResponse.ok,JSON.stringify(syncResponse));
-  const snapshot=syncResponse.data;assert.equal(snapshot.references.filter(r=>r.report||r.reportPath).length,loaded.total);
+  const snapshot=syncResponse.data;
+  await require('./compact-results.cjs')(page);
+  await page.evaluate(data=>{smcRenderResultOverview({...data,analysisLimitations:{affectedItemCount:1,sharedCount:1},reportHealth:{totalIssueCount:1}});allWarnings=[{code:'UNRESOLVED_NAMEOF_TARGET',message:'Synthetic unresolved field'}];renderWarnings();},snapshot);
+  assert((await page.locator('#overviewLimitations').innerText()).includes('Coverage limitations'));
+  assert(await page.locator('#warningBanner').isVisible());
+  assert(await page.locator('#overviewReportFindings').isVisible());
+  await page.evaluate(data=>{loadResults(data);switchView('refs');},snapshot);
+assert.equal(snapshot.references.filter(r=>r.report||r.reportPath).length,loaded.total);
   const refresh=await page.evaluate(()=>reAnalyze({}));assert(refresh.ok);
   assert.equal(await page.evaluate(()=>filteredRefs.length),loaded.total);
   await page.locator('#filterSearch').fill('no-such-field-usage');await page.evaluate(()=>applyFilters());
