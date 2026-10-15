@@ -1268,8 +1268,12 @@ def _build_stamp() -> str:
     """Create a short build stamp for the UI header."""
     package_version = f"v{__version__}"
 
+    repo_root = Path(__file__).resolve().parents[2]
+    if not (repo_root / ".git").exists():
+        # Installed wheel or packaged app: there is no source checkout to stamp.
+        return package_version
+
     try:
-        repo_root = Path(__file__).resolve().parents[2]
         commit = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
             cwd=repo_root,
