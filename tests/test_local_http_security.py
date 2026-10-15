@@ -157,7 +157,7 @@ def test_launchers_refuse_remote_binding_before_runtime_setup(monkeypatch, launc
     assert error.value.code == 2
 
 
-@pytest.mark.parametrize('layout', ['v2', 'classic'])
+@pytest.mark.parametrize('layout', ['v2'])
 def test_layout_bootstrap_and_reviewed_roundtrip(raw_client, tmp_path, monkeypatch, layout):
     monkeypatch.setenv('SMC_USER_DIR', str(tmp_path / 'user state'))
     monkeypatch.setattr(webapp, '_state', {**webapp._state, 'workspace': str(tmp_path),

@@ -4686,6 +4686,7 @@ def analyze(
     report_search_roots: list[Path] | None = None,
     progress=None,
     allow_model_only: bool = False,
+    unselected_reports: list[Path] | None = None,
 ) -> dict:
     def checkpoint(stage, current=0, total=None):
         if progress is not None:
@@ -4887,6 +4888,8 @@ def analyze(
     # mappings, ...) are real consumers of the items they name. They keep those
     # items needed while their owner is needed, and block deleting them.
     metadata_consumers_by_key, metadata_edges = _metadata_consumer_index(all_unsupported_metadata_refs, all_items)
+    # Expose already-resolved metadata edges to read-only dependency presentation.
+    graphs["metadata"] = metadata_edges
     directly_used = {
         item_identity(item) for item in all_items
         if any(_usage_belongs_to_item(item, usage) for usage in usage_index.get(normalize_key(*item.key), []))
@@ -4974,6 +4977,21 @@ def analyze(
             "unchecked": "No Reports were scanned.",
             "effect": "Items without known use require Review; report usage is unknown.",
             "message": "Report usage was not checked (model-only inspection).",
+        })
+    elif unselected_reports:
+        # An explicit subset leaves connected Reports unscanned; their uses are
+        # unknown, so no item may be called Safe from this scope alone.
+        names = sorted(report_display_name(Path(p)) for p in unselected_reports)
+        shown = ", ".join(names[:3]) + (f", +{len(names) - 3} more" if len(names) > 3 else "")
+        analysis_limitations.append({
+            "id": "report_scan:not_selected", "kind": "report_scan", "area": "Report scan",
+            "feature": "connected reports not selected", "construct": "report_subset",
+            "owner": "selected Semantic Model", "table": "", "source_file": "", "line": 0,
+            "location": "selected Semantic Model", "scope": "shared", "targets": [],
+            "checked": f"{len(reports)} selected connected Report(s) were scanned.",
+            "unchecked": f"{len(names)} connected Report(s) were not selected: {shown}.",
+            "effect": "Items without known use require Review; usage in unselected Reports is unknown.",
+            "message": f"{len(names)} connected Report(s) were not selected for this analysis.",
         })
     coverage_limitations = [limitation for limitation in analysis_limitations if limitation["scope"] == "shared"]
     shared_limitation_trigger = _shared_limitation_trigger(coverage_limitations) if coverage_limitations else ""

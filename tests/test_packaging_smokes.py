@@ -118,8 +118,8 @@ def option_b_state():
         'item': 'Revenue',
         'viewport': {'width': 1280, 'height': 800},
         'scope_chip_in_strip': True,
-        'history_buttons': 2,
-        'visible_history_buttons': 2,
+        'history_buttons': 1,
+        'visible_history_buttons': 1,
         'definition_has_expression': True,
         'tabs': {
             name: {'selected': True, 'visible': True, 'content': True}
@@ -154,7 +154,7 @@ def test_packaged_http_client_bootstraps_and_calls_protected_api(tmp_path, monke
 
 @pytest.mark.parametrize('break_state', [
     lambda state: state.update(viewport={'width': 1440, 'height': 1000}),
-    lambda state: state.update(visible_history_buttons=1),
+    lambda state: state.update(visible_history_buttons=2),
     lambda state: state.update(scope_chip_in_strip=False),
     lambda state: state['tabs']['Dependencies'].update(content=False),
     lambda state: state.update(definition_has_expression=False),

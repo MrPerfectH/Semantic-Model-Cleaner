@@ -4,7 +4,13 @@ import * as http from 'node:http';
 import { LaunchConfig, validateAncestors } from './config';
 
 export class Cancelled extends Error { constructor() { super('Launch cancelled.'); } }
-export interface RunningServer { port: number; stop(): Promise<void> }
+export interface RunningServer {
+  port: number;
+  stop(): Promise<void>;
+  /** Authenticated loopback JSON request; the launch token never leaves this module. */
+  request(path: string, body: unknown): Promise<unknown>;
+}
+export class HttpError extends Error { constructor(readonly status: number, message: string) { super(message); } }
 export type Log = (line: string) => void;
 
 // Buffer whole lines before redaction, including secrets split across chunks.
@@ -52,6 +58,39 @@ export function probe(port: number, token: string, signal: AbortSignal): Promise
   });
 }
 
+const MAX_RESPONSE = 16 * 1024 * 1024;
+export function requestJson(port: number, token: string, path: string, body: unknown,
+  timeoutMs = 120000): Promise<unknown> {
+  if (!/^\/api\/[a-z0-9/-]+$/.test(path)) return Promise.reject(new Error('Invalid local API path.'));
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body ?? {});
+    const req = http.request({ hostname: '127.0.0.1', port, path, method: 'POST', timeout: timeoutMs,
+      headers: { 'X-SMC-Token': token, 'Content-Type': 'application/json', 'Accept-Encoding': 'identity',
+        'Content-Length': Buffer.byteLength(payload) } }, res => {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      res.on('data', (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > MAX_RESPONSE) req.destroy(new Error('Server response is too large.'));
+        else chunks.push(chunk);
+      });
+      res.on('error', reject);
+      res.on('end', () => {
+        let value: any;
+        try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+        catch { reject(new Error('Invalid server response.')); return; }
+        if (res.statusCode !== 200) {
+          reject(new HttpError(res.statusCode || 0, typeof value?.error === 'string' && value.error.length < 2000
+            ? value.error : `Server request failed (${res.statusCode}).`));
+        } else resolve(value);
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('Server request timed out.')));
+    req.on('error', reject);
+    req.end(payload);
+  });
+}
+
 export async function startServer(config: LaunchConfig, ancestors: string[], signal: AbortSignal,
   log: Log, onExit: () => void, timeoutMs = 15000): Promise<RunningServer> {
   validateAncestors(ancestors);
@@ -61,7 +100,7 @@ export async function startServer(config: LaunchConfig, ancestors: string[], sig
     [...config.args, '--vscode', '--host', '127.0.0.1', '--port', '0', config.cwd], {
       cwd: config.cwd, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, SMC_VSCODE_TOKEN: token,
-        SMC_VSCODE_ANCESTORS: JSON.stringify(ancestors), PYTHONUNBUFFERED: '1' }
+        SMC_VSCODE_ANCESTORS: JSON.stringify(ancestors), SMC_VSCODE_FEATURES: 'scope', PYTHONUNBUFFERED: '1' }
     });
   let exited = false;
   let stopping = false;
@@ -115,7 +154,8 @@ export async function startServer(config: LaunchConfig, ancestors: string[], sig
     if (exited) throw new Error('SMC exited during startup.');
     ready = true;
     log(`SMC ready on loopback port ${port}.`);
-    return { port, stop };
+    return { port, stop, request: (path, body) => exited || stopping
+      ? Promise.reject(new Error('The Cleaner server is not running.')) : requestJson(port, token, path, body) };
   } catch (error) {
     await stop();
     if (signal.aborted) throw new Cancelled();

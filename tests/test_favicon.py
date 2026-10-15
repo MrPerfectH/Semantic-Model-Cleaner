@@ -1,10 +1,10 @@
-"""Both layouts declare an icon so browsers do not request a missing /favicon.ico."""
+"""The v2 workspace declare an icon so browsers do not request a missing /favicon.ico."""
 import pytest
 
 from semantic_model_cleaner import webapp
 
 
-@pytest.mark.parametrize('layout', ['classic', 'v2'])
+@pytest.mark.parametrize('layout', ['v2'])
 def test_layouts_link_a_served_svg_icon(layout):
     client = webapp.app.test_client()
     html = client.get('/?ui=' + layout).get_data(as_text=True)

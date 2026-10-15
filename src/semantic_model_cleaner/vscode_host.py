@@ -32,8 +32,13 @@ def configure_host(app):
             raise ValueError('A fresh 256-bit VS Code launch token is required.')
     except (ValueError, TypeError) as error:
         raise ValueError('Invalid VS Code host configuration. Launch from the extension.') from error
+    # Optional host features; older extensions omit this and keep the in-page scope.
+    features = os.environ.pop('SMC_VSCODE_FEATURES', '')
+    if not re.fullmatch(r'[a-z,]{0,64}', features):
+        raise ValueError('Invalid VS Code host configuration. Launch from the extension.')
     app.config['SMC_WEBVIEW_ANCESTORS'] = ancestors
     app.config['SMC_LOCAL_TOKEN'] = token
+    app.config['SMC_VSCODE_HOST_SCOPE'] = 'scope' in features.split(',')
 
 
 def serve(app):
@@ -43,10 +48,19 @@ def serve(app):
     server = create_server(app, host='127.0.0.1', port=0, threads=4)
     app.config['SMC_WEBVIEW_PORT'] = int(server.effective_port)
 
+    # Watch the parent pipe through a private descriptor and point standard input
+    # at the null device. On Windows a blocking read on the inherited stdin pipe
+    # stalls every later subprocess launch (git build stamp, git checks) that
+    # queries the standard handles, which hung the first page load.
+    parent = os.fdopen(os.dup(sys.stdin.fileno()), 'rb', buffering=0)
+    null = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(null, sys.stdin.fileno())
+    os.close(null)
+
     def parent_lifetime():
         # The extension owns this pipe. An extension-host crash closes it too.
         try:
-            while sys.stdin.buffer.read(1):
+            while parent.read(1):
                 pass
         finally:
             os._exit(0)

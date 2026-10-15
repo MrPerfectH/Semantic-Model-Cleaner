@@ -17,7 +17,7 @@ import pytest
 from semantic_model_cleaner import analyzer, cli, report_writer, webapp
 
 ROOT = Path(__file__).parents[1]
-TEMPLATES = ("index.html", "index_v2.html")
+TEMPLATES = ("index_v2.html",)
 
 
 def _col(table, prop):

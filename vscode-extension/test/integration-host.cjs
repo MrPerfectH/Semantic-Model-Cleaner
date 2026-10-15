@@ -14,108 +14,238 @@ async function snapshot(root) {
   }
   return result;
 }
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function until(check, label, timeout = 30000) {
+  const end = Date.now() + timeout;
+  let last;
+  while (Date.now() < end) {
+    try { const value = await check(); if (value) return value; } catch (error) { last = error; }
+    await sleep(150);
+  }
+  throw new Error(`Timed out waiting for ${label}${last ? `: ${last.message}` : ''}`);
+}
+async function portClosed(url) {
+  for (let i = 0; i < 100; i++) {
+    try { await fetch(url); await sleep(100); } catch { return true; }
+  }
+  return false;
+}
+
 exports.run = async () => {
-  const project = process.env.SMC_TEST_PROJECT;
-  const before = await snapshot(project);
+  const project = process.env.SMC_TEST_PROJECT, second = process.env.SMC_TEST_SECOND_PROJECT;
+  const artifacts = process.env.SMC_TEST_ARTIFACTS;
+  const before = await snapshot(project), beforeSecond = await snapshot(second);
+  const extension = vscode.extensions.getExtension('smc-local-preview.semantic-model-cleaner');
+  assert.ok(extension, 'Cleaner extension must be installed');
+  assert.equal(extension.packageJSON.version, process.env.SMC_TEST_EXPECT_VERSION);
+  if (process.env.SMC_TEST_EXPECT_EXTENSIONS)
+    assert.ok(extension.extensionPath.startsWith(process.env.SMC_TEST_EXPECT_EXTENSIONS), extension.extensionPath);
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${process.env.SMC_TEST_CDP_PORT}`);
+  const checks = [];
+  const pass = name => { checks.push(name); console.log('PASS', name); };
   try {
-    await vscode.commands.executeCommand('semanticModelCleaner.open', vscode.Uri.file(project));
-    let frame, page;
-    for (let i = 0; i < 100 && !frame; i++) {
-      for (const context of browser.contexts()) for (const candidate of context.pages()) {
-        const found = candidate.frames().find(f => /^http:\/\/127\.0\.0\.1:\d+\/$/.test(f.url()));
-        if (found) { frame = found; page = candidate; break; }
-      }
-      if (!frame) await new Promise(resolve => setTimeout(resolve, 200));
+    await vscode.commands.executeCommand('semanticModelCleaner.scope.focus');
+    const shell = browser.contexts().flatMap(context => context.pages()).find(page => /workbench/.test(page.url()));
+    assert.ok(shell, 'Desktop workbench must exist');
+    const consoleLines = [];
+    shell.on('console', message => consoleLines.push(`${message.type()} ${message.text()}`.slice(0, 600)));
+    shell.on('requestfailed', request => consoleLines.push(`requestfailed ${request.url()} ${request.failure()?.errorText}`));
+    shell.on('response', response => { if (/127\.0\.0\.1/.test(response.url())) consoleLines.push(`response ${response.status()} ${response.url()}`); });
+    for (const context of browser.contexts()) {
+      context.on('requestfailed', request => consoleLines.push(`ctx requestfailed ${request.url()} ${request.failure()?.errorText}`));
+      context.on('response', response => { if (/127\.0\.0\.1/.test(response.url())) consoleLines.push(`ctx response ${response.status()} ${response.url()}`); });
+      context.on('console', message => consoleLines.push(`ctx ${message.type()} ${message.text()}`.slice(0, 600)));
     }
-    if (!frame) {
+    exports.consoleLines = consoleLines;
+    const sidebar = shell.locator('[id="workbench.parts.sidebar"]');
+    const sidebarText = () => sidebar.innerText();
+    const row = label => sidebar.locator('.monaco-list-row').filter({
+      has: shell.locator('.label-name', { hasText: new RegExp(`^\\s*${label}\\s*$`) }) }).first();
+    const checkbox = label => row(label).locator('.custom-view-tree-node-item-checkbox, [role="checkbox"]').first();
+    const shot = name => shell.screenshot({ path: path.join(artifacts, name) });
+
+    // 1. Native pane before any server: explicit Open Cleaner only.
+    await sidebar.getByRole('button', { name: 'Open Cleaner' }).waitFor();
+    await shot('1-sidebar-welcome.png');
+    pass('native Analysis Scope welcome before launch');
+    await sidebar.getByRole('button', { name: 'Open Cleaner' }).click();
+
+    const findFrame = async (exclude = '') => until(() => {
       for (const context of browser.contexts()) for (const page of context.pages()) {
-        console.error('PAGE', page.url(), (await page.locator('body').innerText()).slice(-3000));
-        for (const f of page.frames()) console.error('FRAME', f.url(), (await f.locator('body').innerText().catch(() => '')).slice(0, 1000));
+        const frame = page.frames().find(f => /^http:\/\/127\.0\.0\.1:\d+\/(\?.*)?$/.test(f.url()) && (!exclude || !f.url().startsWith(exclude)));
+        if (frame) return frame;
       }
-      throw new Error('Cleaner iframe not loaded in the real VS Code host.');
-    }
-    await frame.waitForFunction(() => typeof window.smcFetch === 'function');
-    const discovery = await frame.evaluate(async () => {
-      const r = await window.smcFetch('/api/discover');
-      return { status: r.status, body: await r.json() };
-    });
-    assert.equal(discovery.status, 200);
-    assert.ok(discovery.body.models?.length > 0, JSON.stringify(discovery.body));
-    assert.ok(JSON.stringify(discovery.body).includes(project));
-    assert.equal(await frame.locator('meta[name="smc-local-token"]').count(), 1);
-    assert.ok((await frame.locator('body').innerText()).includes('Semantic Model Cleaner'));
-    // Browser-native confirm is sandboxed. Exercise real in-page consent,
-    // including cancel/Escape, without executing a model write.
-    for (const action of ['Cancel', 'Confirm', 'Escape']) {
-      await frame.evaluate(() => { window.__smokeDecision = null;
-        void window.smcConfirm('Disposable confirmation test').then(value => { window.__smokeDecision = value; }); });
-      const dialog = frame.getByRole('dialog', { name: 'Confirm action', exact: true });
-      await dialog.waitFor();
-      if (action === 'Escape') await dialog.press('Escape');
-      else await dialog.getByRole('button', { name: action, exact: true }).click();
-      await frame.waitForFunction(() => window.__smokeDecision !== null);
-      assert.equal(await frame.evaluate(() => window.__smokeDecision), action === 'Confirm');
-    }
-    // Startup must populate even the single-model selector and connected Reports.
-    await frame.waitForFunction(() => chosenModels.length === 1 && chosenReports.length > 0);
-    assert.equal(await frame.locator('#projectModelSelect option').count(), 2);
-    assert.equal(await frame.locator('#projectModelSelect').inputValue(), discovery.body.models[0].path);
-    await vscode.commands.executeCommand('notifications.clearAll');
-    await frame.locator('#btnAnalyze').click();
-    await frame.locator('#viewToolbar').waitFor({ state: 'visible', timeout: 20000 });
-    assert.ok((await frame.locator('body').innerText()).includes('Revenue'));
-    const oldUrl = frame.url();
-    await page.screenshot({ path: path.join(process.env.SMC_TEST_ARTIFACTS, 'cleaner-vscode.png') });
+    }, 'Cleaner iframe');
+    let frame = await findFrame();
+    const origin = new URL(frame.url()).origin;
+    const banner = () => frame.locator('#smcHostScope').innerText();
+
+    // 2. Two models: no implicit choice, no in-page scope drawer.
+    await until(async () => /Semantic model\s*choose one/.test(await sidebarText()), 'explicit model choice');
+    for (const label of ['TestModel', 'ProductQA']) await row(label).waitFor();
+    await until(async () => (await banner()).includes('Choose a semantic model in the Cleaner sidebar'), 'empty banner');
+    assert.equal(await frame.locator('#scopeDrawer').isVisible(), false);
+    assert.equal(await frame.locator('#setupSection').isVisible(), false);
+    assert.equal(await frame.locator('#welcomeCard').isVisible(), false);
+    await shot('2-multi-model-choice.png');
+    pass('two models require explicit choice; editor has no scope drawer');
+    assert.equal(await frame.locator('#railCompare, #compareFlow, .ui-switch-link').count(), 0);
+    assert.equal(await frame.getByText('Classic layout', { exact: true }).count(), 0);
+    pass('Compare and Classic controls absent in packaged host');
+
+    // 3. Choose a model: every connected report selected by default.
+    await row('TestModel').click();
+    await until(async () => /Reports\s*2 of 2 selected/.test(await sidebarText()), 'default all connected');
+    const text = await sidebarText();
+    for (const expected of ['TestReport', 'Sales Overview', 'Legacy Draft', 'binding not verified', '2 reports use other models'])
+      assert.ok(text.includes(expected), expected);
+    assert.equal(await checkbox('Sales Overview').getAttribute('aria-checked'), 'true');
+    await until(async () => (await banner()).includes('Ready: TestModel · 2 of 2 reports'), 'ready banner');
+    await shot('3-default-all-connected.png');
+    pass('chosen model defaults to all connected reports; unverified and other-model reports shown');
+
+    // 4. Deselect one report and analyze exactly that subset.
+    await checkbox('Sales Overview').click();
+    await until(async () => /Reports\s*1 of 2 selected/.test(await sidebarText()), 'deselection');
+    await until(async () => (await banner()).includes('Ready: TestModel · 1 of 2 reports'), 'subset banner');
+    await row('Analyze').click();
+    await until(async () => (await banner()).includes('Analyzed: TestModel · 1 of 2 reports'), 'subset analysis', 60000);
+    await until(async () => (await sidebarText()).includes('results current'), 'sidebar results current');
+    const subset = await frame.evaluate(() => ({
+      reports: chosenReports.map(r => r.name), items: allItems.length,
+      safe: allItems.filter(i => i.deleteSafety === 'Safe').length,
+      limitations: allAnalysisLimitations.limitations.map(l => l.id)
+    }));
+    assert.deepEqual(subset.reports, ['TestReport']);
+    assert.ok(subset.items > 0);
+    assert.equal(subset.safe, 0, 'unselected connected report must withhold Safe');
+    assert.ok(subset.limitations.includes('report_scan:not_selected'));
+    await shot('4-subset-analyzed.png');
+    pass('analyze exact subset (1 of 2); unselected report withholds Safe');
+
+    // 5. Changing the sidebar makes displayed results stale and inert.
+    await checkbox('Sales Overview').click();
+    await until(async () => (await banner()).includes('Results are out of date'), 'stale banner');
+    assert.equal(await frame.evaluate(() => document.getElementById('viewToolbar').inert), true);
+    await until(async () => (await sidebarText()).includes('results stale'), 'sidebar stale');
+    await shot('5-stale-results.png');
+    pass('scope change marks results stale and blocks actions on them');
+    await row('Analyze').click();
+    await until(async () => (await banner()).includes('Analyzed: TestModel · 2 of 2 reports'), 'full analysis', 60000);
+    assert.equal(await frame.evaluate(() => document.getElementById('viewToolbar').inert), false);
+    const full = await frame.evaluate(() => ({ safe: allItems.filter(i => i.deleteSafety === 'Safe').length,
+      limitations: allAnalysisLimitations.limitations.map(l => l.id) }));
+    assert.ok(full.safe > 0); assert.ok(!full.limitations.includes('report_scan:not_selected'));
+    pass('full selection analysis restores current results');
+
+    // 6. Zero reports: model-only analysis.
+    await vscode.commands.executeCommand('semanticModelCleaner.clearReports');
+    await until(async () => /Reports\s*0 of 2 selected/.test(await sidebarText()), 'zero selected');
+    await until(async () => (await sidebarText()).includes('model only (0 of 2 reports)'), 'model-only analyze label');
+    await row('Analyze').click();
+    await until(async () => (await banner()).includes('Analyzed: TestModel · model only (0 of 2 reports)'), 'model-only analysis', 60000);
+    const modelOnly = await frame.evaluate(() => ({ reports: chosenReports.length, items: allItems.length,
+      safe: allItems.filter(i => i.deleteSafety === 'Safe').length,
+      limitations: allAnalysisLimitations.limitations.map(l => l.id) }));
+    assert.equal(modelOnly.reports, 0); assert.ok(modelOnly.items > 0); assert.equal(modelOnly.safe, 0);
+    assert.ok(modelOnly.limitations.includes('report_scan:not_requested'));
+    await shot('6-model-only.png');
+    pass('zero reports runs model-only analysis with usage unknown');
+    await vscode.commands.executeCommand('semanticModelCleaner.selectAllReports');
+    await until(async () => /Reports\s*2 of 2 selected/.test(await sidebarText()), 'select all');
+
+    // 7. Switch model: reports reset to that model's connected reports.
+    await row('ProductQA').click();
+    await until(async () => /Semantic model\s*ProductQA/.test(await sidebarText()) && /Reports\s*2 of 2 selected/.test(await sidebarText()), 'ProductQA reports');
+    for (const expected of ['Executive', 'Operations']) await row(expected).waitFor();
+    assert.equal(await row('Sales Overview').count(), 0);
+    await until(async () => (await banner()).includes('Results are out of date'), 'stale after model switch');
+    await row('Analyze').click();
+    await until(async () => (await banner()).includes('Analyzed: ProductQA · 2 of 2 reports'), 'ProductQA analysis', 60000);
+    assert.deepEqual(await frame.evaluate(() => chosenModels.map(m => m.name)), ['ProductQA']);
+    await shot('7-model-switch.png');
+    pass('model switch resets reports, marks stale, analyzes new model');
+
+    // 8. Change during a running analysis never shows mismatched results.
+    await checkbox('Operations').click();
+    await until(async () => /Reports\s*1 of 2 selected/.test(await sidebarText()), 'deselect Operations');
+    await row('Analyze').click();
+    await checkbox('Operations').click();
+    await until(async () => !(await sidebarText()).includes('analyzing'), 'analysis settles', 60000);
+    await sleep(500);
+    const raced = await banner();
+    assert.ok(raced.includes('Results are out of date') || raced.includes('Scope changed during analysis') ||
+      raced.includes('Analyzed: ProductQA · 2 of 2 reports'), raced);
+    assert.ok(!raced.includes('Analyzed: ProductQA · 1 of 2'), raced);
+    pass('scope change during analysis discards or marks the run stale');
+
+    // 9. Restart keeps the model and report choices of the same folder.
+    await checkbox('Executive').click();
+    await until(async () => /Reports\s*1 of 2 selected/.test(await sidebarText()), 'deselect Executive');
     await vscode.commands.executeCommand('semanticModelCleaner.restart');
-    await assert.rejects(fetch(oldUrl));
+    assert.ok(await portClosed(origin + '/'), 'restart closes old port');
+    frame = await findFrame(origin);
+    await until(async () => /Semantic model\s*ProductQA/.test(await sidebarText()) && /Reports\s*1 of 2 selected/.test(await sidebarText()), 'restored after restart');
+    assert.equal(await checkbox('Executive').getAttribute('aria-checked'), 'false');
+    await until(async () => (await frame.locator('#smcHostScope').innerText()).includes('Ready: ProductQA · 1 of 2 reports'), 'banner after restart');
+    pass('restart closes old port and keeps same-folder choices');
+
+    // 10. Another folder wipes state; its sole model is auto-selected.
+    const restartedOrigin = new URL(frame.url()).origin;
+    await vscode.commands.executeCommand('semanticModelCleaner.open', vscode.Uri.file(second));
+    assert.ok(await portClosed(restartedOrigin + '/'), 'folder switch closes old port');
+    frame = await findFrame(restartedOrigin);
+    await until(async () => /Semantic model\s*TestModel/.test(await sidebarText()) && /Reports\s*1 of 1 selected/.test(await sidebarText()), 'second folder auto model');
+    assert.equal(await row('ProductQA').count(), 0);
+    await until(async () => (await frame.locator('#smcHostScope').innerText()).includes('Ready: TestModel · 1 of 1 report'), 'second folder banner');
+    await row('Analyze').click();
+    await until(async () => (await frame.locator('#smcHostScope').innerText()).includes('Analyzed: TestModel · 1 of 1 report'), 'second folder analysis', 60000);
+    await shot('8-second-folder.png');
+    pass('workspace switch resets scope; sole model auto-selected and analyzed');
+
+    // 11. Stop returns the pane to its welcome state and closes the port.
+    const lastOrigin = new URL(frame.url()).origin;
     await vscode.commands.executeCommand('semanticModelCleaner.stop');
-    await vscode.commands.executeCommand('semanticModelCleaner.open', vscode.Uri.file(project));
-    // Find the new document, then verify closing the panel actually shuts its
-    // port, rather than only trusting a successful close-editor command.
-    let reopened;
-    for (let i = 0; i < 50 && !reopened; i++) {
-      reopened = page.frames().find(f => /^http:\/\/127\.0\.0\.1:\d+\/$/.test(f.url()));
-      if (!reopened) await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    assert.ok(reopened, 'Reopened Cleaner document must exist');
-    const reopenedUrl = reopened.url();
-    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
-    let closed = false;
-    for (let i = 0; i < 50 && !closed; i++) {
-      try { await fetch(reopenedUrl); await new Promise(resolve => setTimeout(resolve, 100)); }
-      catch { closed = true; }
-    }
-    assert.ok(closed, 'Panel disposal must close its owned server port');
-    assert.deepEqual(await snapshot(project), before, 'Demo project must remain unchanged');
-    const multiProject = process.env.SMC_TEST_MULTI_PROJECT;
-    const multiBefore = await snapshot(multiProject);
-    await vscode.commands.executeCommand('semanticModelCleaner.open', vscode.Uri.file(multiProject));
-    let multiFrame;
-    for (let i = 0; i < 100 && !multiFrame; i++) {
-      multiFrame = page.frames().find(f => /^http:\/\/127\.0\.0\.1:\d+\/$/.test(f.url()));
-      if (!multiFrame) await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    assert.ok(multiFrame, 'Repository Cleaner document must load');
-    await multiFrame.waitForFunction(() => initialConfig.availableModels.length === 2);
-    await multiFrame.evaluate(() => window.smcOpenScope());
-    for (const [modelName, relative] of [['Primary', 'Models/Primary.SemanticModel'], ['Secondary', 'Department/Secondary.SemanticModel']]) {
-      await multiFrame.locator('#projectModelSelect').selectOption(path.join(multiProject, relative));
-      await multiFrame.waitForFunction(name => chosenReports.length === 1 && chosenReports[0].name === name, modelName);
-      assert.equal(await multiFrame.locator('#btnAnalyze').isEnabled(), true);
-    }
-    await multiFrame.locator('#btnRefreshProject').click();
-    await multiFrame.waitForFunction(() => document.querySelector('#projectModelSelect').options.length === 3 && chosenModels.length === 0);
-    await page.screenshot({ path: path.join(process.env.SMC_TEST_ARTIFACTS, 'repository-discovery-vscode.png') });
-    assert.deepEqual(await snapshot(multiProject), multiBefore, 'Repository discovery must not change project files');
-    await fs.writeFile(path.join(process.env.SMC_TEST_ARTIFACTS, 'result.json'), JSON.stringify({
-      host: process.platform, vscode: vscode.version, trusted: vscode.workspace.isTrusted,
-      discoveryStatus: discovery.status, projectUnchanged: true,
-      checks: ['single-model startup populated', 'mixed-layout repository models discovered', 'model selection filters connected Reports', 'repository refresh', 'real webview rendered', 'same-origin authenticated discovery', 'in-page confirm/cancel/Escape',
-        'Analyze button renders demo results', 'restart closes old port', 'stop/reopen/close closes port'],
-      boundary: 'Disposable development extension host; trust gate unit-tested, Marketplace/installed VSIX acceptance not claimed.'
+    assert.ok(await portClosed(lastOrigin + '/'), 'stop closes port');
+    await sidebar.getByRole('button', { name: 'Open Cleaner' }).waitFor();
+    pass('stop closes port and returns pane to welcome');
+
+    assert.deepEqual(await snapshot(project), before, 'Project must remain unchanged');
+    assert.deepEqual(await snapshot(second), beforeSecond, 'Second project must remain unchanged');
+    pass('projects unchanged');
+    await fs.writeFile(path.join(artifacts, 'result.json'), JSON.stringify({
+      host: process.platform, vscode: vscode.version, appName: vscode.env.appName,
+      extensionVersion: extension.packageJSON.version, extensionPath: extension.extensionPath,
+      installedFromVsix: !!process.env.SMC_TEST_EXPECT_EXTENSIONS, trusted: vscode.workspace.isTrusted,
+      projectUnchanged: true, checks,
+      boundary: 'Disposable desktop host with isolated profile and extensions directory; Workspace Trust disabled for unattended runs.'
     }, null, 2));
     console.log('SMC real extension-host/browser integration passed.');
+  } catch (error) {
+    try {
+      const shell = browser.contexts().flatMap(context => context.pages()).find(page => /workbench/.test(page.url()));
+      if (shell) await shell.screenshot({ path: path.join(artifacts, 'failure.png') });
+      const frames = [];
+      for (const context of browser.contexts()) for (const page of context.pages()) {
+        frames.push('PAGE ' + page.url());
+        for (const f of page.frames()) frames.push('  FRAME ' + f.url() + ' :: ' +
+          (await f.locator('body').innerText({ timeout: 2000 }).catch(() => '')).slice(0, 400).replace(/\s+/g, ' '));
+      }
+      for (const context of browser.contexts()) for (const page of context.pages()) for (const f of page.frames())
+        if (/fake\.html/.test(f.url())) {
+          const src = await f.evaluate(() => document.querySelector('iframe')?.src).catch(e => e.message);
+          frames.push('IFRAME SRC ' + src);
+          const probe = await fetch(src, { headers: { 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site' } })
+            .then(async r => `${r.status} ${r.headers.get('content-security-policy')} ${(await r.text()).slice(0, 200).replace(/\s+/g, ' ')}`)
+            .catch(e => 'fetch failed ' + e.message);
+          frames.push('NODE PROBE ' + probe);
+        }
+      frames.push(...(exports.consoleLines || []).filter(line => !/AgentHost|ChatModel|channel/.test(line)).slice(-60));
+      await fs.writeFile(path.join(artifacts, 'failure-frames.txt'), frames.join('\n'));
+      if (shell) await fs.writeFile(path.join(artifacts, 'failure-sidebar.txt'),
+        JSON.stringify(await shell.locator('[id="workbench.parts.sidebar"]').innerText()));
+    } catch { /* best effort */ }
+    throw error;
   } finally {
     await vscode.commands.executeCommand('semanticModelCleaner.stop');
     await browser.close();

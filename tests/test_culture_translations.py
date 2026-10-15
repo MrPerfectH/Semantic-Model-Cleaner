@@ -192,8 +192,8 @@ def test_json_export_lists_translation_cultures(results):
     assert goal["translations"] == ["pl-PL"]
 
 
-@pytest.mark.parametrize("ui", ["classic", "v2"])
-def test_both_layouts_explain_translation_membership_next_to_perspectives(ui):
+@pytest.mark.parametrize("ui", ["v2"])
+def test_v2_explain_translation_membership_next_to_perspectives(ui):
     html = webapp.app.test_client().get("/?ui=" + ui).get_data(as_text=True)
     assert "{ label: 'Translation membership'" in html
     assert html.index("label: 'Perspective membership'") < html.index("label: 'Translation membership'")

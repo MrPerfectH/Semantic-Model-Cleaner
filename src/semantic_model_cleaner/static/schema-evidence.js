@@ -1,4 +1,4 @@
-/* Offline PBIR schema evidence, shared by both layouts. */
+/* Offline PBIR schema evidence, for the workspace. */
 (function () {
   'use strict';
   var host = document.getElementById('reportsTableSection');

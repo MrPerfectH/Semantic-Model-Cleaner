@@ -5,7 +5,7 @@ import subprocess
 import pytest
 
 
-@pytest.mark.parametrize('layout', ['index.html', 'index_v2.html'])
+@pytest.mark.parametrize('layout', ['index_v2.html'])
 def test_warnings_render_clear_and_preserve_literal_metadata(layout):
     node = shutil.which('node')
     if not node:

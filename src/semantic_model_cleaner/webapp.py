@@ -10,6 +10,7 @@ Usage:
     semantic-model-cleaner-web --models-path /path/to/models --reports-path /path/to/reports
 """
 
+from semantic_model_cleaner.dependency_view import DependencyView
 import argparse
 import gzip
 import hashlib
@@ -359,6 +360,29 @@ def _report_binding_scope(model_path, report_paths) -> dict:
 
 def _record_report_scope(results, scope):
     analyzer.record_report_scope(results, scope)
+
+
+def _exact_report_scope(model_path, report_paths) -> dict:
+    """Host-chosen subset: only connected Reports, possibly none, analyzed exactly.
+
+    Connected Reports left out stay recorded as not selected, and unverifiable
+    bindings stay recorded as exclusions. Reports bound to other models are omitted.
+    """
+    discovered = analyzer.discover_reports([Path(r) for r in _effective_report_roots()])
+    scope = _report_binding_scope(model_path, [*discovered, *[Path(p) for p in report_paths]])
+    chosen = {str(Path(p).resolve()) for p in report_paths}
+    if chosen - {row["path"] for row in scope["selected"]}:
+        raise ValueError("Every selected Report must be connected to the selected Semantic Model. "
+                         "Refresh the Cleaner sidebar and choose again.")
+    scope = analyzer.narrow_report_scope(scope, [Path(p) for p in chosen])
+    scope["excluded"] = [row for row in scope["excluded"] if row["status"] != "not_connected"]
+    return scope
+
+
+def _requested_report_scope(model_path, report_paths, exact):
+    scope = (_exact_report_scope if exact else _report_binding_scope)(model_path, report_paths)
+    unselected = [Path(row["path"]) for row in scope["excluded"] if row["status"] == "not_selected"]
+    return scope, unselected
 
 
 def configure_runtime(
@@ -794,6 +818,8 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
     table_source_details = _extract_tmdl_table_source_details(model_path)
     graphs = results.get("dependency_graphs") or analyzer.scoped_dependency_graphs(list(items_by_key.values()))
     dax_measure_deps, dax_column_deps, dax_table_deps = (graphs[name] for name in ("measures", "columns", "tables"))
+    dependency_view = DependencyView(list(items_by_key.values()), graphs, analyzer.item_identity,
+                                     results.get("analysis_limitations", []))
 
     def identity_payload(identity):
         target = items_by_key[identity]
@@ -922,6 +948,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             "otherModelUses": other_model_uses,
             "otherModelUseCount": len(other_model_uses),
             "indirectVia": indirect_via,
+            "downstreamDependencies": dependency_view.for_item(key),
             "dependencyItems": [identity_payload(dep) for dep in sorted(dax_measure_deps.get(key, set()) | dax_column_deps.get(key, set()))],
             "dependentItems": [identity_payload(dep) for dep in sorted(reverse_measure_deps.get(key, set()) | reverse_column_deps.get(key, set()))],
             "dependsOnMeasures": sorted(analyzer.format_item_ref(dep[-2:]) for dep in dax_measure_deps.get(key, set())),
@@ -1154,6 +1181,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
         table_usage_status = _table_usage_status(display_table)
         tables.append({
             "name": table["name"],
+            "downstreamDependencies": dependency_view.for_table(table["name"]),
             "isCalculationGroup": bool(table.get("is_calculation_group")),
             "calculationGroupTargets": table.get("calculation_group_targets", []),
             "calculationGroupUnresolved": bool(table.get("calculation_group_unresolved")),
@@ -1303,14 +1331,9 @@ def index():
     report_binding = (_report_binding_scope(selected_models[0], reports) if selected_models
                       else {"selected": [], "excluded": []})
     selected_reports = [Path(row["path"]) for row in report_binding["selected"]]
-    # Layout preview toggle: ?ui=v2 opts into the new layout, ?ui=classic opts
-    # back out; the choice sticks via cookie until changed. Default: v2.
-    requested_ui = request.args.get("ui", "").strip().lower()
-    if requested_ui not in ("v2", "classic"):
-        requested_ui = request.cookies.get("smc_ui", "v2")
-    template = "index_v2.html" if requested_ui == "v2" else "index.html"
+    # The v2 workspace is the only UI; legacy query/cookie selections are ignored.
     response = app.make_response(render_template(
-        template,
+        "index_v2.html",
         local_request_token=app.config['SMC_LOCAL_TOKEN'],
         build_stamp=_build_stamp(),
         default_root=_state.get("workspace") or str(_default_workspace_root()),
@@ -1323,7 +1346,8 @@ def index():
         initial_report_binding=report_binding,
         initial_model_exclusions=model_exclusions,
     ))
-    response.set_cookie("smc_ui", "v2" if template == "index_v2.html" else "classic", max_age=60 * 60 * 24 * 365)
+    if "smc_ui" in request.cookies:
+        response.delete_cookie("smc_ui")
     return response
 
 
@@ -1415,6 +1439,44 @@ def api_scope():
         if error:
             raise ValueError(error)
         return jsonify({"reportBinding": _report_binding_scope(model, reports)})
+    except (ValueError, TypeError, OSError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@app.route("/api/vscode/scope", methods=["POST"])
+def api_vscode_scope():
+    """VS Code sidebar discovery: models, plus Reports connected to one model."""
+    if not app.config.get("SMC_VSCODE_HOST_SCOPE"):
+        return jsonify({"error": "VS Code host scope is not enabled."}), 404
+    data = request.get_json(silent=True) or {}
+    requested = data.get("model_path")
+    try:
+        found, reports = _discover_initial_artifacts()
+        models, exclusions = _valid_model_scope(found)
+        by_path = {str(model): model for model in models}
+        if requested is None:
+            selected = models[0] if len(models) == 1 else None
+        elif isinstance(requested, str) and str(Path(requested).resolve()) in by_path:
+            selected = by_path[str(Path(requested).resolve())]
+        else:
+            return jsonify({"error": "The chosen Semantic Model is no longer available. Refresh and choose again."}), 409
+        payload = {
+            "project": _state.get("workspace") or "",
+            "models": [{"path": str(m), "name": analyzer.model_label(m)} for m in models],
+            "modelExclusions": exclusions,
+            "model": str(selected) if selected else None,
+            "reports": [], "unverifiedReports": [], "otherReportCount": 0,
+        }
+        if selected:
+            scope = _report_binding_scope(selected, reports)
+            payload["reports"] = [{"path": row["path"], "name": row["name"], "status": row["status"]}
+                                  for row in scope["selected"]]
+            unrelated = [row for row in scope["excluded"] if row["status"] == "not_connected"]
+            payload["unverifiedReports"] = [
+                {"path": row["path"], "name": row["name"], "status": row["status"], "message": row["message"]}
+                for row in scope["excluded"] if row["status"] != "not_connected"]
+            payload["otherReportCount"] = len(unrelated)
+        return jsonify(payload)
     except (ValueError, TypeError, OSError) as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -1538,8 +1600,10 @@ def api_analyze():
         data = request.get_json(silent=True) or {}
         model_paths = data.get("model_paths", _state["model_paths"])
         report_paths = data.get("report_paths", _state["report_paths"])
+        exact = data.get("report_selection") == "exact"
 
-        if not isinstance(model_paths, list) or not isinstance(report_paths, list) or not model_paths or not report_paths:
+        if (not isinstance(model_paths, list) or not isinstance(report_paths, list) or not model_paths
+                or (not report_paths and not exact)):
             return jsonify({"error": "No model or reports selected. Run discover first."}), 400
         if len(model_paths) != 1:
             return jsonify({
@@ -1555,9 +1619,9 @@ def api_analyze():
         model_error = analyzer._unsupported_semantic_model_error(Path(model_paths[0]))
         if model_error:
             return jsonify({"error": model_error}), 400
-        scope = _report_binding_scope(model_paths[0], report_paths)
+        scope, unselected = _requested_report_scope(model_paths[0], report_paths, exact)
         report_paths = [row["path"] for row in scope["selected"]]
-        if not report_paths:
+        if not report_paths and not exact:
             return jsonify({"error": "No connected reports selected. Check report bindings or choose another model.",
                             "reportBinding": scope}), 400
 
@@ -1565,12 +1629,13 @@ def api_analyze():
             workspace=Path(_state["workspace"]) if _state["workspace"] else Path("."),
             model_paths=[Path(p) for p in model_paths],
             report_paths=[Path(p) for p in report_paths],
+            allow_model_only=exact, unselected_reports=unselected,
         )
 
         _record_report_scope(results, scope)
         _state.update(model_paths=model_paths, report_paths=report_paths, last_results=results)
         return jsonify(_serialize_results(results))
-    except analyzer.UnsupportedSemanticModelError as e:
+    except (analyzer.UnsupportedSemanticModelError, ValueError) as e:
         return jsonify({"error": str(e)}), 400
     except SystemExit:
         return jsonify({"error": "Analysis failed — no models or reports found at the given paths."}), 400
@@ -1583,7 +1648,9 @@ def api_start_analysis_job():
     data = request.get_json(silent=True) or {}
     models = data.get("model_paths", _state["model_paths"])
     reports = data.get("report_paths", _state["report_paths"])
-    if not isinstance(models, list) or len(models) != 1 or not isinstance(reports, list) or not reports:
+    exact = data.get("report_selection") == "exact"
+    if (not isinstance(models, list) or len(models) != 1 or not isinstance(reports, list)
+            or (not reports and not exact)):
         return jsonify({"error": "Select exactly one semantic model and one or more reports."}), 400
     try:
         if any(not isinstance(p, str) or not Path(p).is_dir() for p in models + reports):
@@ -1592,29 +1659,30 @@ def api_start_analysis_job():
         if model_error:
             return jsonify({"error": model_error}), 400
         requested_reports = reports
-        scope = _report_binding_scope(models[0], requested_reports)
+        scope, unselected = _requested_report_scope(models[0], requested_reports, exact)
         reports = [row["path"] for row in scope["selected"]]
-        if not reports:
+        if not reports and not exact:
             return jsonify({"error": "No connected reports selected. Check report bindings or choose another model.",
                             "reportBinding": scope}), 400
         workspace = Path(_state["workspace"] or ".")
         raw = {}
         def run(progress):
             before = _analysis_source_fingerprint(models + requested_reports, progress)
-            if _report_binding_scope(models[0], requested_reports) != scope:
+            if _requested_report_scope(models[0], requested_reports, exact)[0] != scope:
                 raise ValueError('Report bindings changed before analysis. Analyze the current selection again.')
             progress("Reading selected metadata")
             result = analyzer.analyze(workspace=workspace, model_paths=[Path(p) for p in models],
-                                      report_paths=[Path(p) for p in reports], progress=progress)
+                                      report_paths=[Path(p) for p in reports], progress=progress,
+                                      allow_model_only=exact, unselected_reports=unselected)
             from .metadata_validation import validate_report_paths
-            schema = validate_report_paths(reports, workspace=workspace, progress=progress)
+            schema = validate_report_paths(reports, workspace=workspace, progress=progress, include_report_identity=True)
             _record_report_scope(result, scope)
             progress("Preparing browser results")
             payload = _compact_browser_results(_serialize_results(result, model_paths=models))
             payload['schemaValidation'] = schema
             if _analysis_source_fingerprint(models + requested_reports, progress) != before:
                 raise ValueError('Source metadata changed during analysis. Analyze the current selection again.')
-            if _report_binding_scope(models[0], requested_reports) != scope:
+            if _requested_report_scope(models[0], requested_reports, exact)[0] != scope:
                 raise ValueError('Report bindings changed during analysis. Analyze the current selection again.')
             raw['results'] = result
             return payload

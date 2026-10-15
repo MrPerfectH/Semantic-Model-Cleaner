@@ -2,8 +2,11 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { stat } from 'node:fs/promises';
 import { assertTrusted, launchConfig } from './config';
-import { Cancelled, ServerManager } from './server';
-import { getAncestors, showApp, showMessage } from './panel';
+import { Cancelled, RunningServer, ServerManager } from './server';
+import { getAncestors, HOST_SCOPE, showApp, showMessage } from './panel';
+import { CleanerActions } from './actions';
+import { ScopeState } from './scope';
+import { AnalysisState, ScopeView } from './scopeView';
 
 let stopExtension: (() => Promise<void>) | undefined;
 
@@ -17,6 +20,31 @@ export function activate(context: vscode.ExtensionContext): void {
   let opening: AbortController | undefined;
   let epoch = 0;
   let selectionEpoch = 0;
+  let running: RunningServer | undefined;
+  let pageReady = false;
+  let pendingAnalyze = false;
+  const scope = new ScopeState();
+  const scopeView = new ScopeView(scope);
+  const scopeTree = vscode.window.createTreeView('semanticModelCleaner.scope',
+    { treeDataProvider: scopeView, manageCheckboxStateManually: true, showCollapseAll: false });
+  const fetchScope = (model?: string) => {
+    const server = running;
+    if (!server) return Promise.reject(new Error('Open Cleaner to load models and reports.'));
+    return server.request('/api/vscode/scope', model ? { model_path: model } : {});
+  };
+  // The page analyzes exactly this selection; every change marks older results stale.
+  const sendScope = (analyze = false) => {
+    if (!panel || !pageReady) { if (analyze) pendingAnalyze = true; return; }
+    const selection = scope.selection() ?? { key: '', model: null, reports: [], total: 0 };
+    void panel.webview.postMessage({ type: HOST_SCOPE, scope: selection, analyze });
+  };
+  scope.onChange(() => {
+    scopeTree.description = scopeView.summary();
+    scopeTree.message = scope.phase === 'error' ? scope.error : undefined;
+    void vscode.commands.executeCommand('setContext', 'semanticModelCleaner.scopePhase', scope.phase);
+    scopeView.refresh();
+    sendScope();
+  });
   let logText = '';
   const log = (line: string) => {
     logText = (logText + line + '\n').slice(-65536);
@@ -32,10 +60,15 @@ export function activate(context: vscode.ExtensionContext): void {
     if (vscode.env.uiKind !== vscode.UIKind.Desktop || vscode.env.remoteName)
       throw new Error('This preview supports local desktop VS Code only. Open a local folder in a desktop window. Remote SSH, WSL, containers, Codespaces and browser hosts are not yet supported.');
   };
+  const detach = () => {
+    running = undefined; pageReady = false; pendingAnalyze = false; scopeView.analysis = undefined;
+    scope.detach();
+  };
   const stop = async () => {
     epoch++; selectionEpoch++;
     opening?.abort(); opening = undefined;
     const previous = panel; panel = undefined;
+    detach();
     previous?.dispose();
     state('stopped');
     await server.stop();
@@ -68,11 +101,28 @@ export function activate(context: vscode.ExtensionContext): void {
     const previous = panel; panel = undefined; previous?.dispose();
     const shutdown = server.stop();
     folder = uri;
+    running = undefined; pageReady = false; pendingAnalyze = false; scopeView.analysis = undefined;
+    scope.begin(uri.fsPath);
     const abort = opening = new AbortController();
     const ownPanel = panel = vscode.window.createWebviewPanel('semanticModelCleaner',
       `Cleaner — ${path.basename(uri.fsPath) || uri.fsPath}`, vscode.ViewColumn.One,
       { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: true });
     ownPanel.onDidDispose(() => { if (panel === ownPanel) void stop(); });
+    ownPanel.webview.onDidReceiveMessage(message => {
+      if (panel !== ownPanel || generation !== epoch || !running || !message || typeof message.type !== 'string') return;
+      if (message.type === 'smc-page-ready') {
+        pageReady = true;
+        const analyze = pendingAnalyze; pendingAnalyze = false;
+        sendScope(analyze);
+      } else if (message.type === 'smc-analysis' && ['running', 'done', 'failed'].includes(message.state) &&
+          typeof message.key === 'string' && message.key.length <= 64) {
+        scopeView.analysis = { state: message.state, key: message.key,
+          error: typeof message.error === 'string' ? message.error.slice(0, 500) : undefined } as AnalysisState;
+        scopeView.refresh();
+      } else if (message.type === 'smc-focus-scope') {
+        void vscode.commands.executeCommand('semanticModelCleaner.scope.focus');
+      }
+    });
     state('starting');
     try {
       const ancestors = await getAncestors(ownPanel, abort.signal);
@@ -81,18 +131,22 @@ export function activate(context: vscode.ExtensionContext): void {
       requireLocalTrusted();
       const config = launchConfig(vscode.workspace.isTrusted,
         () => vscode.workspace.getConfiguration('semanticModelCleaner', uri), uri.fsPath);
-      const running = await server.start(config, ancestors, log, () => {
+      const started = await server.start(config, ancestors, log, () => {
         if (generation !== epoch) return;
         state('stopped');
+        detach();
         showMessage(ownPanel, 'The Cleaner server exited. Use Semantic Model Cleaner: Show Logs, then Restart Server.');
       });
       if (generation !== epoch) throw new Cancelled();
-      showApp(ownPanel, running.port, uri.fsPath);
+      running = started;
+      showApp(ownPanel, started.port, uri.fsPath);
       state('running');
+      void scope.load(fetchScope);
     } catch (error) {
       if (generation !== epoch || error instanceof Cancelled) return;
       await server.stop();
       state('error');
+      scope.fail(error instanceof Error ? error.message : 'Could not start Cleaner.');
       const message = error instanceof Error ? error.message : 'Could not start Cleaner.';
       log(message); showMessage(ownPanel, message);
       throw error;
@@ -116,7 +170,50 @@ export function activate(context: vscode.ExtensionContext): void {
         if (choice) output.show(true);
       }
     });
-  context.subscriptions.push(output, status,
+  const requireScope = () => {
+    requireLocalTrusted();
+    if (!running || scope.phase !== 'ready') throw new Error('Open Cleaner and wait for models and reports to load.');
+  };
+  async function analyze(): Promise<void> {
+    requireScope();
+    const selection = scope.selection();
+    if (!selection?.model) {
+      await chooseModel();
+      if (!scope.selection()?.model) return;
+    }
+    panel?.reveal(undefined, false);
+    sendScope(true);
+  }
+  async function chooseModel(): Promise<void> {
+    requireScope();
+    const models = scope.data?.models ?? [];
+    if (!models.length) throw new Error('No semantic models were found in this folder.');
+    const choice = await vscode.window.showQuickPick(models.map(m => ({ label: m.name, description: m.path,
+      picked: m.path === scope.data?.model, path: m.path })), { placeHolder: 'Choose the semantic model to analyze' });
+    if (choice) await selectModel(choice.path);
+  }
+  async function selectModel(modelPath: unknown): Promise<void> {
+    requireScope();
+    if (typeof modelPath !== 'string') return;
+    await scope.selectModel(fetchScope, modelPath);
+  }
+  context.subscriptions.push(output, status, scopeTree,
+    scopeTree.onDidChangeCheckboxState(event => {
+      for (const [node, value] of event.items)
+        if (node.kind === 'report') scope.setReport(node.path, value === vscode.TreeItemCheckboxState.Checked);
+    }),
+    vscode.window.registerTreeDataProvider('semanticModelCleaner.actions', new CleanerActions()),
+    command('analyze', analyze),
+    command('chooseModel', chooseModel),
+    command('selectModel', selectModel),
+    command('selectAllReports', () => { requireScope(); scope.setAll(true); }),
+    command('clearReports', () => { requireScope(); scope.setAll(false); }),
+    command('refreshScope', async () => {
+      requireLocalTrusted();
+      if (running) await scope.load(fetchScope);
+      else if (folder) await begin(folder);
+      else await open();
+    }),
     command('open', open),
     command('restart', async () => {
       requireLocalTrusted(); selectionEpoch++;
@@ -126,6 +223,7 @@ export function activate(context: vscode.ExtensionContext): void {
     command('showLogs', () => output.show(true)),
     { dispose: () => { void stop(); } });
   state(vscode.workspace.isTrusted ? 'stopped' : 'trust required');
+  void vscode.commands.executeCommand('setContext', 'semanticModelCleaner.scopePhase', scope.phase);
 }
 
 export async function deactivate(): Promise<void> { await stopExtension?.(); stopExtension = undefined; }

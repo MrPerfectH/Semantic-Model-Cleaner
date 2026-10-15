@@ -204,7 +204,7 @@ python3 -m semantic_model_cleaner.web .
 ```
 
 The web app is local-only: both launchers accept `127.0.0.1` or `localhost`, and
-remote binding is disabled. Both layouts handle the per-launch request token
+remote binding is disabled. The workspace handles the per-launch request token
 automatically. Local scripted HTTP clients must first read `/api/session`, then
 send its token in the `X-SMC-Token` header; use JSON for changes. CLI file-based
 commands need no HTTP token. See [local HTTP access](docs/local-http-security.md)
@@ -285,7 +285,7 @@ contract](docs/cli/check.md), and [support matrix](docs/support.md).
 - `src/semantic_model_cleaner/analyzer.py`: CLI analyzer and export logic
 - `src/semantic_model_cleaner/webapp.py`: Flask app and API
 - `src/semantic_model_cleaner/tmdl_writer.py`: TMDL edit engine
-- `src/semantic_model_cleaner/templates/index.html`: single-page web UI template
+- `src/semantic_model_cleaner/templates/index_v2.html`: single-page workspace UI template
 - `src/semantic_model_cleaner/demo_workspace/`: bundled synthetic demo workspace
 - `examples/product-qa-workspace/`: richer synthetic QA workspace
 - `scripts/analyze_model_usage.py`: compatibility wrapper for the packaged CLI

@@ -133,6 +133,12 @@ def test_real_host_exits_when_parent_pipe_closes(tmp_path):
         with http.open(Request(f'http://127.0.0.1:{port}/api/vscode/ready',
                               headers={'X-SMC-Token': TOKEN}), timeout=3) as response:
             assert json.load(response)['instance'] == hashlib.sha256(TOKEN.encode()).hexdigest()
+        # The page spawns git for its build stamp while the parent watcher reads.
+        # On Windows that once deadlocked on the shared stdin pipe.
+        with http.open(Request(f'http://127.0.0.1:{port}/', headers={
+                'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'cross-site'}), timeout=20) as response:
+            assert response.status == 200
         process.stdin.close()
         assert process.wait(timeout=5) == 0
         assert not list(tmp_path.iterdir())
