@@ -27,7 +27,7 @@ module.exports=async function verifyCompactResults(page) {
   await page.locator('#resultInventory>summary').click();assert(await page.locator('#sumMeasures').isVisible());await page.locator('#resultInventory>summary').click();
   await page.locator('#resultScope>summary').click();assert((await page.locator('#resultScopeBody').innerText()).includes('Other reports and Power BI runtime behavior are not verified'));await page.locator('#resultScope>summary').click();
   await page.locator('#resultGuideSection>summary').click();assert(await page.locator('#resultGuideBody').isVisible());assert((await page.locator('#resultGuideBody').innerText()).includes('Safe is limited to the selected scope'));await page.locator('#resultGuideSection>summary').click();
-  await page.locator('#overviewLimitations').click();assert.equal(await page.evaluate(()=>currentView),'limitations');
+  if(await page.locator('#overviewLimitations').isVisible()){await page.locator('#overviewLimitations').click();assert(await page.locator('#analysisLimitationsBanner').isVisible());}
   await page.evaluate(()=>switchView('details'));
   return layouts;
 };

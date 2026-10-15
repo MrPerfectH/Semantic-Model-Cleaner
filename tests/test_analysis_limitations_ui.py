@@ -35,7 +35,7 @@ def test_v2_ship_the_separate_surface(layout):
     assert 'Scan coverage and unsupported metadata.' in html
     assert 'A limitation with no affected items is informational.' in html
     assert "'calculation-group': 'Calculation group'" in html
-    assert 'Analysis limitations vs Report Health' in html
+    assert 'Scan coverage and report findings' in html
     assert 'id="tableDetailExternalConsumers"' in html
     assert webapp.app.test_client().get('/static/analysis-limitations.js').status_code == 200
 

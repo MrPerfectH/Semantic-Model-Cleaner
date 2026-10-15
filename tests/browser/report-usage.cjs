@@ -29,6 +29,22 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   const syncResponse=await page.evaluate(async scope=>{const response=await smcFetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(scope)});return {ok:response.ok,data:await response.json()};},loaded.scope);assert(syncResponse.ok,JSON.stringify(syncResponse));
   const snapshot=syncResponse.data;
   await require('./compact-results.cjs')(page);
+  // Scan details must lead to visible content, including informational zero-impact rows.
+  for(const kind of ['zero','informational','impacted','zero','informational']){
+    const count=kind==='zero'?0:1,affected=kind==='impacted'?1:0;
+    const limits={distinctCount:count,affectedItemCount:affected,sharedCount:0,limitations:count?[{feature:'Synthetic coverage',scope:'item',affectedItemCount:affected,location:'synthetic.tmdl',checked:'Supported metadata',unchecked:'Synthetic unsupported metadata',effect:affected?'Review affected item':'No cleanup recommendations changed'}]:[]};
+    await page.evaluate(data=>{loadResults(data);switchView('details');},{...snapshot,analysisLimitations:limits});
+    assert.equal(await page.locator('#overviewLimitations').isVisible(),!!count,kind);
+    if(count){
+      await page.locator('#overviewLimitations').click();
+      assert(await page.locator('#analysisLimitationsBanner').isVisible(),kind);
+      assert(await page.locator('#analysisLimitationsHint').isVisible(),kind);
+      assert((await page.locator('#analysisLimitationsHint').innerText()).includes(affected?'affected item':'Informational'),kind);
+      assert.equal(await page.locator('#analysisLimitationsList .limitation-card').count(),1);
+    }else{assert(await page.locator('#tableSection').isVisible());assert(!(await page.locator('#tabLimitations').isVisible()));}
+  }
+  await page.evaluate(data=>{loadResults(data);switchView('details');},snapshot);
+
   await page.evaluate(data=>{smcRenderResultOverview({...data,analysisLimitations:{affectedItemCount:1,sharedCount:1},reportHealth:{totalIssueCount:1}});allWarnings=[{code:'UNRESOLVED_NAMEOF_TARGET',message:'Synthetic unresolved field'}];renderWarnings();},snapshot);
   assert((await page.locator('#overviewLimitations').innerText()).includes('Coverage limitations'));
   assert(await page.locator('#warningBanner').isVisible());

@@ -40,6 +40,7 @@
     var panel = $('resultOverview'); initialize(panel); panel.classList.remove('hidden');
     var limits = data.analysisLimitations || {}, reports = data.reportBinding ? data.reportBinding.selected : chosenReports;
     var impacted = !!(limits.affectedItemCount || limits.sharedCount);
+    $('overviewLimitations').hidden = !(limits.limitations || []).length;
     $('overviewLimitations').textContent = impacted ? 'Coverage limitations · ' + (limits.affectedItemCount || 0) + ' affected items' + (limits.sharedCount ? ' · ' + limits.sharedCount + ' shared' : '') : 'Scan details';
     $('overviewLimitations').classList.toggle('has-impact', impacted);
     var findings = (data.reportHealth || {}).totalIssueCount || (data.reportIssues || []).length;

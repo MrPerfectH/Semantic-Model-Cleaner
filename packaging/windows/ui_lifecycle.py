@@ -19,7 +19,14 @@ with sync_playwright() as p:
   page.wait_for_function("chosenModels.length === 1 && chosenReports.length > 0 && !document.querySelector('#btnAnalyze').disabled")
   paths=page.evaluate('chosenModels.concat(chosenReports).map(x=>x.path)'); before=hashes(paths)
   _review_scope_and_analyze(page);page.locator('#resultOverview').wait_for(state='visible')
-  assert 'Safe applies to supported scanned metadata' in page.locator('#resultOverview').inner_text()
+  assert 'Safe is limited to this analyzed scope.' in page.locator('#resultOverview').inner_text()
+  guide=page.locator('#resultGuideSection')
+  if not guide.evaluate('(el)=>el.open'):
+   guide.locator('summary').click()
+  assert page.locator('#resultGuideBody').is_visible()
+  assert 'Safe is limited to the selected scope' in page.locator('#resultGuideBody').inner_text()
+  assert 'supported scanned metadata' in page.locator('#resultGuideBody').inner_text()
+  guide.locator('summary').click()
   shot(page,'r08-'+layout+'-results')
   # Real item link, queue, cancel a preview, then apply the same queue.
   page.locator('#tableBody .item-link').filter(has_text='Total Orders').click()
