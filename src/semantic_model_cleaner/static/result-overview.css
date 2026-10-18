@@ -33,6 +33,7 @@
 .autodate-list code { display:block; font-size:11px; color:var(--text-light); overflow-wrap:anywhere; }
 .autodate-choice { display:flex; gap:10px; align-items:flex-start; cursor:pointer; }
 .autodate-choice > span { display:flex; flex-direction:column; gap:2px; }
+.autodate-template-note:empty { display:none; }
 .autodate-blockers { margin:6px 0 0; padding-left:18px; font-size:12.5px; }
 body.object-view .result-overview { display:none; }
 body:has(#resultOverview:not(.hidden)) .beta-banner { display:none; }

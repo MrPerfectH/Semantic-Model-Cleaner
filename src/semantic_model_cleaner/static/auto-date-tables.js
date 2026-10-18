@@ -3,7 +3,7 @@
    workflow, which checks the files again before preview and before apply. */
 (function () {
   'use strict';
-  var latest = null, sequence = 0;
+  var latest = null, sequence = 0, byTable = {};
   var dialog = document.createElement('dialog');
   dialog.className = 'object-review autodate-review'; dialog.setAttribute('aria-labelledby', 'autoDateTitle');
   dialog.innerHTML = '<header><h2 id="autoDateTitle">Auto-date tables</h2><button type="button" class="btn btn-secondary btn-sm" id="autoDateClose" aria-label="Close auto-date tables">Close</button></header>'
@@ -21,11 +21,14 @@
     return entry.label + '.';
   }
   function removableRow(entry) {
-    var removes = entry.kind === 'local'
+    var template = entry.kind === 'template';
+    var removes = !template
       ? 'Removes the hidden table, its relationship to ' + entry.date_column + ' and the hierarchy link on that column. ' + entry.date_column + ' stays.'
-      : 'Removes the hidden template table.';
-    return '<li><label class="autodate-choice"><input type="checkbox" data-autodate-table="' + esc(entry.table) + '" checked> '
-      + '<span><strong>' + esc(what(entry)) + '</strong><span class="object-note">' + esc(removes) + '</span><code>' + esc(entry.table) + '</code></span></label></li>';
+      : 'Removes the hidden template table, only together with every other auto-date table. This is a conservative restriction: removing the template while auto-date tables stay has not been validated in Power BI Desktop.';
+    return '<li><label class="autodate-choice"><input type="checkbox" data-autodate-table="' + esc(entry.table) + '"' + (template ? ' data-autodate-template' : '') + ' checked> '
+      + '<span><strong>' + esc(what(entry)) + '</strong><span class="object-note">' + esc(removes) + '</span>'
+      + (template ? '<span class="object-note autodate-template-note" role="status"></span>' : '')
+      + '<code>' + esc(entry.table) + '</code></span></label></li>';
   }
   function blockedRow(entry) {
     return '<li><strong>' + esc(what(entry)) + '</strong> <code>' + esc(entry.table) + '</code><ul class="autodate-blockers">'
@@ -35,12 +38,22 @@
     return Array.prototype.slice.call(dialog.querySelectorAll('[data-autodate-table]:checked')).map(function (box) { return box.dataset.autodateTable; });
   }
   function updatePreview() {
+    // The server refuses the template while another auto-date table stays; say so before preview.
+    var chosen = selected();
+    dialog.querySelectorAll('[data-autodate-template]').forEach(function (box) {
+      var staying = ((byTable[box.dataset.autodateTable] || {}).requires_tables || []).filter(function (name) { return chosen.indexOf(name) < 0; });
+      box.disabled = staying.length > 0;
+      if (box.disabled) box.checked = false;
+      box.closest('li').querySelector('.autodate-template-note').textContent = staying.length
+        ? 'Kept: ' + staying.length + ' other auto-date table(s) stay. Select every auto-date table to remove the template.' : '';
+    });
     var count = selected().length;
     $('autoDatePreview').disabled = !count;
     $('autoDatePreview').textContent = count ? 'Preview removal of ' + count + ' table(s)' : 'Preview removal';
   }
   function openReview() {
     var result = latest; if (!result) return;
+    byTable = {}; result.tables.forEach(function (entry) { byTable[entry.table] = entry; });
     var removable = result.tables.filter(function (entry) { return entry.removable; });
     var blocked = result.tables.filter(function (entry) { return !entry.removable; });
     var reports = (result.scope && result.scope.reports) || [];

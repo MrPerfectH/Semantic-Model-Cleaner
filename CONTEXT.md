@@ -97,7 +97,7 @@ Concrete culture metadata stating that a table, measure, column, or hierarchy ha
 _Avoid_: Translation usage, translation reference, culture dependency
 
 **Auto-Date Table**:
-A hidden `LocalDateTable_<id>` table that Power BI Desktop generates for one date column when Auto date/time is on, linked by a generated relationship and a `variation` on that column, or the `DateTableTemplate_<id>` table it copies them from. Detected from the generated metadata, never from the name alone. The explicit auto-date action removes it with its relationship and variation; the owning date column stays.
+A hidden `LocalDateTable_<id>` table that Power BI Desktop generates for one date column when Auto date/time is on, linked by a generated relationship and a `variation` on that column, or the `DateTableTemplate_<id>` table it copies them from. Detected from the generated metadata, never from the name alone. The explicit auto-date action removes it with its relationship and variation; the owning date column stays. A culture linguistic (Q&A) binding to its date hierarchy blocks removal, and the template goes only together with every other Auto-Date Table.
 _Avoid_: Date table, calendar table, local date table column
 
 **Report Health**:

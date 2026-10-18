@@ -13,9 +13,17 @@ calculated partition, one generated relationship and one matching variation.
 Consumer checks do not rely on the analyzer's parsed usage. Every selected model and
 report file is searched for the table name, its relationship id and its lineage tags,
 for column-variation DAX (``[OrderDate].[Year]``) and for report
-``PropertyVariationSource`` references. Each occurrence must belong to the generated
-structure itself. Anything else, or any file that cannot be read, blocks removal and
+``PropertyVariationSource`` references. JSON files and culture ``linguisticMetadata``
+payloads are also searched after decoding their strings, so ``\\u002d`` or ``\\n``
+escapes cannot hide a use. Each occurrence must belong to the generated structure
+itself. Anything else, or any file that cannot be read or parsed, blocks removal and
 states why.
+
+Culture ``linguisticMetadata`` (Q&A) binds a date hierarchy by owner table, date
+column and variation, without naming the auto-date table. Such a binding blocks the
+table; linguistic metadata is never edited. The ``DateTableTemplate_*`` table is kept
+while any other auto-date table stays: removing it alone has not been validated in
+Power BI Desktop, so this is a conservative restriction.
 
 The general deletion policy is unchanged. These exceptions apply only to this action
 and are checked again server-side when a plan is created and before it is applied.
@@ -56,7 +64,16 @@ _LOCAL_SOURCE_RE = re.compile(
     rf"\s*Date\(\s*Year\(\s*MAX\(\s*(?P<max>{_DAX_REF})\s*\)\s*\)\s*,\s*12\s*,\s*31\s*\)\s*\)$", re.I)
 _TEMPLATE_SOURCE_RE = re.compile(
     r"^Calendar\(\s*Date\(\s*2015\s*,\s*1\s*,\s*1\s*\)\s*,\s*Date\(\s*2015\s*,\s*1\s*,\s*1\s*\)\s*\)$", re.I)
-_VARIATION_DAX_RE = re.compile(r"\[((?:[^\]\r\n]|\]\])+)\]\s*\.\s*\[")
+# Zero-width lookahead so every '[' starts a candidate: an earlier unclosed '['
+# (a DAX string "[" or a compact JSON array) must not consume the real reference.
+_VARIATION_DAX_RE = re.compile(r"(?=\[((?:[^\]\r\n]|\]\])+)\]\s*\.\s*\[)")
+_JSON_SUFFIXES = (".json", ".pbir", ".pbism")
+_JSON_STRING_RE = re.compile(r'"(?:[^"\\]|\\.)*"', re.S)
+_KEY_COLON_RE = re.compile(r"\s*:")
+_LINGUISTIC_TAIL_RE = re.compile(r"^\s*(?:contentType\s*:\s*json\s*)?$", re.I)
+_VARIATION_BINDING_KEYS = ("VariationSource", "VariationSet")
+_TEMPLATE_RESTRICTION = ("Power BI Desktop may still use the template for them. This is a conservative restriction: "
+                         "removing the template while auto-date tables stay has not been validated in Power BI Desktop.")
 KIND_LABELS = {"local": "Auto-date table", "template": "Auto-date template table",
                "unknown": "Looks like an auto-date table"}
 
@@ -71,15 +88,31 @@ class _File:
     artifact: str  # "model" or the report folder name
     path: Path
     text: str
+    document: object = None  # parsed JSON for .json/.pbir/.pbism files
+    json_valid: bool = False
+    decoded: list[tuple[int, str]] = field(default_factory=list, repr=False)  # (offset, decoded JSON string)
     _offsets: list[int] = field(default_factory=list, repr=False)
     _declarations: list[TmdlDeclaration] | None = field(default=None, repr=False)
 
-    def line_of(self, offset: int) -> int:
+    def _line_offsets(self) -> list[int]:
         if not self._offsets:
             self._offsets = [0]
             for line in self.text.splitlines(keepends=True):
                 self._offsets.append(self._offsets[-1] + len(line))
-        return bisect_right(self._offsets, offset)
+        return self._offsets
+
+    def line_of(self, offset: int) -> int:
+        return bisect_right(self._line_offsets(), offset)
+
+    def offset_of_line(self, line: int) -> int:
+        offsets = self._line_offsets()
+        return offsets[min(line, len(offsets)) - 1]
+
+    def segments(self):
+        """Raw text, then every decoded JSON string; yields (text, line of a match offset)."""
+        yield self.text, lambda offset: self.line_of(offset)
+        for start, value in self.decoded:
+            yield value, lambda offset, start=start: self.line_of(start)
 
     @property
     def declarations(self) -> list[TmdlDeclaration]:
@@ -153,8 +186,120 @@ def _read_scope(model: Path, reports: list[Path]) -> tuple[list[_File], list[str
             except UnicodeDecodeError as exc:
                 problems.append(f"{key} cannot be read as UTF-8 ({exc.reason}); it cannot be checked.")
                 continue
-            files.append(_File(key=key, artifact=artifact, path=path, text=text))
+            file = _File(key=key, artifact=artifact, path=path, text=text)
+            if path.suffix.lower() in _JSON_SUFFIXES:
+                try:
+                    file.document = json.loads(text)
+                except ValueError as exc:
+                    problems.append(f"{key} is not valid JSON ({exc}); its use of auto-date tables cannot be checked.")
+                else:
+                    file.json_valid = True
+                    file.decoded = _json_strings(text, 0)
+            files.append(file)
     return files, problems
+
+
+def _json_strings(text: str, base: int) -> list[tuple[int, str]]:
+    """Every string literal (keys and values) of already validated JSON, decoded, with its offset."""
+    return [(base + match.start(), json.loads(match.group(0))) for match in _JSON_STRING_RE.finditer(text)]
+
+
+def _unique_pairs(pairs):
+    keys = [key for key, _ in pairs]
+    if len(set(keys)) != len(keys):
+        raise ValueError("an object repeats a key")
+    return dict(pairs)
+
+
+@dataclass
+class _Binding:
+    """One culture linguisticMetadata binding to a column variation (a date hierarchy)."""
+    file: _File
+    line: int
+    culture: str
+    entity: str
+    variation_source: str | None
+    variation_set: str | None
+    columns: tuple[str, ...]  # VariationSource and ConceptualProperty values that may name the date column
+
+
+def _linguistic_bindings(files: list[_File]) -> tuple[list[_Binding], list[str]]:
+    """Parse every culture ``linguisticMetadata`` JSON payload in the model.
+
+    Returns the variation bindings and the payloads that could not be read. Also
+    records the decoded payload strings on the file so the name scans see them.
+    """
+    bindings: list[_Binding] = []
+    problems: list[str] = []
+    for file in files:
+        if file.artifact != "model" or not file.key.endswith(".tmdl"):
+            continue
+        for declaration in file.declarations:
+            if declaration.keyword.casefold() != "linguisticmetadata":
+                continue
+            where = _location(file, declaration.line)
+            parent = declaration.parent
+            if parent is None or parent.keyword not in ("culture", "cultureInfo"):
+                problems.append(f"Linguistic metadata outside a culture ({where}) is not supported; its use of "
+                                "date hierarchies cannot be checked.")
+                continue
+            culture = parent.name
+            start = file.offset_of_line(declaration.line)
+            segment = file.text[start:file.offset_of_line(_span_end(declaration) + 1)]
+            head, equals, body = segment.partition("=")
+            payload_text = body.lstrip()
+            base = start + len(head) + len(equals) + len(body) - len(payload_text)
+            try:
+                if not equals:
+                    raise ValueError("no '=' payload")
+                payload, size = json.JSONDecoder(object_pairs_hook=_unique_pairs).raw_decode(payload_text)
+                if not _LINGUISTIC_TAIL_RE.match(payload_text[size:]):
+                    raise ValueError("unsupported content after the JSON payload")
+            except ValueError as exc:
+                problems.append(f"Linguistic metadata of culture {culture} ({where}) cannot be read as JSON ({exc}); "
+                                "its use of date hierarchies cannot be checked.")
+                continue
+            json_text = payload_text[:size]
+            tokens = list(_JSON_STRING_RE.finditer(json_text))
+            strings = [(base + token.start(), json.loads(token.group(0))) for token in tokens]
+            file.decoded.extend(strings)
+            entity_keys = [offset for token, (offset, value) in zip(tokens, strings)
+                           if value == "ConceptualEntity" and _KEY_COLON_RE.match(json_text, token.end())]
+            with_entity: list[dict] = []
+            variation_nodes: list[dict] = []
+
+            def walk(node):
+                if isinstance(node, dict):
+                    for key, value in node.items():
+                        if key == "ConceptualEntity":
+                            with_entity.append(node)
+                        walk(value)
+                    if any(key in node for key in _VARIATION_BINDING_KEYS):
+                        variation_nodes.append(node)
+                elif isinstance(node, list):
+                    for value in node:
+                        walk(value)
+
+            walk(payload)
+            if len(with_entity) != len(entity_keys):
+                problems.append(f"Linguistic metadata of culture {culture} ({where}) could not be matched to its "
+                                "source lines; its use of date hierarchies cannot be checked.")
+                continue
+            lines = {id(node): file.line_of(offset) for node, offset in zip(with_entity, entity_keys)}
+            for node in variation_nodes:
+                line = lines.get(id(node), declaration.line)
+                entity = node.get("ConceptualEntity")
+                values = {key: node.get(key) for key in ("VariationSource", "VariationSet", "ConceptualProperty")}
+                columns = tuple(v for k, v in values.items() if k != "VariationSet" and isinstance(v, str) and v)
+                if not isinstance(entity, str) or not entity or not columns or \
+                        any(v is not None and not isinstance(v, str) for v in values.values()):
+                    problems.append(f"Linguistic metadata of culture {culture} has a date hierarchy binding that "
+                                    f"names no table and column ({_location(file, line)}); it cannot be checked.")
+                    continue
+                bindings.append(_Binding(file, line, culture, entity, values["VariationSource"],
+                                         values["VariationSet"], columns))
+    return bindings, problems
+
 
 
 def _describe(file: _File, line: int) -> str:
@@ -403,15 +548,16 @@ def _scan_mentions(candidates: list[_Candidate], files: list[_File]) -> None:
         for token in candidate.tokens:
             by_token.setdefault(token, []).append(candidate)
     for file in files:
-        for match in _GUID_RE.finditer(file.text):
-            owners = by_token.get(match.group(0).casefold())
-            if not owners:
-                continue
-            line = file.line_of(match.start())
-            for candidate in owners:
-                if any(key == file.key and first <= line <= last for key, first, last in candidate.allowed):
+        for text, line_of in file.segments():
+            for match in _GUID_RE.finditer(text):
+                owners = by_token.get(match.group(0).casefold())
+                if not owners:
                     continue
-                candidate.block(*_mention_reason(file, line, candidate))
+                line = line_of(match.start())
+                for candidate in owners:
+                    if any(key == file.key and first <= line <= last for key, first, last in candidate.allowed):
+                        continue
+                    candidate.block(*_mention_reason(file, line, candidate))
 
 
 def _mention_reason(file: _File, line: int, candidate: _Candidate) -> tuple[str, str, str]:
@@ -433,15 +579,37 @@ def _scan_variation_dax(candidates: list[_Candidate], files: list[_File]) -> Non
         if candidate.owner:
             by_column.setdefault(candidate.owner[1].casefold(), []).append(candidate)
     for file in files:
-        for match in _VARIATION_DAX_RE.finditer(file.text):
-            for candidate in by_column.get(match.group(1).replace("]]", "]").casefold(), []):
-                if file is candidate.file:
-                    continue
-                location = _location(file, file.line_of(match.start()))
-                table, column = candidate.owner
-                where = f"Report {file.artifact}" if file.artifact != "model" else "DAX in the model"
-                candidate.block("variation_dax", f"{where} may use the auto date hierarchy of {table}[{column}] "
-                                f"through [{column}].[…] ({location}).", location)
+        for text, line_of in file.segments():
+            for match in _VARIATION_DAX_RE.finditer(text):
+                for candidate in by_column.get(match.group(1).replace("]]", "]").casefold(), []):
+                    if file is candidate.file:
+                        continue
+                    location = _location(file, line_of(match.start()))
+                    table, column = candidate.owner
+                    where = f"Report {file.artifact}" if file.artifact != "model" else "DAX in the model"
+                    candidate.block("variation_dax", f"{where} may use the auto date hierarchy of {table}[{column}] "
+                                    f"through [{column}].[…] ({location}).", location)
+
+
+def _scan_linguistic(candidates: list[_Candidate], bindings: list[_Binding]) -> None:
+    """Q&A bindings name the owner table, date column and variation, never the auto-date table."""
+    owners: dict[tuple[str, str], list[_Candidate]] = {}
+    for candidate in candidates:
+        if candidate.owner:
+            owners.setdefault((candidate.owner[0].casefold(), candidate.owner[1].casefold()), []).append(candidate)
+    found: dict[tuple[int, str], tuple[_Candidate, list[str]]] = {}
+    for binding in bindings:
+        hit = {id(c): c for column in binding.columns
+               for c in owners.get((binding.entity.casefold(), column.casefold()), [])}
+        for candidate in hit.values():
+            found.setdefault((id(candidate), binding.culture), (candidate, []))[1].append(
+                _location(binding.file, binding.line))
+    for (_, culture), (candidate, locations) in found.items():
+        table, column = candidate.owner
+        candidate.block("linguistic_hierarchy", f"Q&A linguistic metadata of culture {culture} binds the date "
+                        f"hierarchy of {table}[{column}] ({len(locations)} binding(s), first at {locations[0]}). "
+                        "Removing this table would leave those bindings pointing at a missing hierarchy. This action "
+                        "does not edit linguistic metadata.", locations[0])
 
 
 def _scan_report_hierarchies(candidates: list[_Candidate], files: list[_File]) -> list[str]:
@@ -459,11 +627,9 @@ def _scan_report_hierarchies(candidates: list[_Candidate], files: list[_File]) -
     for file in files:
         if file.artifact == "model" or not file.key.lower().endswith((".json", ".pbir")):
             continue
-        try:
-            document = json.loads(file.text)
-        except ValueError as exc:
-            unresolved.append(f"Report file {file.key} is not valid JSON ({exc}); its use of date hierarchies cannot be checked.")
-            continue
+        if not file.json_valid:
+            continue  # Invalid JSON is a scope blocker from _read_scope.
+        document = file.document
 
         def visit(node, aliases):
             if isinstance(node, dict):
@@ -523,6 +689,7 @@ def assess(model_path, report_paths, *, require_bound: bool = True) -> dict:
     files, read_problems = _read_scope(model, [r for r in reports if r.is_dir()])
     scope_blockers.extend(read_problems)
     index = _Model(files)
+    bindings, linguistic_problems = _linguistic_bindings(files)
     result["time_intelligence_enabled"] = (None if index.time_intelligence is None
                                            else index.time_intelligence.strip() not in ("0", "false"))
     candidates = []
@@ -538,8 +705,10 @@ def assess(model_path, report_paths, *, require_bound: bool = True) -> dict:
     generated = [c for c in candidates if not c.problems]
     _scan_mentions(generated, files)
     _scan_variation_dax(generated, files)
+    _scan_linguistic(generated, bindings)
     unresolved = _scan_report_hierarchies(generated, files)
-    for candidate in sorted(candidates, key=lambda c: (c.owner or ("~",) * 2, c.name.casefold())):
+    candidates.sort(key=lambda c: (c.owner or ("~",) * 2, c.name.casefold()))
+    for candidate in candidates:
         if candidate.problems:
             for problem in candidate.problems:
                 candidate.block("not_generated", "Not proven to be a generated auto-date table: " + problem)
@@ -548,6 +717,15 @@ def assess(model_path, report_paths, *, require_bound: bool = True) -> dict:
         if candidate.kind == "local":
             for message in unresolved:
                 candidate.block("report_hierarchy", message)
+            for message in linguistic_problems:
+                candidate.block("linguistic_metadata", message)
+    others = [c for c in candidates if c.kind != "template"]
+    kept = [c for c in others if c.blockers]
+    for candidate in candidates:
+        if candidate.kind == "template" and kept:
+            candidate.block("template_kept", f"Kept while {len(kept)} other auto-date table(s) cannot be removed. "
+                            + _TEMPLATE_RESTRICTION)
+    for candidate in candidates:
         owner = f"{candidate.owner[0]}[{candidate.owner[1]}]" if candidate.owner else None
         result["tables"].append({
             "table": candidate.name, "kind": candidate.kind, "label": KIND_LABELS[candidate.kind],
@@ -555,6 +733,8 @@ def assess(model_path, report_paths, *, require_bound: bool = True) -> dict:
             "relationship": candidate.relationship[1].name if candidate.relationship else None,
             "variation": candidate.variation[1].name if candidate.variation else None,
             "removable": not candidate.blockers, "blockers": candidate.blockers,
+            # A template can go only together with every other auto-date table.
+            "requires_tables": sorted(c.name for c in others) if candidate.kind == "template" else [],
         })
     result["found"] = len(result["tables"])
     result["removable_count"] = sum(1 for t in result["tables"] if t["removable"])
@@ -574,6 +754,9 @@ def requested_tables(operation: dict) -> list[str]:
 def blocking_reasons(assessment: dict, tables: list[str]) -> list[str]:
     """Server-side gate: every requested table must be a removable generated table now."""
     known = {entry["table"].casefold(): entry for entry in assessment.get("tables", [])}
+    selected = {name.casefold() for name in tables}
+    staying = [entry["table"] for entry in assessment.get("tables", [])
+               if entry["kind"] != "template" and entry["table"].casefold() not in selected]
     reasons = []
     for name in tables:
         entry = known.get(name.casefold())
@@ -582,6 +765,9 @@ def blocking_reasons(assessment: dict, tables: list[str]) -> list[str]:
         elif not entry["removable"]:
             reasons.append(f"{entry['table']} cannot be removed: "
                            + " ".join(blocker["message"] for blocker in entry["blockers"]))
+        elif entry["kind"] == "template" and staying:
+            reasons.append(f"{entry['table']} cannot be removed while {len(staying)} other auto-date table(s) stay "
+                           "in the model; select every auto-date table to remove the template. " + _TEMPLATE_RESTRICTION)
     return reasons
 
 
@@ -599,17 +785,22 @@ def _remove_span(lines: list[str], first: int, last: int) -> None:
         del lines[first:last + 1]
 
 
-def integrity_problems(model_path, report_paths=(), removed_tokens: dict[str, str] | None = None) -> set[str]:
+def integrity_problems(model_path, report_paths=(), removed_tokens: dict[str, str] | None = None,
+                       removed_owners: set[tuple[str, str]] | None = None) -> set[str]:
     """Independent text-level check of model references; not the analyzer.
 
     Reports ``ref table`` lines without a table, relationships whose columns are
     missing, variations whose relationship or default hierarchy is missing, sort-by
-    and hierarchy levels whose column is missing, and any remaining mention of
-    ``removed_tokens`` (lower-case GUID -> removed table) in model or report files.
+    and hierarchy levels whose column is missing, any remaining mention of
+    ``removed_tokens`` (lower-case GUID -> removed table) in model or report files,
+    and culture linguistic bindings to a missing table, column or variation or to the
+    date hierarchy of a column in ``removed_owners`` (lower-case table, column; known
+    before removal because the variation that names it is gone afterwards).
     """
     model = Path(model_path).resolve()
     files, _ = _read_scope(model, [Path(p).resolve() for p in report_paths])
     index = _Model(files)
+    bindings, unreadable = _linguistic_bindings(files)
     problems: set[str] = set()
     tables = {name: declared[0][1] for name, declared in index.tables.items()}
 
@@ -645,10 +836,32 @@ def integrity_problems(model_path, report_paths=(), removed_tokens: dict[str, st
                 if column is not None and unquote_tmdl_name(column.value).casefold() not in names:
                     problems.add(f"Hierarchy {table.name}.{hierarchy.name} level {level.name} uses a missing column.")
     for file in files:
-        for match in _GUID_RE.finditer(file.text):
-            table = (removed_tokens or {}).get(match.group(0).casefold())
-            if table:
-                problems.add(f"{_location(file, file.line_of(match.start()))} still refers to removed {table}.")
+        for text, line_of in file.segments():
+            for match in _GUID_RE.finditer(text):
+                table = (removed_tokens or {}).get(match.group(0).casefold())
+                if table:
+                    problems.add(f"{_location(file, line_of(match.start()))} still refers to removed {table}.")
+    problems.update(unreadable)
+    for binding in bindings:
+        location = _location(binding.file, binding.line)
+        for column in binding.columns:
+            if (binding.entity.casefold(), column.casefold()) in (removed_owners or set()):
+                problems.add(f"{location}: linguistic metadata still binds the removed date hierarchy of "
+                             f"{binding.entity}[{column}].")
+        table = tables.get(binding.entity.casefold())
+        if table is None:
+            problems.add(f"{location}: linguistic metadata binds missing table {binding.entity}.")
+            continue
+        if binding.variation_source is None:
+            continue
+        column = next((c for c in _children(table, "column")
+                       if c.name.casefold() == binding.variation_source.casefold()), None)
+        if column is None:
+            problems.add(f"{location}: linguistic metadata binds missing column {table.name}[{binding.variation_source}].")
+        elif binding.variation_set is not None and binding.variation_set.casefold() not in \
+                {v.name.casefold() for v in _children(column, "variation")}:
+            problems.add(f"{location}: linguistic metadata binds missing variation {binding.variation_set} "
+                         f"on {table.name}[{column.name}].")
     return problems
 
 
@@ -710,7 +923,8 @@ def remove_tables(model_path, report_paths, tables: list[str], *, require_bound:
         path.write_bytes(text.encode("utf-8"))
     for path in deleted:
         path.unlink()
-    new = integrity_problems(model, report_paths, tokens) - before
+    owners = {(c.owner[0].casefold(), c.owner[1].casefold()) for c in candidates if c.owner}
+    new = integrity_problems(model, report_paths, tokens, owners) - before
     if new:
         return {"ok": False, "error": "Removal would leave broken references: " + "; ".join(sorted(new))}
     return {"ok": True, **summary}
