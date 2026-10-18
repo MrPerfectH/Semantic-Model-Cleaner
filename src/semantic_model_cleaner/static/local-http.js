@@ -1,4 +1,4 @@
-/* Shared by both layouts: keep the launch token in same-origin request headers. */
+/* Local workspace: keep the launch token in same-origin request headers. */
 (function () {
   'use strict';
   var token = document.querySelector('meta[name="smc-local-token"]').content;

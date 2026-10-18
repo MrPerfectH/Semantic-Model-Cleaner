@@ -45,8 +45,8 @@ setResultsData({items:[]});assert.match(headings[0].textContent,/unavailable/);
     subprocess.run([node, '-e', harness], check=True, capture_output=True, text=True)
 
 
-@pytest.mark.parametrize('layout', ['index.html', 'index_v2.html'])
-def test_both_layouts_load_shared_evidence(layout):
+@pytest.mark.parametrize('layout', ['index_v2.html'])
+def test_v2_load_shared_evidence(layout):
     template = Path(webapp.__file__).parent / 'templates' / layout
     text = template.read_text(encoding="utf-8")
     assert text.index("filename='analysis-jobs.js'") < text.index("filename='schema-evidence.js'")

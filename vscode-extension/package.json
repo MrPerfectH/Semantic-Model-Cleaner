@@ -2,7 +2,7 @@
   "name": "semantic-model-cleaner",
   "displayName": "Semantic Model Cleaner (Preview)",
   "description": "Run Semantic Model Cleaner's local Power BI Project UI inside VS Code.",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "publisher": "smc-local-preview",
   "private": true,
   "license": "MIT",
@@ -59,6 +59,47 @@
         "command": "semanticModelCleaner.showLogs",
         "title": "Show Logs",
         "category": "Semantic Model Cleaner"
+      },
+      {
+        "command": "semanticModelCleaner.analyze",
+        "title": "Analyze",
+        "category": "Semantic Model Cleaner",
+        "icon": "$(play)",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "semanticModelCleaner.chooseModel",
+        "title": "Choose Semantic Model",
+        "category": "Semantic Model Cleaner",
+        "icon": "$(database)",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "semanticModelCleaner.selectModel",
+        "title": "Select Semantic Model",
+        "category": "Semantic Model Cleaner",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "semanticModelCleaner.selectAllReports",
+        "title": "Select All Reports",
+        "category": "Semantic Model Cleaner",
+        "icon": "$(check-all)",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "semanticModelCleaner.clearReports",
+        "title": "Clear Report Selection",
+        "category": "Semantic Model Cleaner",
+        "icon": "$(clear-all)",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "semanticModelCleaner.refreshScope",
+        "title": "Refresh Models and Reports",
+        "category": "Semantic Model Cleaner",
+        "icon": "$(refresh)",
+        "enablement": "isWorkspaceTrusted"
       }
     ],
     "menus": {
@@ -67,6 +108,51 @@
           "command": "semanticModelCleaner.open",
           "when": "explorerResourceIsFolder && resourceScheme == file && isWorkspaceTrusted",
           "group": "navigation@99"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "semanticModelCleaner.analyze",
+          "when": "view == semanticModelCleaner.scope && semanticModelCleaner.scopePhase == ready",
+          "group": "navigation@1"
+        },
+        {
+          "command": "semanticModelCleaner.chooseModel",
+          "when": "view == semanticModelCleaner.scope && semanticModelCleaner.scopePhase == ready",
+          "group": "navigation@2"
+        },
+        {
+          "command": "semanticModelCleaner.refreshScope",
+          "when": "view == semanticModelCleaner.scope",
+          "group": "navigation@9"
+        },
+        {
+          "command": "semanticModelCleaner.selectAllReports",
+          "when": "view == semanticModelCleaner.scope && semanticModelCleaner.scopePhase == ready",
+          "group": "reports@1"
+        },
+        {
+          "command": "semanticModelCleaner.clearReports",
+          "when": "view == semanticModelCleaner.scope && semanticModelCleaner.scopePhase == ready",
+          "group": "reports@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "semanticModelCleaner.selectAllReports",
+          "when": "view == semanticModelCleaner.scope && viewItem == reportsGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "semanticModelCleaner.clearReports",
+          "when": "view == semanticModelCleaner.scope && viewItem == reportsGroup",
+          "group": "inline@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "semanticModelCleaner.selectModel",
+          "when": "false"
         }
       ]
     },
@@ -88,14 +174,53 @@
           "markdownDescription": "Python executable from an environment with this checkout's Semantic Model Cleaner installed. Runs `python -I -m semantic_model_cleaner.web`. Nothing is installed automatically."
         }
       }
-    }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "semanticModelCleaner",
+          "title": "Cleaner",
+          "icon": "media/cleaner.svg"
+        }
+      ]
+    },
+    "views": {
+      "semanticModelCleaner": [
+        {
+          "id": "semanticModelCleaner.scope",
+          "name": "Analysis Scope"
+        },
+        {
+          "id": "semanticModelCleaner.actions",
+          "name": "Cleaner Actions",
+          "visibility": "collapsed"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "semanticModelCleaner.scope",
+        "when": "!isWorkspaceTrusted",
+        "contents": "Trust this workspace to choose a semantic model and reports.\n[Manage Workspace Trust](command:workbench.trust.manage)"
+      },
+      {
+        "view": "semanticModelCleaner.scope",
+        "when": "isWorkspaceTrusted && semanticModelCleaner.scopePhase != error",
+        "contents": "Open a Power BI Project folder to choose a semantic model and its connected reports.\n[Open Cleaner](command:semanticModelCleaner.open)"
+      },
+      {
+        "view": "semanticModelCleaner.scope",
+        "when": "isWorkspaceTrusted && semanticModelCleaner.scopePhase == error",
+        "contents": "Models and reports could not be loaded.\n[Retry](command:semanticModelCleaner.refreshScope)\n[Show Logs](command:semanticModelCleaner.showLogs)"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p .",
     "test": "npm run compile && node --test test/*.test.cjs",
     "test:integration": "npm run compile && node scripts/integration.cjs",
     "vscode:prepublish": "npm run compile",
-    "package": "vsce package --pre-release --no-dependencies --out semantic-model-cleaner-0.1.1.vsix"
+    "package": "vsce package --pre-release --no-dependencies --out semantic-model-cleaner-0.1.3.vsix"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

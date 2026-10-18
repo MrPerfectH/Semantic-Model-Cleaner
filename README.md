@@ -4,17 +4,17 @@ Semantic Model Cleaner analyzes Power BI PBIR + TMDL projects, shows which seman
 
 It works directly in repositories containing TMDL and PBIR files; Power BI Desktop is not required. Core workflows are free under the MIT license, with no account or paid service required. Fabric integration is a future extension.
 
-It is designed for local use against files on your machine. Version `0.4.0b7`
+It is designed for local use against files on your machine. Version `0.4.0b8`
 is the public beta for Power BI practitioners who already work with PBIR
 and TMDL.
 
-> Beta7 corrects the public download links and checksum file, adds a browser icon and a back-up-before-apply reminder, and explains the CLI and web "unused" counts. See the [release notes](docs/releases/0.4.0b7.md).
+> Beta7 corrects the public download links and checksum file, adds a browser icon and a back-up-before-apply reminder, and explains the CLI and web "unused" counts. See the [release notes](docs/releases/0.4.0b8.md).
 
 > **Before applying changes:** back up your Power BI Project or commit it to version control first. Apply writes to your TMDL and PBIR files; guarded restore recovers the original bytes from the plan, but a backup is your safety net.
 
 ## Current Status
 
-- Project maturity: public beta `0.4.0b7`
+- Project maturity: public beta `0.4.0b8`
 - Runtime shape: Python package with a CLI, a local web UI, and Windows desktop packaging
 - Stable entry points: `semantic-model-cleaner`, `semantic-model-cleaner-web`, `smc`, and `smc-web`
 - Windows entry points: packaged `Semantic Model Cleaner.exe`, `semantic-model-cleaner-desktop`, and `smc-desktop`
@@ -61,9 +61,9 @@ python -m pip install -e .[dev]
 ### Windows Packaged App
 
 For terminal-free Windows use, download
-[`semantic-model-cleaner-windows-x64-0.4.0b7.zip`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b7/semantic-model-cleaner-windows-x64-0.4.0b7.zip)
+[`semantic-model-cleaner-windows-x64-0.4.0b8.zip`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b8/semantic-model-cleaner-windows-x64-0.4.0b8.zip)
 and its
-[`SHA-256 checksum`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b7/semantic-model-cleaner-windows-x64-0.4.0b7.zip.sha256)
+[`SHA-256 checksum`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b8/semantic-model-cleaner-windows-x64-0.4.0b8.zip.sha256)
 from the explicit beta prerelease. Extract the whole ZIP, then run
 `Semantic Model Cleaner.exe`. Python, Power BI Desktop, Fabric, an account,
 and paid services are not required.
@@ -204,7 +204,7 @@ python3 -m semantic_model_cleaner.web .
 ```
 
 The web app is local-only: both launchers accept `127.0.0.1` or `localhost`, and
-remote binding is disabled. Both layouts handle the per-launch request token
+remote binding is disabled. The workspace handles the per-launch request token
 automatically. Local scripted HTTP clients must first read `/api/session`, then
 send its token in the `X-SMC-Token` header; use JSON for changes. CLI file-based
 commands need no HTTP token. See [local HTTP access](docs/local-http-security.md)
@@ -271,7 +271,7 @@ pwsh -File packaging/windows/build.ps1
 
 ## Public beta channel
 
-- Version `0.4.0b7` defaults to the `beta` release channel without an environment variable.
+- Version `0.4.0b8` defaults to the `beta` release channel without an environment variable.
 - Developers can set `SMC_RELEASE_CHANNEL=stable` to inspect the stable-gated UI during compatibility testing.
 - The public beta shows a `Beta` banner. Experiments remain separately opt-in.
 
@@ -285,7 +285,7 @@ contract](docs/cli/check.md), and [support matrix](docs/support.md).
 - `src/semantic_model_cleaner/analyzer.py`: CLI analyzer and export logic
 - `src/semantic_model_cleaner/webapp.py`: Flask app and API
 - `src/semantic_model_cleaner/tmdl_writer.py`: TMDL edit engine
-- `src/semantic_model_cleaner/templates/index.html`: single-page web UI template
+- `src/semantic_model_cleaner/templates/index_v2.html`: single-page workspace UI template
 - `src/semantic_model_cleaner/demo_workspace/`: bundled synthetic demo workspace
 - `examples/product-qa-workspace/`: richer synthetic QA workspace
 - `scripts/analyze_model_usage.py`: compatibility wrapper for the packaged CLI

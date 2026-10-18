@@ -6,7 +6,7 @@
 <title>Semantic Model Cleaner</title>
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
 <meta name="smc-local-token" content="{{ local_request_token }}">
-{% if config.get('SMC_WEBVIEW_ANCESTORS') %}<meta name="smc-embedded-host" content="vscode">{% endif %}
+{% if config.get('SMC_WEBVIEW_ANCESTORS') %}<meta name="smc-embedded-host" content="vscode"{% if config.get('SMC_VSCODE_HOST_SCOPE') %} data-host-scope="sidebar"{% endif %}>{% endif %}
 <script src="{{ url_for('static', filename='local-http.js') }}"></script>
 <script src="{{ url_for('static', filename='host-dialogs.js') }}"></script>
 <style>
@@ -44,8 +44,6 @@ code { font-family: var(--mono); font-size: .92em; }
 .scope-chip-count { flex: none; font-size: 11px; color: var(--text-light); background: #f1f5f9; border-radius: 5px; padding: 2px 7px; white-space: nowrap; }
 .scope-chip-edit { flex: none; font-size: 11px; color: var(--text-faint); white-space: nowrap; }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-.topbar-right .ui-switch-link { color: var(--text-light); font-size: 12px; font-weight: 500; text-decoration: none; padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; white-space: nowrap; }
-.topbar-right .ui-switch-link:hover { color: var(--text); border-color: var(--text-faint); background: var(--row-hover); }
 .setup-export-actions { display: flex; gap: 8px; align-items: center; }
 .header .build-stamp { font-size: 10.5px; color: var(--text-faint); font-family: var(--mono); white-space: nowrap; }
 
@@ -573,6 +571,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
 <link rel="stylesheet" href="{{ url_for('static', filename='detail-workspace.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='result-overview.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='accessibility.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='workspace-navigation.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='cobalt-workspace.css') }}">
 </head>
 <body>
@@ -595,7 +594,6 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
       <button class="btn btn-secondary btn-sm" id="btnExportJson" title="Download the current analysis as JSON">Export JSON</button>
       <button class="btn btn-secondary btn-sm" id="btnExportExcel" title="Download the current analysis as an Excel workbook">Export Excel</button>
     </div>
-    <a href="/?ui=classic" class="ui-switch-link" title="Return to the classic layout. Your choice is remembered until you switch back.">Classic layout</a>
     <div class="build-stamp" title="UI build identifier">{{ build_stamp }}</div>
   </div>
 </div>
@@ -604,12 +602,29 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
     <nav class="view-tabs" id="viewTabs" aria-label="Views">
       <button type="button" class="view-tab active" data-view="details" id="tabDetails">Items <span class="tab-count" id="tabDetailsCount"></span></button>
       <button type="button" class="view-tab" data-view="tables" id="tabTables">Tables <span class="tab-count" id="tabTablesCount"></span></button>
-      <button type="button" class="view-tab" data-view="reports" id="tabReports">Report health <span class="tab-count" id="tabReportsCount"></span></button>
+      <button type="button" class="view-tab" data-view="reports" id="tabReports">Reports <span class="tab-count" id="tabReportsCount"></span></button>
       <button type="button" class="view-tab hidden" data-view="limitations" id="tabLimitations">Analysis limitations <span class="tab-count" id="tabLimitationsCount"></span></button>
-      <button type="button" class="view-tab" data-view="refs" id="tabRefs">References <span class="tab-count" id="tabRefsCount"></span></button>
+      <button type="button" class="view-tab" data-view="refs" id="tabRefs">Report usage <span class="tab-count" id="tabRefsCount"></span></button>
       <button type="button" class="view-tab detail-tab" data-view="item" id="tabItem">&#8627; Item page</button>
       <button type="button" class="view-tab detail-tab" data-view="table" id="tabTable">&#8627; Table page</button>
     </nav>
+    <div class="rail-summary hidden" id="summarySection">
+      <div class="rail-divider"></div>
+      <div class="rail-heading">Cleanup</div>
+      <div class="rail-row" title="Items that look low-risk to clean up"><span class="rail-dot" style="background:#16a34a"></span>Safe<span class="value" id="sumSafe">0</span></div>
+      <div class="rail-row" title="Items that may be removable, but still need a manual check first"><span class="rail-dot" style="background:#f59e0b"></span>Review<span class="value" id="sumReview">0</span></div>
+      <div class="rail-row rail-subrow" title="Unused calculation groups and field parameters: this tool always asks you to confirm them; nothing uses them">by entity type<span class="value" id="sumReviewEntity">0</span></div>
+      <div class="rail-row rail-subrow" title="Items with concrete evidence that needs a manual check (hidden, key, perspective, metadata or coverage)">because of evidence<span class="value" id="sumReviewEvidence">0</span></div>
+      <div class="rail-row" title="Items that still have direct or indirect dependencies and should not be deleted now"><span class="rail-dot" style="background:#dc2626"></span>Blocked<span class="value" id="sumCaution">0</span></div>
+      <div class="rail-row" title="Items retained for required model structure"><span class="rail-dot" style="background:#64748b"></span>Keep<span class="value" id="sumKeep">0</span></div>
+      <div class="rail-divider"></div>
+      <div class="rail-heading">Inventory</div>
+      <div class="rail-row" title="Total count of measures and columns found across the selected semantic model and report metadata">Total items<span class="value" id="sumTotal">0</span></div>
+      <div class="rail-row" title="Items directly used by reports or reached through required model dependencies">Used<span class="value" id="sumUsed">0</span></div>
+      <div class="rail-row" title="Items for which no direct or indirect usage was found in the selected reports">Not used<span class="value" id="sumUnused">0</span></div>
+      <div class="rail-row" title="Count of model measures plus report-level measures found in the selected artifacts">Measures<span class="value" id="sumMeasures">0</span></div>
+      <div class="rail-row" title="Count of semantic-model columns found in the selected artifacts">Columns<span class="value" id="sumColumns">0</span></div>
+    </div>
     <div class="rail-bottom">
       <button type="button" class="rail-item" onclick="smcShowWarnings()" title="Scroll to analyzer warnings">Analyzer warnings</button>
       <button type="button" class="rail-item" onclick="smcToggleLog()" title="Show or hide the action log">Action log</button>
@@ -639,21 +654,11 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
         <p><button class="btn btn-secondary btn-sm" type="button" onclick="smcOpenScope()">Choose model and report folders separately</button></p>
       </div>
 
-      <section class="workspace-overview hidden" id="summarySection" aria-label="Model analysis summary">
-        <div class="workspace-heading"><div><p class="workspace-eyebrow">ANALYSIS WORKSPACE</p><h2 id="workspaceTitle">Model items</h2><p>Inspect usage, understand dependencies, and review your changes.</p></div></div>
-        <div class="cleanup-cards">
-          <div class="cleanup-card cleanup-safe"><span>Safe</span><strong id="sumSafe">0</strong><small>Within analyzed scope</small></div>
-          <div class="cleanup-card cleanup-review"><span>Review</span><strong id="sumReview">0</strong><small><span id="sumReviewEntity">0</span> by type · <span id="sumReviewEvidence">0</span> by evidence</small></div>
-          <div class="cleanup-card cleanup-blocked"><span>Blocked</span><strong id="sumCaution">0</strong><small>Dependencies prevent deletion</small></div>
-          <div class="cleanup-card cleanup-keep"><span>Keep</span><strong id="sumKeep">0</strong><small>Required model structure</small></div>
-        </div>
-        <details class="workspace-inventory"><summary>Inventory · <span id="sumTotal">0</span> items</summary><div><span>Used <b id="sumUsed">0</b></span><span>Not used <b id="sumUnused">0</b></span><span>Measures <b id="sumMeasures">0</b></span><span>Columns <b id="sumColumns">0</b></span></div></details>
-      </section>
-  <section id="resultOverview" data-collapsible="true" class="result-overview hidden" aria-label="Analysis overview"></section>
+  <section id="resultOverview" class="result-overview hidden" aria-label="Analysis overview"></section>
   <details class="result-guide hidden" id="resultGuideSection">
     <summary>
       <span class="result-guide-title">How to read these results</span>
-      <span class="result-guide-subtitle">Summary cards, filters, status badges, issue states, and cleanup recommendations.</span>
+      <span class="result-guide-subtitle">Filters, status badges, coverage, and cleanup recommendations.</span>
     </summary>
     <div class="result-guide-body" id="resultGuideBody"></div>
   </details>
@@ -669,10 +674,10 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
   </div>
   <details class="warning-banner hidden" id="reportHealthBanner">
     <summary class="report-health-toggle">
-      <h3>Report Health <span id="reportHealthCount"></span></h3>
+      <h3>Report metadata findings <span id="reportHealthCount"></span></h3>
       <span class="report-health-toggle-hint" id="reportHealthSummaryHint"></span>
     </summary>
-    <div class="warning-note">These problems live in the report files (PBIR), not the semantic model: references to measures that no longer exist, stale formatting selectors and invalid JSON. They matter because they downgrade Cleanup recommendations to Review and can make Usage look stronger or weaker than what report authors actually see. The repair actions here fix the report files. Model analysis gaps are listed separately under Analysis limitations.</div>
+    <div class="warning-note">Findings describe report metadata: broken references, stale selectors or invalid JSON. Counts are finding rows and may overlap; they are not unique affected visuals. Fix broken definitions in the source report. Supported cleanup actions require a reviewed plan. Runtime performance, rendered appearance and visual quality are not assessed.</div>
     <div id="reportHealthList"></div>
     <div class="report-health-status" id="reportHealthActionStatus"></div>
   </details>
@@ -681,12 +686,12 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
       <h3>Analysis limitations <span id="analysisLimitationsCount"></span></h3>
       <span class="report-health-toggle-hint" id="analysisLimitationsHint"></span>
     </summary>
-    <div class="warning-note">Model features the analyzer detects but cannot fully check. They are analysis gaps, not broken Power BI configuration: each one keeps the items it touches at Review instead of Safe. Open a row for the source, what was checked and the affected items.</div>
+    <div class="warning-note">Scan coverage and unsupported metadata. A limitation with no affected items is informational. Shared or unresolved coverage can still prevent a Safe recommendation. Open a row for the exact source, affected objects and recorded cleanup effect.</div>
     <div id="analysisLimitationsList"></div>
   </details>
   <div class="main-toolbar">
   <div class="filters-bar hidden" id="filtersSection">
-    <div class="search-wrap"><input type="text" id="filterSearch" aria-label="Search items, tables and references" placeholder="Search name or table" autocomplete="off"></div>
+    <div class="search-wrap"><input type="text" id="filterSearch" aria-label="Search items, tables and report usage" placeholder="Search name or table" autocomplete="off"></div>
     <button type="button" class="btn-filters" id="btnToggleFilters" onclick="smcToggleFilters()">Filters &#9662;</button>
     <div class="filters-panel hidden" id="filtersPanel">
       <div class="filter-group"><label>Usage</label><div class="filter-dropdown" id="filterStatus"><button type="button" class="filter-dropdown-toggle">All</button><div class="filter-dropdown-menu hidden"><div class="filter-dropdown-actions"><button type="button" class="filter-dropdown-action" data-action="all">Select all</button><button type="button" class="filter-dropdown-action" data-action="clear">Clear</button></div><div class="filter-dropdown-options"></div></div></div></div>
@@ -770,7 +775,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
       <thead><tr>
         <th data-refcol="type">Type <span class="sort-arrow"></span></th>
         <th data-refcol="table">Table <span class="sort-arrow"></span></th>
-        <th data-refcol="name">Name <span class="sort-arrow"></span></th>
+        <th data-refcol="name">Field <span class="sort-arrow"></span></th>
         <th data-refcol="sourceKind">Source <span class="sort-arrow"></span></th>
         <th data-refcol="isHidden">Hidden <span class="sort-arrow"></span></th>
         <th data-refcol="displayFolder">Folder <span class="sort-arrow"></span></th>
@@ -1246,6 +1251,7 @@ var selectedTableNames = new Set();
 var allWarnings = [];
 var allAnalysisLimitations = { distinctCount: 0, sharedCount: 0, targetedCount: 0, affectedItemCount: 0, coverageComplete: true, limitations: [] };
 var allReportIssues = [];
+var allAnalyzedReports = [], allReportSchema = null;
 var allReportHealth = { totalIssueCount: 0, groups: [] };
 var usageOrder = { 'Used': 0, 'Indirect': 1, 'Stale only': 2, 'Unused': 3 };
 var issueOrder = { 'Broken': 0, 'Broken + Stale': 1, 'Stale': 2, '': 3 };
@@ -1461,7 +1467,7 @@ function updateExplorerDefaultUI() {
 function getTableSectionInfo(tableSectionId) {
   var section = $(tableSectionId);
   if (!section) return null;
-  var table = section.querySelector('table');
+  var table = section.querySelector(tableSectionId === 'reportsTableSection' ? 'table.reports-table' : 'table');
   if (!table) return null;
   var headers = Array.from(table.querySelectorAll('thead th'));
   if (!headers.length) return null;
@@ -2840,7 +2846,7 @@ $('btnNextPage').onclick = function() {
 
 /* == Analyze == */
 async function runAnalyze() {
-  if (!chosenModels.length || !chosenReports.length) return;
+  if (!chosenModels.length || (!chosenReports.length && !(window.smcModelOnly && window.smcModelOnly()))) return;
   hidePostRefreshDisclaimer();
   $('btnAnalyze').disabled = true;
   $('btnAnalyze').innerHTML = '<span class="spinner"></span>Analyzing...';
@@ -2879,6 +2885,8 @@ function loadResults(data, preserveActionState) {
 }
 
 function setResultsData(data, preserveActionState) {
+  allAnalyzedReports = ((data.reportBinding && data.reportBinding.selected) || chosenReports).map(function(row) { return {path:row.path, name:row.name}; });
+  allReportSchema = data.schemaValidation || null;
   if (data.reportBinding) {
     chosenReports = data.reportBinding.selected.map(function(row) { return {path: row.path, name: row.name}; });
     renderPills();
@@ -3017,7 +3025,7 @@ function renderReportHealth() {
       body.push('<div class="report-health-row">+' + esc(String(totalRows - shownRows)) + ' more</div>');
     }
     var actionHtml = '';
-    if (group.action && group.action.type === 'cleanup_stale') {
+    if (group.action && group.action.type === 'cleanup_stale' && group.action.entryCount > 0) {
       // Stale Report References no longer affect the report, so cleanup is one click
       // through a validated plan; the file diff stays one link away.
       var staleEntryCount = group.action.entryCount || 0;
@@ -3251,7 +3259,6 @@ function updateActionBarForView() {
 
 function switchView(view) {
   currentView = view;
-  $('workspaceTitle').textContent = ({details: 'Model items', tables: 'Model tables', reports: 'Report health', refs: 'References', limitations: 'Analysis limitations'})[view] || 'Model workspace';
   document.querySelectorAll('.view-tab').forEach(function(t) { t.classList.toggle('active', t.dataset.view === view); });
   $('tableSection').classList.toggle('hidden', view !== 'details');
   $('tablesOverviewSection').classList.toggle('hidden', view !== 'tables');
@@ -3589,8 +3596,39 @@ function filterReportIssues() {
   });
 }
 
+function reportInventoryRows() {
+  var rows = new Map();
+  allAnalyzedReports.forEach(function(report) {
+    rows.set(report.path, {id:report.path, name:report.name, findings:0, schema:null});
+  });
+  allReportIssues.forEach(function(issue) {
+    var id = reportReferenceId(issue); if (!id) return;
+    if (!rows.has(id)) rows.set(id, {id:id, name:issue.report || id, findings:0, schema:null});
+    rows.get(id).findings++;
+  });
+  ((allReportSchema && allReportSchema.reports) || []).forEach(function(report) {
+    if (rows.has(report.reportPath)) rows.get(report.reportPath).schema = report;
+  });
+  return Array.from(rows.values()).sort(function(a,b) { return a.name.localeCompare(b.name) || a.id.localeCompare(b.id); });
+}
+
+function renderReportInventory() {
+  var host = $('reportInventory'); if (!host) return;
+  var rows = reportInventoryRows();
+  if (!rows.length) { host.innerHTML = '<p>No reports were analyzed in this scope.</p>'; return; }
+  host.innerHTML = '<table class="report-inventory"><caption>Analyzed reports · metadata findings and schema files</caption><thead><tr><th>Report</th><th>Finding rows</th><th>Valid</th><th>Invalid</th><th>Not validated</th><th>Schema coverage</th></tr></thead><tbody>' + rows.map(function(row) {
+    var schema = row.schema, counts = schema && schema.counts || {};
+    return '<tr><td><button type="button" class="btn btn-secondary btn-sm" data-report-id="' + esc(row.id) + '" aria-pressed="' + (reportIssueReportFilter === row.id) + '">' + esc(reportReferenceLabel(row.id)) + '</button></td><td>' + row.findings + '</td>'
+      + ['valid','invalid','not_validated'].map(function(status) { return '<td>' + (schema ? counts[status] || 0 : '—') + '</td>'; }).join('')
+      + '<td>' + (!schema ? 'Unavailable' : !schema.fileCount ? 'No metadata files checked' : schema.complete ? 'Complete for scanned files' : 'Incomplete') + '</td></tr>';
+  }).join('') + '</tbody></table>';
+  host.querySelectorAll('[data-report-id]').forEach(function(button) {
+    button.onclick = function() { reportIssueReportFilter = button.dataset.reportId; reportIssuePageFilter = '__all__'; reportIssueRootCauseFilter = '__all__'; applyFilters(); };
+  });
+}
+
 function reconcileReportIssueFilters() {
-  var reports = Array.from(new Set(allReportIssues.map(reportReferenceId).filter(Boolean)));
+  var reports = reportInventoryRows().map(function(row) { return row.id; });
   if (reportIssueReportFilter !== '__all__' && !reports.includes(reportIssueReportFilter)) reportIssueReportFilter = '__all__';
   var pageSource = reportIssueReportFilter === '__all__'
     ? allReportIssues
@@ -3612,6 +3650,7 @@ function getSelectedReportIssues() {
 }
 
 function renderReportHealthControls() {
+  renderReportInventory();
   var brokenCount = allReportIssues.filter(isReportIssueBrokenRef).length;
   var cleanupCount = allReportIssues.filter(isReportIssueCleanup).length;
   var otherCount = allReportIssues.length - brokenCount - cleanupCount;
@@ -3634,7 +3673,7 @@ function renderReportHealthControls() {
     btn.classList.toggle('active', btn.dataset.reportIssueGroup === reportIssueGroupFilter);
   });
 
-  var reports = Array.from(new Set(allReportIssues.map(reportReferenceId).filter(Boolean))).sort(function(a, b) { return a.localeCompare(b); });
+  var reports = reportInventoryRows().map(function(row) { return row.id; }).sort(function(a, b) { return a.localeCompare(b); });
   $('reportIssueReportSelect').innerHTML = reportIssueOptionHtml('__all__', 'All reports', reportIssueReportFilter)
     + reports.map(function(report) { return reportIssueOptionHtml(report, reportReferenceLabel(report), reportIssueReportFilter); }).join('');
 
@@ -4799,11 +4838,11 @@ function renderResultGuideLegend() {
       ]
     },
     {
-      title: 'Analysis limitations vs Report Health',
+      title: 'Scan coverage and report findings',
       description: 'Two different surfaces. Counts for limitations are distinct limitations and affected items, never one per repeated warning.',
       entries: [
         { label: 'Analysis limitation', definition: 'A documented TMDL or PBIR feature the app detects but cannot fully check, such as a calculation item expression, a KPI expression or an unreadable report file. It names the construct, its source location, what was checked and what remains unchecked. It does not mean the model is broken.' },
-        { label: 'Report Health', definition: 'Report-side problems in PBIR files: references to missing items, stale selectors and invalid JSON, with repair actions.' },
+        { label: 'Report metadata findings', definition: 'Report-side problems in PBIR files: references to missing items, stale selectors and invalid JSON, with repair actions.' },
         { label: 'Unused in scope', definition: 'No use found in the selected reports and supported model metadata. When coverage is incomplete, this is not a claim of global non-use.' },
         { label: 'Perspective membership', definition: 'Concrete metadata evidence that an item belongs to a perspective. It is informational: a perspective is a view over the model, so membership never blocks Safe, and removing the item also removes the member.' },
         { label: 'Translation membership', definition: 'Concrete culture metadata evidence that a table or item has a translated caption, description or display folder (culture, file and line). Informational only: removal also removes the translation, but a translation never changes the cleanup recommendation, does not prove report use and is not an analysis limitation.' }
@@ -4813,7 +4852,7 @@ function renderResultGuideLegend() {
   body.innerHTML =
     '<div class="result-guide-intro">'
       + '<div class="result-guide-note"><strong>Usage vs Cleanup</strong>Usage describes observed report/model evidence; Cleanup describes the recommended action.</div>'
-      + '<div class="result-guide-note"><strong>Filters and summary</strong>Filters narrow every result view with the same vocabulary shown in badges and the guide. The summary cards show model/report totals and cleanup recommendations for the current analysis.</div>'
+      + '<div class="result-guide-note"><strong>Filters and summary</strong>Filters narrow every result view with the same vocabulary shown in badges and the guide. The cleanup buttons show totals for the current analysis and filter Items. Inventory contains item counts; Scope details lists the analyzed inputs.</div>'
     + '</div>'
     + '<div class="legend-grid">'
     + groups.map(function(group) {
@@ -5118,7 +5157,7 @@ function detailDecisionTitle(item) {
 }
 
 function detailDecisionCopy(item) {
-  if (!item) return 'Choose a row from Details or All References to inspect usage, dependencies, and cleanup actions.';
+  if (!item) return 'Choose a row from Items or Report usage to inspect usage, dependencies, and cleanup actions.';
   if (isReportItem(item)) {
     return item.type === 'Measure'
       ? 'This measure is defined in report metadata. Standard model cleanup actions are disabled, but it can be promoted into the semantic model.'
@@ -5715,11 +5754,11 @@ function getReportPathByName(name, sourceFile) {
 
 function reportReferenceId(reference) { return reference.reportPath || reference.report || ''; }
 function reportReferenceLabel(identity) {
-  var match = allReportIssues.find(function(issue) { return reportReferenceId(issue) === identity; });
+  var rows = reportInventoryRows(), match = rows.find(function(row) { return row.id === identity; });
   if (!match) return identity;
-  var sameNamePaths = new Set(allReportIssues.filter(function(issue) { return issue.report === match.report; }).map(reportReferenceId));
-  return sameNamePaths.size > 1 ? match.report + ' — ' + identity : match.report;
+  return rows.filter(function(row) { return row.name === match.name; }).length > 1 ? match.name + ' — ' + identity : match.name;
 }
+
 function getReportPathForReference(reference) {
   if (!reference.reportPath) return getReportPathByName(reference.report, reference.sourceFile);
   var normalize = function(path) {
@@ -6582,7 +6621,7 @@ $('tableBtnReset').onclick = function() { $('btnReset').click(); };
 async function reAnalyze(opts) {
   opts = opts || {};
   logEntry('Re-analyzing...', 'info');
-  if (!chosenModels.length || !chosenReports.length) {
+  if (!chosenModels.length || (!chosenReports.length && !(window.smcModelOnly && window.smcModelOnly()))) {
     var missing = 'No model/report selected'; logEntry('Cannot re-analyze: ' + missing, 'err');
     return {ok: false, error: missing};
   }
@@ -6590,6 +6629,7 @@ async function reAnalyze(opts) {
     var data = await apiPost('/api/analyze', {
       model_paths: chosenModels.map(function(m) { return m.path; }),
       report_paths: chosenReports.map(function(r) { return r.path; }),
+      report_selection: !chosenReports.length ? 'exact' : undefined,
     });
     if (data.error) { logEntry('Re-analysis failed: ' + data.error, 'err'); return {ok: false, error: data.error}; }
     loadResults(data, true);
@@ -6703,13 +6743,18 @@ if (initialConfig.initialModelExclusions.length) {
 
 })();
 </script>
+<script src="{{ url_for('static', filename='viewer-dax-format.js') }}"></script>
+<script src="{{ url_for('static', filename='viewer-code-tokens.js') }}"></script>
+<script src="{{ url_for('static', filename='definition-reader.js') }}"></script>
 <script src="{{ url_for('static', filename='detail-workspace.js') }}"></script>
 <script src="{{ url_for('static', filename='analysis-jobs.js') }}"></script>
 <script src="{{ url_for('static', filename='schema-evidence.js') }}"></script>
 <script src="{{ url_for('static', filename='analysis-limitations.js') }}"></script>
-<script src="{{ url_for('static', filename='policy-workspace.js') }}"></script>
 <script src="{{ url_for('static', filename='first-run.js') }}"></script>
 <script src="{{ url_for('static', filename='result-overview.js') }}"></script>
 <script src="{{ url_for('static', filename='accessible-layers.js') }}"></script>
+<script src="{{ url_for('static', filename='workspace-navigation.js') }}"></script>
+<script src="{{ url_for('static', filename='report-usage.js') }}"></script>
+{% if config.get('SMC_WEBVIEW_ANCESTORS') and config.get('SMC_VSCODE_HOST_SCOPE') %}<script src="{{ url_for('static', filename='host-scope.js') }}"></script>{% endif %}
 </body>
 </html>

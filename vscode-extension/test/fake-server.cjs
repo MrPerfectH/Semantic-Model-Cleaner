@@ -6,6 +6,19 @@ if (mode === 'hang') setInterval(() => {}, 1000);
 else {
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/api/vscode/scope') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        if (req.headers['x-smc-token'] !== process.env.SMC_VSCODE_TOKEN || req.headers['content-type'] !== 'application/json') {
+          res.statusCode = 403; res.end(JSON.stringify({ error: 'denied' })); return;
+        }
+        const request = JSON.parse(body);
+        if (request.model_path === 'gone') { res.statusCode = 409; res.end(JSON.stringify({ error: 'Model gone.' })); return; }
+        res.end(JSON.stringify({ echo: request, features: process.env.SMC_VSCODE_FEATURES }));
+      });
+      return;
+    }
     res.end(JSON.stringify({ protocol: 1, instance: mode === 'wrong' ? 'wrong' :
       crypto.createHash('sha256').update(process.env.SMC_VSCODE_TOKEN).digest('hex') }));
   });
