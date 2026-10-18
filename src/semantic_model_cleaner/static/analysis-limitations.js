@@ -52,12 +52,12 @@
     return { lead: lead, next: nextAction(item), triggers: triggers, specific: specific, shared: shared, limitations: limitations };
   }
 
-  /* Coverage gaps never downgrade a stricter cleanup recommendation. */
+  /* Coverage counts describe affected items, independently of their recommendations. */
   function effectLabel(limitation) {
-    if (limitation.scope === 'shared') return 'Keeps every unused item at Review or Blocked';
+    if (limitation.scope === 'shared') return 'Unused-item coverage incomplete · see cleanup recommendations';
     var count = limitation.affectedItemCount != null ? limitation.affectedItemCount : (limitation.targets || []).length || null;
     if (count == null) return 'Affected items unknown · review coverage';
-    return count ? 'Keeps ' + plural(count, 'item') + ' at Review or Blocked' : 'Informational · no items affected';
+    return count ? 'Coverage incomplete for ' + plural(count, 'item') + ' · see cleanup recommendations' : 'Informational · no items affected';
   }
   function fileLabel(location) {
     var value = String(location || '');
@@ -96,7 +96,7 @@
   }
   function limitationListHeader() {
     return '<div class="limitation-row limitation-row-header" aria-hidden="true"><span>Construct</span><span>Source</span>'
-      + '<span title="Items whose Cleanup Recommendation stays at Review or Blocked because of this limitation">Effect on Cleanup</span></div>';
+      + '<span title="Items with incomplete coverage; actual cleanup recommendations are shown per item">Effect on Cleanup</span></div>';
   }
 
   function explanationHtml(item, options) {

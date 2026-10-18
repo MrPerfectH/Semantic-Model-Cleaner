@@ -1222,7 +1222,9 @@ def _unsupported_metadata_review_trigger(
     return (
         f"Referenced by the {feature}{owner} ({_limitation_location(ref)}). "
         f"Dependency checking is incomplete for {ref.area}, so the reference is "
-        f"evidence of a dependency, not proof of report use; the item stays at Review."
+        f"evidence of a dependency, not proof of report use. "
+        f"Unused items need Review where this gap prevents proving non-use; "
+        f"existing Blocked or Keep recommendations remain unchanged."
     )
 
 
@@ -1236,7 +1238,7 @@ def _limitation_explanation(ref: UnsupportedMetadataRef) -> dict:
                    "listed as Translation Membership on each translated item.")
     elif targets:
         checked = (f"Direct item references in the expression were resolved: {', '.join(targets)}. "
-                   f"Those items stay at Review instead of Safe.")
+                   f"Coverage remains incomplete; see each item's cleanup recommendation.")
     elif ref.construct == "measure/kpi":
         checked = "The KPI declaration was recognized; it declares no target, status or trend expression."
     else:
@@ -1254,10 +1256,13 @@ def _limitation_explanation(ref: UnsupportedMetadataRef) -> dict:
         unchecked = (f"The {feature} is not part of the dependency graph and is not evaluated, "
                      f"so it is not counted as model use.")
     if ref.unresolved_targets:
-        effect = ("Every item with no use found in the selected scope stays at Review instead of "
-                  "Safe until this gap is resolved.")
+        effect = ("Unused-item coverage is incomplete until this gap is resolved. "
+                  "Unused items need Review where this gap prevents proving non-use; "
+                  "existing Blocked or Keep recommendations remain unchanged.")
     elif targets:
-        effect = "Only the referenced items are affected; they stay at Review."
+        effect = ("Coverage is incomplete for the referenced items. "
+                  "Unused items need Review where this gap prevents proving non-use; "
+                  "existing Blocked or Keep recommendations remain unchanged.")
     else:
         effect = "No cleanup recommendation changes; the construct is listed for transparency."
     return {
@@ -1323,8 +1328,9 @@ def _report_scan_limitation(issue: ReportIssue) -> dict:
         "targets": [],
         "checked": checked,
         "unchecked": unchecked,
-        "effect": ("Every item with no use found in the selected scope stays at Review instead of "
-                   "Safe until the report scan is complete."),
+        "effect": ("Unused-item coverage is incomplete until the report scan is complete. "
+                   "Unused items need Review where this gap prevents proving non-use; "
+                   "existing Blocked or Keep recommendations remain unchanged."),
         "message": message,
     }
 

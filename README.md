@@ -8,7 +8,7 @@ It is designed for local use against files on your machine. Version `0.4.0b9`
 is the public beta for Power BI practitioners who already work with PBIR
 and TMDL.
 
-> Beta7 corrects the public download links and checksum file, adds a browser icon and a back-up-before-apply reminder, and explains the CLI and web "unused" counts. See the [release notes](docs/releases/0.4.0b9.md).
+> Beta9 improves downstream dependency lists, Scan details, and the inventory and object-detail layout. See the [release notes](docs/releases/0.4.0b9.md).
 
 > **Before applying changes:** back up your Power BI Project or commit it to version control first. Apply writes to your TMDL and PBIR files; guarded restore recovers the original bytes from the plan, but a backup is your safety net.
 

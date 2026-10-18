@@ -30,6 +30,7 @@ def run_node(tmp_path, program, *args):
 def test_v2_ship_the_separate_surface(layout):
     html = webapp.app.test_client().get('/').get_data(as_text=True)
     assert 'id="analysisLimitationsBanner"' in html
+    assert 'id="analysisLimitationsTitle"' in html
     assert 'analysis-limitations.js' in html
     assert 'metadata the analyzer cannot fully verify' not in html  # Report Health no longer claims model gaps
     assert 'Scan coverage and unsupported metadata.' in html
@@ -67,7 +68,7 @@ assert.ok(nodes.analysisLimitationsHint.textContent.startsWith('4 shared coverag
 const cards = nodes.analysisLimitationsList.children[0].innerHTML;
 // One labelled line per limitation; the effect column says what happens to Cleanup (#132).
 assert.ok(cards.includes('limitation-row-header') && cards.includes('Effect on Cleanup</span>'));
-assert.ok(cards.includes('Keeps every unused item at Review or Blocked'));
+assert.ok(cards.includes('Unused-item coverage incomplete · see cleanup recommendations'));
 assert.ok(!cards.includes('Targeted · affects referenced items only'));
 assert.equal((cards.match(/<details class="limitation-card"/g) || []).length, 4);
 assert.ok(cards.includes('definition/tables/Time Intelligence.tmdl:8'));
@@ -128,7 +129,7 @@ console.log('ok');
 
 
 @pytest.mark.parametrize("count", [1, 2])
-def test_targeted_effect_preserves_review_and_blocked_statuses(tmp_path, count):
+def test_targeted_effect_counts_affected_items_without_status_claims(tmp_path, count):
     items = [
         {"type": "measure", "table": "Sales", "name": "Review item",
          "deleteSafety": "Review", "analysisLimitationIds": ["targeted"]},
@@ -159,7 +160,7 @@ vm.runInContext(fs.readFileSync(process.argv[3], 'utf8'), context);
 context.window.smcRenderAnalysisLimitations();
 const count = data.items.length, unit = count === 1 ? 'item' : 'items';
 const html = nodes.analysisLimitationsList.child.innerHTML;
-assert.ok(html.includes('Keeps ' + count + ' ' + unit + ' at Review or Blocked'));
+assert.ok(html.includes('Coverage incomplete for ' + count + ' ' + unit + ' · see cleanup recommendations'));
 assert.ok(!html.includes('Keeps ' + count + ' ' + unit + ' at Review</span>'));
 assert.equal(nodes.analysisLimitationsCount.textContent, '(1 distinct limitation · ' + count + ' affected ' + unit + ')');
 for (const item of data.items) {
@@ -167,6 +168,87 @@ for (const item of data.items) {
   assert.equal(context.window.smcCleanupExplanation(item).next, item.deleteSafety === 'Blocked'
     ? 'Next: keep the item; update or remove its consumers first.'
     : 'Next: inspect the evidence below, then decide with a reviewed plan.');
+}
+assert.equal(JSON.stringify(data), before);
+console.log('ok');
+"""
+    assert run_node(tmp_path, program, str(data), str(SCRIPT)).strip() == "ok"
+
+
+@pytest.mark.parametrize("gap", ["targeted_calendar", "shared_metadata", "report_scan"])
+def test_real_payload_expanded_coverage_preserves_recommendations(tmp_path, gap):
+    model = tmp_path / "Test.SemanticModel"
+    tables = model / "definition/tables"
+    tables.mkdir(parents=True)
+    declaration = (
+        "table Sales\n\tcolumn Amount\n\t\tdataType: int64\n"
+        "\tcolumn Spare\n\t\tdataType: string\n"
+        "\tcolumn Inferred\n\t\tdataType: string\n\t\tisNameInferred\n"
+    )
+    if gap == "targeted_calendar":
+        # An unmapped calendar has targeted, incomplete column coverage.
+        declaration += "\tcalendar Fiscal\n"
+    elif gap == "shared_metadata":
+        declaration += (
+            "\tmeasure Detail = 1\n"
+            "\t\tdetailRowsDefinition = Sales[Amount] + [Missing]\n"
+        )
+    (tables / "Sales.tmdl").write_text(declaration, encoding="utf-8")
+    report = tmp_path / "Test.Report"
+    visual = report / "definition/pages/P/visuals/V/visual.json"
+    visual.parent.mkdir(parents=True)
+    (report / "definition.pbir").write_text(json.dumps({
+        "datasetReference": {"byPath": {"path": "../Test.SemanticModel"}}
+    }), encoding="utf-8")
+    (report / "definition/report.json").write_text(
+        "{invalid" if gap == "report_scan" else "{}", encoding="utf-8")
+    visual.write_text(json.dumps({"visual": {"query": {"Column": {
+        "Expression": {"SourceRef": {"Entity": "Sales"}}, "Property": "Amount"
+    }}}}), encoding="utf-8")
+    result = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
+    payload = webapp._serialize_results(result, model_paths=[str(model)])
+    items = {item["name"]: item for item in payload["items"]}
+    assert {name: items[name]["deleteSafety"] for name in ("Amount", "Spare", "Inferred")} == {
+        "Amount": "Blocked", "Spare": "Review", "Inferred": "Keep",
+    }
+    limitation = payload["analysisLimitations"]["limitations"][0]
+    affected = [item for item in payload["items"]
+                if limitation["id"] in item["analysisLimitationIds"]]
+    assert affected
+    if gap != "report_scan":
+        assert {"Review", "Blocked"} <= {item["deleteSafety"] for item in affected}
+    if gap == "targeted_calendar":
+        assert limitation["scope"] == "targeted"
+        assert items["Inferred"] in affected
+        assert limitation["affectedItemCount"] == 3
+    assert limitation["location"]
+    assert limitation["checked"] and limitation["unchecked"]
+    assert "stay at Review" not in limitation["checked"] + limitation["effect"]
+    assert "stays at Review" not in limitation["effect"]
+    assert "existing Blocked or Keep recommendations remain unchanged" in limitation["effect"]
+    data = tmp_path / "real-payload.json"
+    data.write_text(json.dumps(payload), encoding="utf-8")
+    program = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('assert/strict');
+const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')), before = JSON.stringify(data);
+const nodes = {};
+for (const id of ['analysisLimitationsBanner','analysisLimitationsList','analysisLimitationsCount','analysisLimitationsHint','analysisLimitationsTitle']) {
+  nodes[id] = {classList:{add(){},remove(){},toggle(){}},appendChild(child){this.child=child;}};
+}
+const context = {window:{},allAnalysisLimitations:data.analysisLimitations,esc:String,
+  document:{getElementById:id=>nodes[id],createElement:()=>({})}};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[3], 'utf8'), context);
+context.window.smcRenderAnalysisLimitations();
+const html = nodes.analysisLimitationsList.child.innerHTML;
+assert.ok(!/Keeps .*Review|stay[s]? at Review/.test(html));
+assert.ok(html.includes('actual cleanup recommendations are shown per item'));
+assert.ok(html.includes('existing Blocked or Keep recommendations remain unchanged'));
+for (const item of data.items.filter(i=>i.analysisLimitationIds.length)) {
+  const body = context.window.smcCleanupExplanationHtml(item, {open:true});
+  assert.ok(!/stay[s]? at Review/.test(body));
+  assert.ok(body.includes('Technical details and source evidence'));
+  assert.ok(body.includes('existing Blocked or Keep recommendations remain unchanged'));
 }
 assert.equal(JSON.stringify(data), before);
 console.log('ok');
