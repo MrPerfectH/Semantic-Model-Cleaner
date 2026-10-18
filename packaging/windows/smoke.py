@@ -36,6 +36,7 @@ ASSETS_BY_LAYOUT = {
         "analysis-limitations.js",
         "result-overview.js",
         "result-overview.css",
+        "auto-date-tables.js",
         "accessible-layers.js",
         "accessibility.css",
         "workspace-navigation.js",

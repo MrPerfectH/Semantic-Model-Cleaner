@@ -170,6 +170,21 @@ Promotion currently preserves the measure name and home table. A different `targ
 
 If `report_path` is omitted, the first selected report is used; specify it explicitly when more than one report is selected. `include_dependencies` defaults to false. Unsupported metadata loss is not silently authorized: `allow_metadata_loss` defaults to false. Inspect the proposed dependency set and metadata differences before opting into either behavior.
 
+### Remove unused auto-date tables
+
+```json
+{
+  "operations": [
+    {
+      "kind": "auto_date_tables",
+      "tables": ["LocalDateTable_8ed55867-002d-48ca-ab64-c88caeda64fe"]
+    }
+  ]
+}
+```
+
+This operation must be the only one in its plan. Each table must be a Power BI generated auto-date table (`LocalDateTable_<id>` or `DateTableTemplate_<id>`) whose metadata matches the generated structure, with no use found in the selected model and reports. The plan removes the table file, its `ref table` line, its generated relationship and the `variation` on the owning date column; the date column itself stays. Every selected file is searched as text for the table name, relationship id and lineage tags, for column-variation DAX (`[OrderDate].[Year]`) and for report hierarchy fields. Any other occurrence, or any unreadable file, blocks the table with the reason. The files are checked again before preview and before apply. `__PBI_TimeIntelligenceEnabled` is not changed, so Power BI Desktop can create auto-date tables again.
+
 ### Report metadata entries
 
 Prefer generating these from reviewed analyzer/UI evidence rather than guessing JSON paths. A stale cleanup entry identifies `report_path`, `artifact_path`, `source_path`, `selector_value` and `stale_kind`. A report-issue entry additionally identifies the intended `action` and reference; replacement entries specify `target_table` and `target_name`. Exact entry semantics remain those of the shared report writer. A missing or out-of-scope file is not silently added to the plan.

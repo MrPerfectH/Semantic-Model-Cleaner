@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 import tempfile
 import uuid
 
-from . import __version__, analyzer, report_writer, tmdl_writer
+from . import __version__, analyzer, auto_date_tables, report_writer, tmdl_writer
 
 SUFFIXES = {'.tmdl', '.json', '.pbir', '.pbism'}
 SCHEMA_VERSION = 1
@@ -189,6 +189,12 @@ def _execute(op, roots):
     if kind == 'report_repair':
         return _result(report_writer.rewrite_model_reference_changes(report_paths=reports, **{
             k: op[k] for k in ('table_renames', 'measure_renames', 'column_renames') if op.get(k)}))
+    if kind == auto_date_tables.OPERATION_KIND:
+        # Staged copies are re-assessed; report binding was checked on the originals.
+        try:
+            return _result(auto_date_tables.remove_tables(model, reports, op.get('tables'), require_bound=False))
+        except auto_date_tables.AutoDateError as exc:
+            raise PlanError(str(exc)) from exc
     raise PlanError(f'Unsupported operation kind: {kind}')
 
 
@@ -263,6 +269,19 @@ def _validate_json(inventory, *, tolerate_existing=None):
         raise PlanError('Incomplete or invalid metadata: ' + '; '.join(errors))
 
 
+def _check_auto_date_tables(roots, operation):
+    """Fresh server-side gate for the explicit auto-date action; never trusts the client."""
+    try:
+        tables = auto_date_tables.requested_tables(operation)
+        assessment = auto_date_tables.assess(roots['model'], [p for k, p in roots.items() if k != 'model'])
+    except auto_date_tables.AutoDateError as exc:
+        raise PlanError(str(exc)) from exc
+    reasons = auto_date_tables.blocking_reasons(assessment, tables)
+    if reasons:
+        raise PlanError(' '.join(reasons))
+    return assessment, tables
+
+
 def create_plan(model_path, report_paths, operations):
     """Preview only; no input files or backups are written."""
     if not isinstance(operations, list) or not operations or any(not isinstance(o, dict) for o in operations):
@@ -272,7 +291,7 @@ def create_plan(model_path, report_paths, operations):
     _require_supported_write_encoding(before)
     # Destructive/refactoring plans cannot claim complete propagation while a
     # selected document is unreadable. Non-reference metadata edits can proceed.
-    strict = any(o.get('kind') in {'rename', 'move', 'promote', 'report_repair', 'dax'} or
+    strict = any(o.get('kind') in {'rename', 'move', 'promote', 'report_repair', 'dax', auto_date_tables.OPERATION_KIND} or
                  any(a.get('action') in {'delete', 'delete_table'} for a in o.get('actions', [])) for o in operations)
     bindings = [analyzer.report_binding_status(p, originals['model']) for key, p in originals.items() if key != 'model']
     if strict:
@@ -286,6 +305,11 @@ def create_plan(model_path, report_paths, operations):
             validate_membership_files(originals['model'])
         except MembershipError as exc:
             raise PlanError(str(exc)) from exc
+    auto_date = None
+    if any(op.get('kind') == auto_date_tables.OPERATION_KIND for op in operations):
+        if len(operations) != 1:
+            raise PlanError('Remove auto-date tables in a plan of their own.')
+        auto_date = _check_auto_date_tables(originals, operations[0])
     from .cleanup_policy import evaluate_deletion_policy
     actions = [a for op in operations if op.get('kind') == 'actions' for a in op.get('actions', [])]
     policy = evaluate_deletion_policy(originals['model'], list(originals.values())[1:], actions)
@@ -301,7 +325,10 @@ def create_plan(model_path, report_paths, operations):
                             and policy['scope'].get('complete') is True)
     cleared = [{key: entry.get(key) for key in ('id', 'owner', 'table', 'source_file', 'line', 'cleared_reason')}
                for entry in policy['scope'].get('cleared_limitations', [])]
-    if strict and not baseline.get('coverage', {}).get('complete', True) and not final_state_complete:
+    # The auto-date action checks every selected file as text for any use of the
+    # tables it removes, so analyzer parser gaps elsewhere do not hide a consumer.
+    if strict and not baseline.get('coverage', {}).get('complete', True) and not final_state_complete \
+            and auto_date is None:
         raise PlanError('Refactoring requires complete supported scan coverage. Resolve metadata limitations first.')
     with tempfile.TemporaryDirectory(prefix='smc-plan-') as temp:
         staged = {k: Path(temp).resolve() / k / p.name for k, p in originals.items()}
@@ -362,11 +389,36 @@ def create_plan(model_path, report_paths, operations):
                                            'bundle_commit': schema_after['bundle'].get('commit')},
                            'limitations': ['Static analysis of selected TMDL/PBIR only.',
                                            'Only supported declared PBIR schemas are validated; TMDL/DAX engine validation is not performed.']
-                                          + sorted({entry['cleared_reason'] for entry in cleared}),
+                                          + sorted({entry['cleared_reason'] for entry in cleared})
+                                          + _auto_date_limitations(auto_date),
                            # Tool entities (#103) are deleted only after the user confirms them here.
-                           'confirmations': [entry['message'] for entry in policy.get('confirmations', [])]}}
+                           'confirmations': [entry['message'] for entry in policy.get('confirmations', [])]
+                                            + _auto_date_confirmations(auto_date)}}
     plan['digest'] = _seal(plan)
     return plan
+
+
+def _auto_date_limitations(auto_date):
+    if auto_date is None:
+        return []
+    return ['Auto-date tables: only the selected model and reports were checked for use of these tables and '
+            'their date hierarchies. Reports that are not selected, Excel and other tools that connect to the '
+            'published model were not checked.']
+
+
+def _auto_date_confirmations(auto_date):
+    if auto_date is None:
+        return []
+    assessment, tables = auto_date
+    selected = {name.casefold() for name in tables}
+    columns = sorted(entry['date_column'] for entry in assessment['tables']
+                     if entry['table'].casefold() in selected and entry['date_column'])
+    messages = [f'Remove {len(tables)} auto-date table(s). {len(columns)} date column(s) stay in their tables; '
+                'they lose only the automatic Year/Quarter/Month/Day hierarchy.']
+    if assessment.get('time_intelligence_enabled'):
+        messages.append('Auto date/time stays on for this file. Power BI Desktop can create auto-date tables '
+                        'again; this change does not turn the setting off.')
+    return messages
 
 
 def _atomic(path, content):
@@ -466,6 +518,12 @@ def apply_plan(plan, directory):
             raise PlanError('This operation already has a receipt. Inspect it or generate a new plan.')
         if _hashes(_inventory(roots)) != plan['inputs']:
             raise PlanError('Stale plan: selected files changed. Generate a new preview; nothing was written.')
+        for operation in plan['operations']:
+            if operation.get('kind') == auto_date_tables.OPERATION_KIND:
+                try:
+                    _check_auto_date_tables(roots, operation)
+                except PlanError as exc:
+                    raise PlanError(f'Auto-date tables were checked again before apply: {exc} Nothing was written.') from exc
         save_plan(plan, directory)
         receipt = _receipt(plan, 'applying', completed=[])
         _atomic(journal, json.dumps(receipt, indent=2).encode())
