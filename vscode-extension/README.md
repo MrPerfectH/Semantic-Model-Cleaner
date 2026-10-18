@@ -1,4 +1,4 @@
-# Semantic Model Cleaner for VS Code — local preview
+# Semantic Model Cleaner for VS Code - Preview
 
 Choose a semantic model and its reports in a native **Cleaner** sidebar, then
 review the analysis in a desktop VS Code editor tab running the existing
@@ -6,33 +6,44 @@ Semantic Model Cleaner web UI. The Python engine discovers the Power BI Project
 and its report bindings. Analysis and model changes remain explicit user
 actions; the existing reviewed-plan safeguards are unchanged.
 
-This is an unpublished **0.1.3 pre-release VSIX**. `smc-local-preview` is a local
-package identifier, not a claim of a registered Marketplace publisher. The VSIX
-contains the extension, not Python or the engine. No software is auto-installed.
+Version **0.1.4** is prepared for an initial public Marketplace pre-release as
+`MrPerfectH.semantic-model-cleaner`; this document does not confirm publication.
+The **Preview** label remains. The VSIX contains the extension, not Python or the
+engine. Nothing is downloaded, installed or upgraded automatically.
 
 ## Requirements and installation
 
 - Desktop VS Code 1.95 or newer and a **trusted local workspace**.
-- Python 3.11+ with a Semantic Model Cleaner build supporting `smc-web --vscode`.
-  This capability is introduced by this checkout; an older package, even one
-  reporting the same Python beta version, is not sufficient.
+- Python 3.11+ and the separately installed **Semantic Model Cleaner 0.4.0b9** engine.
 - Local disk Power BI Project files (TMDL Semantic Model and PBIR Reports).
 
-Prepare a Python environment explicitly from the repository root:
+Install the [released 0.4.0b9 wheel](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b9/semantic_model_cleaner-0.4.0b9-py3-none-any.whl)
+into a virtual environment at a location you choose. These commands create an
+example environment in the current directory; run them yourself in a terminal.
+
+POSIX shell (macOS/Linux):
 
 ```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -e .
+python3 -m venv .venv-smc
+.venv-smc/bin/python -m pip install "https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b9/semantic_model_cleaner-0.4.0b9-py3-none-any.whl"
 ```
 
-On Windows, use `py -3 -m venv .venv` and
-`.venv\Scripts\python.exe -m pip install -e .`.
+Windows PowerShell:
 
-In VS Code, choose **Extensions: Install from VSIX…** and select
-`semantic-model-cleaner-0.1.3.vsix`. Set **Semantic Model Cleaner: Python Path**
-to the absolute `.venv/bin/python` (Windows: `.venv\Scripts\python.exe`).
-Alternatively leave Python Path empty and set **Executable** to the absolute
-path of this environment's `smc-web` / `smc-web.exe`.
+```powershell
+py -3 -m venv .venv-smc
+& .\.venv-smc\Scripts\python.exe -m pip install "https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b9/semantic_model_cleaner-0.4.0b9-py3-none-any.whl"
+```
+
+Install the extension through **Extensions: Install from VSIX...** using
+`semantic-model-cleaner-0.1.4.vsix`. Once the public pre-release is available,
+its Marketplace identity is `MrPerfectH.semantic-model-cleaner`.
+Set **Semantic Model Cleaner: Python Path** to the absolute path of your chosen
+environment's Python executable (`.venv-smc/bin/python` or
+`.venv-smc\Scripts\python.exe`). Alternatively leave Python Path empty and set
+**Executable** to that environment's absolute `smc-web` / `smc-web.exe` path.
+The extension launches that configured external engine; installing this VSIX
+does not replace or configure an existing engine or executable setting.
 
 Settings are resource-scoped and restricted by Workspace Trust. The extension
 also checks trust in command handlers before reading executable settings or
@@ -118,7 +129,7 @@ npm test
 npm run package
 ```
 
-The package command creates `semantic-model-cleaner-0.1.3.vsix` with the VSIX
+The package command creates `semantic-model-cleaner-0.1.4.vsix` with the VSIX
 pre-release flag. It does not publish. Open this directory in VS Code and use
 **Run Cleaner extension** (F5) for a development host.
 
@@ -157,3 +168,18 @@ installed-VSIX verification steps.
 API references: [Workspace Trust](https://code.visualstudio.com/api/extension-guides/workspace-trust),
 [webview security](https://code.visualstudio.com/api/extension-guides/webview),
 and [desktop port mapping](https://code.visualstudio.com/api/advanced-topics/remote-extensions#option-2---use-a-port-mapping).
+
+## Marketplace release preparation
+
+The package declares the public publisher `MrPerfectH`, repository URL and MIT
+license, and includes `LICENSE`. The existing `media/cleaner.svg` is an Activity
+Bar icon only; no SVG is declared as the Marketplace package icon. A custom
+Marketplace icon is optional and, if added later, must use a supported raster
+format rather than this SVG.
+
+The manually dispatched **Publish Cleaner Marketplace pre-release** workflow
+runs extension and focused Python checks, packages this version and publishes
+that exact VSIX with `--pre-release`. A repository maintainer must configure
+`VSCE_PAT` with permission for the `MrPerfectH` publisher and explicitly dispatch
+the workflow from the reviewed release commit. Pushes do not publish. Packaging
+or passing tests alone does not establish Marketplace availability.
