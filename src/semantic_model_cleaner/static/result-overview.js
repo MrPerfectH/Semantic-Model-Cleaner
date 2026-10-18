@@ -17,6 +17,9 @@
       + '<div><strong>' + issues + ' Report Health issue(s)</strong><span>Report metadata findings</span></div></div>'
       + '<p><strong>Safe applies to supported scanned metadata in this scope.</strong> Other Reports and Power BI runtime behavior are not verified.</p>'
       + '<p class="result-next">' + (safe ? 'Next: open a candidate to inspect Usage and dependency evidence, then prepare and review the exact file changes.' : 'No Safe cleanup candidates in this scope. Inspect item evidence and any Analysis Limitations before deciding on a change.') + '</p>';
+    if (panel.dataset.collapsible === 'true') {
+      panel.innerHTML = '<details class="workspace-scope-details"><summary>Scope and analysis details · ' + issues + ' report finding(s)</summary><div>' + panel.innerHTML + '</div></details>';
+    }
     var limitationsLink = document.getElementById('overviewLimitations');
     if (limitationsLink) limitationsLink.onclick = function (event) { event.preventDefault(); switchView('limitations'); };
     document.getElementById('overviewHistory').onclick = function () {

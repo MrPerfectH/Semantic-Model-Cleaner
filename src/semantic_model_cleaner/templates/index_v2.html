@@ -573,6 +573,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
 <link rel="stylesheet" href="{{ url_for('static', filename='detail-workspace.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='result-overview.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='accessibility.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='cobalt-workspace.css') }}">
 </head>
 <body>
 <div class="header">
@@ -609,23 +610,6 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
       <button type="button" class="view-tab detail-tab" data-view="item" id="tabItem">&#8627; Item page</button>
       <button type="button" class="view-tab detail-tab" data-view="table" id="tabTable">&#8627; Table page</button>
     </nav>
-    <div class="rail-summary hidden" id="summarySection">
-      <div class="rail-divider"></div>
-      <div class="rail-heading">Cleanup</div>
-      <div class="rail-row" title="Items that look low-risk to clean up"><span class="rail-dot" style="background:#16a34a"></span>Safe<span class="value" id="sumSafe">0</span></div>
-      <div class="rail-row" title="Items that may be removable, but still need a manual check first"><span class="rail-dot" style="background:#f59e0b"></span>Review<span class="value" id="sumReview">0</span></div>
-      <div class="rail-row rail-subrow" title="Unused calculation groups and field parameters: this tool always asks you to confirm them; nothing uses them">by entity type<span class="value" id="sumReviewEntity">0</span></div>
-      <div class="rail-row rail-subrow" title="Items with concrete evidence that needs a manual check (hidden, key, perspective, metadata or coverage)">because of evidence<span class="value" id="sumReviewEvidence">0</span></div>
-      <div class="rail-row" title="Items that still have direct or indirect dependencies and should not be deleted now"><span class="rail-dot" style="background:#dc2626"></span>Blocked<span class="value" id="sumCaution">0</span></div>
-      <div class="rail-row" title="Items retained for required model structure"><span class="rail-dot" style="background:#64748b"></span>Keep<span class="value" id="sumKeep">0</span></div>
-      <div class="rail-divider"></div>
-      <div class="rail-heading">Inventory</div>
-      <div class="rail-row" title="Total count of measures and columns found across the selected semantic model and report metadata">Total items<span class="value" id="sumTotal">0</span></div>
-      <div class="rail-row" title="Items directly used by reports or reached through required model dependencies">Used<span class="value" id="sumUsed">0</span></div>
-      <div class="rail-row" title="Items for which no direct or indirect usage was found in the selected reports">Not used<span class="value" id="sumUnused">0</span></div>
-      <div class="rail-row" title="Count of model measures plus report-level measures found in the selected artifacts">Measures<span class="value" id="sumMeasures">0</span></div>
-      <div class="rail-row" title="Count of semantic-model columns found in the selected artifacts">Columns<span class="value" id="sumColumns">0</span></div>
-    </div>
     <div class="rail-bottom">
       <button type="button" class="rail-item" onclick="smcShowWarnings()" title="Scroll to analyzer warnings">Analyzer warnings</button>
       <button type="button" class="rail-item" onclick="smcToggleLog()" title="Show or hide the action log">Action log</button>
@@ -654,7 +638,18 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
         <button class="btn btn-secondary" type="button" onclick="smcLoadDemo()">Try demo</button>
         <p><button class="btn btn-secondary btn-sm" type="button" onclick="smcOpenScope()">Choose model and report folders separately</button></p>
       </div>
-  <section id="resultOverview" class="result-overview hidden" aria-label="Analysis overview"></section>
+
+      <section class="workspace-overview hidden" id="summarySection" aria-label="Model analysis summary">
+        <div class="workspace-heading"><div><p class="workspace-eyebrow">ANALYSIS WORKSPACE</p><h2 id="workspaceTitle">Model items</h2><p>Inspect usage, understand dependencies, and review your changes.</p></div></div>
+        <div class="cleanup-cards">
+          <div class="cleanup-card cleanup-safe"><span>Safe</span><strong id="sumSafe">0</strong><small>Within analyzed scope</small></div>
+          <div class="cleanup-card cleanup-review"><span>Review</span><strong id="sumReview">0</strong><small><span id="sumReviewEntity">0</span> by type · <span id="sumReviewEvidence">0</span> by evidence</small></div>
+          <div class="cleanup-card cleanup-blocked"><span>Blocked</span><strong id="sumCaution">0</strong><small>Dependencies prevent deletion</small></div>
+          <div class="cleanup-card cleanup-keep"><span>Keep</span><strong id="sumKeep">0</strong><small>Required model structure</small></div>
+        </div>
+        <details class="workspace-inventory"><summary>Inventory · <span id="sumTotal">0</span> items</summary><div><span>Used <b id="sumUsed">0</b></span><span>Not used <b id="sumUnused">0</b></span><span>Measures <b id="sumMeasures">0</b></span><span>Columns <b id="sumColumns">0</b></span></div></details>
+      </section>
+  <section id="resultOverview" data-collapsible="true" class="result-overview hidden" aria-label="Analysis overview"></section>
   <details class="result-guide hidden" id="resultGuideSection">
     <summary>
       <span class="result-guide-title">How to read these results</span>
@@ -3256,6 +3251,7 @@ function updateActionBarForView() {
 
 function switchView(view) {
   currentView = view;
+  $('workspaceTitle').textContent = ({details: 'Model items', tables: 'Model tables', reports: 'Report health', refs: 'References', limitations: 'Analysis limitations'})[view] || 'Model workspace';
   document.querySelectorAll('.view-tab').forEach(function(t) { t.classList.toggle('active', t.dataset.view === view); });
   $('tableSection').classList.toggle('hidden', view !== 'details');
   $('tablesOverviewSection').classList.toggle('hidden', view !== 'tables');
@@ -4735,7 +4731,7 @@ function usageBadge(itemOrStatus) {
   var label = usageValue(itemOrStatus);
   var title = usageHelpText(itemOrStatus);
   if (label === 'Used') return '<span class="badge badge-used badge-status" title="' + esc(title) + '">Used</span>';
-  if (label === 'Unused') return '<span class="badge badge-status" style="background:#fee2e2;color:#991b1b" title="' + esc(title) + '">Unused</span>';
+  if (label === 'Unused') return '<span class="badge badge-unused badge-status" title="' + esc(title) + '">Unused</span>';
   if (label === 'Indirect') return '<span class="badge badge-status" style="background:#e0e7ff;color:#3730a3" title="' + esc(title) + '">Indirect</span>';
   if (label === 'Stale only') return '<span class="badge badge-status" style="background:#fff7ed;color:#9a3412" title="' + esc(title) + '">Stale only</span>';
   return '<span class="badge badge-muted" title="' + esc(title) + '">' + esc(label) + '</span>';
