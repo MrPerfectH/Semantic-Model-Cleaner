@@ -404,6 +404,9 @@ body.scope-open .scope-drawer { transform: translateX(0); }
 .role-fact-like { background: #dbeafe; color: #1e40af; }
 .role-mixed { background: var(--review); color: #b45309; }
 .role-calculation-group { background: #ede9fe; color: #5b21b6; }
+.limitation-banner.is-informational { background: var(--bg); border-color: var(--border); color: var(--text); }
+.limitation-banner.is-informational .warning-note, .limitation-banner.is-informational .report-health-toggle-hint, .limitation-banner.is-informational .report-health-toggle::before, .limitation-banner.is-informational .limitation-location, .limitation-banner.is-informational .limitation-effect { color: var(--text-light); }
+.limitation-banner.is-informational .limitation-card { border-color: var(--border); }
 .limitation-groups { display: grid; gap: 4px; }
 .limitation-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 220px) minmax(170px, 230px); gap: 12px; align-items: baseline; font-size: 12px; }
 .limitation-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -683,7 +686,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
   </details>
   <details class="warning-banner hidden limitation-banner" id="analysisLimitationsBanner">
     <summary class="report-health-toggle">
-      <h3>Analysis limitations <span id="analysisLimitationsCount"></span></h3>
+      <h3><span id="analysisLimitationsTitle">Analysis limitations</span> <span id="analysisLimitationsCount"></span></h3>
       <span class="report-health-toggle-hint" id="analysisLimitationsHint"></span>
     </summary>
     <div class="warning-note">Scan coverage and unsupported metadata. A limitation with no affected items is informational. Shared or unresolved coverage can still prevent a Safe recommendation. Open a row for the exact source, affected objects and recorded cleanup effect.</div>

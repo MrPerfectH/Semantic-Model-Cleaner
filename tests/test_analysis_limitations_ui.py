@@ -52,9 +52,9 @@ def test_renderer_counts_distinct_limitations_and_collapses_item_explanations(tm
     program = r'''
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
 const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-function el(tag) { return { tag, children: [], className: '', _html: '', textContent: '', classList: { names: new Set(['hidden']), add(n) { this.names.add(n); }, remove(n) { this.names.delete(n); } },
+function el(tag) { return { tag, children: [], className: '', _html: '', textContent: '', classList: { names: new Set(['hidden']), add(n) { this.names.add(n); }, remove(n) { this.names.delete(n); }, toggle(n, force) { if (force) this.names.add(n); else this.names.delete(n); } },
   appendChild(x) { this.children.push(x); }, set innerHTML(v) { this._html = v; if (v === '') this.children = []; }, get innerHTML() { return this._html; } }; }
-const nodes = { analysisLimitationsBanner: el('details'), analysisLimitationsList: el('div'), analysisLimitationsCount: el('span'), analysisLimitationsHint: el('span') };
+const nodes = { analysisLimitationsBanner: el('details'), analysisLimitationsTitle: el('span'), analysisLimitationsList: el('div'), analysisLimitationsCount: el('span'), analysisLimitationsHint: el('span') };
 const context = { window: {}, document: { getElementById: id => nodes[id] || null, createElement: el },
   allAnalysisLimitations: data.analysisLimitations, esc: s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),
   deleteSafetyValue: item => item.deleteSafety, cleanupHelpText: v => 'help:' + v };
@@ -67,7 +67,7 @@ assert.ok(nodes.analysisLimitationsHint.textContent.startsWith('4 shared coverag
 const cards = nodes.analysisLimitationsList.children[0].innerHTML;
 // One labelled line per limitation; the effect column says what happens to Cleanup (#132).
 assert.ok(cards.includes('limitation-row-header') && cards.includes('Effect on Cleanup</span>'));
-assert.ok(cards.includes('Keeps every unused item at Review'));
+assert.ok(cards.includes('Keeps every unused item at Review or Blocked'));
 assert.ok(!cards.includes('Targeted · affects referenced items only'));
 assert.equal((cards.match(/<details class="limitation-card"/g) || []).length, 4);
 assert.ok(cards.includes('definition/tables/Time Intelligence.tmdl:8'));
@@ -102,7 +102,22 @@ assert.ok(context.window.smcUnusedScopeNote().includes('not proof of global non-
 context.allAnalysisLimitations = { distinctCount: 1, sharedCount: 0, targetedCount: 1, affectedItemCount: 0, coverageComplete: true, limitations: [{id:'language',feature:'linguisticMetadata',scope:'targeted',affectedItemCount:0,targets:[],effect:'No recommendations changed'}] };
 context.window.smcRenderAnalysisLimitations();
 assert.equal(nodes.analysisLimitationsHint.textContent, 'Informational · no cleanup recommendations changed');
+assert.equal(nodes.analysisLimitationsTitle.textContent, 'Scan details');
+assert.equal(nodes.analysisLimitationsBanner.classList.names.has('is-informational'), true);
 assert.ok(nodes.analysisLimitationsList.children[0].innerHTML.includes('Informational · no items affected'));
+for (const unknown of [
+  {sharedCount:1,coverageComplete:false,limitations:[{scope:'shared',affectedItemCount:0}]},
+  {coverageComplete:false,limitations:[{scope:'targeted'}]},
+  {coverageComplete:true,limitations:[{scope:'targeted'}]},
+]) {
+  context.allAnalysisLimitations = {distinctCount:1,sharedCount:0,affectedItemCount:0,...unknown};
+  context.window.smcRenderAnalysisLimitations();
+  assert.equal(nodes.analysisLimitationsBanner.classList.names.has('is-informational'), false);
+  assert.equal(nodes.analysisLimitationsTitle.textContent, 'Analysis limitations');
+  assert.ok(!nodes.analysisLimitationsHint.textContent.includes('Informational'));
+  assert.ok(!nodes.analysisLimitationsList.children[0].innerHTML.includes('Informational'));
+}
+
 context.allAnalysisLimitations = { distinctCount: 0, sharedCount: 0, targetedCount: 0, affectedItemCount: 0, coverageComplete: true, limitations: [] };
 context.window.smcRenderAnalysisLimitations();
 assert.equal(nodes.analysisLimitationsBanner.classList.names.has('hidden'), true);
@@ -110,3 +125,50 @@ assert.equal(context.window.smcUnusedScopeNote(), '');
 console.log('ok');
 '''
     assert run_node(tmp_path, program, str(data), str(SCRIPT)).strip() == 'ok'
+
+
+@pytest.mark.parametrize("count", [1, 2])
+def test_targeted_effect_preserves_review_and_blocked_statuses(tmp_path, count):
+    items = [
+        {"type": "measure", "table": "Sales", "name": "Review item",
+         "deleteSafety": "Review", "analysisLimitationIds": ["targeted"]},
+        {"type": "measure", "table": "Sales", "name": "Blocked item",
+         "deleteSafety": "Blocked", "analysisLimitationIds": ["targeted"]},
+    ][:count]
+    before = json.loads(json.dumps(items))
+    limits = webapp._build_analysis_limitations(
+        {"analysis_limitations": [{"id": "targeted", "scope": "targeted",
+                                  "feature": "Synthetic coverage"}]}, items)
+    assert items == before
+    assert limits["affectedItemCount"] == count
+    assert limits["limitations"][0]["affectedItemCount"] == count
+    data = tmp_path / "targeted.json"
+    data.write_text(json.dumps({"items": items, "limits": limits}), encoding="utf-8")
+    program = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('assert/strict');
+const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const before = JSON.stringify(data);
+const nodes = {};
+for (const id of ['analysisLimitationsBanner','analysisLimitationsList','analysisLimitationsCount','analysisLimitationsHint','analysisLimitationsTitle']) {
+  nodes[id] = {classList:{add(){},remove(){},toggle(){}},appendChild(child){this.child=child;}};
+}
+const context = {window:{},allAnalysisLimitations:data.limits,esc:String,
+  document:{getElementById:id=>nodes[id],createElement:()=>({})}};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[3], 'utf8'), context);
+context.window.smcRenderAnalysisLimitations();
+const count = data.items.length, unit = count === 1 ? 'item' : 'items';
+const html = nodes.analysisLimitationsList.child.innerHTML;
+assert.ok(html.includes('Keeps ' + count + ' ' + unit + ' at Review or Blocked'));
+assert.ok(!html.includes('Keeps ' + count + ' ' + unit + ' at Review</span>'));
+assert.equal(nodes.analysisLimitationsCount.textContent, '(1 distinct limitation · ' + count + ' affected ' + unit + ')');
+for (const item of data.items) {
+  assert.ok(html.includes(item.name));
+  assert.equal(context.window.smcCleanupExplanation(item).next, item.deleteSafety === 'Blocked'
+    ? 'Next: keep the item; update or remove its consumers first.'
+    : 'Next: inspect the evidence below, then decide with a reviewed plan.');
+}
+assert.equal(JSON.stringify(data), before);
+console.log('ok');
+"""
+    assert run_node(tmp_path, program, str(data), str(SCRIPT)).strip() == "ok"

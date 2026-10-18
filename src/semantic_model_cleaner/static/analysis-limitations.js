@@ -52,11 +52,12 @@
     return { lead: lead, next: nextAction(item), triggers: triggers, specific: specific, shared: shared, limitations: limitations };
   }
 
-  /* What a limitation does to Cleanup, in plain words: both kinds keep items at Review. */
+  /* Coverage gaps never downgrade a stricter cleanup recommendation. */
   function effectLabel(limitation) {
-    if (limitation.scope === 'shared') return 'Keeps every unused item at Review';
-    var count = limitation.affectedItemCount != null ? limitation.affectedItemCount : (limitation.targets || []).length;
-    return count ? 'Keeps ' + plural(count, 'item') + ' at Review' : 'Informational · no items affected';
+    if (limitation.scope === 'shared') return 'Keeps every unused item at Review or Blocked';
+    var count = limitation.affectedItemCount != null ? limitation.affectedItemCount : (limitation.targets || []).length || null;
+    if (count == null) return 'Affected items unknown · review coverage';
+    return count ? 'Keeps ' + plural(count, 'item') + ' at Review or Blocked' : 'Informational · no items affected';
   }
   function fileLabel(location) {
     var value = String(location || '');
@@ -95,7 +96,7 @@
   }
   function limitationListHeader() {
     return '<div class="limitation-row limitation-row-header" aria-hidden="true"><span>Construct</span><span>Source</span>'
-      + '<span title="Items whose Cleanup Recommendation stays at Review because of this limitation">Effect on Cleanup</span></div>';
+      + '<span title="Items whose Cleanup Recommendation stays at Review or Blocked because of this limitation">Effect on Cleanup</span></div>';
   }
 
   function explanationHtml(item, options) {
@@ -127,6 +128,11 @@
     var count = document.getElementById('analysisLimitationsCount');
     var hint = document.getElementById('analysisLimitationsHint');
     var current = state();
+    var informational = current.affectedItemCount === 0 && current.sharedCount === 0 && current.coverageComplete === true
+      && current.limitations.every(function (limitation) { return limitation.scope !== 'shared' && limitation.affectedItemCount === 0; });
+    banner.classList.toggle('is-informational', informational);
+    var title = document.getElementById('analysisLimitationsTitle');
+    if (title) title.textContent = informational ? 'Scan details' : 'Analysis limitations';
     var tab = document.getElementById('tabLimitations');
     var tabCount = document.getElementById('tabLimitationsCount');
     if (tab) tab.classList.toggle('hidden', !current.limitations.length);
@@ -135,7 +141,7 @@
     if (!current.limitations.length) { banner.classList.add('hidden'); if (count) count.textContent = ''; if (hint) hint.textContent = ''; return; }
     banner.classList.remove('hidden');
     if (count) count.textContent = '(' + plural(current.distinctCount, 'distinct limitation') + ' · ' + plural(current.affectedItemCount, 'affected item') + ')';
-    if (hint) hint.textContent = current.sharedCount ? plural(current.sharedCount, 'shared coverage gap') + ' · review affected items and unknown coverage' : current.affectedItemCount ? plural(current.affectedItemCount, 'affected item') + ' · see item context' : 'Informational · no cleanup recommendations changed';
+    if (hint) hint.textContent = current.sharedCount ? plural(current.sharedCount, 'shared coverage gap') + ' · review affected items and unknown coverage' : current.affectedItemCount ? plural(current.affectedItemCount, 'affected item') + ' · see item context' : informational ? 'Informational · no cleanup recommendations changed' : 'Affected items unknown · review coverage';
     var wrap = document.createElement('div');
     wrap.className = 'limitation-groups';
     wrap.innerHTML = limitationListHeader() + current.limitations.map(limitationRowHtml).join('');
