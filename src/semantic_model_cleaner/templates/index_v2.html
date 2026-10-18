@@ -572,6 +572,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
 <link rel="stylesheet" href="{{ url_for('static', filename='result-overview.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='accessibility.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='workspace-navigation.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='cobalt-workspace.css') }}">
 </head>
 <body>
 <div class="header">
@@ -652,6 +653,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
         <button class="btn btn-secondary" type="button" onclick="smcLoadDemo()">Try demo</button>
         <p><button class="btn btn-secondary btn-sm" type="button" onclick="smcOpenScope()">Choose model and report folders separately</button></p>
       </div>
+
   <section id="resultOverview" class="result-overview hidden" aria-label="Analysis overview"></section>
   <details class="result-guide hidden" id="resultGuideSection">
     <summary>
@@ -4768,7 +4770,7 @@ function usageBadge(itemOrStatus) {
   var label = usageValue(itemOrStatus);
   var title = usageHelpText(itemOrStatus);
   if (label === 'Used') return '<span class="badge badge-used badge-status" title="' + esc(title) + '">Used</span>';
-  if (label === 'Unused') return '<span class="badge badge-status" style="background:#fee2e2;color:#991b1b" title="' + esc(title) + '">Unused</span>';
+  if (label === 'Unused') return '<span class="badge badge-unused badge-status" title="' + esc(title) + '">Unused</span>';
   if (label === 'Indirect') return '<span class="badge badge-status" style="background:#e0e7ff;color:#3730a3" title="' + esc(title) + '">Indirect</span>';
   if (label === 'Stale only') return '<span class="badge badge-status" style="background:#fff7ed;color:#9a3412" title="' + esc(title) + '">Stale only</span>';
   return '<span class="badge badge-muted" title="' + esc(title) + '">' + esc(label) + '</span>';
