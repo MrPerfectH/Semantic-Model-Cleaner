@@ -35,7 +35,7 @@ exports.run = async () => {
   const project = process.env.SMC_TEST_PROJECT, second = process.env.SMC_TEST_SECOND_PROJECT;
   const artifacts = process.env.SMC_TEST_ARTIFACTS;
   const before = await snapshot(project), beforeSecond = await snapshot(second);
-  const extension = vscode.extensions.getExtension('smc-local-preview.semantic-model-cleaner');
+  const extension = vscode.extensions.getExtension('MrPerfectH.semantic-model-cleaner');
   assert.ok(extension, 'Cleaner extension must be installed');
   assert.equal(extension.packageJSON.version, process.env.SMC_TEST_EXPECT_VERSION);
   if (process.env.SMC_TEST_EXPECT_EXTENSIONS)

@@ -42,9 +42,12 @@ and TMDL.
 
 ## Install
 
-An unpublished local desktop [VS Code extension preview](vscode-extension/README.md)
-wraps the existing Python/UI. It requires the matching engine from this checkout;
-see the extension instructions for VSIX packaging, setup and acceptance limits.
+The desktop [VS Code extension preview](vscode-extension/README.md) is prepared
+for an initial public pre-release as `MrPerfectH.semantic-model-cleaner` 0.1.4.
+It wraps the existing Python/UI and requires the separately installed released
+0.4.0b9 engine. Nothing is installed automatically; see the extension instructions
+for engine setup, VSIX packaging and acceptance limits. Publication is a separate
+maintainer action.
 
 Runtime install:
 

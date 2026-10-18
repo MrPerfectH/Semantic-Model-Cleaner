@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 - prepared public pre-release
+
+- Prepare the initial public identity `MrPerfectH.semantic-model-cleaner`, retaining Preview.
+- Document separate installation of the released 0.4.0b9 Python engine and the user-chosen executable path; no automatic installation or runtime changes.
+- Add a manually dispatched Marketplace pre-release workflow. Publication remains a separate maintainer action.
+
 ## 0.1.3 — unpublished pre-release
 
 - Restore the established Analysis Scope sidebar against the current engine.
