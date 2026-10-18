@@ -10,10 +10,11 @@ Detection never trusts the name alone. A table qualifies only when its metadata 
 exactly the generated structure: flags, annotations, template columns, hierarchy,
 calculated partition, one generated relationship and one matching variation.
 
-Consumer checks do not rely on the analyzer's parsed usage. Every selected model and
-report file is searched for the table name, its relationship id and its lineage tags,
-for column-variation DAX (``[OrderDate].[Year]``) and for report
-``PropertyVariationSource`` references. JSON files and culture ``linguisticMetadata``
+Consumer checks do not rely on the analyzer's parsed usage. Every ``.tmdl``, ``.json``,
+``.pbir``, ``.pbism`` and saved DAX query (``.dax``) file under the selected model and
+report folders is searched for the table name, its relationship id and its lineage tags,
+for column-variation DAX (``[OrderDate].[Year]``, also with comments around the dot)
+and for report ``PropertyVariationSource`` references. JSON files and culture ``linguisticMetadata``
 payloads are also searched after decoding their strings, so ``\\u002d`` or ``\\n``
 escapes cannot hide a use. Each occurrence must belong to the generated structure
 itself. Anything else, or any file that cannot be read or parsed, blocks removal and
@@ -41,7 +42,8 @@ from .tmdl_declarations import TmdlDeclaration, scan_tmdl_declarations
 from .tmdl_identifiers import parse_tmdl_dotted_ref, unquote_tmdl_name
 
 OPERATION_KIND = "auto_date_tables"
-SUFFIXES = {".tmdl", ".json", ".pbir", ".pbism"}
+# Saved DAX query files (".dax", for example DAXQueries/Query 1.dax) are read, never written.
+SUFFIXES = {".tmdl", ".json", ".pbir", ".pbism", ".dax"}
 
 _GUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 _GUID_RE = re.compile(_GUID, re.I)
@@ -66,12 +68,15 @@ _TEMPLATE_SOURCE_RE = re.compile(
     r"^Calendar\(\s*Date\(\s*2015\s*,\s*1\s*,\s*1\s*\)\s*,\s*Date\(\s*2015\s*,\s*1\s*,\s*1\s*\)\s*\)$", re.I)
 # Zero-width lookahead so every '[' starts a candidate: an earlier unclosed '['
 # (a DAX string "[" or a compact JSON array) must not consume the real reference.
-_VARIATION_DAX_RE = re.compile(r"(?=\[((?:[^\]\r\n]|\]\])+)\]\s*\.\s*\[)")
+_BRACKET_RE = re.compile(r"(?=\[((?:[^\]\r\n]|\]\])+)\])")
+_DAX_LINE_COMMENT_RE = re.compile(r"(?:--|//)[^\r\n]*")
 _JSON_SUFFIXES = (".json", ".pbir", ".pbism")
 _JSON_STRING_RE = re.compile(r'"(?:[^"\\]|\\.)*"', re.S)
 _KEY_COLON_RE = re.compile(r"\s*:")
 _LINGUISTIC_TAIL_RE = re.compile(r"^\s*(?:contentType\s*:\s*json\s*)?$", re.I)
 _VARIATION_BINDING_KEYS = ("VariationSource", "VariationSet")
+_LINGUISTIC_KEYS = ("ConceptualEntity", "ConceptualProperty", *_VARIATION_BINDING_KEYS)
+_LINGUISTIC_KEYS_FOLDED = {key.casefold() for key in _LINGUISTIC_KEYS}
 _TEMPLATE_RESTRICTION = ("Power BI Desktop may still use the template for them. This is a conservative restriction: "
                          "removing the template while auto-date tables stay has not been validated in Power BI Desktop.")
 KIND_LABELS = {"local": "Auto-date table", "template": "Auto-date template table",
@@ -263,6 +268,15 @@ def _linguistic_bindings(files: list[_File]) -> tuple[list[_Binding], list[str]]
             tokens = list(_JSON_STRING_RE.finditer(json_text))
             strings = [(base + token.start(), json.loads(token.group(0))) for token in tokens]
             file.decoded.extend(strings)
+            # Only Desktop's exact key names are read; another letter case is not assumed to mean the same.
+            miscased = next(((offset, value) for token, (offset, value) in zip(tokens, strings)
+                             if value.casefold() in _LINGUISTIC_KEYS_FOLDED and value not in _LINGUISTIC_KEYS
+                             and _KEY_COLON_RE.match(json_text, token.end())), None)
+            if miscased:
+                problems.append(f"Linguistic metadata of culture {culture} uses key {miscased[1]} in an unsupported "
+                                f"letter case ({_location(file, file.line_of(miscased[0]))}); its use of date "
+                                "hierarchies cannot be checked.")
+                continue
             entity_keys = [offset for token, (offset, value) in zip(tokens, strings)
                            if value == "ConceptualEntity" and _KEY_COLON_RE.match(json_text, token.end())]
             with_entity: list[dict] = []
@@ -562,6 +576,9 @@ def _scan_mentions(candidates: list[_Candidate], files: list[_File]) -> None:
 
 def _mention_reason(file: _File, line: int, candidate: _Candidate) -> tuple[str, str, str]:
     location = _location(file, line)
+    if file.key.lower().endswith(".dax"):
+        return ("model_reference" if file.artifact == "model" else "report_reference",
+                f"Saved DAX query {file.key} names this table ({location}).", location)
     if file.artifact != "model":
         return ("report_reference", f"Report {file.artifact} names this table ({location}).", location)
     if file.key.startswith("model/definition/cultures/"):
@@ -572,6 +589,40 @@ def _mention_reason(file: _File, line: int, candidate: _Candidate) -> tuple[str,
     return ("model_reference", f"The model names this table{what} ({location}).", location)
 
 
+def _skip_dax_gap(text: str, position: int) -> int | None:
+    """Skip whitespace and DAX comments; None when a block comment is never closed."""
+    while True:
+        while position < len(text) and text[position].isspace():
+            position += 1
+        if text.startswith("/*", position):
+            end = text.find("*/", position + 2)
+            if end < 0:
+                return None
+            position = end + 2
+        elif text.startswith(("--", "//"), position):
+            position = _DAX_LINE_COMMENT_RE.match(text, position).end()
+        else:
+            return position
+
+
+def _variation_refs(text: str):
+    """Yield (offset, column) for ``[Column].[``, with whitespace or comments around the dot.
+
+    A block comment that is never closed after ``[Column]`` could hide the rest, so it
+    counts as a use. Comments and strings are not otherwise parsed: a reference inside
+    them also counts, which can only keep a table.
+    """
+    for match in _BRACKET_RE.finditer(text):
+        position = _skip_dax_gap(text, match.end(1) + 1)
+        if position is not None:
+            if not text.startswith(".", position):
+                continue
+            position = _skip_dax_gap(text, position + 1)
+            if position is not None and not text.startswith("[", position):
+                continue
+        yield match.start(), match.group(1).replace("]]", "]")
+
+
 def _scan_variation_dax(candidates: list[_Candidate], files: list[_File]) -> None:
     """``[OrderDate].[Year]`` reaches the auto-date table without naming it."""
     by_column: dict[str, list[_Candidate]] = {}
@@ -580,13 +631,14 @@ def _scan_variation_dax(candidates: list[_Candidate], files: list[_File]) -> Non
             by_column.setdefault(candidate.owner[1].casefold(), []).append(candidate)
     for file in files:
         for text, line_of in file.segments():
-            for match in _VARIATION_DAX_RE.finditer(text):
-                for candidate in by_column.get(match.group(1).replace("]]", "]").casefold(), []):
+            for offset, name in _variation_refs(text):
+                for candidate in by_column.get(name.casefold(), []):
                     if file is candidate.file:
                         continue
-                    location = _location(file, line_of(match.start()))
+                    location = _location(file, line_of(offset))
                     table, column = candidate.owner
-                    where = f"Report {file.artifact}" if file.artifact != "model" else "DAX in the model"
+                    where = (f"Saved DAX query {file.key}" if file.key.lower().endswith(".dax")
+                             else f"Report {file.artifact}" if file.artifact != "model" else "DAX in the model")
                     candidate.block("variation_dax", f"{where} may use the auto date hierarchy of {table}[{column}] "
                                     f"through [{column}].[…] ({location}).", location)
 

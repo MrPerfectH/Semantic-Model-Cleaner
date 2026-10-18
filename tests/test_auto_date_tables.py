@@ -581,3 +581,156 @@ def test_apply_refuses_the_template_when_another_auto_date_table_now_stays(tmp_p
     with pytest.raises(change_plan.PlanError, match="checked again before apply.*select every auto-date table"):
         change_plan.apply_plan(plan, tmp_path.parent / f"{tmp_path.name}-journal")
     assert snapshot(tmp_path) == before
+
+
+# --- Review round 2 (fdab600): N1 key letter case ------------------------------------------------
+
+
+@pytest.mark.parametrize("payload, key", [
+    # Reviewer probe A1.
+    (linguistic({"ConceptualEntity": "Sales", "variationSource": "OrderDate", "variationSet": "Odmiana",
+                 "Hierarchy": "Hierarchia dat"}), "variationSource"),
+    (linguistic({"conceptualEntity": "Sales", "VariationSource": "OrderDate", "VariationSet": "Odmiana"}),
+     "conceptualEntity"),
+    (linguistic({"ConceptualEntity": "Sales", "conceptualproperty": "OrderDate", "VariationSource": "Odmiana"}),
+     "conceptualproperty"),
+    # Nested under a shape this check does not know, next to an ordinary binding.
+    ({"Version": "4.1.0", "Entities": {"e0": {"Definition": {"Binding": {"ConceptualEntity": "Sales"}},
+                                              "Extra": [{"Inner": {"VARIATIONSET": "Odmiana"}}]}}}, "VARIATIONSET"),
+])
+def test_linguistic_keys_in_another_letter_case_fail_closed(tmp_path, payload, key):
+    model, report = project(tmp_path)
+    culture = write_culture(model, payload)
+    before = culture.read_bytes()
+    line = next(i for i, text in enumerate(culture.read_text(encoding="utf-8").splitlines(), 1) if f'"{key}"' in text)
+    tables = tables_by_name(model, report)
+    for name in (ORDER, SHIP):
+        assert not tables[name]["removable"]
+        assert [b["code"] for b in tables[name]["blockers"]] == ["linguistic_metadata"]
+        assert f"key {key} in an unsupported letter case (model/definition/cultures/pl-PL.tmdl:{line})" \
+            in blocker_text(tables[name])
+    assert template_kept(tables)
+    assert "unsupported letter case" in plan_error(model, report, [ORDER, SHIP, TEMPLATE])
+    assert culture.read_bytes() == before
+
+
+def test_linguistic_key_letter_case_check_ignores_values_and_escaped_exact_keys(tmp_path):
+    """Control: the exact key names stay supported, also JSON-escaped; key-like values are only text."""
+    model, report = project(tmp_path)
+    raw = json.dumps(linguistic({"ConceptualEntity": "Sales", "ConceptualProperty": "variationSource"},
+                                {"ConceptualEntity": "Other", "VariationSource": "OrderDate"}),
+                     indent=2).replace('"VariationSource"', '"Variation\\u0053ource"')
+    write_culture(model, None, raw=raw)
+    assert all(t["removable"] for t in tables_by_name(model, report).values())
+
+
+# --- N2 DAX comments between the parts of a variation reference ----------------------------------
+
+
+@pytest.mark.parametrize("measure", [
+    "MAX('Sales'[OrderDate] /* c */ .[Rok])",  # Reviewer probe B1.
+    "MAX('Sales'[OrderDate] -- c\r\n\t\t.[Rok])",  # Reviewer probe B2.
+    "MAX('Sales'[OrderDate] // c\r\n\t\t.[Rok])",
+    "MAX('Sales'[OrderDate]./* c */[Rok])",
+    "MAX('Sales'[OrderDate] /* a ] . [ */ /* b\r\n\t\t*/ -- c\r\n\t\t. // d\r\n\t\t[Rok])",
+    "MAX('Sales'[OrderDate] /* never closed",  # Malformed: fail closed.
+])
+def test_comments_inside_a_variation_reference_block_its_table(tmp_path, measure):
+    model, report = project(tmp_path, measure=measure)
+    tables = tables_by_name(model, report)
+    assert [b["code"] for b in tables[ORDER]["blockers"]] == ["variation_dax"]
+    assert tables[ORDER]["blockers"][0]["location"] == "model/definition/tables/Sales.tmdl:4"
+    assert tables[SHIP]["removable"], "unused control stays removable"
+    assert "through [OrderDate]" in plan_error(model, report, [ORDER])
+
+
+@pytest.mark.parametrize("dax", ["MAX('Sales'[OrderDate] /* c */\n.[Rok])", "MAX('Sales'[OrderDate] -- c\n.[Rok])"])
+def test_comments_inside_a_json_escaped_variation_reference_block_its_table(tmp_path, dax):
+    model, report = project(tmp_path)
+    ext = extension(dax, indent=2)
+    (report / "definition/reportExtensions.json").write_text(ext, encoding="utf-8")
+    line = next(i for i, text in enumerate(ext.splitlines(), 1) if "expression" in text)
+    tables = tables_by_name(model, report)
+    assert [b["code"] for b in tables[ORDER]["blockers"]] == ["variation_dax"]
+    assert tables[ORDER]["blockers"][0]["location"] == f"SCORECARD.Report/definition/reportExtensions.json:{line}"
+    assert tables[SHIP]["removable"]
+
+
+@pytest.mark.parametrize("measure", [
+    "MAX('Sales'[OrderDate] /* c */ + 1)",
+    "MAX('Sales'[OrderDate]) /* .[Rok] */",
+    "MAX('Sales'[OrderDate]) -- .[Rok]",
+    "MAX('Sales'[OrderDate] -- .[Rok]",  # The line comment runs to the end; no reference follows.
+])
+def test_comments_without_a_variation_reference_do_not_block(tmp_path, measure):
+    model, report = project(tmp_path, measure=measure)
+    assert all(t["removable"] for t in tables_by_name(model, report).values())
+
+
+# --- N3 saved DAX query files (.dax) --------------------------------------------------------------
+
+
+def write_query(root, text, name="Query 1.dax"):
+    path = root / "DAXQueries" / name
+    path.parent.mkdir(exist_ok=True)
+    path.write_bytes(text.encode("utf-8"))
+    return path
+
+
+@pytest.mark.parametrize("artifact, query, code, line", [
+    ("model", f"DEFINE\r\n\tVAR x = 1\r\nEVALUATE\r\n\t'{ORDER}'\r\n", "model_reference", 4),
+    ("model", "EVALUATE\r\n\tROW(\"y\", MAX('Sales'[OrderDate].[Rok]))\r\n", "variation_dax", 2),  # Reviewer probe E1.
+    ("report", "EVALUATE\r\n\tROW(\"y\", MAX('Sales'[OrderDate] /* c */ .[Rok]))\r\n", "variation_dax", 2),
+])
+def test_saved_dax_query_use_blocks_its_table_and_the_query_is_never_edited(tmp_path, artifact, query, code, line):
+    model, report = project(tmp_path)
+    root, prefix = (model, "model") if artifact == "model" else (report, "SCORECARD.Report")
+    path = write_query(root, query)
+    before = path.read_bytes()
+    tables = tables_by_name(model, report)
+    entry = tables[ORDER]
+    assert [b["code"] for b in entry["blockers"]] == [code]
+    assert entry["blockers"][0]["location"] == f"{prefix}/DAXQueries/Query 1.dax:{line}"
+    assert "Saved DAX query" in blocker_text(entry)
+    assert tables[SHIP]["removable"] and template_kept(tables)
+    assert "Saved DAX query" in plan_error(model, report, [ORDER])
+    plan = change_plan.create_plan(model, [report], [{"kind": "auto_date_tables", "tables": [SHIP]}])
+    assert f"{'model' if artifact == 'model' else 'report-1'}/DAXQueries/Query 1.dax" in plan["inputs"]
+    assert not any(c["path"].endswith(".dax") for c in plan["changes"])
+    assert change_plan.apply_plan(plan, tmp_path.parent / f"{tmp_path.name}-journal")["ok"]
+    assert change_plan.verify_plan(plan)["state"] == "applied"
+    assert path.read_bytes() == before
+
+
+def _add_query_use(model):
+    write_query(model, "EVALUATE ROW(\"y\", MAX('Sales'[OrderDate].[Rok]))\r\n", "Query 2.dax")
+
+
+def _edit_query(model):
+    write_query(model, "EVALUATE ROW(\"y\", MAX('Sales'[OrderDate].[Rok]))\r\n")
+
+
+def _remove_query(model):
+    (model / "DAXQueries/Query 1.dax").unlink()
+
+
+@pytest.mark.parametrize("edit", [_add_query_use, _edit_query, _remove_query])
+def test_saved_dax_queries_changed_after_preview_make_the_plan_stale(tmp_path, edit):
+    model, report = project(tmp_path)
+    write_query(model, "EVALUATE Sales\r\n")
+    plan = change_plan.create_plan(model, [report], [{"kind": "auto_date_tables", "tables": [ORDER]}])
+    assert plan["inputs"]["model/DAXQueries/Query 1.dax"] == plan["outputs"]["model/DAXQueries/Query 1.dax"]
+    edit(model)
+    before = snapshot(tmp_path)
+    with pytest.raises(change_plan.PlanError, match="Stale plan"):
+        change_plan.apply_plan(plan, tmp_path.parent / f"{tmp_path.name}-journal")
+    assert snapshot(tmp_path) == before
+    assert change_plan.verify_plan(plan)["state"] == "changed"
+
+
+def test_saved_dax_queries_stay_outside_other_plan_kinds(tmp_path):
+    model, report = project(tmp_path)
+    write_query(model, "EVALUATE Sales\r\n")
+    plan = change_plan.create_plan(model, [report], [{"kind": "actions", "actions": [
+        {"action": "hide", "table": "Sales", "name": "Amount", "item_type": "Column"}]}])
+    assert not any(key.endswith(".dax") for key in [*plan["inputs"], *plan["outputs"]])

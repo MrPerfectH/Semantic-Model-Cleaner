@@ -20,6 +20,8 @@ import uuid
 from . import __version__, analyzer, auto_date_tables, report_writer, tmdl_writer
 
 SUFFIXES = {'.tmdl', '.json', '.pbir', '.pbism'}
+# Saved DAX query files: read-only inputs of the auto-date action only; never written.
+QUERY_SUFFIXES = {'.dax'}
 SCHEMA_VERSION = 1
 
 
@@ -69,6 +71,19 @@ def _inventory(roots):
             if path.is_file() and path.suffix.lower() in SUFFIXES:
                 inventory[f'{artifact}/{path.relative_to(root).as_posix()}'] = path.read_bytes()
     return inventory
+
+
+def _query_inventory(roots, operations):
+    """Saved DAX queries the auto-date action reads; fingerprinted with its plan inputs, never changed."""
+    if not any(o.get('kind') == auto_date_tables.OPERATION_KIND for o in operations):
+        return {}
+    return {f'{artifact}/{path.relative_to(root).as_posix()}': path.read_bytes()
+            for artifact, root in roots.items() for path in sorted(root.rglob('*'))
+            if path.suffix.lower() in QUERY_SUFFIXES and path.is_file() and not path.is_symlink()}
+
+
+def _scope_hashes(roots, operations):
+    return _hashes({**_inventory(roots), **_query_inventory(roots, operations)})
 
 
 def _path(roots, key):
@@ -288,6 +303,7 @@ def create_plan(model_path, report_paths, operations):
         raise PlanError('operations must be a nonempty list of objects.')
     originals = _roots(model_path, report_paths)
     before = _inventory(originals)
+    queries = _query_inventory(originals, operations)
     _require_supported_write_encoding(before)
     # Destructive/refactoring plans cannot claim complete propagation while a
     # selected document is unreadable. Non-reference metadata edits can proceed.
@@ -338,6 +354,11 @@ def create_plan(model_path, report_paths, operations):
             path = _path(staged, key)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
+        for key, content in queries.items():  # Read-only, so the staged re-check sees the same queries.
+            artifact, _, relative = key.partition('/')
+            path = staged[artifact] / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
         for op in operations:
             mapped = _remap(op, originals, staged)
             # Validate explicit source files before allowing writer access.
@@ -356,7 +377,7 @@ def create_plan(model_path, report_paths, operations):
         added = _problems(analysis) - _problems(baseline, operations)
         if added:
             raise PlanError('Change introduces unresolved references: ' + '; '.join(str(x) for x in sorted(added)))
-    if _hashes(_inventory(originals)) != _hashes(before):
+    if _hashes(_inventory(originals)) != _hashes(before) or _query_inventory(originals, operations) != queries:
         raise PlanError('Input changed while preview was being prepared; re-analyze and retry.')
     changes = []
     for key in sorted(before.keys() | after.keys()):
@@ -378,7 +399,7 @@ def create_plan(model_path, report_paths, operations):
                          'final_state': {'complete': final_state_complete
                                          or bool(baseline.get('coverage', {}).get('complete', False)),
                                          'cleared_limitations': cleared}}, 'operations': operations,
-            'inputs': _hashes(before), 'outputs': _hashes(after), 'changes': changes,
+            'inputs': _hashes({**before, **queries}), 'outputs': _hashes({**after, **queries}), 'changes': changes,
             'validation': {'json_syntax': 'passed' if strict else 'changed files passed',
                            'reference_integrity': 'no new unresolved references',
                            'existing_problem_count': len(_problems(baseline)),
@@ -516,7 +537,7 @@ def apply_plan(plan, directory):
     with _lock(roots, directory):
         if journal.exists():
             raise PlanError('This operation already has a receipt. Inspect it or generate a new plan.')
-        if _hashes(_inventory(roots)) != plan['inputs']:
+        if _scope_hashes(roots, plan['operations']) != plan['inputs']:
             raise PlanError('Stale plan: selected files changed. Generate a new preview; nothing was written.')
         for operation in plan['operations']:
             if operation.get('kind') == auto_date_tables.OPERATION_KIND:
@@ -538,7 +559,7 @@ def apply_plan(plan, directory):
                 completed.append(change)
                 receipt['completed'] = [c['path'] for c in completed]
                 _atomic(journal, json.dumps(receipt, indent=2).encode())
-            if _hashes(_inventory(roots)) != plan['outputs']:
+            if _scope_hashes(roots, plan['operations']) != plan['outputs']:
                 raise PlanError('Files changed during apply; verification failed.')
             receipt = _receipt(plan, 'applied', completed=[c['path'] for c in completed])
         except Exception as exc:
@@ -593,7 +614,7 @@ def restore_plan(plan, directory):
 
 def verify_plan(plan):
     roots = _check(plan)
-    current = _hashes(_inventory(roots))
+    current = _scope_hashes(roots, plan['operations'])
     state = 'applied' if current == plan['outputs'] else 'original' if current == plan['inputs'] else 'changed'
     return {'ok': state == 'applied', 'state': state, 'validation': plan['validation'],
             'changed_since_plan': sorted(k for k in current.keys() | plan['outputs'].keys() if current.get(k) != plan['outputs'].get(k))}
