@@ -4,17 +4,17 @@ Semantic Model Cleaner analyzes Power BI PBIR + TMDL projects, shows which seman
 
 It works directly in repositories containing TMDL and PBIR files; Power BI Desktop is not required. Core workflows are free under the MIT license, with no account or paid service required. Fabric integration is a future extension.
 
-It is designed for local use against files on your machine. Version `0.4.0b8`
+It is designed for local use against files on your machine. Version `0.4.0b9`
 is the public beta for Power BI practitioners who already work with PBIR
 and TMDL.
 
-> Beta7 corrects the public download links and checksum file, adds a browser icon and a back-up-before-apply reminder, and explains the CLI and web "unused" counts. See the [release notes](docs/releases/0.4.0b8.md).
+> Beta9 improves downstream dependency lists, Scan details, and the inventory and object-detail layout. See the [release notes](docs/releases/0.4.0b9.md).
 
 > **Before applying changes:** back up your Power BI Project or commit it to version control first. Apply writes to your TMDL and PBIR files; guarded restore recovers the original bytes from the plan, but a backup is your safety net.
 
 ## Current Status
 
-- Project maturity: public beta `0.4.0b8`
+- Project maturity: public beta `0.4.0b9`
 - Runtime shape: Python package with a CLI, a local web UI, and Windows desktop packaging
 - Stable entry points: `semantic-model-cleaner`, `semantic-model-cleaner-web`, `smc`, and `smc-web`
 - Windows entry points: packaged `Semantic Model Cleaner.exe`, `semantic-model-cleaner-desktop`, and `smc-desktop`
@@ -61,9 +61,9 @@ python -m pip install -e .[dev]
 ### Windows Packaged App
 
 For terminal-free Windows use, download
-[`semantic-model-cleaner-windows-x64-0.4.0b8.zip`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b8/semantic-model-cleaner-windows-x64-0.4.0b8.zip)
+[`semantic-model-cleaner-windows-x64-0.4.0b9.zip`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b9/semantic-model-cleaner-windows-x64-0.4.0b9.zip)
 and its
-[`SHA-256 checksum`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b8/semantic-model-cleaner-windows-x64-0.4.0b8.zip.sha256)
+[`SHA-256 checksum`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b9/semantic-model-cleaner-windows-x64-0.4.0b9.zip.sha256)
 from the explicit beta prerelease. Extract the whole ZIP, then run
 `Semantic Model Cleaner.exe`. Python, Power BI Desktop, Fabric, an account,
 and paid services are not required.
@@ -271,7 +271,7 @@ pwsh -File packaging/windows/build.ps1
 
 ## Public beta channel
 
-- Version `0.4.0b8` defaults to the `beta` release channel without an environment variable.
+- Version `0.4.0b9` defaults to the `beta` release channel without an environment variable.
 - Developers can set `SMC_RELEASE_CHANNEL=stable` to inspect the stable-gated UI during compatibility testing.
 - The public beta shows a `Beta` banner. Experiments remain separately opt-in.
 
