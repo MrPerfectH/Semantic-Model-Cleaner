@@ -70,9 +70,6 @@ test('scope sidebar starts empty and idle; scope commands require trust and a lo
     await commands.get(`semanticModelCleaner.${name}`)();
   assert.equal(errors.length, before + 4);
   assert.ok(errors.slice(before).every(e => e.startsWith('Trust this workspace')));
-  vscode.workspace.isTrusted = true;
-  await commands.get('semanticModelCleaner.analyze')();
-  assert.match(errors.at(-1), /Open Cleaner and wait/);
   vscode.workspace.isTrusted = false;
   assert.equal(reads, 0); assert.equal(panels, 0);
   const manifest = require('../package.json');

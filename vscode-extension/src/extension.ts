@@ -18,6 +18,9 @@ export function activate(context: vscode.ExtensionContext): void {
   let panel: vscode.WebviewPanel | undefined;
   let folder: vscode.Uri | undefined;
   let opening: AbortController | undefined;
+  let startup: Promise<void> | undefined;
+  let openingFolder: Promise<void> | undefined;
+  let discovery: Promise<boolean> | undefined;
   let epoch = 0;
   let selectionEpoch = 0;
   let running: RunningServer | undefined;
@@ -92,6 +95,19 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 
   async function begin(uri: vscode.Uri): Promise<void> {
+    const task = start(uri);
+    startup = task;
+    try { await task; } finally { if (startup === task) startup = undefined; }
+  }
+  async function loadScope(): Promise<boolean> {
+    const task = scope.load(fetchScope);
+    discovery = task;
+    try { return await task; } finally { if (discovery === task) discovery = undefined; }
+  }
+  async function focusScope(): Promise<void> {
+    await vscode.commands.executeCommand('semanticModelCleaner.scope.focus');
+  }
+  async function start(uri: vscode.Uri): Promise<void> {
     requireLocalTrusted();
     const generation = ++epoch;
     if (uri.scheme !== 'file' || !(await stat(uri.fsPath)).isDirectory())
@@ -141,7 +157,8 @@ export function activate(context: vscode.ExtensionContext): void {
       running = started;
       showApp(ownPanel, started.port, uri.fsPath);
       state('running');
-      void scope.load(fetchScope);
+      await loadScope();
+      if (generation !== epoch) throw new Cancelled();
     } catch (error) {
       if (generation !== epoch || error instanceof Cancelled) return;
       await server.stop();
@@ -154,11 +171,23 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   async function open(uri?: vscode.Uri): Promise<void> {
     requireLocalTrusted();
+    if (!uri && openingFolder) return openingFolder;
+    const task = openFolder(uri);
+    openingFolder = task;
+    try { await task; } finally { if (openingFolder === task) openingFolder = undefined; }
+  }
+  async function openFolder(uri?: vscode.Uri): Promise<void> {
+    requireLocalTrusted();
     const selection = ++selectionEpoch;
     const selected = await chooseFolder(uri);
     if (!selected || selection !== selectionEpoch) return;
-    if (panel && folder?.toString() === selected.toString()) { panel.reveal(); return; }
-    await begin(selected);
+    if (panel && folder?.toString() === selected.toString()) {
+      panel.reveal();
+      await startup;
+    } else await begin(selected);
+    if (selection !== selectionEpoch || !running) return;
+    requireLocalTrusted();
+    await focusScope();
   }
   const command = (name: string, action: (...args: any[]) => unknown) =>
     vscode.commands.registerCommand(`semanticModelCleaner.${name}`, async (...args: any[]) => {
@@ -170,32 +199,75 @@ export function activate(context: vscode.ExtensionContext): void {
         if (choice) output.show(true);
       }
     });
-  const requireScope = () => {
+  // A command may be invoked before Open, or while its startup/discovery is in flight.
+  // Never resume an old action after Stop, a folder switch, or a canceled picker.
+  async function requireScope(): Promise<number | undefined> {
     requireLocalTrusted();
-    if (!running || scope.phase !== 'ready') throw new Error('Open Cleaner and wait for models and reports to load.');
-  };
-  async function analyze(): Promise<void> {
-    requireScope();
-    const selection = scope.selection();
-    if (!selection?.model) {
-      await chooseModel();
-      if (!scope.selection()?.model) return;
+    const selection = selectionEpoch;
+    const generation = epoch;
+    let focused = false;
+    if (openingFolder) {
+      await openingFolder;
+      focused = true;
+      if (selectionEpoch !== selection || epoch !== generation) return;
+    } else if (startup) {
+      await startup;
+      if (selectionEpoch !== selection || epoch !== generation) return;
+    } else if (!running) {
+      await open();
+      focused = true;
+      if (selectionEpoch !== selection + 1 || epoch !== generation + 1) return;
     }
+    const readyGeneration = epoch;
+    if (discovery) await discovery;
+    requireLocalTrusted();
+    if (readyGeneration !== epoch || !running) return;
+    if (scope.phase !== 'ready')
+      throw new Error(`${scope.error || 'Models and reports are unavailable.'} Use Refresh Models and Reports to retry, or Show Logs for details.`);
+    if (!focused) await focusScope();
+    requireLocalTrusted();
+    if (readyGeneration !== epoch) return;
+    return readyGeneration;
+  }
+  function current(generation: number): boolean {
+    requireLocalTrusted();
+    return generation === epoch && !!running && scope.phase === 'ready';
+  }
+  async function analyze(): Promise<void> {
+    const generation = await requireScope();
+    if (generation === undefined) return;
+    if (!scope.selection()?.model) {
+      await pickModel(generation);
+      if (!current(generation) || !scope.selection()?.model) return;
+    }
+    if (!current(generation)) return;
     panel?.reveal(undefined, false);
     sendScope(true);
   }
   async function chooseModel(): Promise<void> {
-    requireScope();
+    const generation = await requireScope();
+    if (generation !== undefined) await pickModel(generation);
+  }
+  async function pickModel(generation: number): Promise<void> {
+    if (!current(generation)) return;
     const models = scope.data?.models ?? [];
-    if (!models.length) throw new Error('No semantic models were found in this folder.');
+    if (!models.length) throw new Error('No semantic models were found. Open a folder containing a TMDL SemanticModel, then refresh models and reports.');
     const choice = await vscode.window.showQuickPick(models.map(m => ({ label: m.name, description: m.path,
-      picked: m.path === scope.data?.model, path: m.path })), { placeHolder: 'Choose the semantic model to analyze' });
-    if (choice) await selectModel(choice.path);
+      picked: m.path === scope.data?.model, path: m.path })), { placeHolder: 'Choose the semantic model to analyze', ignoreFocusOut: true });
+    if (choice && current(generation)) await setModel(choice.path, generation);
   }
   async function selectModel(modelPath: unknown): Promise<void> {
-    requireScope();
-    if (typeof modelPath !== 'string') return;
-    await scope.selectModel(fetchScope, modelPath);
+    const generation = await requireScope();
+    if (generation === undefined || typeof modelPath !== 'string' || !current(generation)) return;
+    await setModel(modelPath, generation);
+  }
+  async function setModel(modelPath: string, generation: number): Promise<void> {
+    const task = scope.selectModel(fetchScope, modelPath);
+    discovery = task;
+    try {
+      if (!await task && generation === epoch && running)
+        throw new Error(`${scope.error || 'Could not select the semantic model.'} Refresh Models and Reports, or Show Logs for details.`);
+    } finally { if (discovery === task) discovery = undefined; }
   }
   context.subscriptions.push(output, status, scopeTree,
     scopeTree.onDidChangeCheckboxState(event => {
@@ -206,11 +278,11 @@ export function activate(context: vscode.ExtensionContext): void {
     command('analyze', analyze),
     command('chooseModel', chooseModel),
     command('selectModel', selectModel),
-    command('selectAllReports', () => { requireScope(); scope.setAll(true); }),
-    command('clearReports', () => { requireScope(); scope.setAll(false); }),
+    command('selectAllReports', async () => { if (await requireScope() !== undefined) scope.setAll(true); }),
+    command('clearReports', async () => { if (await requireScope() !== undefined) scope.setAll(false); }),
     command('refreshScope', async () => {
       requireLocalTrusted();
-      if (running) await scope.load(fetchScope);
+      if (running) await loadScope();
       else if (folder) await begin(folder);
       else await open();
     }),
