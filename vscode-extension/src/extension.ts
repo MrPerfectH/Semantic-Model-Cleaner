@@ -19,7 +19,7 @@ export function activate(context: vscode.ExtensionContext): void {
   let folder: vscode.Uri | undefined;
   let opening: AbortController | undefined;
   let startup: Promise<void> | undefined;
-  let openingFolder: Promise<void> | undefined;
+  let openingFolder: Promise<boolean> | undefined;
   let discovery: Promise<boolean> | undefined;
   let epoch = 0;
   let selectionEpoch = 0;
@@ -171,23 +171,25 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   async function open(uri?: vscode.Uri): Promise<void> {
     requireLocalTrusted();
-    if (!uri && openingFolder) return openingFolder;
+    if (!uri && openingFolder) { await openingFolder; return; }
     const task = openFolder(uri);
     openingFolder = task;
     try { await task; } finally { if (openingFolder === task) openingFolder = undefined; }
   }
-  async function openFolder(uri?: vscode.Uri): Promise<void> {
+  async function openFolder(uri?: vscode.Uri): Promise<boolean> {
     requireLocalTrusted();
     const selection = ++selectionEpoch;
     const selected = await chooseFolder(uri);
-    if (!selected || selection !== selectionEpoch) return;
+    if (!selected || selection !== selectionEpoch) return false;
     if (panel && folder?.toString() === selected.toString()) {
       panel.reveal();
-      await startup;
+      if (startup) await startup;
+      else if (!running) await begin(selected);
     } else await begin(selected);
-    if (selection !== selectionEpoch || !running) return;
+    if (selection !== selectionEpoch || !running) return false;
     requireLocalTrusted();
     await focusScope();
+    return selection === selectionEpoch && !!running;
   }
   const command = (name: string, action: (...args: any[]) => unknown) =>
     vscode.commands.registerCommand(`semanticModelCleaner.${name}`, async (...args: any[]) => {
@@ -207,9 +209,12 @@ export function activate(context: vscode.ExtensionContext): void {
     const generation = epoch;
     let focused = false;
     if (openingFolder) {
-      await openingFolder;
+      const opened = await openingFolder;
       focused = true;
-      if (selectionEpoch !== selection || epoch !== generation) return;
+      // Choosing the initial folder may start exactly one new lifecycle.
+      // Stop/restart/folder changes invalidate selection; cancellation returns false.
+      if (!opened || selectionEpoch !== selection || !running || opening?.signal.aborted ||
+          (epoch !== generation && epoch !== generation + 1)) return;
     } else if (startup) {
       await startup;
       if (selectionEpoch !== selection || epoch !== generation) return;

@@ -10,7 +10,7 @@ const disposable = () => ({ dispose() {} });
 let host;
 class Cancelled extends Error {}
 class ServerManager {
-  async start() { host.starts++; return { port: 1234, request: async (_, body) => {
+  async start(_config, _ancestors, _log, onExit) { host.starts++; host.exit=onExit; if(host.startFailure)throw new Error(host.startFailure); return { port: 1234, request: async (_, body) => {
     host.requests.push(body); if (host.discovery) await host.discovery.promise;
     if (host.failure) throw new Error(host.failure);
     return { project: root, models: [{name:'Alpha',path:'Alpha.SemanticModel'}, {name:'Beta',path:'Beta.SemanticModel'}],
@@ -48,7 +48,14 @@ function setup(){host={commands:new Map(),executed:[],errors:[],messages:[],requ
   extension.activate({subscriptions:[]});return host;}
 const command=name=>host.commands.get('semanticModelCleaner.'+name)();
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-async function until(check){for(let i=0;i<100;i++){if(check())return;await tick();}assert.fail('condition not reached');}
+async function until(check){
+  // Startup awaits real filesystem I/O; immediate turns are not a time budget.
+  const deadline=performance.now()+5000;
+  while(!check()){
+    assert.ok(performance.now()<deadline,'condition not reached within 5000 ms');
+    await new Promise(resolve=>setTimeout(resolve,5));
+  }
+}
 const analyzed=()=>host.messages.filter(m=>m.analyze);
 
 test('cold Choose waits for discovery, reveals native scope and picks explicitly without analysis',async()=>{
@@ -130,4 +137,49 @@ test('discovery failure reports retry and logs instead of an old startup prerequ
   setup();host.failure='Discovery unavailable';await command('analyze');assert.match(host.errors[0],/Discovery unavailable.*Refresh Models and Reports.*Show Logs/);
   assert.equal(analyzed().length,0);await extension.deactivate();
 });
+
+for(const action of ['chooseModel','analyze']){
+  test(`${action} queued during the initial folder picker continues after discovery`,async()=>{
+    setup();vscode.workspace.workspaceFolders=[];host.folderPicker=deferred();host.discovery=deferred();
+    host.choice='Beta.SemanticModel';const opening=command('open');await until(()=>host.folders===1);
+    const pending=command(action);host.folderPicker.resolve([uri]);await until(()=>host.requests.length===1);
+    assert.equal(host.pickers,0);assert.equal(analyzed().length,0);
+    host.discovery.resolve();await Promise.all([opening,pending]);
+    assert.equal(host.starts,1);assert.equal(host.pickers,1);
+    assert.equal(host.requests.at(-1).model_path,'Beta.SemanticModel');
+    assert.equal(analyzed().length,action==='analyze'?1:0);assert.deepEqual(host.errors,[]);
+    await extension.deactivate();
+  });
+}
+for(const interruption of ['cancel','stop','switch','trust']){
+  test(`queued Choose during folder selection respects ${interruption}`,async()=>{
+    setup();vscode.workspace.workspaceFolders=[];host.folderPicker=deferred();host.choice='Alpha.SemanticModel';
+    const opening=command('open');await until(()=>host.folders===1);const pending=command('chooseModel');
+    if(interruption==='stop')await command('stop');
+    if(interruption==='trust')vscode.workspace.isTrusted=false;
+    if(interruption==='switch'){
+      const other=path.join(root,'switched');fs.mkdirSync(other,{recursive:true});
+      await host.commands.get('semanticModelCleaner.open')({scheme:'file',fsPath:other,toString:()=>other});
+    }
+    host.folderPicker.resolve(interruption==='cancel'?undefined:[uri]);await Promise.all([opening,pending]);
+    assert.equal(host.pickers,0);assert.equal(analyzed().length,0);
+    assert.equal(host.starts,interruption==='switch'?1:0);
+    if(interruption==='trust')assert.ok(host.errors.every(message=>/Trust this workspace/.test(message)));
+    else assert.deepEqual(host.errors,[]);
+    await extension.deactivate();
+  });
+}
+for(const failure of ['start','exit']){
+  test(`Open and Choose retry the same folder after ${failure} without analysis`,async()=>{
+    setup();
+    if(failure==='start')host.startFailure='Launch failed';
+    await command('open');
+    if(failure==='start'){assert.match(host.errors[0],/Launch failed/);host.startFailure=undefined;}
+    else host.exit();
+    await command('open');assert.equal(host.starts,2);assert.equal(host.pickers,0);assert.equal(analyzed().length,0);
+    host.exit();host.choice='Alpha.SemanticModel';await command('chooseModel');
+    assert.equal(host.starts,3);assert.equal(host.pickers,1);assert.equal(host.requests.at(-1).model_path,'Alpha.SemanticModel');
+    assert.equal(analyzed().length,0);await extension.deactivate();
+  });
+}
 process.on('exit',()=>fs.rmSync(root,{recursive:true,force:true}));
