@@ -24,7 +24,8 @@ def _evaluate_deletion_policy(
     Each violation has rule_id/table/name/message. Non-delete batches bypass
     analysis. Deletes require a bound, readable selected report scope. An unused
     DAX chain may be removed together, but retained structural and DAX consumers
-    block it. Review and inferred items are conservatively protected.
+    block it. Review and inferred items are conservatively protected; inferred
+    members of a calculation group or field parameter follow the unit rules.
 
     Coverage is evaluated against the proposed final state: a shared analysis
     limitation declared inside a model table that the plan removes completely,
@@ -171,6 +172,14 @@ def _evaluate_deletion_policy(
                 and rows[key]["item"].item_type in ("Column", "Calculated Column")):
             reject("SMC-D006", f"Keep {analyzer.format_item_ref(rows[key]['item'].key)}: "
                    "its table contains a retained named calendar.", *rows[key]["item"].key)
+    # Calculation groups and field parameters are units: one column alone is
+    # never removed, whatever its own usage or hidden flag (issue #103).
+    for key in sorted(targets):
+        unit = rows[key].get("structural_unit")
+        if unit and key[0] not in removed_tables:
+            item = rows[key]["item"]
+            reject("SMC-D006", f"Keep {analyzer.format_item_ref(item.key)}: it is a column of {unit} "
+                   f"'{item.table}', which is deleted only as a whole table.", *item.key)
     for source, tables in graphs["tables"].items():
         if not removed(source):
             for table in tables:
@@ -197,8 +206,11 @@ def _evaluate_deletion_policy(
     for key in sorted(targets):
         row = rows[key]
         item = row["item"]
-        if analyzer.is_used_status(row["status"]) or row["status"].startswith("BROKEN") or item.is_inferred:
-            reject("SMC-D004", f"Keep {analyzer.format_item_ref(item.key)}: {row['status']}.", *item.key)
+        # A target's own missing references (BROKEN) are not use; incoming
+        # consumers are checked above and its usage status here.
+        usage = analyzer.row_usage_status(row)
+        if analyzer.is_used_status(usage) or analyzer.inferred_keep(row):
+            reject("SMC-D004", f"Keep {analyzer.format_item_ref(item.key)}: {usage}.", *item.key)
         elif row.get("entity_type_trigger") and item.table.casefold() in cleared_tables:
             # The whole tool entity goes and nothing that remains uses it.
             reasons = _final_state_review_triggers(
