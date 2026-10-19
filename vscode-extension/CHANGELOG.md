@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.7 — unpublished pre-release
+
+- Use a bold solid white broom at `media/cleaner-broom.svg` for the existing
+  Cleaner Activity Bar entry, with a fresh asset name and negative-space bristles.
+- Preserve the colored Marketplace PNG and `MrPerfectH.semantic-model-cleaner`
+  identity. Extension runtime JavaScript and TypeScript are unchanged from 0.1.6.
+- Correct installation instructions to use the separately prepared local beta10
+  engine wheel; beta10 and extension 0.1.7 public release remain pending.
+- Native installed-VSIX visibility and personal visual acceptance remain separate
+  checks owned by the main session.
+
 ## 0.1.6 — unpublished pre-release
 
 - Add a dedicated PNG icon for the extension listing and Marketplace package.

@@ -6,7 +6,7 @@ Semantic Model Cleaner web UI. The Python engine discovers the Power BI Project
 and its report bindings. Analysis and model changes remain explicit user
 actions; the existing reviewed-plan safeguards are unchanged.
 
-Version **0.1.5** is prepared as a startup-fix Marketplace pre-release for
+Version **0.1.7** is prepared as a Marketplace pre-release for
 `MrPerfectH.semantic-model-cleaner`; this document does not confirm publication.
 The **Preview** label remains. The VSIX contains the extension, not Python or the
 engine. Nothing is downloaded, installed or upgraded automatically.
@@ -14,29 +14,32 @@ engine. Nothing is downloaded, installed or upgraded automatically.
 ## Requirements and installation
 
 - Desktop VS Code 1.95 or newer and a **trusted local workspace**.
-- Python 3.11+ and the separately installed **Semantic Model Cleaner 0.4.0b9** engine.
+- Python 3.11+ and the separately installed **Semantic Model Cleaner 0.4.0b10** engine from the same reviewed build.
 - Local disk Power BI Project files (TMDL Semantic Model and PBIR Reports).
 
-Install the [released 0.4.0b9 wheel](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b9/semantic_model_cleaner-0.4.0b9-py3-none-any.whl)
-into a virtual environment at a location you choose. These commands create an
-example environment in the current directory; run them yourself in a terminal.
+Use the separately prepared `semantic_model_cleaner-0.4.0b10-py3-none-any.whl`
+from the same reviewed build; this document does not confirm beta10 publication
+or provide a public beta10 download URL. Place that wheel in the current
+directory before running the commands below. Install it into a virtual
+environment at a location you choose. These commands create an example
+environment in the current directory; run them yourself in a terminal.
 
 POSIX shell (macOS/Linux):
 
 ```sh
 python3 -m venv .venv-smc
-.venv-smc/bin/python -m pip install "https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b9/semantic_model_cleaner-0.4.0b9-py3-none-any.whl"
+.venv-smc/bin/python -m pip install "./semantic_model_cleaner-0.4.0b10-py3-none-any.whl"
 ```
 
 Windows PowerShell:
 
 ```powershell
 py -3 -m venv .venv-smc
-& .\.venv-smc\Scripts\python.exe -m pip install "https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b9/semantic_model_cleaner-0.4.0b9-py3-none-any.whl"
+& .\.venv-smc\Scripts\python.exe -m pip install "./semantic_model_cleaner-0.4.0b10-py3-none-any.whl"
 ```
 
 Install the extension through **Extensions: Install from VSIX...** using
-`semantic-model-cleaner-0.1.5.vsix`. Once the public pre-release is available,
+`semantic-model-cleaner-0.1.7.vsix`. Once the public pre-release is available,
 its Marketplace identity is `MrPerfectH.semantic-model-cleaner`.
 Set **Semantic Model Cleaner: Python Path** to the absolute path of your chosen
 environment's Python executable (`.venv-smc/bin/python` or
@@ -133,7 +136,7 @@ npm test
 npm run package
 ```
 
-The package command creates `semantic-model-cleaner-0.1.5.vsix` with the VSIX
+The package command creates `semantic-model-cleaner-0.1.7.vsix` with the VSIX
 pre-release flag. It does not publish. Open this directory in VS Code and use
 **Run Cleaner extension** (F5) for a development host.
 
@@ -166,7 +169,7 @@ subset and model-only analysis, stale results, model and folder switches, a
 change during analysis, restart and stop, and hashes inputs to detect changes. Evidence goes to
 `integration-artifacts/`. No user project is used.
 
-See [ACCEPTANCE.md](ACCEPTANCE.md) for observed results, evidence boundaries and
+See [ACCEPTANCE.md](https://github.com/MrPerfectH/Semantic-Model-Cleaner/blob/main/vscode-extension/ACCEPTANCE.md) for observed results, evidence boundaries and
 installed-VSIX verification steps.
 
 API references: [Workspace Trust](https://code.visualstudio.com/api/extension-guides/workspace-trust),
@@ -176,10 +179,8 @@ and [desktop port mapping](https://code.visualstudio.com/api/advanced-topics/rem
 ## Marketplace release preparation
 
 The package declares the public publisher `MrPerfectH`, repository URL and MIT
-license, and includes `LICENSE`. The existing `media/cleaner.svg` is an Activity
-Bar icon only; no SVG is declared as the Marketplace package icon. A custom
-Marketplace icon is optional and, if added later, must use a supported raster
-format rather than this SVG.
+license, and includes `LICENSE`. The `media/cleaner-broom.svg` is the Activity Bar
+icon; `media/cleaner.png` is the Marketplace package icon.
 
 The manually dispatched **Publish Cleaner Marketplace pre-release** workflow
 runs extension and focused Python checks, packages this version and publishes

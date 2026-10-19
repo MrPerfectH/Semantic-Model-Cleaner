@@ -1,5 +1,33 @@
 # Acceptance record — 0.1.2 (2026-10-14)
 
+## 0.1.7 local package preparation — 2026-10-19
+
+- Based on approved combined commit `dbd0d4b708ee148923b9cc0acf4324f41578ea83`.
+  Includes the prepared beta10 README correction. Public release remains pending.
+- Linux extension suite: **51 passed, 0 failed, 0 skipped** (includes packaging
+  metadata, publisher, PNG, fresh SVG path, and self-contained white-fill checks).
+- Source TypeScript and independently compiled runtime JavaScript are byte-for-byte
+  identical to the approved base; the colored Marketplace PNG is unchanged.
+- `media/cleaner-broom.svg` is a solid white broom with no currentColor,
+  transforms, clipping, or stroke dependency. Linux librsvg renders its 24px alpha
+  bounds as **20x20+2+2**; the 240px rendering was visually inspected. This proves
+  asset bounds and shape, not installed VS Code Activity Bar appearance.
+- Package target: `semantic-model-cleaner-0.1.7.vsix`, pre-release,
+  `MrPerfectH.semantic-model-cleaner`. Package the exact committed source on Linux;
+  record its commit and SHA-256 in the build handoff.
+- Initial `npm ci` hit Linux user disk quota during vsce-sign postinstall. Reused
+  the prior Linux dependency installation after verifying package-lock contents
+  were identical except root version; no dependency or lock resolution changed.
+- The main session reports the README-corrected 0.1.6 package locally installed
+  with SHA-256 `cadcc7289849e06ce33166219693a1c320e0d12636bbd9d90cb6aa1cc37b2350`.
+  Version 0.1.7 has not been installed by this task. Native installation, visibility,
+  duplicate search-card investigation, and personal visual acceptance belong to
+  the main session. Only one Cleaner appears in the reported `@installed` view.
+- No engine rebuild, model access, settings change, installation, push, or
+  publication is part of this package preparation.
+
+Earlier records below retain the artifact versions actually tested at the time.
+
 Sidebar scope selection. Same worktree and branch (`t3/vscode-app-plugin`,
 base `e647e58`); no commits, pushes or PRs. All checks below ran on the **MSI
 Windows laptop** (Windows, Python 3.13.2, Node 24.19), on a fresh clone of base

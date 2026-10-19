@@ -7,7 +7,7 @@ const root = path.join(__dirname, '..');
 
 test('release version agrees with lockfile, package output and changelog', () => {
   const lock = require('../package-lock.json');
-  assert.equal(manifest.version, '0.1.6');
+  assert.equal(manifest.version, '0.1.7');
   assert.equal(manifest.publisher, 'MrPerfectH');
   assert.equal(`${manifest.publisher}.${manifest.name}`, 'MrPerfectH.semantic-model-cleaner');
   assert.equal(lock.version, manifest.version);
@@ -33,14 +33,13 @@ test('existing Cleaner launch entry uses a self-contained monochrome mask', () =
   assert.equal(containers.length, 1);
   assert.equal(containers[0].id, 'semanticModelCleaner');
   assert.equal(containers[0].title, 'Cleaner');
-  assert.equal(containers[0].icon, 'media/cleaner.svg');
+  assert.equal(containers[0].icon, 'media/cleaner-broom.svg');
   assert.notEqual(containers[0].icon, manifest.icon);
   const svg = fs.readFileSync(path.join(root, containers[0].icon), 'utf8');
   assert.match(svg, /viewBox="0 0 24 24"/);
-  assert.match(svg, /stroke="#fff"/);
-  assert.match(svg, /fill="none"/);
+  assert.match(svg, /fill="#fff"/);
   assert.match(svg, /<path /);
-  assert.doesNotMatch(svg, /currentColor|<image|<script|<style|href=|url\(|opacity=/i);
+  assert.doesNotMatch(svg, /currentColor|transform=|clipPath|stroke=|fill="none"|<image|<script|<style|href=|url\(|opacity=/i);
   const ignore = fs.readFileSync(path.join(root, '.vscodeignore'), 'utf8');
   assert.doesNotMatch(ignore, /^media(?:\/|$)/m);
 });
