@@ -794,10 +794,11 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
         return "Unused"
 
     def _delete_safety(item_payload: dict) -> str:
-        if item_payload.get("isInferred"):
+        # Broken is an issue signal (issueState). Deletion follows the removal
+        # risk, which the analyzer derives from usage evidence only.
+        # Inferred unit members follow the unit rules (analyzer.inferred_keep).
+        if item_payload.get("isInferred") and not item_payload.get("structuralUnit"):
             return "Keep"
-        if item_payload.get("status", "").startswith("BROKEN"):
-            return "Blocked"
         risk = item_payload.get("removalRisk") or ""
         if risk == "Safe":
             return "Safe"
@@ -807,7 +808,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             return "Keep"
         if risk == "Caution":
             return "Blocked"
-        if analyzer.is_used_status(item_payload.get("status", "")):
+        if analyzer.is_used_status(item_payload.get("usageStatus") or item_payload.get("status", "")):
             return "Blocked"
         return "Review"
 
@@ -879,6 +880,9 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
         other_model_uses = []
         if status.startswith("USED (Field Parameter:"):
             other_model_uses.append("Field param")
+        if analyzer.row_usage_status(r).startswith("USED (Member of "):
+            other_model_uses.append("Calc group member" if r.get("structural_unit") == "calculation group"
+                                    else "Field param member")
         if analyzer.normalize_key(*item.key) in rls_keys:
             other_model_uses.append("RLS")
         if item.is_key:
@@ -909,11 +913,13 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             "isHidden": item.is_hidden,
             "isKey": item.is_key,
             "isInferred": item.is_inferred,
+            "structuralUnit": r.get("structural_unit", "") or None,
             "sortByColumn": item.sort_by_column or None,
             "daxExpression": dax_expression,
             "mSourceDetails": m_source_details,
             "status": status,
             "statusDetail": status,
+            "usageStatus": analyzer.row_usage_status(r),
             "removalRisk": r.get("removal_risk", "") or None,
             "reviewTriggers": r.get("review_triggers", []),
             "reviewBasis": r.get("review_basis", "") or None,
@@ -1007,7 +1013,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             ],
         }
         payload_item["usageState"] = _usage_state(
-            status=status,
+            status=payload_item["usageStatus"],
             usage_count=payload_item["usageCount"],
             measure_dependent_count=payload_item["measureDependentCount"],
             relationship_ref_count=payload_item["relationshipRefCount"],
@@ -1068,7 +1074,9 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
                     "removalRisk": risk,
                     "deleteSafety": display_state.get("deleteSafety", _delete_safety({
                         "status": status,
+                        "usageStatus": analyzer.row_usage_status(r),
                         "isInferred": item.is_inferred,
+                        "structuralUnit": r.get("structural_unit"),
                         "removalRisk": risk,
                     })),
                     "reviewTriggers": r.get("review_triggers", []),
@@ -1109,7 +1117,9 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
                 "removalRisk": risk,
                 "deleteSafety": display_state.get("deleteSafety", _delete_safety({
                     "status": status,
+                    "usageStatus": analyzer.row_usage_status(r),
                     "isInferred": item.is_inferred,
+                    "structuralUnit": r.get("structural_unit"),
                     "removalRisk": risk,
                 })),
                 "reviewTriggers": r.get("review_triggers", []),
@@ -1151,7 +1161,9 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
                 "removalRisk": risk,
                 "deleteSafety": display_state.get("deleteSafety", _delete_safety({
                     "status": status,
+                    "usageStatus": analyzer.row_usage_status(r),
                     "isInferred": item.is_inferred,
+                    "structuralUnit": r.get("structural_unit"),
                     "removalRisk": risk,
                 })),
                 "reviewTriggers": r.get("review_triggers", []),

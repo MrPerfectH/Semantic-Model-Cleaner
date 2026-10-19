@@ -92,18 +92,30 @@ def test_calendar_words_in_comments_or_dax_are_not_declarations(tmp_path):
 ])
 def test_metadata_table_consumers_block_column_and_table_deletion(tmp_path, expression):
     model, report = project(tmp_path, expression)
+    (model / "definition/tables/Other.tmdl").write_text("table Other\n\tcolumn Unrelated\n\t\tdataType: string\n")
     before = {path: path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
     analysis = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
-    assert not analysis["coverage"]["complete"]
+    # A known table with columns is a targeted consumer, not a model-wide coverage gap.
+    assert analysis["coverage"]["complete"]
+    rows = {row["item"].name: row for row in analysis["items"]}
+    assert rows["Unrelated"]["removal_risk"] == "Safe"
     # Category is never named explicitly, but returning Sales still needs it.
-    category = next(row for row in analysis["items"] if row["item"].name == "Category")
-    assert category["removal_risk"] == "Review"
+    category = rows["Category"]
+    assert category["status"] == "NOT USED"
+    assert category["removal_risk"] == "Caution"
+    assert ("Required by retained measure detail rows expression of measure 'Metrics'[Revenue] "
+            "(definition/tables/Metrics.tmdl:3), which references the whole table 'Sales'") in category["review_triggers"]
     for item_type, name in [("Column", "Category"), ("table", "")]:
         policy = evaluate_deletion_policy(model, [report], [{
             "action": "delete", "item_type": item_type, "table": "Sales", "name": name,
         }])
         assert not policy["ok"]
-        assert any(v["rule_id"] == "SMC-D002" for v in policy["violations"])
+        assert any(v["rule_id"] == "SMC-D006" for v in policy["violations"])
+    # The consumer goes with its owner measure.
+    assert evaluate_deletion_policy(model, [report], [
+        {"action": "delete", "item_type": "table", "table": "Sales", "name": ""},
+        {"action": "delete", "item_type": "Measure", "table": "Metrics", "name": "Revenue"},
+    ])["ok"]
     assert {path: path.read_bytes() for path in before} == before
 
 

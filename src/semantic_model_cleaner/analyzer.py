@@ -75,6 +75,8 @@ class ModelItem:
     source_artifact: str = ""
     source_file: str = ""
     format_string: str = ""
+    # TMDL formatStringDefinition DAX; also appended to dax_body so its refs count as dependencies.
+    format_string_expression: str = ""
     explicit_measure_refs: tuple[tuple[str, str], ...] = ()
     data_type: str = ""
     source_column: str = ""
@@ -210,6 +212,11 @@ class UnsupportedMetadataRef:
     resolved: bool = False
     owner_kind: str = ""
     owner_name: str = ""
+    # Qualified references to items that do not exist in the model (never in item_keys).
+    missing_keys: set[tuple[str, str]] = field(default_factory=set)
+    # Columns included in item_keys only because the expression names their whole
+    # table. They block deletion while the owner remains but are not usage edges.
+    table_scope_keys: set[tuple[str, str]] = field(default_factory=set)
 
     @property
     def id(self) -> str:
@@ -531,23 +538,27 @@ def report_binding_status(
     if not isinstance(definition, dict):
         return fail("invalid_definition", "Invalid definition.pbir JSON: expected a JSON object.")
 
-    dataset_reference = definition.get("datasetReference", {})
-    if isinstance(dataset_reference, dict):
-        # Fabric exports can include the unused binding alternative as JSON null.
-        dataset_reference = {key: value for key, value in dataset_reference.items()
-                             if value is not None}
-    if isinstance(dataset_reference, dict) and "byPath" in dataset_reference and "byConnection" in dataset_reference:
+    # The schema allows object-or-null for each binding; Fabric exports keep
+    # the unused key as null. Only a non-null value is an active binding.
+    # Messages never echo binding values: connection strings may hold secrets.
+    dataset_reference = definition.get("datasetReference")
+    if dataset_reference is None:
+        dataset_reference = {}
+    if not isinstance(dataset_reference, dict):
+        return fail("invalid_definition", "Invalid definition.pbir: datasetReference must be an object.")
+    by_path = dataset_reference.get("byPath")
+    connection = dataset_reference.get("byConnection")
+    if by_path is not None and connection is not None:
         return fail(
             "ambiguous_definition",
             "definition.pbir contains both populated datasetReference.byPath and byConnection; select one binding.",
         )
-    if isinstance(dataset_reference, dict) and "byConnection" in dataset_reference:
-        connection = dataset_reference.get("byConnection")
-        published_name = ""
-        if isinstance(connection, dict):
-            connection_string = connection.get("connectionString")
-            if isinstance(connection_string, str):
-                published_name = _connection_catalog(connection_string)
+    if connection is not None:
+        connection_string = connection.get("connectionString") if isinstance(connection, dict) else None
+        if not isinstance(connection_string, str):
+            return fail("invalid_definition", "Invalid definition.pbir: datasetReference.byConnection "
+                                              "must be an object with a connectionString text value.")
+        published_name = _connection_catalog(connection_string)
         if published_name:
             status["publishedModelName"] = published_name
         if published_name and published_name.casefold() in candidates:
@@ -571,8 +582,11 @@ def report_binding_status(
             "no model name could be read from the connection string.",
         )
 
-    by_path = dataset_reference.get("byPath", {}) if isinstance(dataset_reference, dict) else {}
-    referenced_path = by_path.get("path") if isinstance(by_path, dict) else None
+    if by_path is not None and (not isinstance(by_path, dict)
+                                or not isinstance(by_path.get("path", ""), str)):
+        return fail("invalid_definition", "Invalid definition.pbir: datasetReference.byPath "
+                                          "must be an object with a path text value.")
+    referenced_path = by_path.get("path") if by_path is not None else None
     if not isinstance(referenced_path, str) or not referenced_path.strip():
         return fail(
             "missing_dataset_reference",
@@ -1117,14 +1131,22 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
         features, _ = extract_feature_expressions(text)
         for feature in features:
             expression = feature.expression
-            item_keys = set(_extract_dax_qualified_refs(expression)) if expression else set()
-            unresolved = any(normalize_key(*key) not in known_keys for key in item_keys)
+            qualified = set(_extract_dax_qualified_refs(expression)) if expression else set()
+            item_keys = {key for key in qualified if normalize_key(*key) in known_keys}
+            missing_keys = qualified - item_keys
+            # A measure's format string is part of the measure item, so
+            # find_broken_dax_references marks the owner BROKEN for a missing
+            # target. That is a model error on one measure, not a coverage gap:
+            # a target that does not exist cannot hide a dependency.
+            owner_reports_missing = feature.construct == "measure/formatStringDefinition"
+            unresolved = bool(missing_keys) and not owner_reports_missing
+            table_scope_keys: set[tuple[str, str]] = set()
             if expression:
-                # Metadata expressions are not yet in the table dependency
-                # graph. Resolving their item refs does not account for a bare
-                # table used alongside them (for example FILTER(Sales, ...)).
-                # Keep cleanup fail-closed until those table consumers can be
-                # represented, including expressions with no item refs at all.
+                # Metadata expressions are not in the table dependency graph. A
+                # bare table (for example FILTER(Sales, ...) or a detail-rows
+                # 'Sales') needs that table and the columns it returns, so all
+                # its columns are protected while the owner remains. A name that
+                # cannot be tied to exactly one table with columns fails closed.
                 bare_refs = (_extract_dax_table_refs(expression)
                              | _known_unquoted_table_refs(expression, bare_names))
                 for name in bare_refs:
@@ -1136,7 +1158,14 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
                         item_keys.update(targets)
                         if not targets:
                             unresolved = True
-                    else:
+                    elif name.casefold() in table_names and not owners:
+                        columns = set(columns_by_table.get(name.casefold(), {}).values())
+                        table_scope_keys.update(columns)
+                        if not columns:
+                            unresolved = True
+                    elif owners or not owner_reports_missing:
+                        # Ambiguous calendar/table name, or an unknown table
+                        # whose owner is not reported as broken.
                         unresolved = True
                 for name in _extract_dax_unqualified_refs(expression):
                     matches = measure_names.get(name.casefold(), set())
@@ -1157,13 +1186,19 @@ def _parse_unsupported_tmdl_metadata_refs(model_path: Path) -> list[UnsupportedM
                 # A calculation item without any identifiable reference is still
                 # applied to arbitrary measures at runtime.
                 unresolved = True
+            table_scope_keys -= item_keys
+            item_keys |= table_scope_keys
             if expression and not item_keys and not unresolved:
                 # Nothing remains unchecked for item deletion: the expression was
                 # parsed and retains no named model item (for example a KPI trend
-                # of literals, or a calculation item using only the selected measure).
+                # of literals, a calculation item using only the selected measure,
+                # or a format string whose only targets are missing and reported
+                # as broken on its measure).
                 continue
             ref = _unsupported_ref(feature.area, item_keys, filepath, model_path)
             ref.unresolved_targets = unresolved
+            ref.missing_keys = missing_keys
+            ref.table_scope_keys = table_scope_keys
             ref.feature = feature.feature
             ref.construct = feature.construct
             ref.owner = feature.owner
@@ -1235,14 +1270,18 @@ def _unsupported_metadata_review_trigger(
 def _limitation_explanation(ref: UnsupportedMetadataRef) -> dict:
     """Explain one Unsupported Metadata construct: what is checked and what is not."""
     targets = sorted(format_item_ref(key) for key in ref.item_keys)
+    missing = sorted(format_item_ref(key) for key in ref.missing_keys)
     feature = ref.feature or ref.area
     if ref.construct == "culture/linguisticMetadata":
         checked = ("The linguisticMetadata block was recognized as a declaration of "
                    f"{ref.owner}. Translations in the same culture are read structurally and "
                    "listed as Translation Membership on each translated item.")
-    elif targets:
-        checked = (f"Direct item references in the expression were resolved: {', '.join(targets)}. "
-                   f"Coverage remains incomplete; see each item's cleanup recommendation.")
+    elif targets or missing:
+        checked = " ".join(filter(None, [
+            (f"References matched to model items: {', '.join(targets)}. "
+             f"Coverage remains incomplete; see each item's cleanup recommendation.") if targets else "",
+            f"References to items that do not exist in the model: {', '.join(missing)}." if missing else "",
+        ]))
     elif ref.construct == "measure/kpi":
         checked = "The KPI declaration was recognized; it declares no target, status or trend expression."
     else:
@@ -1282,6 +1321,7 @@ def _limitation_explanation(ref: UnsupportedMetadataRef) -> dict:
         "location": _limitation_location(ref),
         "scope": "shared" if ref.unresolved_targets else "targeted",
         "targets": targets,
+        "missing_targets": missing,
         "checked": checked,
         "unchecked": unchecked,
         "effect": effect,
@@ -1368,17 +1408,30 @@ def _calculation_group_triggers(
         f"{'item' if len(items) == 1 else 'items'}: {listed}). Delete the whole group through a "
         f"reviewed table plan rather than this item alone."
     ]
-    if table_dependents:
-        shown = ", ".join(table_dependents[:5]) + (
-            f", +{len(table_dependents) - 5} more" if len(table_dependents) > 5 else "")
-        count = len(table_dependents)
-        triggers.append(
-            f"Parent table '{item.table}' is required by {count} retained DAX "
-            f"{'consumer' if count == 1 else 'consumers'} outside it ({shown}). These are "
-            f"parent-table references, not direct consumers of this item; whole-group deletion "
-            f"stays Blocked while they remain unless a coordinated plan updates or removes them."
-        )
-    return triggers
+    return triggers + _parent_table_triggers(item, table_dependents, "group")
+
+
+def _field_parameter_member_triggers(item: ModelItem, table_dependents: list[str]) -> list[str]:
+    """Explain why one column of a field parameter is not deleted on its own."""
+    triggers = [
+        f"Column of field parameter '{item.table}'. Its columns work as one unit; delete the whole "
+        f"field parameter through a reviewed table plan rather than this column alone."
+    ]
+    return triggers + _parent_table_triggers(item, table_dependents, "field parameter")
+
+
+def _parent_table_triggers(item: ModelItem, table_dependents: list[str], unit: str) -> list[str]:
+    if not table_dependents:
+        return []
+    shown = ", ".join(table_dependents[:5]) + (
+        f", +{len(table_dependents) - 5} more" if len(table_dependents) > 5 else "")
+    count = len(table_dependents)
+    return [
+        f"Parent table '{item.table}' is required by {count} retained DAX "
+        f"{'consumer' if count == 1 else 'consumers'} outside it ({shown}). These are "
+        f"parent-table references, not direct consumers of this item; whole-{unit} deletion "
+        f"stays Blocked while they remain unless a coordinated plan updates or removes them."
+    ]
 
 
 ENTITY_TYPE_TRIGGER_PREFIX = "Entity type requires confirmation: "
@@ -1400,7 +1453,10 @@ _RETAINED_DECLARATION_PREFIXES = ("Sort column required by retained ", "Column b
                                   "Required by retained ")
 
 
-def _metadata_consumer_trigger(ref: UnsupportedMetadataRef) -> str:
+def _metadata_consumer_trigger(ref: UnsupportedMetadataRef, item: ModelItem | None = None) -> str:
+    if item is not None and normalize_key(*item.key) in {normalize_key(*key) for key in ref.table_scope_keys}:
+        return (f"Required by retained {ref.feature} of {ref.owner} ({_limitation_location(ref)}), "
+                f"which references the whole table '{item.table}'")
     return f"Required by retained {ref.feature} of {ref.owner} ({_limitation_location(ref)})"
 
 
@@ -1432,7 +1488,10 @@ def _metadata_consumer_index(refs: list[UnsupportedMetadataRef], items: list[Mod
         # A measure's own KPI or format string naming the measure is not a consumer of it.
         own_key = normalize_key(ref.table, ref.owner_name) if ref.owner_kind in ("measure", "column") else None
         keys = {normalize_key(*key) for key in ref.item_keys} - {own_key}
-        targets = {identity_by_key[key] for key in keys if key in identity_by_key}
+        # Columns protected only because their whole table is named block
+        # deletion; they do not inherit the owner's usage.
+        table_scope = {normalize_key(*key) for key in ref.table_scope_keys}
+        targets = {identity_by_key[key] for key in keys - table_scope if key in identity_by_key}
         for key in keys:
             by_key[key].append(ref)
         if ref.owner_kind in ("measure", "column"):
@@ -1472,16 +1531,20 @@ def _apply_tool_entity_review(
         table = rows[0]["item"].table
         trigger = entity_type_trigger(entity_kinds[table_key], table)
         own = {item_identity(row["item"]) for row in rows}
-        unused = (all(row["status"] == "NOT USED" and not row["item"].is_inferred for row in rows)
+        unused = (all(row_usage_status(row) == "NOT USED" and not inferred_keep(row) for row in rows)
                   and not table_dependents_by_table.get(table_key)
-                  and not any(dependents.get(identity, set()) - own for identity in own))
+                  and not any(dependents.get(identity, set()) - own for identity in own)
+                  # A metadata expression owned outside the entity (format string,
+                  # detail rows, KPI) still consumes it, even when that owner is idle.
+                  and not any(str(consumer.get("table") or "").casefold() != table_key
+                              for row in rows for consumer in row.get("metadata_consumers", [])))
         # The entity's own shared gaps (dynamic calculation items) vanish with it.
         own_coverage = bool(coverage_limitations) and all(
             limitation.get("kind") == "unsupported_metadata" and limitation.get("owner")
             and str(limitation.get("table") or "").casefold() == table_key
             for limitation in coverage_limitations)
         for row in rows:
-            if row["status"] != "NOT USED" or row["item"].is_inferred:
+            if row_usage_status(row) != "NOT USED" or inferred_keep(row):
                 continue
             internal = [t for t in row["review_triggers"]
                         if t == "Item is hidden" or t in row["calculation_group_triggers"]
@@ -1905,7 +1968,7 @@ def _parse_tmdl_file(filepath: Path) -> list[ModelItem]:
 
 def _tmdl_measure_item(filepath: Path, lines: list[str], table: str, measure: TmdlDeclaration) -> ModelItem:
     dax_lines = _tmdl_dax_lines(measure)
-    data_type = source_column = format_string = display_folder = ""
+    data_type = source_column = format_string = display_folder = format_string_expression = ""
     description = "\n".join(_tmdl_description_lines(lines, measure))
     is_hidden = False
     for prop in measure.children:
@@ -1925,7 +1988,9 @@ def _tmdl_measure_item(filepath: Path, lines: list[str], table: str, measure: Tm
             is_hidden = _tmdl_flag(prop)
         # formatStringDefinition may contain DAX column refs
         if keyword == "formatStringDefinition" and prop.kind == "expression":
-            dax_lines.extend(_tmdl_dax_lines(prop))
+            format_lines = _tmdl_dax_lines(prop)
+            format_string_expression = "\n".join(format_lines)
+            dax_lines.extend(format_lines)
 
     return ModelItem(
         item_type="Measure",
@@ -1939,6 +2004,7 @@ def _tmdl_measure_item(filepath: Path, lines: list[str], table: str, measure: Tm
         source_column=source_column,
         description=description,
         format_string=format_string,
+        format_string_expression=format_string_expression,
     )
 
 
@@ -4015,8 +4081,23 @@ def extract_dax_commented_refs(dax_body: str) -> set[str]:
     return refs
 
 
+_FORMAT_STRING_EXPRESSION = "format string expression"
+
+
+def _dax_expression_parts(item: ModelItem) -> list[tuple[str, str]]:
+    """Split a measure's DAX into (expression label, text): its body and its format string."""
+    body, fmt = item.dax_body, item.format_string_expression
+    if not fmt or not body.endswith(fmt):
+        return [("", body)]
+    return [("", body[:len(body) - len(fmt)].removesuffix("\n")), (_FORMAT_STRING_EXPRESSION, fmt)]
+
+
 def find_broken_dax_references(items: list[ModelItem]) -> dict[tuple[str, str], list[dict[str, str]]]:
-    """Return item_key -> structured unresolved DAX refs for measures/calc columns."""
+    """Return item_key -> structured unresolved DAX refs for measures/calc columns.
+
+    A missing reference found only in a measure's format string expression says
+    so in its message and carries ``expression: "format string expression"``.
+    """
     existing_keys = {normalize_key(*item.key) for item in items}
     same_table_column_keys = {
         normalize_key(item.table, item.name)
@@ -4032,6 +4113,7 @@ def find_broken_dax_references(items: list[ModelItem]) -> dict[tuple[str, str], 
             continue
 
         missing: dict[tuple[str, str], dict[str, str]] = {}
+        found_in: dict[tuple[str, str], set[str]] = defaultdict(set)
         for tbl, name in item.explicit_measure_refs:
             if normalize_key(tbl, name) not in existing_keys:
                 ref_text = format_item_ref((tbl, name))
@@ -4040,45 +4122,59 @@ def find_broken_dax_references(items: list[ModelItem]) -> dict[tuple[str, str], 
                     "ref": ref_text,
                     "message": f"Missing measure: {ref_text}",
                 }
+                found_in[("explicit-measure", ref_text.casefold())].add("")
 
-        for tbl, name in _extract_dax_qualified_refs(item.dax_body):
-            if normalize_key(tbl, name) not in existing_keys:
-                ref_text = format_item_ref((tbl, name))
-                table_exists = tbl.casefold() in table_names
-                missing[("column", ref_text.casefold())] = {
-                    "kind": "column",
-                    "ref": ref_text,
-                    "message": (
-                        f"Missing column: {ref_text}" if table_exists
-                        else f"Missing column (table not found): {ref_text}"
-                    ),
-                }
+        for label, dax in _dax_expression_parts(item):
+            def add(key, detail):
+                missing.setdefault(key, detail)
+                found_in[key].add(label)
 
-        for name in _extract_dax_unqualified_refs(item.dax_body):
-            if item.item_type == "Calculated Column":
-                same_table_key = normalize_key(item.table, name)
-                if same_table_key not in same_table_column_keys and name.casefold() not in measure_names:
-                    ref_text = f"[{name}]"
-                    missing[("unqualified", ref_text.casefold())] = {
-                        "kind": "unqualified",
+            for tbl, name in _extract_dax_qualified_refs(dax):
+                if normalize_key(tbl, name) not in existing_keys:
+                    ref_text = format_item_ref((tbl, name))
+                    table_exists = tbl.casefold() in table_names
+                    add(("column", ref_text.casefold()), {
+                        "kind": "column",
                         "ref": ref_text,
-                        "message": f"Missing same-table column or measure: {ref_text}",
-                    }
-            elif name.casefold() not in measure_names:
-                ref_text = f"[{name}]"
-                missing[("measure", ref_text.casefold())] = {
-                    "kind": "measure",
-                    "ref": ref_text,
-                    "message": f"Missing measure: {ref_text}",
-                }
+                        "message": (
+                            f"Missing column: {ref_text}" if table_exists
+                            else f"Missing column (table not found): {ref_text}"
+                        ),
+                    })
 
-        for table_name in _extract_dax_table_refs(item.dax_body):
-            if table_name.casefold() not in table_names:
-                missing[("table", table_name.casefold())] = {
-                    "kind": "table",
-                    "ref": table_name,
-                    "message": f"Missing table: {table_name}",
-                }
+            for name in _extract_dax_unqualified_refs(dax):
+                if item.item_type == "Calculated Column":
+                    same_table_key = normalize_key(item.table, name)
+                    if same_table_key not in same_table_column_keys and name.casefold() not in measure_names:
+                        ref_text = f"[{name}]"
+                        add(("unqualified", ref_text.casefold()), {
+                            "kind": "unqualified",
+                            "ref": ref_text,
+                            "message": f"Missing same-table column or measure: {ref_text}",
+                        })
+                elif name.casefold() not in measure_names:
+                    ref_text = f"[{name}]"
+                    add(("measure", ref_text.casefold()), {
+                        "kind": "measure",
+                        "ref": ref_text,
+                        "message": f"Missing measure: {ref_text}",
+                    })
+
+            for table_name in _extract_dax_table_refs(dax):
+                if table_name.casefold() not in table_names:
+                    add(("table", table_name.casefold()), {
+                        "kind": "table",
+                        "ref": table_name,
+                        "message": f"Missing table: {table_name}",
+                    })
+
+        for key, detail in missing.items():
+            if _FORMAT_STRING_EXPRESSION not in found_in[key]:
+                continue
+            where = ("the measure expression and its format string expression" if "" in found_in[key]
+                     else "the format string expression (formatStringDefinition)")
+            detail["expression"] = _FORMAT_STRING_EXPRESSION
+            detail["message"] = f"{detail['message']} in {where}"
 
         if missing:
             broken_refs[item.key] = sorted(missing.values(), key=lambda x: x["ref"].casefold())
@@ -4120,6 +4216,30 @@ def build_dax_dependency_graph(items: list[ModelItem]) -> dict[tuple[str, str], 
 
 def is_used_status(status: str) -> bool:
     return status.startswith("USED") or status.startswith("INDIRECT")
+
+
+def row_usage_status(row: dict) -> str:
+    """USED/INDIRECT/NOT USED evidence for deletion, without the BROKEN label.
+
+    ``status`` stays the legacy display label, where BROKEN replaces the usage
+    status. A row without it falls back to its status; a BROKEN label there
+    hides the usage evidence, so it counts as used (fail closed).
+    """
+    if "usage_status" in row:
+        return row["usage_status"]
+    return "USED (usage not recorded)" if row["status"].startswith("BROKEN") else row["status"]
+
+
+def inferred_keep(row: dict) -> bool:
+    """True when an engine-inferred column is kept for that flag alone.
+
+    ``isNameInferred``/``isDataTypeInferred`` is not usage. Outside a structural
+    unit it still keeps the column (engine-managed, fail closed). Inside a
+    calculation group or field parameter the unit rules decide instead: a used
+    unit retains every member, and a wholly unused unit is assessed and deleted
+    only as a whole table.
+    """
+    return row["item"].is_inferred and not row.get("structural_unit")
 
 
 def build_dax_column_deps(items: list[ModelItem]) -> dict[tuple[str, str], set[tuple[str, str]]]:
@@ -4383,7 +4503,7 @@ def build_table_summaries(
             has_direct_usage = bool(row.get("has_direct_usage"))
             if item.is_hidden:
                 hidden_count += 1
-            if is_used_status(status):
+            if is_used_status(row_usage_status(row)):
                 used_count += 1
             if item.item_type == "Measure":
                 measure_count += 1
@@ -4414,6 +4534,7 @@ def build_table_summaries(
                 "ref": format_item_ref(item.key),
                 "type": item.item_type,
                 "status": status,
+                "usage_status": row_usage_status(row),
                 "removal_risk": row.get("removal_risk", "") or None,
                 "review_triggers": row.get("review_triggers", []),
                 "review_basis": row.get("review_basis", ""),
@@ -4534,8 +4655,7 @@ def build_table_summaries(
         # Whole-table (whole-group) deletion recommendation. Retained consumers
         # outside the table block it even when no child is directly used.
         child_recommendations = {row.get("removal_risk") or "" for row in rows}
-        child_used = any(is_used_status(row["status"]) or row["status"].startswith("BROKEN")
-                         or row["item"].is_inferred for row in rows)
+        child_used = any(is_used_status(row_usage_status(row)) or inferred_keep(row) for row in rows)
         if external_dax_dependents:
             count = len(external_dax_dependents)
             shown = ", ".join(external_dax_dependents[:5]) + (
@@ -4906,14 +5026,43 @@ def analyze(
         or (item.source_kind != "report" and normalize_key(*item.key) in relationship_keys | rls_keys)
     }
     needed = set(directly_used)
-    queue = list(needed)
-    while queue:
-        source = queue.pop()
-        for target in (dax_deps.get(source, set()) | dax_col_deps.get(source, set())
-                       | metadata_edges.get(source, set())):
-            if target not in needed:
-                needed.add(target)
-                queue.append(target)
+
+    def close_needed(queue: list) -> None:
+        while queue:
+            source = queue.pop()
+            for target in (dax_deps.get(source, set()) | dax_col_deps.get(source, set())
+                           | metadata_edges.get(source, set())):
+                if target not in needed:
+                    needed.add(target)
+                    queue.append(target)
+
+    close_needed(list(needed))
+    # ── Structural units ──
+    # A calculation group or field parameter works as one unit: its selector,
+    # Fields/Order helpers and any other columns are one structure. Use of any
+    # member column (report, relationship, RLS or a needed DAX/metadata consumer)
+    # retains every member column. Members never retain one another (no
+    # self-use), ordinary measures hosted in the table are not members, and bare
+    # parent-table references stay table-level evidence (#83).
+    entity_kinds = {table.casefold(): "calculation group" for table in model_metadata.calculation_groups}
+    entity_kinds.update({info.table.casefold(): "field parameter" for info, _ in all_field_parameters})
+    unit_members: dict[str, set] = defaultdict(set)
+    for item in all_items:
+        if (item.source_kind == "model" and item.item_type in ("Column", "Calculated Column")
+                and item.table.casefold() in entity_kinds):
+            unit_members[item.table.casefold()].add(item_identity(item))
+    member_unit = {identity: table for table, members in unit_members.items() for identity in members}
+    retained_units: set[str] = set()
+    while True:
+        newly_retained = {table for table, members in unit_members.items()
+                          if table not in retained_units and members & needed}
+        if not newly_retained:
+            break
+        retained_units |= newly_retained
+        queue = [identity for table in newly_retained for identity in unit_members[table]
+                 if identity not in needed]
+        needed.update(queue)
+        close_needed(queue)
     indirect = defaultdict(set)
     dependents = defaultdict(set)
     for source in items_by_identity:
@@ -5050,11 +5199,10 @@ def analyze(
         is_hierarchy_col = is_model_column and nkey in hierarchy_col_keys
         is_sort_target = bool(sort_sources)
 
-        if identity in broken_dax_refs and broken_dax_refs[identity]:
-            count = len(broken_dax_refs[identity])
-            noun = "ref" if count == 1 else "refs"
-            status = f"BROKEN ({count} missing {noun})"
-        elif has_direct_usage:
+        # Usage comes only from incoming evidence. An item's own missing
+        # references (BROKEN) are a diagnostic: they replace the status label
+        # below but never make the item used or required.
+        if has_direct_usage:
             status = "USED"
         elif field_parameter_tables:
             parameter_tables = ", ".join(sorted(field_parameter_tables, key=str.casefold))
@@ -5091,19 +5239,26 @@ def analyze(
             status = f"INDIRECT (via: {via})"
         else:
             status = "NOT USED"
+        unit_kind = entity_kinds.get(item.table.casefold()) if identity in member_unit else None
+        if status == "NOT USED" and unit_kind and item.table.casefold() in retained_units:
+            status = f"USED (Member of {unit_kind}: {item.table})"
+        usage_status = status
+        if broken_dax_refs.get(identity):
+            count = len(broken_dax_refs[identity])
+            noun = "ref" if count == 1 else "refs"
+            status = f"BROKEN ({count} missing {noun})"
 
         # ── Removal risk ──
+        # Decided from usage_status: deleting a broken item removes its dangling
+        # references and cannot break anything that does not consume it.
         review_triggers: list[str] = []
         # Plan validation re-derives these two reasons against a proposed final
         # state (issue #91), so keep them identifiable without parsing text.
         item_shared_trigger = ""
         group_triggers: list[str] = []
-        if identity in broken_dax_refs and broken_dax_refs[identity]:
+        if usage_status != "NOT USED":
             removal_risk = ""
-            review_triggers.extend([detail["message"] for detail in broken_dax_refs[identity]])
-        elif status != "NOT USED":
-            removal_risk = ""
-        elif item.is_inferred:
+        elif item.is_inferred and not unit_kind:
             removal_risk = "Do not remove"
         else:
             # Check if any other item's DAX references this item
@@ -5123,7 +5278,10 @@ def analyze(
                         item, model_metadata.calculation_groups[item.table],
                         table_dependents_by_table.get(item.table.casefold(), []),
                     )
-                    review_triggers.extend(group_triggers)
+                elif unit_kind == "field parameter":
+                    group_triggers = _field_parameter_member_triggers(
+                        item, table_dependents_by_table.get(item.table.casefold(), []))
+                review_triggers.extend(group_triggers)
             if shared_limitation_trigger:
                 item_shared_trigger = shared_limitation_trigger
                 review_triggers.append(shared_limitation_trigger)
@@ -5142,11 +5300,11 @@ def analyze(
                 for name in sort_sources
             )
             review_triggers.extend(f"Column belongs to retained hierarchy {name}" for name in hierarchy_names)
-            review_triggers.extend(_metadata_consumer_trigger(ref) for ref in metadata_consumers)
+            review_triggers.extend(_metadata_consumer_trigger(ref, item) for ref in metadata_consumers)
 
         targeted_limitation_ids = [ref.id for ref in unsupported_metadata_by_key.get(nkey, [])]
         limitation_ids = targeted_limitation_ids + (
-            shared_limitation_ids if status == "NOT USED" and not item.is_inferred else [])
+            shared_limitation_ids if usage_status == "NOT USED" and not (item.is_inferred and not unit_kind) else [])
         calculation_group = model_metadata.calculation_groups.get(item.table) if item.source_kind == "model" else None
         model_role = ""
         if calculation_group is not None:
@@ -5160,6 +5318,7 @@ def analyze(
         results.append({
             "item": item,
             "status": status,
+            "usage_status": usage_status,
             "usages": usages,
             "stale_usages": stale_usages,
             "metadata_consumers": [
@@ -5171,6 +5330,7 @@ def analyze(
             "review_triggers": review_triggers,
             "shared_limitation_trigger": item_shared_trigger,
             "calculation_group_triggers": group_triggers,
+            "structural_unit": unit_kind or "",
             "hierarchies": hierarchy_names,
             "broken_dax_refs": [detail["ref"] for detail in broken_dax_refs.get(identity, [])],
             "broken_dax_ref_details": broken_dax_refs.get(identity, []),
@@ -5189,8 +5349,6 @@ def analyze(
                                  if item.source_kind == "model" else []),
         })
 
-    entity_kinds = {table.casefold(): "calculation group" for table in model_metadata.calculation_groups}
-    entity_kinds.update({info.table.casefold(): "field parameter" for info, _ in all_field_parameters})
     _apply_tool_entity_review(results, entity_kinds, dependents, table_dependents_by_table, coverage_limitations)
     for row in results:
         row["review_basis"] = review_basis(row)
@@ -5228,7 +5386,7 @@ def analyze(
         summary["is_calculation_group"] = is_calculation_group
         refs = calculation_refs_by_file.get(source_file_by_table.get(summary["name"].casefold()), []) if is_calculation_group else []
         summary["calculation_group_targets"] = sorted(
-            {format_item_ref(key) for ref in refs for key in ref.item_keys}, key=str.casefold)
+            {format_item_ref(key) for ref in refs for key in ref.item_keys | ref.missing_keys}, key=str.casefold)
         summary["calculation_group_unresolved"] = any(ref.unresolved_targets for ref in refs)
 
     table_stats: dict[str, dict] = defaultdict(lambda: {
@@ -5304,6 +5462,7 @@ def analyze(
             {"area": ref.area, "source_file": ref.source_file, "feature": ref.feature,
              "construct": ref.construct, "owner": ref.owner, "line": ref.line, "id": ref.id,
              "targets": [format_item_ref(key) for key in sorted(ref.item_keys)],
+             "missing_targets": [format_item_ref(key) for key in sorted(ref.missing_keys)],
              "unresolved_targets": ref.unresolved_targets, "resolved": ref.resolved}
             for ref in all_unsupported_metadata_refs
         ],
@@ -5548,6 +5707,7 @@ def format_json_output(results: dict) -> str:
             "isInferred": r["item"].is_inferred,
             "sortByColumn": r["item"].sort_by_column or None,
             "status": r["status"],
+            "usageStatus": row_usage_status(r),
             "removalRisk": r.get("removal_risk", "") or None,
                 "reviewTriggers": r.get("review_triggers", []),
                 "reviewBasis": r.get("review_basis", "") or None,
