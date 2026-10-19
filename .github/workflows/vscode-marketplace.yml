@@ -33,10 +33,10 @@ jobs:
       - run: npm run package
       - uses: actions/upload-artifact@v4
         with:
-          name: semantic-model-cleaner-0.1.4
-          path: vscode-extension/semantic-model-cleaner-0.1.4.vsix
+          name: semantic-model-cleaner-0.1.5
+          path: vscode-extension/semantic-model-cleaner-0.1.5.vsix
           if-no-files-found: error
       - name: Publish exact pre-release package
-        run: npx --no-install vsce publish --packagePath semantic-model-cleaner-0.1.4.vsix --pre-release
+        run: npx --no-install vsce publish --packagePath semantic-model-cleaner-0.1.5.vsix --pre-release
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}

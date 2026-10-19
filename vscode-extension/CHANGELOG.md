@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 - prepared pre-release
+
+- Cold scope commands start Cleaner and await model/report discovery instead of asking users to open it first.
+- Reveal the Cleaner Analysis Scope sidebar on Open; retain explicit choice among multiple models. Open and Choose do not analyze or apply changes.
+- Abandon pending actions after canceled pickers, Stop or superseded startup; retain trust and local desktop checks before settings and launch.
+- Keep the existing Activity Bar SVG unchanged; native missing-icon acceptance remains separate.
+
 ## 0.1.4 - prepared public pre-release
 
 - Prepare the initial public identity `MrPerfectH.semantic-model-cleaner`, retaining Preview.

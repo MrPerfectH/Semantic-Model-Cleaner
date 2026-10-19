@@ -6,7 +6,7 @@ Semantic Model Cleaner web UI. The Python engine discovers the Power BI Project
 and its report bindings. Analysis and model changes remain explicit user
 actions; the existing reviewed-plan safeguards are unchanged.
 
-Version **0.1.4** is prepared for an initial public Marketplace pre-release as
+Version **0.1.5** is prepared as a startup-fix Marketplace pre-release for
 `MrPerfectH.semantic-model-cleaner`; this document does not confirm publication.
 The **Preview** label remains. The VSIX contains the extension, not Python or the
 engine. Nothing is downloaded, installed or upgraded automatically.
@@ -36,7 +36,7 @@ py -3 -m venv .venv-smc
 ```
 
 Install the extension through **Extensions: Install from VSIX...** using
-`semantic-model-cleaner-0.1.4.vsix`. Once the public pre-release is available,
+`semantic-model-cleaner-0.1.5.vsix`. Once the public pre-release is available,
 its Marketplace identity is `MrPerfectH.semantic-model-cleaner`.
 Set **Semantic Model Cleaner: Python Path** to the absolute path of your chosen
 environment's Python executable (`.venv-smc/bin/python` or
@@ -64,6 +64,10 @@ trust-checked commands as the Command Palette.
   picker in multi-root workspaces, or a folder dialog in an empty window.
   Right-click a folder in Explorer to open it directly. Nothing starts until
   you choose it.
+- **Cold commands**: Choose Semantic Model, Analyze and report selection commands
+  open Cleaner and wait for model/report discovery when necessary. Open reveals
+  the native Analysis Scope sidebar. Open and Choose never run analysis or Apply.
+  Canceling a folder/model picker or stopping startup abandons the pending action.
 - **Semantic model**: a sole model is selected automatically. With several,
   select one explicitly; nothing is guessed. Unsupported model folders are
   listed with a warning.
@@ -88,8 +92,8 @@ trust-checked commands as the Command Palette.
   The status bar shows starting/running/stopped/error and opens Cleaner.
 
 One panel and one owned server run per VS Code window. Opening another folder
-replaces the current one. Requests arriving during startup cancel the previous
-launch; a stopped or closed panel cannot start a late server. No existing server
+replaces the current one. Scope commands wait for the current startup and discovery. Opening another
+folder replaces the previous launch; a stopped or closed panel cannot start a late server. No existing server
 on a guessed port is reused.
 
 ## Boundaries
@@ -129,7 +133,7 @@ npm test
 npm run package
 ```
 
-The package command creates `semantic-model-cleaner-0.1.4.vsix` with the VSIX
+The package command creates `semantic-model-cleaner-0.1.5.vsix` with the VSIX
 pre-release flag. It does not publish. Open this directory in VS Code and use
 **Run Cleaner extension** (F5) for a development host.
 
@@ -157,7 +161,7 @@ install and test a packaged VSIX in the disposable extensions directory instead
 of this source folder (Windows also needs `SMC_VSCODE_CLI_JS`, the product's
 `resources/app/out/cli.js`). It disables Workspace Trust **only in that disposable test
 host**; trust denial is covered separately by command-handler tests. It drives the
-native sidebar: explicit model choice, default and deselected reports, exact
+native sidebar: cold Choose and Analyze, explicit model choice, default and deselected reports, exact
 subset and model-only analysis, stale results, model and folder switches, a
 change during analysis, restart and stop, and hashes inputs to detect changes. Evidence goes to
 `integration-artifacts/`. No user project is used.
