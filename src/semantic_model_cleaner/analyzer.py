@@ -532,10 +532,14 @@ def report_binding_status(
         return fail("invalid_definition", "Invalid definition.pbir JSON: expected a JSON object.")
 
     dataset_reference = definition.get("datasetReference", {})
+    if isinstance(dataset_reference, dict):
+        # Fabric exports can include the unused binding alternative as JSON null.
+        dataset_reference = {key: value for key, value in dataset_reference.items()
+                             if value is not None}
     if isinstance(dataset_reference, dict) and "byPath" in dataset_reference and "byConnection" in dataset_reference:
         return fail(
             "ambiguous_definition",
-            "definition.pbir contains both datasetReference.byPath and byConnection; select one binding.",
+            "definition.pbir contains both populated datasetReference.byPath and byConnection; select one binding.",
         )
     if isinstance(dataset_reference, dict) and "byConnection" in dataset_reference:
         connection = dataset_reference.get("byConnection")
