@@ -238,3 +238,24 @@ cleanup regression evidence, and the owner's explicit go/no-go for that exact
 build. Linux source, wheel and T3 browser fixtures do not replace those gates.
 The integration PR stays draft with auto-merge disabled, and no service issue is
 closed or main merge authorized by these independent checks.
+
+### Response handling and diagnostics
+
+The shared service transport treats HTTP 202 as header-driven LRO acceptance,
+ignoring its body within the existing response size limit. Non-object or malformed
+error bodies retain HTTP status classification. Successful responses still require
+JSON objects; parse failures retain the HTTP status and a fixed body-kind label in
+request evidence. Public summaries expose only those status/body-kind diagnostics,
+without response bodies, headers, URLs or server messages.
+
+After a validated operation succeeds, the client constructs its canonical
+`/v1/operations/{id}/result` URL; it never follows the completion Location header.
+Initial operation URL validation, redirect blocking and retry/poll/size limits
+remain in force. Definition POST requests explicitly send
+`Content-Type: application/json`; this is hardening, not a proven cause of the
+previous failure.
+
+Contract references: [Get Semantic Model Definition](https://learn.microsoft.com/en-us/rest/api/fabric/semanticmodel/items/get-semantic-model-definition)
+and [Fabric long-running operations](https://learn.microsoft.com/en-us/rest/api/fabric/articles/long-running-operation)
+(checked 2026-10-21). These deterministic checks do not establish live acceptance
+or identify the original failure's unknown raw response.
