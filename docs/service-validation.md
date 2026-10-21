@@ -238,3 +238,38 @@ cleanup regression evidence, and the owner's explicit go/no-go for that exact
 build. Linux source, wheel and T3 browser fixtures do not replace those gates.
 The integration PR stays draft with auto-merge disabled, and no service issue is
 closed or main merge authorized by these independent checks.
+
+### Response handling and diagnostics
+
+The shared service transport preserves valid HTTP 202 JSON objects, including
+Running/NotStarted polling states. Initial LRO acceptance remains header-driven;
+empty, malformed JSON and non-object 202 bodies are ignored within the existing
+response size limit. Non-object or malformed error bodies retain HTTP status
+classification. Other successful responses still require JSON objects. Excessive
+JSON nesting fails closed with `invalid_response_json` and the fixed `invalid_json`
+body kind for every status, including 202. Incomplete response reads fail closed
+with `network_unavailable`. Both failures preserve a known integer HTTP status;
+parse failures also retain the fixed body-kind label in request evidence. Public
+summaries expose only those status/body-kind diagnostics,
+without response bodies, headers, URLs or server messages.
+
+For initial HTTP 202 acceptance, `x-ms-operation-id` takes precedence over
+Location, including a regional or conflicting Location. The ID is GUID-validated
+and canonicalized before constructing the Fabric `/v1/operations/{id}` URL.
+An invalid ID fails closed as `invalid_operation_location`, without falling back
+to Location. Only when the ID header is absent may an exact canonical
+`https://api.fabric.microsoft.com/v1/operations/{guid}` Location supply the ID;
+that ID is also validated and canonicalized. Regional hosts are never followed
+or allowlisted, and polling continues to use the Fabric credential.
+
+After a validated operation succeeds, the client constructs its canonical
+`/v1/operations/{id}/result` URL; it never follows the completion Location header.
+Initial operation URL validation, redirect blocking and retry/poll/size limits
+remain in force. Definition POST requests explicitly send
+`Content-Type: application/json`; this is hardening, not a proven cause of the
+previous failure.
+
+Contract references: [Get Semantic Model Definition](https://learn.microsoft.com/en-us/rest/api/fabric/semanticmodel/items/get-semantic-model-definition)
+and [Fabric long-running operations](https://learn.microsoft.com/en-us/rest/api/fabric/articles/long-running-operation)
+(checked 2026-10-21). These deterministic checks do not establish live acceptance
+or identify the original failure's unknown raw response.

@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 from datetime import datetime, timezone
 import hashlib
+from http.client import IncompleteRead
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -53,8 +54,18 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+BODY_KINDS = frozenset({"null", "array", "string", "number", "boolean", "empty", "invalid_json"})
+
+
 class ProbeError(Exception):
-    """Only fixed, non-sensitive codes may escape the boundary."""
+    """Only fixed, non-sensitive codes and bounded diagnostics may escape the boundary."""
+
+    def __init__(self, *args, status=None, body_kind=None):
+        super().__init__(*args)
+        self.status = status if type(status) is int and 100 <= status <= 599 else None
+        self.body_kind = (
+            body_kind if isinstance(body_kind, str) and body_kind in BODY_KINDS else None
+        )
 
 
 def guid(value):
@@ -82,31 +93,54 @@ class LiveTransport:
             headers={
                 "Authorization": "Bearer " + self.tokens[service],
                 "Accept": "application/json",
+                **({"Content-Type": "application/json"} if method == "POST" else {}),
             },
             data=b"" if method == "POST" else None,
         )
+        status = None
         try:
             try:
                 response = self.opener.open(request, timeout=30)
             except HTTPError as exc:
                 response = exc
             with response:
-                payload = response.read(MAX_BYTES + 1)
-                if len(payload) > MAX_BYTES:
-                    raise ProbeError("response_size_limit")
                 status = response.code
                 headers = dict(response.headers.items())
+                payload = response.read(MAX_BYTES + 1)
+                if len(payload) > MAX_BYTES:
+                    raise ProbeError("response_size_limit", status=status)
                 try:
                     body = json.loads(payload) if payload else {}
+                except RecursionError:
+                    # Excessive nesting fails closed even for acceptance/error bodies.
+                    raise ProbeError(
+                        "invalid_response_json", status=status, body_kind="invalid_json"
+                    ) from None
                 except (ValueError, UnicodeError):
-                    if status >= 400:
+                    if status == 202 or status >= 400:
                         return status, headers, {}
-                    raise ProbeError("invalid_response_json") from None
+                    raise ProbeError(
+                        "invalid_response_json", status=status, body_kind="invalid_json"
+                    ) from None
                 if not isinstance(body, dict):
-                    raise ProbeError("invalid_response_shape")
+                    if status == 202 or status >= 400:
+                        return status, headers, {}
+                    body_kind = (
+                        "null"
+                        if body is None
+                        else "array"
+                        if isinstance(body, list)
+                        else "string"
+                        if isinstance(body, str)
+                        else "boolean"
+                        if isinstance(body, bool)
+                        else "number"
+                    )
+                    raise ProbeError("invalid_response_shape", status=status, body_kind=body_kind)
+                # Initial acceptance is header-driven; polling needs valid JSON objects.
                 return status, headers, body
-        except (URLError, TimeoutError, OSError):
-            raise ProbeError("network_unavailable") from None
+        except (URLError, TimeoutError, OSError, IncompleteRead):
+            raise ProbeError("network_unavailable", status=status) from None
 
 
 class FixtureTransport:
@@ -235,6 +269,9 @@ class Client:
             try:
                 status, headers, body = self.transport(method, url)
             except ProbeError as exc:
+                receipt["status"] = exc.status
+                if exc.body_kind is not None:
+                    receipt["body_kind"] = exc.body_kind
                 receipt["failure"] = str(exc)
                 raise
             finally:
@@ -253,6 +290,7 @@ class Client:
                 }.get(status, "api_request_failed")
                 if body.get("errorCode") == "OperationNotSupportedForItem":
                     code = "definition_not_supported_possible_encryption"
+                receipt["failure"] = code
                 raise ProbeError(code)
             return status, headers, body
         raise ProbeError("rate_limited")
@@ -300,13 +338,19 @@ class Client:
         status, headers, body = self.request("POST", url, "get_definition", owner)
         if status == 200:
             return body
-        operation = headers.get("location")
-        if not operation and headers.get("x-ms-operation-id"):
-            operation = FABRIC + "/operations/" + guid(headers["x-ms-operation-id"])
-        if not isinstance(operation, str) or not re.fullmatch(
-            re.escape(FABRIC) + r"/operations/[0-9a-fA-F-]{36}", operation
-        ):
-            raise ProbeError("invalid_operation_location")
+        # Location may name a regional host. Prefer the operation ID and construct
+        # a canonical Fabric URL; never follow a response-supplied host.
+        operation_id = headers.get("x-ms-operation-id")
+        if operation_id is None:
+            location = headers.get("location")
+            match = isinstance(location, str) and re.fullmatch(
+                re.escape(FABRIC) + r"/operations/([0-9a-fA-F-]{36})", location
+            )
+            operation_id = match.group(1) if match else None
+        try:
+            operation = FABRIC + "/operations/" + guid(operation_id)
+        except ProbeError:
+            raise ProbeError("invalid_operation_location") from None
         for _ in range(60):
             self.pause(headers)
             _, headers, body = self.request("GET", operation, "operation_state", owner)
@@ -314,9 +358,8 @@ class Client:
             if state in {"Failed", "Cancelled", "Canceled"}:
                 raise ProbeError("definition_operation_failed")
             if state == "Succeeded":
-                result_url = headers.get("location", operation + "/result")
-                if result_url != operation + "/result":
-                    raise ProbeError("invalid_operation_location")
+                # Never follow a response URL: use the operation validated above.
+                result_url = operation + "/result"
                 status, _, result = self.request("GET", result_url, "operation_result", owner)
                 if status != 200:
                     raise ProbeError("definition_result_incomplete")
@@ -752,6 +795,14 @@ def public_summary(result):
         "error_codes": [e["code"] for e in result["errors"]],
         "boundaries": result["boundaries"],
     }
+    summary["response_diagnostics"] = [
+        {key: row[key] for key in ("status", "body_kind") if key in row}
+        for row in result.get("requests", [])
+        if isinstance(row.get("body_kind"), str)
+        and row["body_kind"] in BODY_KINDS
+        and type(row.get("status")) is int
+        and 100 <= row["status"] <= 599
+    ]
     summary["report_health_finding_count"] = len(result["report_health"]["findings"])
     summary["definition_receipts"] = [
         {
