@@ -19,7 +19,7 @@ OP_URL = f"{provider.FABRIC}/operations/{OPERATION}"
 
 def client_for(monkeypatch, responses):
     """Feed raw bytes through the real LiveTransport, including HTTPError."""
-    transport = provider.LiveTransport({"fabric": "SECRET TOKEN"})
+    transport = provider.LiveTransport({"fabric": "SECRET TOKEN", "powerbi": "SECRET POWERBI TOKEN"})
     pending = iter(responses)
     requests = []
 
@@ -152,19 +152,84 @@ def test_error_object_retains_fixed_safe_mapping(monkeypatch):
     assert "SECRET" not in json.dumps(evidence.data)
 
 
+# Use alphabetic digits so canonicalization is observable, unlike the numeric fixture ID.
+LRO_ID = "abcdef12-abcd-4abc-8abc-abcdef123456"
+LRO_URL = f"{provider.FABRIC}/operations/{LRO_ID}"
+REGIONAL_URL = f"https://wabi-west-europe-redirect.analysis.windows.net/v1/operations/{LRO_ID}"
+GET_DEFINITION_URL = (
+    f"{provider.FABRIC}/workspaces/{WORKSPACE}/semanticModels/{MODEL}/getDefinition?format=TMDL"
+)
+
+
+def assert_fabric_requests(requests, urls):
+    assert [request.full_url for request in requests] == urls
+    assert [request.get_method() for request in requests] == ["POST"] + ["GET"] * (len(urls) - 1)
+    assert all(request.get_header("Authorization") == "Bearer SECRET TOKEN" for request in requests)
+
+
 @pytest.mark.parametrize(
-    "location",
+    "headers",
     [
-        "https://attacker.invalid/SECRET",
-        OP_URL + "/result",
-        OP_URL + "?SECRET",
+        {"Location": REGIONAL_URL, "x-ms-operation-id": LRO_ID},
+        {"x-ms-operation-id": LRO_ID},
+        {"x-ms-operation-id": LRO_ID.upper()},
+        {"Location": LRO_URL, "x-ms-operation-id": LRO_ID},
+        {"Location": OP_URL, "x-ms-operation-id": LRO_ID},
+        {"Location": "https://attacker.invalid/SECRET", "x-ms-operation-id": LRO_ID},
+        {"Location": LRO_URL},
+        {"Location": f"{provider.FABRIC}/operations/{LRO_ID.upper()}"},
+    ],
+    ids=["regional", "id-only", "uppercase-id", "matching", "conflicting", "hostile",
+         "location-only", "uppercase-location-id"],
+)
+def test_initial_lro_identity_uses_canonical_fabric_requests(monkeypatch, headers):
+    definition = {"definition": {"parts": []}}
+    client, evidence, requests, sleeps = client_for(
+        monkeypatch,
+        [
+            (202, {**headers, "Retry-After": "20"}, b"null"),
+            (200, {"Location": "https://attacker.invalid/SECRET"}, b'{"status":"Succeeded"}'),
+            (200, {}, json.dumps(definition).encode()),
+        ],
+    )
+    assert client.definition(WORKSPACE, "semanticModels", MODEL, "model-1") == definition
+    assert_fabric_requests(requests, [GET_DEFINITION_URL, LRO_URL, LRO_URL + "/result"])
+    assert sleeps == [1] * 20
+    assert [receipt["status"] for receipt in evidence.data["requests"]] == [202, 200, 200]
+    assert "SECRET" not in json.dumps(evidence.data)
+    assert "wabi" not in json.dumps(evidence.data)
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},
+        {"Location": ""},
+        {"Location": "https://attacker.invalid/SECRET"},
+        {"Location": REGIONAL_URL},
+        {"Location": OP_URL + "/result"},
+        {"Location": OP_URL + "?SECRET"},
+        {"Location": OP_URL + "#SECRET"},
+        {"Location": OP_URL.replace("api.fabric", "SECRET@api.fabric")},
+        {"Location": OP_URL.replace(".com/", ".com:443/")},
+        {"Location": OP_URL.replace("/operations/", "/SECRET/../operations/")},
+        {"Location": OP_URL.replace("/v1/", "/")},
+        {"Location": "/v1/operations/" + OPERATION},
+        {"Location": OP_URL + "\r\nSECRET: injected"},
+        {"Location": provider.FABRIC + "/operations/" + "-" * 36},
+        {"Location": OP_URL, "x-ms-operation-id": ""},
+        {"Location": OP_URL, "x-ms-operation-id": "../../workspaces/SECRET"},
+        {"Location": OP_URL, "x-ms-operation-id": "00000000-0000-0000-0000-00000000000G"},
+        {"x-ms-operation-id": "../../workspaces/SECRET"},
     ],
 )
-def test_untrusted_initial_operation_location_is_rejected(monkeypatch, location):
-    client, _, requests, _ = client_for(monkeypatch, [(202, {"Location": location}, b"null")])
+def test_untrusted_initial_operation_identity_is_rejected(monkeypatch, headers):
+    client, evidence, requests, sleeps = client_for(monkeypatch, [(202, headers, b"null")])
     with pytest.raises(provider.ProbeError, match="^invalid_operation_location$"):
         client.definition(WORKSPACE, "semanticModels", MODEL, "model-1")
-    assert len(requests) == 1
+    assert_fabric_requests(requests, [GET_DEFINITION_URL])
+    assert sleeps == []
+    assert "SECRET" not in json.dumps(evidence.data)
 
 
 def test_redirect_response_fails_without_following_location(monkeypatch):
@@ -238,19 +303,14 @@ def test_lro_preserves_202_polling_object(monkeypatch, initial_payload, state):
     client, evidence, requests, sleeps = client_for(
         monkeypatch,
         [
-            (202, {"Location": OP_URL, "Retry-After": "1"}, initial_payload),
+            (202, {"Location": REGIONAL_URL, "x-ms-operation-id": OPERATION, "Retry-After": "1"}, initial_payload),
             (202, {"Retry-After": "1"}, json.dumps({"status": state}).encode()),
             (200, {}, b'{"status":"Succeeded"}'),
             (200, {}, json.dumps(definition).encode()),
         ],
     )
     assert client.definition(WORKSPACE, "semanticModels", MODEL, "model-1") == definition
-    assert [request.full_url for request in requests] == [
-        f"{provider.FABRIC}/workspaces/{WORKSPACE}/semanticModels/{MODEL}/getDefinition?format=TMDL",
-        OP_URL,
-        OP_URL,
-        OP_URL + "/result",
-    ]
+    assert_fabric_requests(requests, [GET_DEFINITION_URL, OP_URL, OP_URL, OP_URL + "/result"])
     assert [receipt["status"] for receipt in evidence.data["requests"]] == [202, 202, 200, 200]
     assert sleeps == [1, 1]
     assert "SECRET" not in json.dumps(evidence.data)
@@ -307,3 +367,18 @@ def test_deeply_nested_json_fails_closed_with_known_status(monkeypatch, status):
     assert summary["response_diagnostics"] == [{"status": status, "body_kind": "invalid_json"}]
     assert "SECRET" not in json.dumps(evidence.data)
     assert "SECRET" not in json.dumps(summary)
+
+
+def test_canonical_poll_failed_operation_stays_failed(monkeypatch):
+    client, evidence, requests, sleeps = client_for(
+        monkeypatch,
+        [
+            (202, {"Location": REGIONAL_URL, "x-ms-operation-id": LRO_ID}, b"null"),
+            (200, {}, b'{"status":"Failed","error":{"errorCode":"UnknownError"}}'),
+        ],
+    )
+    with pytest.raises(provider.ProbeError, match="^definition_operation_failed$"):
+        client.definition(WORKSPACE, "semanticModels", MODEL, "model-1")
+    assert_fabric_requests(requests, [GET_DEFINITION_URL, LRO_URL])
+    assert sleeps == [1]
+    assert [receipt["status"] for receipt in evidence.data["requests"]] == [202, 200]

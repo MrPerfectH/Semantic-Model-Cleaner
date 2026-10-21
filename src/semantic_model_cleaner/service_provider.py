@@ -338,13 +338,19 @@ class Client:
         status, headers, body = self.request("POST", url, "get_definition", owner)
         if status == 200:
             return body
-        operation = headers.get("location")
-        if not operation and headers.get("x-ms-operation-id"):
-            operation = FABRIC + "/operations/" + guid(headers["x-ms-operation-id"])
-        if not isinstance(operation, str) or not re.fullmatch(
-            re.escape(FABRIC) + r"/operations/[0-9a-fA-F-]{36}", operation
-        ):
-            raise ProbeError("invalid_operation_location")
+        # Location may name a regional host. Prefer the operation ID and construct
+        # a canonical Fabric URL; never follow a response-supplied host.
+        operation_id = headers.get("x-ms-operation-id")
+        if operation_id is None:
+            location = headers.get("location")
+            match = isinstance(location, str) and re.fullmatch(
+                re.escape(FABRIC) + r"/operations/([0-9a-fA-F-]{36})", location
+            )
+            operation_id = match.group(1) if match else None
+        try:
+            operation = FABRIC + "/operations/" + guid(operation_id)
+        except ProbeError:
+            raise ProbeError("invalid_operation_location") from None
         for _ in range(60):
             self.pause(headers)
             _, headers, body = self.request("GET", operation, "operation_state", owner)
