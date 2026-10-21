@@ -17,9 +17,11 @@ from pathlib import Path, PurePosixPath
 import tempfile
 import uuid
 
-from . import __version__, analyzer, report_writer, tmdl_writer
+from . import __version__, analyzer, auto_date_tables, report_writer, tmdl_writer
 
 SUFFIXES = {'.tmdl', '.json', '.pbir', '.pbism'}
+# Saved DAX query files: read-only inputs of the auto-date action only; never written.
+QUERY_SUFFIXES = {'.dax'}
 SCHEMA_VERSION = 1
 
 
@@ -69,6 +71,19 @@ def _inventory(roots):
             if path.is_file() and path.suffix.lower() in SUFFIXES:
                 inventory[f'{artifact}/{path.relative_to(root).as_posix()}'] = path.read_bytes()
     return inventory
+
+
+def _query_inventory(roots, operations):
+    """Saved DAX queries the auto-date action reads; fingerprinted with its plan inputs, never changed."""
+    if not any(o.get('kind') == auto_date_tables.OPERATION_KIND for o in operations):
+        return {}
+    return {f'{artifact}/{path.relative_to(root).as_posix()}': path.read_bytes()
+            for artifact, root in roots.items() for path in sorted(root.rglob('*'))
+            if path.suffix.lower() in QUERY_SUFFIXES and path.is_file() and not path.is_symlink()}
+
+
+def _scope_hashes(roots, operations):
+    return _hashes({**_inventory(roots), **_query_inventory(roots, operations)})
 
 
 def _path(roots, key):
@@ -189,6 +204,13 @@ def _execute(op, roots):
     if kind == 'report_repair':
         return _result(report_writer.rewrite_model_reference_changes(report_paths=reports, **{
             k: op[k] for k in ('table_renames', 'measure_renames', 'column_renames') if op.get(k)}))
+    if kind == auto_date_tables.OPERATION_KIND:
+        # Staged copies are re-assessed; report binding was checked on the originals.
+        try:
+            planned = auto_date_tables.planned_tables(op)
+        except auto_date_tables.AutoDateError as exc:
+            raise PlanError(str(exc)) from exc
+        return _result(auto_date_tables.remove_all(model, reports, planned=planned, require_bound=False))
     raise PlanError(f'Unsupported operation kind: {kind}')
 
 
@@ -263,16 +285,38 @@ def _validate_json(inventory, *, tolerate_existing=None):
         raise PlanError('Incomplete or invalid metadata: ' + '; '.join(errors))
 
 
+def _check_auto_date_tables(roots, operation, *, planned=False):
+    """Fresh server-side gate for the explicit auto-date action; never trusts the client.
+
+    All or nothing: a request names no tables; a stored plan must name the whole
+    current group, and every auto-date table must be removable now.
+    """
+    try:
+        if planned:
+            tables = auto_date_tables.planned_tables(operation)
+        else:
+            auto_date_tables.check_request(operation)
+            tables = None
+        assessment = auto_date_tables.assess(roots['model'], [p for k, p in roots.items() if k != 'model'])
+    except auto_date_tables.AutoDateError as exc:
+        raise PlanError(str(exc)) from exc
+    reasons = auto_date_tables.blocking_reasons(assessment, tables)
+    if reasons:
+        raise PlanError(' '.join(reasons))
+    return assessment
+
+
 def create_plan(model_path, report_paths, operations):
     """Preview only; no input files or backups are written."""
     if not isinstance(operations, list) or not operations or any(not isinstance(o, dict) for o in operations):
         raise PlanError('operations must be a nonempty list of objects.')
     originals = _roots(model_path, report_paths)
     before = _inventory(originals)
+    queries = _query_inventory(originals, operations)
     _require_supported_write_encoding(before)
     # Destructive/refactoring plans cannot claim complete propagation while a
     # selected document is unreadable. Non-reference metadata edits can proceed.
-    strict = any(o.get('kind') in {'rename', 'move', 'promote', 'report_repair', 'dax'} or
+    strict = any(o.get('kind') in {'rename', 'move', 'promote', 'report_repair', 'dax', auto_date_tables.OPERATION_KIND} or
                  any(a.get('action') in {'delete', 'delete_table'} for a in o.get('actions', [])) for o in operations)
     bindings = [analyzer.report_binding_status(p, originals['model']) for key, p in originals.items() if key != 'model']
     if strict:
@@ -286,6 +330,12 @@ def create_plan(model_path, report_paths, operations):
             validate_membership_files(originals['model'])
         except MembershipError as exc:
             raise PlanError(str(exc)) from exc
+    auto_date = None
+    if any(op.get('kind') == auto_date_tables.OPERATION_KIND for op in operations):
+        if len(operations) != 1:
+            raise PlanError('Remove auto-date tables in a plan of their own.')
+        auto_date = _check_auto_date_tables(originals, operations[0])
+        operations = [auto_date_tables.planned_operation(auto_date)]
     from .cleanup_policy import evaluate_deletion_policy
     actions = [a for op in operations if op.get('kind') == 'actions' for a in op.get('actions', [])]
     policy = evaluate_deletion_policy(originals['model'], list(originals.values())[1:], actions)
@@ -301,7 +351,10 @@ def create_plan(model_path, report_paths, operations):
                             and policy['scope'].get('complete') is True)
     cleared = [{key: entry.get(key) for key in ('id', 'owner', 'table', 'source_file', 'line', 'cleared_reason')}
                for entry in policy['scope'].get('cleared_limitations', [])]
-    if strict and not baseline.get('coverage', {}).get('complete', True) and not final_state_complete:
+    # The auto-date action checks every selected file as text for any use of the
+    # tables it removes, so analyzer parser gaps elsewhere do not hide a consumer.
+    if strict and not baseline.get('coverage', {}).get('complete', True) and not final_state_complete \
+            and auto_date is None:
         raise PlanError('Refactoring requires complete supported scan coverage. Resolve metadata limitations first.')
     with tempfile.TemporaryDirectory(prefix='smc-plan-') as temp:
         staged = {k: Path(temp).resolve() / k / p.name for k, p in originals.items()}
@@ -309,6 +362,11 @@ def create_plan(model_path, report_paths, operations):
             path.mkdir(parents=True)
         for key, content in before.items():
             path = _path(staged, key)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+        for key, content in queries.items():  # Read-only, so the staged re-check sees the same queries.
+            artifact, _, relative = key.partition('/')
+            path = staged[artifact] / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
         for op in operations:
@@ -329,7 +387,7 @@ def create_plan(model_path, report_paths, operations):
         added = _problems(analysis) - _problems(baseline, operations)
         if added:
             raise PlanError('Change introduces unresolved references: ' + '; '.join(str(x) for x in sorted(added)))
-    if _hashes(_inventory(originals)) != _hashes(before):
+    if _hashes(_inventory(originals)) != _hashes(before) or _query_inventory(originals, operations) != queries:
         raise PlanError('Input changed while preview was being prepared; re-analyze and retry.')
     changes = []
     for key in sorted(before.keys() | after.keys()):
@@ -351,7 +409,7 @@ def create_plan(model_path, report_paths, operations):
                          'final_state': {'complete': final_state_complete
                                          or bool(baseline.get('coverage', {}).get('complete', False)),
                                          'cleared_limitations': cleared}}, 'operations': operations,
-            'inputs': _hashes(before), 'outputs': _hashes(after), 'changes': changes,
+            'inputs': _hashes({**before, **queries}), 'outputs': _hashes({**after, **queries}), 'changes': changes,
             'validation': {'json_syntax': 'passed' if strict else 'changed files passed',
                            'reference_integrity': 'no new unresolved references',
                            'existing_problem_count': len(_problems(baseline)),
@@ -362,11 +420,33 @@ def create_plan(model_path, report_paths, operations):
                                            'bundle_commit': schema_after['bundle'].get('commit')},
                            'limitations': ['Static analysis of selected TMDL/PBIR only.',
                                            'Only supported declared PBIR schemas are validated; TMDL/DAX engine validation is not performed.']
-                                          + sorted({entry['cleared_reason'] for entry in cleared}),
+                                          + sorted({entry['cleared_reason'] for entry in cleared})
+                                          + _auto_date_limitations(auto_date),
                            # Tool entities (#103) are deleted only after the user confirms them here.
-                           'confirmations': [entry['message'] for entry in policy.get('confirmations', [])]}}
+                           'confirmations': [entry['message'] for entry in policy.get('confirmations', [])]
+                                            + _auto_date_confirmations(auto_date)}}
     plan['digest'] = _seal(plan)
     return plan
+
+
+def _auto_date_limitations(auto_date):
+    if auto_date is None:
+        return []
+    return ['Auto-date tables: only the selected model and reports were checked for use of these tables and '
+            'their date hierarchies. Reports that are not selected, Excel and other tools that connect to the '
+            'published model were not checked.']
+
+
+def _auto_date_confirmations(auto_date):
+    if auto_date is None:
+        return []
+    columns = [entry['date_column'] for entry in auto_date['tables'] if entry['date_column']]
+    messages = [f'Remove all {len(auto_date["tables"])} auto-date table(s). {len(columns)} date column(s) stay in '
+                'their tables; they lose only the automatic Year/Quarter/Month/Day hierarchy.']
+    if auto_date.get('time_intelligence_enabled'):
+        messages.append('Auto date/time stays on for this file. Power BI Desktop can create auto-date tables '
+                        'again; this change does not turn the setting off.')
+    return messages
 
 
 def _atomic(path, content):
@@ -464,8 +544,19 @@ def apply_plan(plan, directory):
     with _lock(roots, directory):
         if journal.exists():
             raise PlanError('This operation already has a receipt. Inspect it or generate a new plan.')
-        if _hashes(_inventory(roots)) != plan['inputs']:
+        if _scope_hashes(roots, plan['operations']) != plan['inputs']:
             raise PlanError('Stale plan: selected files changed. Generate a new preview; nothing was written.')
+        for operation in plan['operations']:
+            if operation.get('kind') == auto_date_tables.OPERATION_KIND:
+                try:
+                    if len(plan['operations']) != 1:
+                        raise PlanError('Remove auto-date tables in a plan of their own.')
+                    assessment = _check_auto_date_tables(roots, operation, planned=True)
+                    problems = auto_date_tables.change_problems(assessment, plan['changes'])
+                    if problems:
+                        raise PlanError(' '.join(problems))
+                except PlanError as exc:
+                    raise PlanError(f'Auto-date tables were checked again before apply: {exc} Nothing was written.') from exc
         save_plan(plan, directory)
         receipt = _receipt(plan, 'applying', completed=[])
         _atomic(journal, json.dumps(receipt, indent=2).encode())
@@ -480,7 +571,7 @@ def apply_plan(plan, directory):
                 completed.append(change)
                 receipt['completed'] = [c['path'] for c in completed]
                 _atomic(journal, json.dumps(receipt, indent=2).encode())
-            if _hashes(_inventory(roots)) != plan['outputs']:
+            if _scope_hashes(roots, plan['operations']) != plan['outputs']:
                 raise PlanError('Files changed during apply; verification failed.')
             receipt = _receipt(plan, 'applied', completed=[c['path'] for c in completed])
         except Exception as exc:
@@ -535,7 +626,7 @@ def restore_plan(plan, directory):
 
 def verify_plan(plan):
     roots = _check(plan)
-    current = _hashes(_inventory(roots))
+    current = _scope_hashes(roots, plan['operations'])
     state = 'applied' if current == plan['outputs'] else 'original' if current == plan['inputs'] else 'changed'
     return {'ok': state == 'applied', 'state': state, 'validation': plan['validation'],
             'changed_since_plan': sorted(k for k in current.keys() | plan['outputs'].keys() if current.get(k) != plan['outputs'].get(k))}

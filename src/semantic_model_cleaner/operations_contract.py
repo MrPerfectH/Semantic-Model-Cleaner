@@ -71,6 +71,9 @@ def schema():
         ["table", "name", "item_type", "dax_expression"])
     operation("clean_stale", {"entries": _array(stale)}, ["entries"])
     operation("report_issues", {"entries": _array(issue)}, ["entries"])
+    # All or nothing: no table list; the server removes every auto-date table or none.
+    definitions["auto_date_tables"] = _obj({"kind": {"const": "auto_date_tables"}, "remove": {"const": "all"}},
+                                           ["kind", "remove"])
     return {"$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Semantic Model Cleaner operations 1.0", "$defs": definitions,
         **_obj({"schema_version": {"const": VERSION},

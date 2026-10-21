@@ -201,3 +201,41 @@ def test_launcher_schema_probe_detects_real_validation_and_regressions(tmp_path,
     assert [path for path, _ in requests] == [
         '/api/analysis-jobs', '/api/analysis-jobs/isolated-smoke']
     assert len(list(report.rglob('*.json'))) == 3
+
+
+wheel_spec = importlib.util.spec_from_file_location(
+    'wheel_packaging_smoke', Path(__file__).parents[1] / 'scripts/smoke_wheel.py')
+wheel_smoke = importlib.util.module_from_spec(wheel_spec)
+wheel_spec.loader.exec_module(wheel_smoke)
+
+
+def test_wheel_smoke_accepts_current_installed_operations_contract():
+    from semantic_model_cleaner import __version__, operations_contract
+
+    wheel_smoke._require_operations_contract(
+        operations_contract.capabilities(), operations_contract.schema(), __version__)
+
+
+@pytest.mark.parametrize('mutation', [
+    lambda capabilities, contract: capabilities.update(tool_version='wrong'),
+    lambda capabilities, contract: capabilities.update(operations_schema_version='2.0'),
+    lambda capabilities, contract: capabilities['operations'].remove('auto_date_tables'),
+    lambda capabilities, contract: contract['$defs'].pop('auto_date_tables'),
+    # Keep the same count while substituting an unsupported operation.
+    lambda capabilities, contract: contract['$defs'].update(
+        shell=contract['$defs'].pop('dax')),
+    lambda capabilities, contract: contract['$defs']['auto_date_tables'].update(
+        additionalProperties=True),
+    lambda capabilities, contract: contract['$defs']['auto_date_tables']['properties'].update(
+        remove={'type': 'string'}),
+    lambda capabilities, contract: contract['$defs']['auto_date_tables']['required'].remove('remove'),
+    lambda capabilities, contract: contract['$defs']['auto_date_tables']['properties'].update(
+        tables={'type': 'array'}),
+])
+def test_wheel_smoke_rejects_missing_or_weakened_operations_contract(mutation):
+    from semantic_model_cleaner import __version__, operations_contract
+
+    capabilities, contract = operations_contract.capabilities(), operations_contract.schema()
+    mutation(capabilities, contract)
+    with pytest.raises(RuntimeError, match='Installed wheel is missing'):
+        wheel_smoke._require_operations_contract(capabilities, contract, __version__)

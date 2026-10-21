@@ -75,6 +75,26 @@ def _wait_for_web(base: str, process: subprocess.Popen, timeout: float = 30) -> 
     raise RuntimeError("smc-web did not become ready")
 
 
+def _require_operations_contract(capabilities: dict, contract: dict, expected_version: str) -> None:
+    expected_operations = {
+        "actions", "rename", "move", "promote", "dax", "clean_stale", "report_issues",
+        "report_repair", "auto_date_tables",
+    }
+    if (capabilities["tool_version"] != expected_version
+            or capabilities["operations_schema_version"] != "1.0"
+            or set(capabilities["operations"]) != expected_operations
+            or set(contract["$defs"]) != expected_operations):
+        raise RuntimeError("Installed wheel is missing the agent operations contract")
+    # Pin the installed all-or-nothing request: no subset list or extra fields.
+    if contract["$defs"]["auto_date_tables"] != {
+        "type": "object",
+        "properties": {"kind": {"const": "auto_date_tables"}, "remove": {"const": "all"}},
+        "required": ["kind", "remove"],
+        "additionalProperties": False,
+    }:
+        raise RuntimeError("Installed wheel is missing the all-or-nothing auto-date contract")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("wheel", type=Path)
@@ -121,10 +141,7 @@ def main() -> None:
             raise RuntimeError("Wheel did not install the smc and smc-web entry points")
         capabilities = json.loads(_run([str(smc), "capabilities"], cwd=root, env=env).stdout)
         contract = json.loads(_run([str(smc), "operations-schema"], cwd=root, env=env).stdout)
-        if (capabilities["tool_version"] != expected_version
-                or capabilities["operations_schema_version"] != "1.0"
-                or len(contract["$defs"]) != 8):
-            raise RuntimeError("Installed wheel is missing the agent operations contract")
+        _require_operations_contract(capabilities, contract, expected_version)
 
         project = root / "repository with spaces"
         _write_check_fixture(project)

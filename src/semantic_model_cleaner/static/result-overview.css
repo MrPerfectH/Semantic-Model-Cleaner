@@ -26,6 +26,13 @@
 #resultOverview .result-guide-body { padding:12px 0 0; }
 #resultOverview .result-scope p { margin:8px 0; }
 #resultOverview .result-scope ul { margin:8px 0; padding-left:18px; overflow-wrap:anywhere; }
+.result-autodate-row { display:flex; align-items:center; flex-wrap:wrap; gap:6px 12px; margin-top:8px; font-size:11.5px; }
+.result-autodate-row[hidden] { display:none; }
+.result-autodate-row [hidden] { display:none; }
+.result-autodate-why summary { cursor:pointer; color:var(--text-mid); }
+.result-autodate-why ul { margin:6px 0 0; padding-left:18px; overflow-wrap:anywhere; }
+.result-autodate-scope { flex:1 1 100%; color:var(--text-light); }
+.result-autodate-scope:empty { display:none; }
 body.object-view .result-overview { display:none; }
 body:has(#resultOverview:not(.hidden)) .beta-banner { display:none; }
 @media(max-width:760px) { .result-overview { padding:10px 12px; } .result-summary-row,.result-context-row { gap:8px 12px; } .result-inventory { margin-left:0; } .result-safety-note { flex:1 1 100%; } }

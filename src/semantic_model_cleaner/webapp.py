@@ -26,7 +26,7 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_file
 
 from . import __version__, analyzer, experiments, report_writer, tmdl_writer
-from . import change_plan, cleanup_policy
+from . import auto_date_tables, change_plan, cleanup_policy
 from .analysis_jobs import AnalysisJobs
 from .local_http import install_local_http_boundary, loopback_host
 from .console import configure_console_output
@@ -2172,6 +2172,29 @@ def api_plans():
         change_plan.save_plan(plan, _plan_directory())
         return jsonify({"ok": True, "plan": plan})
     except (ValueError, OSError, KeyError, TypeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/auto-date-tables", methods=["POST"])
+def api_auto_date_tables():
+    """Read-only group result for the explicit auto-date table action.
+
+    Only the group outcome is returned: remove every auto-date table, or none.
+    Removal goes through POST /api/plans with ``{"kind": "auto_date_tables",
+    "remove": "all"}``, which is assessed again on the server before preview and
+    before apply.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        model_path, error = _cleanup_action_model_path(data)
+        if error:
+            return jsonify(error[0]), error[1]
+        reports = data.get("report_paths") if "report_paths" in data else _state["report_paths"]
+        if not isinstance(reports, list) or not all(isinstance(p, str) for p in reports):
+            return jsonify({"ok": False, "error": "report_paths must be a list of paths"}), 400
+        assessment = auto_date_tables.assess(model_path, [Path(p) for p in reports])
+        return jsonify({"ok": assessment["ok"], "scope": assessment["scope"], **assessment["group"]})
+    except (ValueError, OSError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
 

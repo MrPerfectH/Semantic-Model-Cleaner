@@ -96,6 +96,10 @@ _Avoid_: Perspective usage, perspective dependency
 Concrete culture metadata stating that a table, measure, column, or hierarchy has a translated caption, description, or display folder in a named culture, read from the `translations` block of a culture TMDL file with its source location. It is informational evidence only: it tells the user which translations are removed together with the item, but a translation is just a translation, never a reason to keep an item, so it does not change the Cleanup Recommendation. It is not proof that a report uses the item and not an Analysis Limitation. A culture's `linguisticMetadata` payload is not Translation Membership; it remains an Analysis Limitation owned by the culture.
 _Avoid_: Translation usage, translation reference, culture dependency
 
+**Auto-Date Table**:
+A hidden `LocalDateTable_<id>` table that Power BI Desktop generates for one date column when Auto date/time is on, linked by a generated relationship and a `variation` on that column, or the `DateTableTemplate_<id>` table it copies them from. Detected from the generated metadata, never from the name alone. The explicit auto-date action treats the model's Auto-Date Tables as one group: it removes all of them with their relationships and variations, or none. Any use (including a culture linguistic (Q&A) binding to a date hierarchy) or any check that cannot be completed blocks the whole group; the owning date columns always stay.
+_Avoid_: Date table, calendar table, local date table column
+
 **Report Health**:
 The product surface that explains PBIR problems, stale references, invalid report JSON, and repair opportunities. Model Analysis Limitations are not part of it.
 _Avoid_: Warnings, issues list
