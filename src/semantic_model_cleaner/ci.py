@@ -103,7 +103,12 @@ def run_check(
                 for detail in row.get("broken_dax_ref_details", []):
                     add("SMC001", "error", detail["message"], path, item.table, item.name, detail["ref"])
             elif row["status"] == "NOT USED" and item.source_kind == "model":
-                add("SMC004", "warning", f"No usage found in the selected scope; recommendation: {row['removal_risk']}.", path, item.table, item.name)
+                recommendation = row["removal_risk"]
+                if recommendation == "Safe" and (not payload["scope"]["selection_complete"]
+                                                  or payload["scope"]["unverified_report_count"]):
+                    recommendation = "Review"
+                add("SMC004", "warning", f"No usage found in the selected scope; recommendation: {recommendation}.", path, item.table, item.name)
+                findings[-1]["cleanup_recommendation"] = recommendation
         report_index = {analyzer.report_display_name(report): report for report in reports}
         for issue in result.get("report_issues", []):
             report = Path(issue["reportPath"]) if issue.get("reportPath") else report_index.get(issue.get("report"))
@@ -170,19 +175,39 @@ def run_check(
         findings = review_policy.annotate_findings(workspace, findings, payload["scope"], repository_policy)
         payload["policy"] = {"schema_version": repository_policy["schema_version"], "digest": repository_policy["digest"],
                              "decision_count": len(repository_policy["decisions"]), "naming_rule_count": len(repository_policy["naming_rules"])}
-        failures = [f for f in findings if not f["suppressed"] and (f["severity"] == "error" or fail_on == "warning")]
-        payload.update(ok=not failures, findings=findings, summary={
-            "finding_count": len(findings), "failure_count": len(failures),
+        from .ci_gate import evaluate_gate
+        gate = evaluate_gate(findings, payload["scope"], payload["schema_validation"],
+                             repository_policy.get("ci_gate", {}), fail_on)
+        failure_count = gate["blocking_finding_count"] + gate["failed_requirement_count"]
+        payload.update(ok=not failure_count, findings=findings, gate=gate, summary={
+            "finding_count": len(findings), "failure_count": failure_count,
             "suppressed_count": sum(f["suppressed"] for f in findings),
             "fail_on": fail_on,
             "accepted_decision_count": sum(f.get("review_status") == "accepted" for f in findings),
             "stale_decision_count": sum(f.get("review_status") == "stale" for f in findings),
             "expired_decision_count": sum(f.get("review_status") == "expired" for f in findings),
         })
-        return (1 if failures else 0), payload
+        return (1 if failure_count else 0), payload
     except (Exception, SystemExit) as exc:
         payload["errors"] = [str(exc)]
         return 2, payload
+
+
+def _summary_destination(args, root):
+    if not args.summary_output:
+        return None
+    artifacts = [*analyzer.discover_models([root]), *analyzer.discover_reports([root])]
+    if args.model_path or args.model:
+        artifacts.append(root / (args.model_path or args.model))
+    artifacts.extend(root / path for path in args.report_path or [])
+    target = validate_export_destination(args.summary_output, artifacts)
+    protected = [root / ".smc-policy.json"]
+    if args.policy:
+        protected.append(root / args.policy)
+    protected.extend(path for path in (args.baseline, args.write_baseline) if path)
+    if any(target == path.resolve() for path in protected):
+        raise ValueError("Summary output must not overwrite policy or baseline input/output files.")
+    return target
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -198,6 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--policy", type=Path, help="Repository review policy JSON (default: project/.smc-policy.json).")
     parser.add_argument("--baseline", type=Path, help="Suppress matching existing findings, except incomplete coverage.")
     parser.add_argument("--write-baseline", type=Path, help="Write current baseline; exit code still reflects this check.")
+    parser.add_argument("--summary-output", type=Path, help="Write a bounded Markdown CI summary outside artifacts; JSON stdout is unchanged.")
     try:
         args = parser.parse_args(argv)
     except CLIUsageError as exc:
@@ -206,7 +232,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     root = Path(args.project_path)
     baseline = None
+    summary_target = None
+    payload = {"schema_version": SCHEMA_VERSION, "command": "check", "ok": False,
+               "scope": {}, "findings": [], "summary": {}, "errors": []}
     try:
+        summary_target = _summary_destination(args, root)
         exact_model, exact_reports = resolve_path_options(args, root)
         if args.baseline:
             baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
@@ -230,8 +260,15 @@ def main(argv: list[str] | None = None) -> int:
                 "fingerprints": sorted(f["fingerprint"] for f in payload["findings"] if f["rule_id"] not in COVERAGE_RULES),
             }, indent=2) + "\n", encoding="utf-8")
     except (OSError, ValueError, RuntimeError) as exc:
-        code, payload = 2, {"schema_version": SCHEMA_VERSION, "command": "check", "ok": False,
-                            "scope": {}, "findings": [], "summary": {}, "errors": [str(exc)]}
+        code = 2
+        payload.update(ok=False, errors=[*payload.get("errors", []), str(exc)])
+    if summary_target is not None:
+        try:
+            from .ci_summary import render_summary
+            summary_target.write_text(render_summary(payload, code), encoding="utf-8")
+        except (OSError, ValueError) as exc:
+            code = 2
+            payload.update(ok=False, errors=[*payload.get("errors", []), "Cannot write CI summary: " + str(exc)])
     if args.format == "json":
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
@@ -240,5 +277,9 @@ def main(argv: list[str] | None = None) -> int:
             print(error)
         for finding in payload["findings"]:
             print(f"{finding['rule_id']} {finding['severity']} {finding['path']}: {finding['message']}" +
-                  (" [baseline]" if finding["suppressed"] else ""))
+                  (" [suppressed]" if finding["suppressed"] else "") +
+                  (" [blocking]" if finding.get("gate", {}).get("blocking") else " [advisory]"))
+        for requirement in payload.get("gate", {}).get("requirements", []):
+            if not requirement["passed"]:
+                print(f"Gate {requirement['requirement']}: {requirement['reason']}")
     return code

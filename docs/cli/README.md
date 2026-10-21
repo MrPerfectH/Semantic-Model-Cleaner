@@ -166,5 +166,9 @@ create backups as a substitute for refusing unsafe export destinations.
 
 See [reviewed plans](plans.md), [CI checks](check.md), and
 [review policy and naming](review-policy.md) for operation-specific limits.
+Checks support repository-configured [CI gates](review-policy.md#ci-gates) and
+`--summary-output FILE` for a bounded Markdown artifact alongside JSON stdout.
+See [core workflow verification](workflow-verification.md) for the existing
+coverage audit and public CLI rename/promotion/cleanup scenarios.
 Machine-readable operations schemas and new AI integrations remain separate
 follow-up work.

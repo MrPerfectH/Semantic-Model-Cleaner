@@ -196,6 +196,9 @@ def render(command, result):
         more("Tables", result["tables"])
     elif command == "review":
         print("\nReview " + ("passed." if result["ok"] else "found issues meeting the threshold."))
+        for requirement in result.get("gate", {}).get("requirements", []):
+            if not requirement["passed"]:
+                print("  Gate " + clean(requirement["requirement"]) + ": " + clean(requirement["reason"]))
         for row in result["groups"]:
             print(f"  {row['rule']} {row['label']}: {row['count']} ({row['suppressed']} suppressed)")
         for row in result["findings"]["items"]:
