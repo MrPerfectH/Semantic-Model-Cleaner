@@ -4,6 +4,7 @@
 
 ```sh
 smc check ./project --format json
+smc check ./project --model-path Models/Sales.SemanticModel --report-path Reports/Executive.Report
 smc check ./project --model Models/Sales.SemanticModel --fail-on warning
 smc check ./project --report Executive --report Operations
 smc check ./project --write-baseline smc-baseline.json
@@ -11,6 +12,12 @@ smc check ./project --baseline smc-baseline.json
 ```
 
 `--model` is an artifact path relative to the project directory (an absolute path also works). Without it, exactly one discovered semantic model is required. Report discovery is under the project directory. Repeatable `--report` arguments are case-insensitive name substring filters, applied to reports bound to the selected model. Unmatched selection is an input error. `--format` defaults to `json`; `text` is intended for interactive use.
+
+For new scripts, `--model-path` and repeatable `--report-path` select exact folders
+relative to PROJECT (absolute paths also work). These options work consistently
+across project commands. The `--model`/`--report` behavior above is retained for
+compatibility; do not mix selectors for the same artifact type. See the
+[selection and migration guide](README.md#recommended-exact-selection).
 
 Exit codes:
 

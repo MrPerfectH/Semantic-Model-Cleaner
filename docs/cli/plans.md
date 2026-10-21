@@ -59,6 +59,10 @@ Apply records a recovery journal automatically. There is no `--no-backup` option
 
 ## Scope and storage
 
+- Prefer `--model-path` and repeated `--report-path` for exact artifact folders
+  relative to PROJECT, or absolute paths. Existing `--model`/`--report` options
+  below retain their CWD-relative behavior. Do not mix selectors for the same
+  artifact type. See [migration guidance](README.md#compatibility-and-migration).
 - `plan [project_path]` defaults to the current directory. Without `--model`, it must discover exactly one model beneath that path.
 - For this command, `--model` and each repeated `--report` are exact folder paths, unlike the analyzer's name filters. Relative paths resolve from the current working directory.
 - Without explicit `--report` arguments, planning selects discovered reports bound to the chosen model. At least one report is required. Refactoring additionally requires supported report bindings and complete supported scan coverage.

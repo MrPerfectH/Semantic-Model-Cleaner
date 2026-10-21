@@ -34,6 +34,11 @@ Examples:
   smc apply review/changes.json --format json
 
 Path rules:
+  Recommended: --model-path and repeated --report-path select exact folders
+  relative to PROJECT (or absolute paths) across all project command families.
+  Omit selectors to discover one model and its connected Reports automatically.
+  Do not mix canonical and legacy selectors for the same artifact type.
+  Legacy selectors below retain their existing meanings:
   Analysis/clean-stale --model and --report are name substring FILTERS.
   Analysis --models-path/--reports-path are search paths relative to the CWD.
   Check --model is an exact path relative to PROJECT; --report is a name filter.

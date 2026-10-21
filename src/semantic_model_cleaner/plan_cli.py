@@ -9,6 +9,7 @@ from . import analyzer, change_plan
 from .analysis_export import validate_export_destination
 from .cli_contract import ArgumentParser, emit_json, json_requested
 from .operations_contract import parse_operations
+from .cli_selection import add_path_options, resolve_path_options, select_exact_reports
 
 
 def _directory():
@@ -24,6 +25,7 @@ def main(argv=None):
                                parser_class=partial(ArgumentParser, json_errors=machine))
     plan = sub.add_parser('plan', help='Stage operations on copies and export exact file diffs; never edit inputs.')
     plan.add_argument('project_path', nargs='?', default='.')
+    add_path_options(plan)
     plan.add_argument('--model', help='Exact .SemanticModel path relative to CWD; otherwise discover one under project_path.')
     plan.add_argument('--report', action='append', default=[], help='Exact .Report path relative to CWD; repeat for each report.')
     plan.add_argument('--operations', required=True, help='UTF-8 JSON file (optional BOM) containing an operations array or {operations:[...]}.')
@@ -49,13 +51,17 @@ def main(argv=None):
                 print(json.dumps(payload, indent=None if args.command == 'plan' else 2))
         if args.command == 'plan':
             root = Path(args.project_path).resolve()
-            models = [Path(args.model).resolve()] if args.model else analyzer.discover_models([root])
+            exact_model, exact_reports = resolve_path_options(args, root)
+            models = [exact_model] if exact_model else ([Path(args.model).resolve()] if args.model else analyzer.discover_models([root]))
             if len(models) != 1:
                 raise change_plan.PlanError('Select exactly one semantic model with --model.')
-            if args.report:
-                reports = [Path(p).resolve() for p in args.report]
+            if exact_reports or args.report:
+                reports = exact_reports or [Path(p).resolve() for p in args.report]
                 scope = {"mode": "explicit", "reports": [
                     analyzer.report_binding_status(report, models[0]) for report in reports]}
+                if exact_reports:
+                    select_exact_reports(exact_reports, [report for report, binding in zip(reports, scope['reports'])
+                                                        if binding['status'] in analyzer.BOUND_REPORT_STATUSES])
             else:
                 scope = analyzer.report_binding_scope(models[0], analyzer.discover_reports([root]))
                 reports = [Path(row['path']) for row in scope['selected']]

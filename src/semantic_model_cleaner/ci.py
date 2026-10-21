@@ -8,6 +8,7 @@ from pathlib import Path
 from . import analyzer
 from .analysis_export import validate_export_destination
 from .cli_contract import ArgumentParser, CLIUsageError, json_requested
+from .cli_selection import add_path_options, resolve_path_options
 
 SCHEMA_VERSION = "1.0"
 # Coverage failures cannot be suppressed by baselines.
@@ -189,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = ArgumentParser(prog="smc check", description="Read-only, local model/report CI checks.",
                             json_errors=json_requested(argv, default=True))
     parser.add_argument("project_path", nargs="?", default=".")
+    add_path_options(parser)
     parser.add_argument("--model", help="Semantic Model path (relative to project_path).")
     parser.add_argument("--report", action="append", help="Report-name substring filter; repeat to select reports.")
     parser.add_argument("--format", choices=("json", "text"), default="json")
@@ -205,14 +207,17 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.project_path)
     baseline = None
     try:
+        exact_model, exact_reports = resolve_path_options(args, root)
         if args.baseline:
             baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
         from .review_policy import load_policy
         if args.policy and not (root / args.policy).is_file():
             raise ValueError("Explicit policy file does not exist.")
         repository_policy = load_policy(root, args.policy) if args.policy else None
-        code, payload = run_check(root, policy=repository_policy, model_path=(root / args.model) if args.model else None,
-                                  report_filters=args.report, baseline=baseline, fail_on=args.fail_on)
+        code, payload = run_check(root, policy=repository_policy,
+                                  model_path=exact_model or ((root / args.model) if args.model else None),
+                                  report_paths=exact_reports, report_filters=args.report,
+                                  baseline=baseline, fail_on=args.fail_on)
         if args.write_baseline and code != 2:
             artifact_roots = [
                 *(path.resolve() for path in analyzer.discover_models([root])),
