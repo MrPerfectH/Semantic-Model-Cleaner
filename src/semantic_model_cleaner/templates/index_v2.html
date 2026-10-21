@@ -250,6 +250,8 @@ body.wrap-table-text .table-wrap-link, body.wrap-table-text .table-summary-text,
 body.is-resizing-columns { cursor: col-resize; user-select: none; }
 .cell-status, .cell-hidden, .cell-refs { white-space: nowrap; }
 .cell-risk { white-space: normal; }
+.item-review-reasons { margin: 5px 0 0; padding-left: 14px; font-size: 12px; line-height: 1.4; color: var(--text-light); white-space: normal; overflow-wrap: anywhere; }
+.item-review-reasons li + li { margin-top: 4px; }
 .cell-nowrap { white-space: nowrap; }
 .risk-trigger-note { margin-top: 4px; font-size: 12px; line-height: 1.4; color: var(--text-light); }
 .item-link { color: var(--primary); font-weight: 550; text-decoration: none; cursor: pointer; }
@@ -404,6 +406,9 @@ body.scope-open .scope-drawer { transform: translateX(0); }
 .role-fact-like { background: #dbeafe; color: #1e40af; }
 .role-mixed { background: var(--review); color: #b45309; }
 .role-calculation-group { background: #ede9fe; color: #5b21b6; }
+.limitation-banner.is-informational { background: var(--bg); border-color: var(--border); color: var(--text); }
+.limitation-banner.is-informational .warning-note, .limitation-banner.is-informational .report-health-toggle-hint, .limitation-banner.is-informational .report-health-toggle::before, .limitation-banner.is-informational .limitation-location, .limitation-banner.is-informational .limitation-effect { color: var(--text-light); }
+.limitation-banner.is-informational .limitation-card { border-color: var(--border); }
 .limitation-groups { display: grid; gap: 4px; }
 .limitation-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 220px) minmax(170px, 230px); gap: 12px; align-items: baseline; font-size: 12px; }
 .limitation-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -572,6 +577,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
 <link rel="stylesheet" href="{{ url_for('static', filename='result-overview.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='accessibility.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='workspace-navigation.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='cobalt-workspace.css') }}">
 </head>
 <body>
 <div class="header">
@@ -652,6 +658,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
         <button class="btn btn-secondary" type="button" onclick="smcLoadDemo()">Try demo</button>
         <p><button class="btn btn-secondary btn-sm" type="button" onclick="smcOpenScope()">Choose model and report folders separately</button></p>
       </div>
+
   <section id="resultOverview" class="result-overview hidden" aria-label="Analysis overview"></section>
   <details class="result-guide hidden" id="resultGuideSection">
     <summary>
@@ -681,7 +688,7 @@ body.limitations-view #resultOverview, body.limitations-view #resultGuideSection
   </details>
   <details class="warning-banner hidden limitation-banner" id="analysisLimitationsBanner">
     <summary class="report-health-toggle">
-      <h3>Analysis limitations <span id="analysisLimitationsCount"></span></h3>
+      <h3><span id="analysisLimitationsTitle">Analysis limitations</span> <span id="analysisLimitationsCount"></span></h3>
       <span class="report-health-toggle-hint" id="analysisLimitationsHint"></span>
     </summary>
     <div class="warning-note">Scan coverage and unsupported metadata. A limitation with no affected items is informational. Shared or unresolved coverage can still prevent a Safe recommendation. Open a row for the exact source, affected objects and recorded cleanup effect.</div>
@@ -1523,7 +1530,7 @@ function minWidthForHeader(th, index) {
   if (text === 'usageCount') return 74;
   if (text === 'measureDependentCount' || text === 'relationshipRefCount' || text === 'relationshipCount') return 92;
   if (text === 'otherModelUseCount') return wrapEnabled ? 84 : 96;
-  if (text === 'deleteSafety') return 82;
+  if (text === 'deleteSafety') return 180;
   if (text === 'Action' || text === 'Actions') return 110;
   if (text === 'Signals' || text === 'Relationships In Detail') return 180;
   if (text === 'roleLabel' || text === 'Relationship Shape') return 170;
@@ -1582,7 +1589,7 @@ function defaultWidthForHeader(th, index) {
   if (text === 'usageCount') return 76;
   if (text === 'measureDependentCount' || text === 'relationshipRefCount' || text === 'relationshipCount') return 96;
   if (text === 'otherModelUseCount') return 88;
-  if (text === 'deleteSafety') return 84;
+  if (text === 'deleteSafety') return 220;
   if (text === 'Items') return 120;
   if (text === 'Relationships') return 140;
   if (text === 'Signals') return 260;
@@ -1612,7 +1619,7 @@ function fitMinWidthForHeader(th, index) {
   if (text === 'reportCount' || text === 'pageCount' || text === 'usageCount' || text === 'usageRefCount') return 48;
   if (text === 'measureDependentCount' || text === 'relationshipRefCount' || text === 'relationshipCount') return 56;
   if (text === 'otherModelUseCount') return 56;
-  if (text === 'deleteSafety') return 62;
+  if (text === 'deleteSafety') return 180;
   if (text === 'roleLabel') return 90;
   if (text === 'usedItemCount' || text === 'unusedItemCount') return 64;
   if (text === 'Action' || text === 'Actions') return 88;
@@ -1981,7 +1988,7 @@ function usageHelpText(itemOrStatus) {
   var label = usageValue(itemOrStatus);
   var base = {
     'Used': 'Directly referenced by at least one selected report.',
-    'Indirect': 'Not directly referenced by a report, but still needed through model dependencies such as measures, relationships, sort-by, hierarchies, or field parameters.',
+    'Indirect': 'Not directly referenced by a report, but still needed through model dependencies such as measures, relationships, sort-by, hierarchies, or field parameters. A column of a used field parameter or calculation group is kept with its whole unit.',
     'Stale only': 'No live report usage was found, but stale formatting selectors still reference this item in PBIR.',
     'Unused': 'No use was found in the selected scope: no direct report reference and no supported model dependency.' + (window.smcUnusedScopeNote ? window.smcUnusedScopeNote() : ''),
     'Unknown': 'Usage has not been classified. Re-analyze before making a cleanup decision.'
@@ -4608,7 +4615,7 @@ function renderTable() {
       + '<td>' + esc(String(item.measureDependentCount || 0)) + '</td>'
       + '<td>' + esc(String(item.relationshipRefCount || 0)) + '</td>'
       + '<td>' + otherModelUseCellContent(item) + '</td>'
-      + '<td class="cell-risk">' + deleteSafetyBadge(item) + '</td>'
+      + '<td class="cell-risk">' + itemCleanupCell(item) + '</td>'
       + '<td>' + actionStatusBadge(key) + '</td>'
       + '</tr>';
   }).join('');
@@ -4768,7 +4775,7 @@ function usageBadge(itemOrStatus) {
   var label = usageValue(itemOrStatus);
   var title = usageHelpText(itemOrStatus);
   if (label === 'Used') return '<span class="badge badge-used badge-status" title="' + esc(title) + '">Used</span>';
-  if (label === 'Unused') return '<span class="badge badge-status" style="background:#fee2e2;color:#991b1b" title="' + esc(title) + '">Unused</span>';
+  if (label === 'Unused') return '<span class="badge badge-unused badge-status" title="' + esc(title) + '">Unused</span>';
   if (label === 'Indirect') return '<span class="badge badge-status" style="background:#e0e7ff;color:#3730a3" title="' + esc(title) + '">Indirect</span>';
   if (label === 'Stale only') return '<span class="badge badge-status" style="background:#fff7ed;color:#9a3412" title="' + esc(title) + '">Stale only</span>';
   return '<span class="badge badge-muted" title="' + esc(title) + '">' + esc(label) + '</span>';
@@ -4794,6 +4801,23 @@ function deleteSafetyBadge(item) {
   if (value === 'Safe') return '<span class="badge badge-safe" title="' + esc(cleanupHelpText(value)) + '">Safe</span>';
   if (value === 'Keep') return '<span class="badge badge-donotremove" title="' + esc(cleanupHelpText(value)) + '">Keep</span>';
   return '<span class="badge badge-muted">' + esc(value) + '</span>';
+}
+
+function itemCleanupCell(item) {
+  var badge = deleteSafetyBadge(item);
+  if (deleteSafetyValue(item) !== 'Review') return badge;
+  var reasons = reviewTriggers(item).filter(function(reason) {
+    return typeof reason === 'string' && reason.trim();
+  }).map(function(reason) {
+    if (reason === 'Item is hidden') return 'Hidden item: confirmation required before deletion.';
+    if (reason.indexOf('Entity type requires confirmation: ') === 0 && reason.indexOf(' is a field parameter,') !== -1) {
+      return 'Field parameter: confirmation required before deletion.';
+    }
+    return reason;
+  });
+  if (!reasons.length) reasons = [cleanupHelpText('Review')];
+  return badge + '<ul class="item-review-reasons" aria-label="Review reasons">'
+    + reasons.map(function(reason) { return '<li>' + esc(reason) + '</li>'; }).join('') + '</ul>';
 }
 
 function legendItemHtml(entry) {

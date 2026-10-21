@@ -187,9 +187,8 @@ class Insights:
         if any(self.live[consumer] or self.structural[consumer] for consumer in paths) or any(
                 consumer in self.rows for consumer in self.reverse[key]):
             return "Blocked"
-        if row.get("broken_dax_refs"):
-            return "Review"
-        if analyzer.is_used_status(row["status"]) or risk in {"Caution", "Do not remove"}:
+        # Broken is reported by status_code; deletion follows usage evidence.
+        if analyzer.is_used_status(analyzer.row_usage_status(row)) or risk in {"Caution", "Do not remove"}:
             return "Blocked"
         if risk == "Safe" and (not self.scope["selection_complete"] or self.scope["unverified_reports"]):
             return "Review"
@@ -225,7 +224,7 @@ class Insights:
         matches = self.match(**filters)
         if unused:
             matches = [key for key in matches if key in self.rows
-                       and self.rows[key]["status"] == "NOT USED"]
+                       and analyzer.row_usage_status(self.rows[key]) == "NOT USED"]
         if used_in_reports:
             if not self.scope["report_usage_checked"]:
                 raise QueryError("--used-in-reports requires Report analysis; omit --model-only.")

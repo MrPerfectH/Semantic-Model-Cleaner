@@ -35,7 +35,7 @@ exports.run = async () => {
   const project = process.env.SMC_TEST_PROJECT, second = process.env.SMC_TEST_SECOND_PROJECT;
   const artifacts = process.env.SMC_TEST_ARTIFACTS;
   const before = await snapshot(project), beforeSecond = await snapshot(second);
-  const extension = vscode.extensions.getExtension('smc-local-preview.semantic-model-cleaner');
+  const extension = vscode.extensions.getExtension('MrPerfectH.semantic-model-cleaner');
   assert.ok(extension, 'Cleaner extension must be installed');
   assert.equal(extension.packageJSON.version, process.env.SMC_TEST_EXPECT_VERSION);
   if (process.env.SMC_TEST_EXPECT_EXTENSIONS)
@@ -68,11 +68,20 @@ exports.run = async () => {
     await sidebar.getByRole('button', { name: 'Open Cleaner' }).waitFor();
     await shot('1-sidebar-welcome.png');
     pass('native Analysis Scope welcome before launch');
-    await sidebar.getByRole('button', { name: 'Open Cleaner' }).click();
+    // Cold Choose must start the installed package and await real engine discovery.
+    await vscode.commands.executeCommand('workbench.view.explorer');
+    const coldChoose = vscode.commands.executeCommand('semanticModelCleaner.chooseModel');
+    const quickInput = shell.locator('.quick-input-widget');
+    await quickInput.waitFor({ state: 'visible' });
+    await quickInput.getByText('TestModel', { exact: true }).waitFor();
+    await quickInput.getByText('ProductQA', { exact: true }).waitFor();
+    await shell.keyboard.press('Escape');
+    await coldChoose;
+    pass('cold Choose starts engine and discovers both models; cancel leaves model unselected');
 
     const findFrame = async (exclude = '') => until(() => {
       for (const context of browser.contexts()) for (const page of context.pages()) {
-        const frame = page.frames().find(f => /^http:\/\/127\.0\.0\.1:\d+\/(\?.*)?$/.test(f.url()) && (!exclude || !f.url().startsWith(exclude)));
+        const frame = page.frames().find(f => /^http:\/\/127\.0\.0\.1:\d+\/(\?.*)?$/.test(f.url()) && !([exclude].flat().filter(Boolean).some(origin => f.url().startsWith(origin))));
         if (frame) return frame;
       }
     }, 'Cleaner iframe');
@@ -84,6 +93,7 @@ exports.run = async () => {
     await until(async () => /Semantic model\s*choose one/.test(await sidebarText()), 'explicit model choice');
     for (const label of ['TestModel', 'ProductQA']) await row(label).waitFor();
     await until(async () => (await banner()).includes('Choose a semantic model in the Cleaner sidebar'), 'empty banner');
+    assert.equal(await frame.evaluate(() => allItems.length), 0, 'Choose must not analyze');
     assert.equal(await frame.locator('#scopeDrawer').isVisible(), false);
     assert.equal(await frame.locator('#setupSection').isVisible(), false);
     assert.equal(await frame.locator('#welcomeCard').isVisible(), false);
@@ -209,6 +219,22 @@ exports.run = async () => {
     assert.ok(await portClosed(lastOrigin + '/'), 'stop closes port');
     await sidebar.getByRole('button', { name: 'Open Cleaner' }).waitFor();
     pass('stop closes port and returns pane to welcome');
+
+    // Cold Analyze after Stop uses the workspace folder, with an explicit model picker.
+    const coldAnalyze = vscode.commands.executeCommand('semanticModelCleaner.analyze');
+    await quickInput.waitFor({ state: 'visible' });
+    await quickInput.locator('input').fill('TestModel');
+    await shell.keyboard.press('Enter');
+    await coldAnalyze;
+    // Use the native completion state: Electron can retain/disconnect old OOPIF
+    // targets after repeated Stop/Open, making a cached iframe an unreliable probe.
+    await until(async () => /Semantic model\s*TestModel/.test(await sidebarText()) &&
+      /Reports\s*2 of 2 selected/.test(await sidebarText()) && (await sidebarText()).includes('results current'),
+      'cold command analysis completion in native scope', 60000);
+    pass('cold Analyze starts, awaits discovery and analyzes only the explicit model choice');
+    await shot('9-cold-analyze.png');
+    await vscode.commands.executeCommand('semanticModelCleaner.stop');
+    await sidebar.getByRole('button', { name: 'Open Cleaner' }).waitFor();
 
     assert.deepEqual(await snapshot(project), before, 'Project must remain unchanged');
     assert.deepEqual(await snapshot(second), beforeSecond, 'Second project must remain unchanged');

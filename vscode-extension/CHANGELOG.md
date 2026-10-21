@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.1.7 — unpublished pre-release
+
+- Use a bold solid white broom at `media/cleaner-broom.svg` for the existing
+  Cleaner Activity Bar entry, with a fresh asset name and negative-space bristles.
+- Preserve the colored Marketplace PNG and `MrPerfectH.semantic-model-cleaner`
+  identity. Extension runtime JavaScript and TypeScript are unchanged from 0.1.6.
+- Correct installation instructions to use the separately prepared local beta10
+  engine wheel; beta10 and extension 0.1.7 public release remain pending.
+- Native installed-VSIX visibility and personal visual acceptance remain separate
+  checks owned by the main session.
+
+## 0.1.6 — unpublished pre-release
+
+- Add a dedicated PNG icon for the extension listing and Marketplace package.
+- Replace the Testing-like beaker in the Cleaner Activity Bar with a distinct
+  monochrome broom, preserving the existing container, views and commands.
+- Retain the MrPerfectH extension identity and all 0.1.5 startup fixes.
+- Native Insiders visibility remains a separate installation and visual check.
+
+## 0.1.5 - prepared pre-release
+
+- Cold scope commands start Cleaner and await model/report discovery instead of asking users to open it first.
+- Reveal the Cleaner Analysis Scope sidebar on Open; retain explicit choice among multiple models. Open and Choose do not analyze or apply changes.
+- Abandon pending actions after canceled pickers, Stop or superseded startup; retain trust and local desktop checks before settings and launch.
+- Keep the existing Activity Bar SVG unchanged; native missing-icon acceptance remains separate.
+
+## 0.1.4 - prepared public pre-release
+
+- Prepare the initial public identity `MrPerfectH.semantic-model-cleaner`, retaining Preview.
+- Document separate installation of the released 0.4.0b9 Python engine and the user-chosen executable path; no automatic installation or runtime changes.
+- Add a manually dispatched Marketplace pre-release workflow. Publication remains a separate maintainer action.
+
 ## 0.1.3 — unpublished pre-release
 
 - Restore the established Analysis Scope sidebar against the current engine.

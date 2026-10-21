@@ -653,12 +653,17 @@ def test_unused_field_parameter_is_review_by_entity_type(tmp_path):
     plan = change_plan.create_plan(model, [report], [{"kind": "actions",
                                                      "actions": column_deletes("Parameter", names)}])
     assert plan["validation"]["confirmations"] == [whole["confirmations"][0]["message"]]
-    # Partial plans keep today's item-alone behaviour.
+    # A field parameter is one unit: no column is deleted on its own, visible or hidden.
+    member = ("Column of field parameter 'Parameter'. Its columns work as one unit; delete the whole "
+              "field parameter through a reviewed table plan rather than this column alone.")
     hidden_only = evaluate_deletion_policy(model, [report], column_deletes("Parameter", ["Parameter Fields"]))
     assert [v["message"] for v in hidden_only["violations"]] == [
-        "Review required for Parameter[Parameter Fields]: Item is hidden"]
+        "Review required for Parameter[Parameter Fields]: Item is hidden; " + member,
+        "Keep Parameter[Parameter Fields]: it is a column of field parameter 'Parameter', which is deleted "
+        "only as a whole table."]
     assert hidden_only["confirmations"] == []
-    assert evaluate_deletion_policy(model, [report], column_deletes("Parameter", ["Parameter"]))["ok"]
+    display_only = evaluate_deletion_policy(model, [report], column_deletes("Parameter", ["Parameter"]))
+    assert {v["rule_id"] for v in display_only["violations"]} == {"SMC-D005", "SMC-D006"}
     # Deleting the NAMEOF target together with the parameter stays guarded.
     target = [{"action": "delete", "table": "Sales", "name": "Target", "item_type": "Measure"}]
     assert any(v["rule_id"] == "SMC-D006" for v in evaluate_deletion_policy(
@@ -675,7 +680,8 @@ def test_used_field_parameter_is_not_review_by_entity_type(tmp_path):
     analysis = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[report])
     assert analysis["summary"]["review_entity_type"] == 0
     fields = row(analysis, "Parameter", "Parameter Fields")
-    assert fields["review_triggers"] == ["Item is hidden"]
+    assert fields["review_triggers"][0] == "Item is hidden"
+    assert fields["review_triggers"][1].startswith("Column of field parameter 'Parameter'.")
     assert fields["review_basis"] == "evidence"
 
 

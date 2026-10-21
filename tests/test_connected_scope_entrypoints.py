@@ -20,14 +20,18 @@ def scope_project(tmp_path, monkeypatch):
     shutil.copytree(ROOT / "src/semantic_model_cleaner/demo_workspace", root)
     model = next(root.rglob("*.SemanticModel"))
     local = next(root.rglob("*.Report"))
+    local_definition = local / "definition.pbir"
+    definition = json.loads(local_definition.read_text(encoding="utf-8"))
+    definition["datasetReference"]["byConnection"] = None
+    local_definition.write_text(json.dumps(definition), encoding="utf-8")
     reports = {"local": local}
     bindings = {
-        "live": {"byConnection": {"connectionString": f'Initial Catalog="{model.stem}"'}},
-        "unrelated": {"byPath": {"path": "../Other.SemanticModel"}},
+        "live": {"byPath": None, "byConnection": {"connectionString": f'Initial Catalog="{model.stem}"'}},
+        "unrelated": {"byPath": {"path": "../Other.SemanticModel"}, "byConnection": None},
         "ambiguous": {"byPath": {"path": os.path.relpath(model, root / "ambiguous.Report")},
                       "byConnection": {"connectionString": f'Initial Catalog="{model.stem}"'}},
         "missing_reference": {},
-        "remote": {"byConnection": {"connectionString": "Initial Catalog=Other"}},
+        "remote": {"byPath": None, "byConnection": {"connectionString": "Initial Catalog=Other"}},
     }
     for name in [*bindings, "missing", "malformed"]:
         report = root / (name + ".Report")
@@ -184,3 +188,74 @@ def test_excluded_report_remains_protected_from_exports(scope_project):
     run = cli(root, "--format", "json", "-o", target, cwd=root)
     assert run.returncode == 2
     assert target.read_bytes() == before
+
+
+@pytest.mark.parametrize("path_value,connection_value,expected", [
+    ("valid", None, "connected"),
+    (None, "valid", "connected_by_name"),
+    (None, None, "missing_dataset_reference"),
+    ("valid", "valid", "ambiguous_definition"),
+    ({}, None, "missing_dataset_reference"),
+    ("", None, "invalid_definition"),
+    (None, {}, "invalid_definition"),
+    (None, "", "invalid_definition"),
+    ("valid", {}, "ambiguous_definition"),
+    ("valid", "", "ambiguous_definition"),
+    ({}, "valid", "ambiguous_definition"),
+    ("", "valid", "ambiguous_definition"),
+    (False, None, "invalid_definition"),
+    (None, False, "invalid_definition"),
+    ([], None, "invalid_definition"),
+    (None, [], "invalid_definition"),
+    ("other", None, "not_connected"),
+    (None, "other", "not_connected"),
+])
+def test_nullable_binding_alternatives_preserve_fail_closed_scope(
+        scope_project, path_value, connection_value, expected):
+    root, model, reports = scope_project
+    report = root / "variant.Report"
+    shutil.copytree(reports["local"], report)
+    if path_value == "valid":
+        path_value = {"path": os.path.relpath(model, report)}
+    elif path_value == "other":
+        path_value = {"path": "../Other.SemanticModel"}
+    if connection_value == "valid":
+        connection_value = {"connectionString": f'Initial Catalog="{model.stem}"'}
+    elif connection_value == "other":
+        connection_value = {"connectionString": "Initial Catalog=Other"}
+    (report / "definition.pbir").write_text(json.dumps({"datasetReference": {
+        "byPath": path_value, "byConnection": connection_value,
+    }}), encoding="utf-8")
+    binding = analyzer.report_binding_status(report, model)
+    assert binding["status"] == expected
+    connected = expected in analyzer.BOUND_REPORT_STATUSES
+    assert (binding["warning"] is None) == (connected or expected == "not_connected")
+    if expected == "ambiguous_definition":
+        assert "both populated" in binding["message"]
+    result = analyzer.analyze(root)
+    assert statuses(result["report_binding"])[report.name] == expected
+    assert (str(report.resolve()) in {
+        row["path"] for row in result["report_binding"]["selected"]}) == connected
+    if connected:
+        assert not any(w["code"] == "REPORT_SCOPE_EXCLUDED"
+                       and w["artifactPath"] == binding["definitionFile"]
+                       for w in result["warnings"])
+
+    client = webapp.app.test_client()
+    discovered = client.post("/api/reports/find-connected", json={
+        "model_path": str(model), "search_root": str(root)})
+    assert discovered.status_code == 200, discovered.json
+    payload = discovered.json
+    assert next(row["status"] for row in payload["reportStatuses"]
+                if row["path"] == str(report.resolve())) == expected
+    expected_paths = {str(reports[key].resolve()) for key in ("local", "live")}
+    if connected:
+        expected_paths.add(str(report.resolve()))
+    assert {row["path"] for row in payload["reports"]} == expected_paths
+    if connected:
+        assert not any(report.name + ":" in warning for warning in payload["warnings"])
+    preview = client.post("/api/scope", json={
+        "model_paths": [str(model)],
+        "report_paths": [row["path"] for row in payload["reportStatuses"]]})
+    assert preview.status_code == 200, preview.json
+    assert statuses(preview.json["reportBinding"]) == statuses(result["report_binding"])

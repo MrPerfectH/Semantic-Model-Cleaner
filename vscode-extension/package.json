@@ -2,9 +2,8 @@
   "name": "semantic-model-cleaner",
   "displayName": "Semantic Model Cleaner (Preview)",
   "description": "Run Semantic Model Cleaner's local Power BI Project UI inside VS Code.",
-  "version": "0.1.3",
-  "publisher": "smc-local-preview",
-  "private": true,
+  "version": "0.1.7",
+  "publisher": "MrPerfectH",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -180,7 +179,7 @@
         {
           "id": "semanticModelCleaner",
           "title": "Cleaner",
-          "icon": "media/cleaner.svg"
+          "icon": "media/cleaner-broom.svg"
         }
       ]
     },
@@ -220,7 +219,7 @@
     "test": "npm run compile && node --test test/*.test.cjs",
     "test:integration": "npm run compile && node scripts/integration.cjs",
     "vscode:prepublish": "npm run compile",
-    "package": "vsce package --pre-release --no-dependencies --out semantic-model-cleaner-0.1.3.vsix"
+    "package": "vsce package --pre-release --no-dependencies --out semantic-model-cleaner-0.1.7.vsix"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -229,5 +228,6 @@
     "@vscode/vsce": "^4.0.0",
     "playwright-core": "^1.56.0",
     "typescript": "^5.9.3"
-  }
+  },
+  "icon": "media/cleaner.png"
 }
