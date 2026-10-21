@@ -1,5 +1,6 @@
 """Exercise urllib response parsing without credentials or live service calls."""
 
+from http.client import IncompleteRead
 from io import BytesIO
 import json
 from urllib.error import HTTPError
@@ -228,3 +229,81 @@ def test_body_read_failure_preserves_known_status_without_message(monkeypatch):
     assert evidence.data["requests"][0]["status"] == 200
     assert evidence.data["requests"][0]["failure"] == "network_unavailable"
     assert "SECRET" not in json.dumps(evidence.data)
+
+
+@pytest.mark.parametrize("initial_payload", [b"null", b"[]", b"invalid JSON"])
+@pytest.mark.parametrize("state", ["Running", "NotStarted"])
+def test_lro_preserves_202_polling_object(monkeypatch, initial_payload, state):
+    definition = {"definition": {"parts": []}}
+    client, evidence, requests, sleeps = client_for(
+        monkeypatch,
+        [
+            (202, {"Location": OP_URL, "Retry-After": "1"}, initial_payload),
+            (202, {"Retry-After": "1"}, json.dumps({"status": state}).encode()),
+            (200, {}, b'{"status":"Succeeded"}'),
+            (200, {}, json.dumps(definition).encode()),
+        ],
+    )
+    assert client.definition(WORKSPACE, "semanticModels", MODEL, "model-1") == definition
+    assert [request.full_url for request in requests] == [
+        f"{provider.FABRIC}/workspaces/{WORKSPACE}/semanticModels/{MODEL}/getDefinition?format=TMDL",
+        OP_URL,
+        OP_URL,
+        OP_URL + "/result",
+    ]
+    assert [receipt["status"] for receipt in evidence.data["requests"]] == [202, 202, 200, 200]
+    assert sleeps == [1, 1]
+    assert "SECRET" not in json.dumps(evidence.data)
+
+
+@pytest.mark.parametrize("status", [200, 202, 403])
+def test_incomplete_read_preserves_known_status_without_partial_body(monkeypatch, status):
+    class IncompleteBody(BytesIO):
+        def read(self, size=-1):
+            assert size == provider.MAX_BYTES + 1
+            raise IncompleteRead(b"SECRET PARTIAL BODY", 123)
+
+    transport = provider.LiveTransport({"fabric": "SECRET TOKEN"})
+    monkeypatch.setattr(
+        transport.opener,
+        "open",
+        lambda request, timeout: addinfourl(IncompleteBody(), {}, request.full_url, status),
+    )
+    evidence = provider.Evidence("fixture")
+    client = provider.Client(transport, evidence)
+    with pytest.raises(provider.ProbeError, match="^network_unavailable$") as error:
+        client.request("GET", MODELS_URL, "list_models", "workspace-1")
+    assert error.value.status == status
+    assert error.value.body_kind is None
+    assert error.value.__suppress_context__
+    assert len(evidence.data["requests"]) == 1
+    assert evidence.data["requests"][0]["status"] == status
+    assert evidence.data["requests"][0]["failure"] == "network_unavailable"
+    assert "SECRET" not in json.dumps(evidence.data)
+
+
+@pytest.mark.parametrize("status", [200, 202, 403])
+def test_deeply_nested_json_fails_closed_with_known_status(monkeypatch, status):
+    payload = b'{"SECRET":' + b"[" * 10000 + b"0" + b"]" * 10000 + b"}"
+    client, evidence, requests, sleeps = client_for(monkeypatch, [(status, {}, payload)])
+    with pytest.raises(provider.ProbeError, match="^invalid_response_json$") as error:
+        client.request("GET", MODELS_URL, "list_models", "workspace-1")
+    assert error.value.status == status
+    assert error.value.body_kind == "invalid_json"
+    assert error.value.__suppress_context__
+    assert len(requests) == 1
+    assert sleeps == []
+    receipt = evidence.data["requests"][0]
+    assert receipt["status"] == status
+    assert receipt["body_kind"] == "invalid_json"
+    assert receipt["failure"] == "invalid_response_json"
+    result = provider.new_result(
+        "analyze",
+        provider.Target("00000000-0000-0000-0000-000000000001", WORKSPACE, MODEL, (WORKSPACE,)),
+        "fixture",
+    )
+    result["requests"] = evidence.data["requests"]
+    summary = provider.public_summary(result)
+    assert summary["response_diagnostics"] == [{"status": status, "body_kind": "invalid_json"}]
+    assert "SECRET" not in json.dumps(evidence.data)
+    assert "SECRET" not in json.dumps(summary)

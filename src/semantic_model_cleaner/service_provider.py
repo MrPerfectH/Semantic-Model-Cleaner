@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 from datetime import datetime, timezone
 import hashlib
+from http.client import IncompleteRead
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -108,19 +109,21 @@ class LiveTransport:
                 payload = response.read(MAX_BYTES + 1)
                 if len(payload) > MAX_BYTES:
                     raise ProbeError("response_size_limit", status=status)
-                # Fabric LRO acceptance is header-driven; its body is irrelevant.
-                if status == 202:
-                    return status, headers, {}
                 try:
                     body = json.loads(payload) if payload else {}
+                except RecursionError:
+                    # Excessive nesting fails closed even for acceptance/error bodies.
+                    raise ProbeError(
+                        "invalid_response_json", status=status, body_kind="invalid_json"
+                    ) from None
                 except (ValueError, UnicodeError):
-                    if status >= 400:
+                    if status == 202 or status >= 400:
                         return status, headers, {}
                     raise ProbeError(
                         "invalid_response_json", status=status, body_kind="invalid_json"
                     ) from None
                 if not isinstance(body, dict):
-                    if status >= 400:
+                    if status == 202 or status >= 400:
                         return status, headers, {}
                     body_kind = (
                         "null"
@@ -134,8 +137,9 @@ class LiveTransport:
                         else "number"
                     )
                     raise ProbeError("invalid_response_shape", status=status, body_kind=body_kind)
+                # Initial acceptance is header-driven; polling needs valid JSON objects.
                 return status, headers, body
-        except (URLError, TimeoutError, OSError):
+        except (URLError, TimeoutError, OSError, IncompleteRead):
             raise ProbeError("network_unavailable", status=status) from None
 
 

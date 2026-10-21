@@ -241,11 +241,16 @@ closed or main merge authorized by these independent checks.
 
 ### Response handling and diagnostics
 
-The shared service transport treats HTTP 202 as header-driven LRO acceptance,
-ignoring its body within the existing response size limit. Non-object or malformed
-error bodies retain HTTP status classification. Successful responses still require
-JSON objects; parse failures retain the HTTP status and a fixed body-kind label in
-request evidence. Public summaries expose only those status/body-kind diagnostics,
+The shared service transport preserves valid HTTP 202 JSON objects, including
+Running/NotStarted polling states. Initial LRO acceptance remains header-driven;
+empty, malformed JSON and non-object 202 bodies are ignored within the existing
+response size limit. Non-object or malformed error bodies retain HTTP status
+classification. Other successful responses still require JSON objects. Excessive
+JSON nesting fails closed with `invalid_response_json` and the fixed `invalid_json`
+body kind for every status, including 202. Incomplete response reads fail closed
+with `network_unavailable`. Both failures preserve a known integer HTTP status;
+parse failures also retain the fixed body-kind label in request evidence. Public
+summaries expose only those status/body-kind diagnostics,
 without response bodies, headers, URLs or server messages.
 
 After a validated operation succeeds, the client constructs its canonical
