@@ -2177,10 +2177,12 @@ def api_plans():
 
 @app.route("/api/auto-date-tables", methods=["POST"])
 def api_auto_date_tables():
-    """Read-only assessment for the explicit auto-date table action.
+    """Read-only group result for the explicit auto-date table action.
 
-    Removal goes through POST /api/plans with an ``auto_date_tables`` operation,
-    which assesses the files again on the server before preview and before apply.
+    Only the group outcome is returned: remove every auto-date table, or none.
+    Removal goes through POST /api/plans with ``{"kind": "auto_date_tables",
+    "remove": "all"}``, which is assessed again on the server before preview and
+    before apply.
     """
     try:
         data = request.get_json(silent=True) or {}
@@ -2190,7 +2192,8 @@ def api_auto_date_tables():
         reports = data.get("report_paths") if "report_paths" in data else _state["report_paths"]
         if not isinstance(reports, list) or not all(isinstance(p, str) for p in reports):
             return jsonify({"ok": False, "error": "report_paths must be a list of paths"}), 400
-        return jsonify(auto_date_tables.assess(model_path, [Path(p) for p in reports]))
+        assessment = auto_date_tables.assess(model_path, [Path(p) for p in reports])
+        return jsonify({"ok": assessment["ok"], "scope": assessment["scope"], **assessment["group"]})
     except (ValueError, OSError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 

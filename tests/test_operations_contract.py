@@ -19,7 +19,8 @@ def test_discovery_and_standalone_schema(tmp_path):
     capabilities = envelope(run(["capabilities"], tmp_path), "capabilities")
     assert capabilities["tool_version"] == __version__
     assert set(capabilities["operations"]) == {
-        "actions", "rename", "move", "promote", "dax", "clean_stale", "report_issues", "report_repair"}
+        "actions", "rename", "move", "promote", "dax", "clean_stale", "report_issues", "report_repair",
+        "auto_date_tables"}
     result = run(["operations-schema"], tmp_path)
     assert result.returncode == 0
     contract = json.loads(result.stdout)

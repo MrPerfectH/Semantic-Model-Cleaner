@@ -170,20 +170,29 @@ Promotion currently preserves the measure name and home table. A different `targ
 
 If `report_path` is omitted, the first selected report is used; specify it explicitly when more than one report is selected. `include_dependencies` defaults to false. Unsupported metadata loss is not silently authorized: `allow_metadata_loss` defaults to false. Inspect the proposed dependency set and metadata differences before opting into either behavior.
 
-### Remove unused auto-date tables
+### Remove all auto-date tables
 
 ```json
 {
+  "schema_version": "1.0",
   "operations": [
     {
       "kind": "auto_date_tables",
-      "tables": ["LocalDateTable_8ed55867-002d-48ca-ab64-c88caeda64fe"]
+      "remove": "all"
     }
   ]
 }
 ```
 
-This operation must be the only one in its plan. Each table must be a Power BI generated auto-date table (`LocalDateTable_<id>` or `DateTableTemplate_<id>`) whose metadata matches the generated structure, with no use found in the selected model and reports. The plan removes the table file, its `ref table` line, its generated relationship and the `variation` on the owning date column; the date column itself stays. Every `.tmdl`, `.json`, `.pbir`, `.pbism` and saved DAX query (`.dax`, for example `DAXQueries/Query 1.dax`) file under the selected model and report folders is searched as text for the table name, relationship id and lineage tags, for column-variation DAX (`[OrderDate].[Year]`, also with DAX comments around the dot; a block comment that is never closed after the column counts as a use) and for report hierarchy fields. Other file types are not searched. JSON files and culture `linguisticMetadata` are also searched after their strings are decoded, so escapes such as `\u002d` or `\n` cannot hide a use. A culture `linguisticMetadata` (Q&A) binding to the date hierarchy of the owning column blocks the table; linguistic metadata is never edited. Any other occurrence, or any file or linguistic payload that cannot be read or parsed, blocks the table with the reason. A `DateTableTemplate_<id>` table can be removed only in the same plan as every other auto-date table in the model. This is a conservative restriction: removing the template while auto-date tables stay has not been validated in Power BI Desktop. Saved `.dax` query files are never changed, but for this operation they are part of the plan's input fingerprint: adding, editing or deleting one after the preview makes the plan stale. The files are checked again before preview and before apply. The apply-time check confirms that the selected tables can still be removed; like every plan kind, it relies on the plan digest, not on a signature, for the reviewed file changes (see the note at the top of this page). `__PBI_TimeIntelligenceEnabled` is not changed, so Power BI Desktop can create auto-date tables again.
+All or nothing. The operation names no tables: it removes every Power BI generated auto-date table in the selected model (each `LocalDateTable_<id>` and the `DateTableTemplate_<id>`), or none. It must be the only operation in its plan. A `tables` list, any other `remove` value or any other field is refused, also in the unversioned form; there is no way to remove only some auto-date tables.
+
+The plan is created only when every auto-date table qualifies: its metadata matches the generated structure and no use is found in the selected model and reports. Otherwise plan creation fails with one group result, for example `57 auto-date tables detected. Cannot remove all: dependencies were found. Nothing will be removed.`, followed by short grouped reasons such as `18 tables: Q&A linguistic metadata binds its date hierarchy.` A table that only looks like an auto-date table, a file that cannot be read and a report hierarchy that cannot be matched report `coverage could not be confirmed`. A model without auto-date tables is refused with `No auto-date tables detected`.
+
+The created plan records the whole group: its operation becomes `{"kind": "auto_date_tables", "remove": "all", "tables": [...]}` with every table found at preview time. It removes each table file, its `ref table` line, its generated relationship and the `variation` on the owning date column; the date column itself stays.
+
+Checks: every `.tmdl`, `.json`, `.pbir`, `.pbism` and saved DAX query (`.dax`, for example `DAXQueries/Query 1.dax`) file under the selected model and report folders is searched as text for the table name, relationship id and lineage tags, for column-variation DAX (`[OrderDate].[Year]`, also with DAX comments around the dot; a block comment that is never closed after the column counts as a use) and for report hierarchy fields. Other file types are not searched. JSON files and culture `linguisticMetadata` are also searched after their strings are decoded, so escapes such as `\u002d` or `\n` cannot hide a use. A culture `linguisticMetadata` (Q&A) binding to the date hierarchy of an owning column is a use; linguistic metadata is never edited. Saved `.dax` query files are never changed, but for this operation they are part of the plan's input fingerprint: adding, editing or deleting one after the preview makes the plan stale.
+
+Before apply, the files are checked again: every auto-date table must still be removable, the current group must equal the planned group, and the plan's file changes must delete every table file and touch only the files that hold the group's generated lines. A table or consumer added after the preview makes the plan stale. A plan saved by an earlier version that selected individual tables is refused (`Partial removal is no longer supported`) and nothing is written. Like every plan kind, the plan relies on its digest, not on a signature, for the reviewed file changes (see the note at the top of this page). `__PBI_TimeIntelligenceEnabled` is not changed, so Power BI Desktop can create auto-date tables again.
 
 ### Report metadata entries
 

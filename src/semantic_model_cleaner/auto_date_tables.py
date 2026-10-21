@@ -1,10 +1,10 @@
-"""Power BI auto-date tables: detection, consumer checks and removal.
+"""Power BI auto-date tables: detection, consumer checks and all-or-nothing removal.
 
 With Auto date/time on, Power BI Desktop adds one hidden ``LocalDateTable_<guid>``
 table per date column. It links the table to the column with a generated
 relationship and a ``variation`` on the column, and it keeps one
 ``DateTableTemplate_<guid>`` table as a template. This module backs one explicit
-cleanup action: "Review and remove unused auto-date tables".
+cleanup action for the whole group: remove every auto-date table, or none.
 
 Detection never trusts the name alone. A table qualifies only when its metadata is
 exactly the generated structure: flags, annotations, template columns, hierarchy,
@@ -17,17 +17,16 @@ for column-variation DAX (``[OrderDate].[Year]``, also with comments around the 
 and for report ``PropertyVariationSource`` references. JSON files and culture ``linguisticMetadata``
 payloads are also searched after decoding their strings, so ``\\u002d`` or ``\\n``
 escapes cannot hide a use. Each occurrence must belong to the generated structure
-itself. Anything else, or any file that cannot be read or parsed, blocks removal and
-states why.
+itself. Culture ``linguisticMetadata`` (Q&A) binds a date hierarchy by owner table, date
+column and variation, without naming the auto-date table; such a binding is a use, and
+linguistic metadata is never edited.
 
-Culture ``linguisticMetadata`` (Q&A) binds a date hierarchy by owner table, date
-column and variation, without naming the auto-date table. Such a binding blocks the
-table; linguistic metadata is never edited. The ``DateTableTemplate_*`` table is kept
-while any other auto-date table stays: removing it alone has not been validated in
-Power BI Desktop, so this is a conservative restriction.
-
-The general deletion policy is unchanged. These exceptions apply only to this action
-and are checked again server-side when a plan is created and before it is applied.
+The per-table checks stay internal. The action is offered only when every table
+passes them: any use, unsupported metadata or file that cannot be checked blocks the
+whole group, and nothing is removed. The template therefore always goes together with
+every other auto-date table. The general deletion policy is unchanged. These
+exceptions apply only to this action and are checked again server-side when a plan
+is created and before it is applied.
 """
 from __future__ import annotations
 
@@ -77,8 +76,6 @@ _LINGUISTIC_TAIL_RE = re.compile(r"^\s*(?:contentType\s*:\s*json\s*)?$", re.I)
 _VARIATION_BINDING_KEYS = ("VariationSource", "VariationSet")
 _LINGUISTIC_KEYS = ("ConceptualEntity", "ConceptualProperty", *_VARIATION_BINDING_KEYS)
 _LINGUISTIC_KEYS_FOLDED = {key.casefold() for key in _LINGUISTIC_KEYS}
-_TEMPLATE_RESTRICTION = ("Power BI Desktop may still use the template for them. This is a conservative restriction: "
-                         "removing the template while auto-date tables stay has not been validated in Power BI Desktop.")
 KIND_LABELS = {"local": "Auto-date table", "template": "Auto-date template table",
                "unknown": "Looks like an auto-date table"}
 
@@ -715,17 +712,34 @@ def _scan_report_hierarchies(candidates: list[_Candidate], files: list[_File]) -
     return sorted(set(unresolved))
 
 
+def _find_candidates(index: _Model) -> list[_Candidate]:
+    """Every table that looks like an auto-date table by name, flag or marker annotation."""
+    candidates = []
+    for declared in index.tables.values():
+        for file, declaration in declared:
+            table_flags = {child.keyword for child in declaration.children}
+            markers = {child.name for child in declaration.children if child.keyword == "annotation"}
+            if _PREFIX_RE.match(declaration.name) or "showAsVariationsOnly" in table_flags or \
+                    markers & set(_MARKER_ANNOTATIONS.values()):
+                candidates.append(_Candidate(name=declaration.name, file=file, declaration=declaration))
+    return candidates
+
+
 def assess(model_path, report_paths, *, require_bound: bool = True) -> dict:
-    """Read-only assessment of every auto-date table candidate in the selected scope."""
+    """Read-only assessment of the selected scope's auto-date tables.
+
+    ``tables`` keeps the internal per-table checks; ``group`` is the only result
+    the action offers: remove every auto-date table, or none.
+    """
     model = Path(model_path).resolve()
     reports = sorted({Path(p).resolve() for p in report_paths})
     scope_blockers: list[str] = []
     result = {"ok": True, "scope": {"model": str(model), "reports": [str(r) for r in reports]},
-              "scope_blockers": scope_blockers, "time_intelligence_enabled": None, "tables": [],
-              "found": 0, "removable_count": 0, "blocked_count": 0}
+              "scope_blockers": scope_blockers, "time_intelligence_enabled": None, "tables": [], "found": 0}
     if not (model / "definition").is_dir():
         result["ok"] = False
         scope_blockers.append("Select one TMDL semantic model folder with a definition directory.")
+        result["group"] = summarize(result)
         return result
     if not reports:
         scope_blockers.append("Select at least one report bound to this model. Without a report, report use of "
@@ -744,14 +758,7 @@ def assess(model_path, report_paths, *, require_bound: bool = True) -> dict:
     bindings, linguistic_problems = _linguistic_bindings(files)
     result["time_intelligence_enabled"] = (None if index.time_intelligence is None
                                            else index.time_intelligence.strip() not in ("0", "false"))
-    candidates = []
-    for declared in index.tables.values():
-        for file, declaration in declared:
-            table_flags = {child.keyword for child in declaration.children}
-            markers = {child.name for child in declaration.children if child.keyword == "annotation"}
-            if _PREFIX_RE.match(declaration.name) or "showAsVariationsOnly" in table_flags or \
-                    markers & set(_MARKER_ANNOTATIONS.values()):
-                candidates.append(_Candidate(name=declaration.name, file=file, declaration=declaration))
+    candidates = _find_candidates(index)
     for candidate in candidates:
         _verify_structure(candidate, index)
     generated = [c for c in candidates if not c.problems]
@@ -768,59 +775,140 @@ def assess(model_path, report_paths, *, require_bound: bool = True) -> dict:
             candidate.block("scope", message)
         if candidate.kind == "local":
             for message in unresolved:
-                candidate.block("report_hierarchy", message)
+                candidate.block("report_unresolved", message)
             for message in linguistic_problems:
                 candidate.block("linguistic_metadata", message)
-    others = [c for c in candidates if c.kind != "template"]
-    kept = [c for c in others if c.blockers]
-    for candidate in candidates:
-        if candidate.kind == "template" and kept:
-            candidate.block("template_kept", f"Kept while {len(kept)} other auto-date table(s) cannot be removed. "
-                            + _TEMPLATE_RESTRICTION)
     for candidate in candidates:
         owner = f"{candidate.owner[0]}[{candidate.owner[1]}]" if candidate.owner else None
+        edits = {file.key for file, _ in candidate.ref_lines}
+        edits.update(item[0].key for item in (candidate.relationship, candidate.variation) if item)
         result["tables"].append({
             "table": candidate.name, "kind": candidate.kind, "label": KIND_LABELS[candidate.kind],
             "file": candidate.file.key, "date_column": owner,
             "relationship": candidate.relationship[1].name if candidate.relationship else None,
             "variation": candidate.variation[1].name if candidate.variation else None,
             "removable": not candidate.blockers, "blockers": candidate.blockers,
-            # A template can go only together with every other auto-date table.
-            "requires_tables": sorted(c.name for c in others) if candidate.kind == "template" else [],
+            # Files whose generated lines (ref table, relationship, variation) go with the table.
+            "edits": sorted(edits - {candidate.file.key}),
         })
     result["found"] = len(result["tables"])
-    result["removable_count"] = sum(1 for t in result["tables"] if t["removable"])
-    result["blocked_count"] = result["found"] - result["removable_count"]
+    result["group"] = summarize(result)
     return result
 
 
-def requested_tables(operation: dict) -> list[str]:
+# Blocker codes: a found use of the tables, or a check that could not be completed.
+_DEPENDENCY_REASONS = {
+    "report_hierarchy": "a selected report uses its date hierarchy",
+    "report_reference": "a selected report names it",
+    "model_reference": "the model or a saved DAX query names it",
+    "variation_dax": "DAX may use its date hierarchy through [Column].[…]",
+    "linguistic_hierarchy": "Q&A linguistic metadata binds its date hierarchy",
+}
+_COVERAGE_REASONS = {
+    "not_generated": "its metadata does not exactly match what Power BI generates",
+    "report_unresolved": "a report date hierarchy could not be matched to its date column",
+    "linguistic_metadata": "Q&A linguistic metadata could not be checked",
+}
+
+
+def _tables_phrase(count: int) -> str:
+    return f"{count} auto-date table{'' if count == 1 else 's'}"
+
+
+def summarize(assessment: dict) -> dict:
+    """The one group-level result: no tables, all can be removed, or nothing will be removed."""
+    tables = assessment.get("tables", [])
+    found = len(tables)
+    reports = assessment.get("scope", {}).get("reports", [])
+    group = {"found": found, "status": "none", "can_remove_all": False, "reasons": [],
+             "scope_note": (f"Checked: this model and {len(reports)} selected report{'' if len(reports) == 1 else 's'}. "
+                            "Reports that are not selected, Excel and other tools that connect to the published "
+                            "model were not checked."),
+             "time_intelligence_enabled": assessment.get("time_intelligence_enabled")}
+    if not found:
+        group["message"] = "No auto-date tables detected."
+        return group
+    codes = [{blocker["code"] for blocker in entry["blockers"]} for entry in tables]
+    if not any(codes):
+        group.update(status="removable", can_remove_all=True,
+                     message=f"{_tables_phrase(found)} detected. All can be removed.")
+        return group
+    causes = []
+    if any(code in _DEPENDENCY_REASONS for entry in codes for code in entry):
+        causes.append("dependencies were found")
+    if any(code not in _DEPENDENCY_REASONS for entry in codes for code in entry):
+        causes.append("coverage could not be confirmed")
+    group.update(status="blocked", message=f"{_tables_phrase(found)} detected. Cannot remove all: "
+                 f"{' and '.join(causes)}. Nothing will be removed.")
+    reasons = list(dict.fromkeys(assessment.get("scope_blockers", [])))
+    for code, text in {**_DEPENDENCY_REASONS, **_COVERAGE_REASONS}.items():
+        count = sum(code in entry for entry in codes)
+        if count:
+            reasons.append(f"{count} {'table' if count == 1 else 'tables'}: {text}.")
+    group["reasons"] = reasons
+    return group
+
+
+_REQUEST = '{"kind": "auto_date_tables", "remove": "all"}'
+_PARTIAL_PLAN = ("This plan removes only some auto-date tables. Partial removal is no longer supported. "
+                 "Generate a new preview to remove all auto-date tables.")
+
+
+def check_request(operation: dict) -> None:
+    """A preview request names no tables: the action removes every auto-date table or none."""
+    if "tables" in operation:
+        raise AutoDateError("Auto-date tables are removed all together or not at all; a table list is not "
+                            f"accepted. Request {_REQUEST}.")
+    if operation.get("remove") != "all" or set(operation) != {"kind", "remove"}:
+        raise AutoDateError(f"Unsupported auto-date table request. Request {_REQUEST}.")
+
+
+def planned_operation(assessment: dict) -> dict:
+    """The operation stored in a plan: the whole group found at preview time."""
+    return {"kind": OPERATION_KIND, "remove": "all", "tables": sorted(t["table"] for t in assessment["tables"])}
+
+
+def planned_tables(operation: dict) -> list[str]:
+    """The group a plan was previewed for; older per-table plans are refused."""
     tables = operation.get("tables")
-    if not isinstance(tables, list) or not tables or not all(isinstance(t, str) and t for t in tables):
-        raise AutoDateError("Select at least one auto-date table to remove.")
-    if len({t.casefold() for t in tables}) != len(tables):
-        raise AutoDateError("Each auto-date table can be selected once.")
+    if operation.get("remove") != "all" or set(operation) != {"kind", "remove", "tables"} or \
+            not isinstance(tables, list) or not tables or not all(isinstance(t, str) and t for t in tables) or \
+            len({t.casefold() for t in tables}) != len(tables):
+        raise AutoDateError(_PARTIAL_PLAN)
     return tables
 
 
-def blocking_reasons(assessment: dict, tables: list[str]) -> list[str]:
-    """Server-side gate: every requested table must be a removable generated table now."""
-    known = {entry["table"].casefold(): entry for entry in assessment.get("tables", [])}
-    selected = {name.casefold() for name in tables}
-    staying = [entry["table"] for entry in assessment.get("tables", [])
-               if entry["kind"] != "template" and entry["table"].casefold() not in selected]
-    reasons = []
-    for name in tables:
-        entry = known.get(name.casefold())
-        if entry is None:
-            reasons.append(f"{name} is not an auto-date table in the selected model.")
-        elif not entry["removable"]:
-            reasons.append(f"{entry['table']} cannot be removed: "
-                           + " ".join(blocker["message"] for blocker in entry["blockers"]))
-        elif entry["kind"] == "template" and staying:
-            reasons.append(f"{entry['table']} cannot be removed while {len(staying)} other auto-date table(s) stay "
-                           "in the model; select every auto-date table to remove the template. " + _TEMPLATE_RESTRICTION)
-    return reasons
+def blocking_reasons(assessment: dict, planned: list[str] | None = None) -> list[str]:
+    """Server-side gate: every auto-date table is removable now and, for a plan, still the planned group."""
+    group = summarize(assessment)  # Recomputed from the per-table checks, never taken from the caller.
+    if group["status"] == "none":
+        return ["No auto-date tables detected in the selected model; nothing will be removed."]
+    if group["status"] != "removable":
+        return [group["message"], *group["reasons"]]
+    if planned is not None:
+        current = sorted(entry["table"].casefold() for entry in assessment["tables"])
+        if sorted(name.casefold() for name in planned) != current:
+            return [f"The auto-date tables changed after the preview ({len(planned)} planned, {len(current)} now). "
+                    "All auto-date tables are removed together; generate a new preview."]
+    return []
+
+
+def change_problems(assessment: dict, changes: list[dict]) -> list[str]:
+    """A plan's file changes must remove the whole current group and touch nothing else."""
+    tables = {entry["file"]: entry["table"] for entry in assessment["tables"]}
+    edits = {key for entry in assessment["tables"] for key in entry["edits"]}
+    kinds = {change["path"]: change["change"] for change in changes}
+    missing = sorted(table for key, table in tables.items() if kinds.get(key) != "deleted")
+    extra = sorted(path for path, kind in kinds.items()
+                   if path not in tables and (path not in edits or kind == "added"))
+    problems = []
+    if missing:
+        problems.append(f"The plan does not remove {len(missing)} of the {len(tables)} auto-date tables. "
+                        + _PARTIAL_PLAN)
+    if extra:
+        problems.append("The plan changes files outside the auto-date tables' generated metadata: "
+                        + ", ".join(extra) + ".")
+    return problems
 
 
 def _remove_span(lines: list[str], first: int, last: int) -> None:
@@ -917,37 +1005,34 @@ def integrity_problems(model_path, report_paths=(), removed_tokens: dict[str, st
     return problems
 
 
-def remove_tables(model_path, report_paths, tables: list[str], *, require_bound: bool = True) -> dict:
-    """Remove validated auto-date tables with their generated relationship, ref line and variation.
+def remove_all(model_path, report_paths, *, planned: list[str] | None = None, require_bound: bool = True) -> dict:
+    """Remove every auto-date table with its generated relationship, ref line and variation.
 
-    Assesses the given files again, so callers pass staged copies. Line endings and
-    every untouched byte are preserved. Fails without writing when any table is
-    blocked, and reports any new reference problem found after writing.
+    All or nothing: assesses the given files again (callers pass staged copies) and
+    fails without writing unless every auto-date table can go and, for a plan, the
+    group is still the planned one. Line endings and every untouched byte are
+    preserved. Reports any new reference problem found after writing.
     """
     model = Path(model_path).resolve()
     report_paths = [Path(p).resolve() for p in report_paths]
-    tables = requested_tables({"tables": tables})
     assessment = assess(model, report_paths, require_bound=require_bound)
-    reasons = blocking_reasons(assessment, tables)
+    reasons = blocking_reasons(assessment, planned)
     if reasons:
         return {"ok": False, "error": " ".join(reasons), "assessment": assessment}
     before = integrity_problems(model, report_paths)
     files, _ = _read_scope(model, [])
     index = _Model(files)
-    selected = {t.casefold() for t in tables}
     spans: dict[Path, list[tuple[int, int]]] = {}
     deleted: list[Path] = []
     tokens: dict[str, str] = {}
     summary = {"removed_tables": [], "removed_relationships": [], "removed_variations": [], "deleted_files": []}
-    candidates = []
-    for declared in index.tables.values():
-        for file, declaration in declared:
-            if declaration.name.casefold() in selected:
-                candidate = _Candidate(name=declaration.name, file=file, declaration=declaration)
-                _verify_structure(candidate, index)
-                if candidate.problems:  # Assessed as removable a moment ago; files changed underneath.
-                    return {"ok": False, "error": f"{candidate.name} changed while it was being removed."}
-                candidates.append(candidate)
+    candidates = _find_candidates(index)
+    if sorted(c.name.casefold() for c in candidates) != sorted(t["table"].casefold() for t in assessment["tables"]):
+        return {"ok": False, "error": "The auto-date tables changed while they were being removed."}
+    for candidate in candidates:
+        _verify_structure(candidate, index)
+        if candidate.problems:  # Assessed as removable a moment ago; files changed underneath.
+            return {"ok": False, "error": f"{candidate.name} changed while it was being removed."}
     for candidate in candidates:
         deleted.append(candidate.file.path)
         summary["removed_tables"].append(candidate.name)

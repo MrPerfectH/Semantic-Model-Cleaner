@@ -207,9 +207,10 @@ def _execute(op, roots):
     if kind == auto_date_tables.OPERATION_KIND:
         # Staged copies are re-assessed; report binding was checked on the originals.
         try:
-            return _result(auto_date_tables.remove_tables(model, reports, op.get('tables'), require_bound=False))
+            planned = auto_date_tables.planned_tables(op)
         except auto_date_tables.AutoDateError as exc:
             raise PlanError(str(exc)) from exc
+        return _result(auto_date_tables.remove_all(model, reports, planned=planned, require_bound=False))
     raise PlanError(f'Unsupported operation kind: {kind}')
 
 
@@ -284,17 +285,25 @@ def _validate_json(inventory, *, tolerate_existing=None):
         raise PlanError('Incomplete or invalid metadata: ' + '; '.join(errors))
 
 
-def _check_auto_date_tables(roots, operation):
-    """Fresh server-side gate for the explicit auto-date action; never trusts the client."""
+def _check_auto_date_tables(roots, operation, *, planned=False):
+    """Fresh server-side gate for the explicit auto-date action; never trusts the client.
+
+    All or nothing: a request names no tables; a stored plan must name the whole
+    current group, and every auto-date table must be removable now.
+    """
     try:
-        tables = auto_date_tables.requested_tables(operation)
+        if planned:
+            tables = auto_date_tables.planned_tables(operation)
+        else:
+            auto_date_tables.check_request(operation)
+            tables = None
         assessment = auto_date_tables.assess(roots['model'], [p for k, p in roots.items() if k != 'model'])
     except auto_date_tables.AutoDateError as exc:
         raise PlanError(str(exc)) from exc
     reasons = auto_date_tables.blocking_reasons(assessment, tables)
     if reasons:
         raise PlanError(' '.join(reasons))
-    return assessment, tables
+    return assessment
 
 
 def create_plan(model_path, report_paths, operations):
@@ -326,6 +335,7 @@ def create_plan(model_path, report_paths, operations):
         if len(operations) != 1:
             raise PlanError('Remove auto-date tables in a plan of their own.')
         auto_date = _check_auto_date_tables(originals, operations[0])
+        operations = [auto_date_tables.planned_operation(auto_date)]
     from .cleanup_policy import evaluate_deletion_policy
     actions = [a for op in operations if op.get('kind') == 'actions' for a in op.get('actions', [])]
     policy = evaluate_deletion_policy(originals['model'], list(originals.values())[1:], actions)
@@ -430,13 +440,10 @@ def _auto_date_limitations(auto_date):
 def _auto_date_confirmations(auto_date):
     if auto_date is None:
         return []
-    assessment, tables = auto_date
-    selected = {name.casefold() for name in tables}
-    columns = sorted(entry['date_column'] for entry in assessment['tables']
-                     if entry['table'].casefold() in selected and entry['date_column'])
-    messages = [f'Remove {len(tables)} auto-date table(s). {len(columns)} date column(s) stay in their tables; '
-                'they lose only the automatic Year/Quarter/Month/Day hierarchy.']
-    if assessment.get('time_intelligence_enabled'):
+    columns = [entry['date_column'] for entry in auto_date['tables'] if entry['date_column']]
+    messages = [f'Remove all {len(auto_date["tables"])} auto-date table(s). {len(columns)} date column(s) stay in '
+                'their tables; they lose only the automatic Year/Quarter/Month/Day hierarchy.']
+    if auto_date.get('time_intelligence_enabled'):
         messages.append('Auto date/time stays on for this file. Power BI Desktop can create auto-date tables '
                         'again; this change does not turn the setting off.')
     return messages
@@ -542,7 +549,12 @@ def apply_plan(plan, directory):
         for operation in plan['operations']:
             if operation.get('kind') == auto_date_tables.OPERATION_KIND:
                 try:
-                    _check_auto_date_tables(roots, operation)
+                    if len(plan['operations']) != 1:
+                        raise PlanError('Remove auto-date tables in a plan of their own.')
+                    assessment = _check_auto_date_tables(roots, operation, planned=True)
+                    problems = auto_date_tables.change_problems(assessment, plan['changes'])
+                    if problems:
+                        raise PlanError(' '.join(problems))
                 except PlanError as exc:
                     raise PlanError(f'Auto-date tables were checked again before apply: {exc} Nothing was written.') from exc
         save_plan(plan, directory)
