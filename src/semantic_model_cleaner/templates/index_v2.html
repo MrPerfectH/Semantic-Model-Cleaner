@@ -1805,6 +1805,7 @@ function itemKey(item) {
   return isReportItem(item) ? key + ':::report:::' + (item.sourceFile || item.sourceArtifact || '') : key;
 }
 function isReportItem(item) { return item && item.sourceKind === 'report'; }
+function canQueueReportDelete(item) { return isReportItem(item) && item.reportMeasureDelete && item.reportMeasureDelete.groupEligible; }
 function sourceKindLabel(value) {
   return value === 'report' ? 'Report' : 'Model';
 }
@@ -5328,7 +5329,7 @@ function parkDetailModules() {
 
 function detailActionHelpText(item) {
   if (!item) return 'Select an item to see available actions.';
-  if (isReportItem(item)) return 'Report-level items cannot use standard model cleanup actions here. Report measures can be promoted to the semantic model.';
+  if (isReportItem(item)) return canQueueReportDelete(item) ? 'Delete this report extension measure through a reviewed plan. Select every required group member together: ' + item.reportMeasureDelete.requiredGroup.map(function(entry) { return entry.table + '[' + entry.name + ']'; }).join(', ') : 'Report extension deletion is blocked: ' + ((item.reportMeasureDelete || {}).reasons || ['Analyze the selected scope first.']).join(' ');
   if (item.type === 'Measure') return 'Measure actions: move folder, move measure table, rename, hide/unhide, delete, and edit DAX from Technical Details.';
   if (item.type === 'Calculated Column') return 'Calculated column actions: move folder, hide/unhide, delete, and edit DAX from Technical Details. Columns are not moved between tables here.';
   return 'Column actions: move folder, hide/unhide, delete, and inspect Power Query / M source when available. Columns are not moved between tables here.';
@@ -5486,8 +5487,8 @@ function setDetailActionAvailability(item) {
   $('detailMeasureRenameInput').disabled = !canMoveMeasureTable;
   $('detailBtnHide').disabled = !hasModelItem;
   $('detailBtnUnhide').disabled = !hasModelItem;
-  $('detailBtnDelete').disabled = !hasModelItem;
-  $('detailBtnApply').disabled = !hasModelItem;
+  $('detailBtnDelete').disabled = !hasModelItem && !canQueueReportDelete(item);
+  $('detailBtnApply').disabled = !hasModelItem && !canQueueReportDelete(item);
   $('detailFolderInput').disabled = !hasModelItem;
   $('detailMoveMeasureActionGroup').classList.toggle('hidden', !canMoveMeasureTable);
   $('detailRenameMeasureActionGroup').classList.toggle('hidden', !canMoveMeasureTable);
@@ -5831,16 +5832,17 @@ function queueActionsForItems(items, actionName, extra) {
   extra = extra || {};
   if (!items.length) { alert('No items selected'); return; }
   clearActionPlanPreview();
-  var modelItems = items.filter(function(item) { return !isReportItem(item); });
+  var modelItems = items.filter(function(item) { return !isReportItem(item) || (actionName === 'delete' && canQueueReportDelete(item)); });
   var skipped = items.length - modelItems.length;
   if (!modelItems.length) {
-    alert('The selected items are report-level items. Use Promote to model on an item detail instead of Apply.');
+    alert('No selected items support this action. Inspect the report extension deletion evidence.');
     return;
   }
   var queued = 0;
   modelItems.forEach(function(item) {
     var key = itemKey(item);
     var act = { action: actionName, table: item.table, name: item.name, item_type: item.type };
+    if (isReportItem(item)) act.report_path = item.reportMeasureDelete.entry.report_path;
     for (var k in extra) act[k] = extra[k];
     pendingActions.set(key, act);
     actionStatus.set(key, 'Pending: ' + actionLabel(act));
@@ -5848,7 +5850,7 @@ function queueActionsForItems(items, actionName, extra) {
   });
   selectedKeys.clear();
   logEntry('Queued ' + actionLabel({ action: actionName, folder: extra.folder }) + ' for ' + queued + ' item(s)', 'info');
-  if (skipped) logEntry('Skipped ' + skipped + ' report-level item(s); use Promote to model for those.', 'info');
+  if (skipped) logEntry('Skipped ' + skipped + ' report-level item(s) that do not support this action.', 'info');
   renderTable();
   updateSelectedCount();
   updateApplyButtonState();

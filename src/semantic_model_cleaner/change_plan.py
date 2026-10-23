@@ -17,10 +17,10 @@ from pathlib import Path, PurePosixPath
 import tempfile
 import uuid
 
-from . import __version__, analyzer, auto_date_tables, report_writer, tmdl_writer
+from . import __version__, analyzer, auto_date_tables, report_writer, tmdl_writer, report_measure_delete
 
 SUFFIXES = {'.tmdl', '.json', '.pbir', '.pbism'}
-# Saved DAX query files: read-only inputs of the auto-date action only; never written.
+# Saved DAX queries are read-only analysis inputs for every plan; never written.
 QUERY_SUFFIXES = {'.dax'}
 SCHEMA_VERSION = 1
 
@@ -62,24 +62,47 @@ def _roots(model_path, report_paths):
     return {('model' if i == 0 else f'report-{i}'): p for i, p in enumerate(paths)}
 
 
+def _scan(root):
+    """Every path below root in Path.rglob('*') order, typed from directory listings.
+
+    Path.is_symlink() and Path.is_file() each open a handle per entry on Windows;
+    a bulk plan (#169) spent most of its inventory time there. DirEntry answers
+    both from the listing with the same meaning: symlinks are reported, never
+    followed, and only regular files are read.
+    """
+    found = []
+    pending = [Path(root)]
+    while pending:
+        with os.scandir(pending.pop()) as entries:
+            for entry in entries:
+                path = Path(entry.path)
+                symlink = entry.is_symlink()
+                found.append((path, symlink, not symlink and entry.is_file(follow_symlinks=False)))
+                if not symlink and entry.is_dir(follow_symlinks=False):
+                    pending.append(path)
+    return sorted(found)
+
+
 def _inventory(roots):
     inventory = {}
     for artifact, root in roots.items():
-        for path in sorted(root.rglob('*')):
-            if path.is_symlink():
+        for path, symlink, is_file in _scan(root):
+            if symlink:
                 raise PlanError(f'Symlinks are not supported in change-plan scope: {path}')
-            if path.is_file() and path.suffix.lower() in SUFFIXES:
+            if is_file and path.suffix.lower() in SUFFIXES:
                 inventory[f'{artifact}/{path.relative_to(root).as_posix()}'] = path.read_bytes()
     return inventory
 
 
 def _query_inventory(roots, operations):
-    """Saved DAX queries the auto-date action reads; fingerprinted with its plan inputs, never changed."""
-    if not any(o.get('kind') == auto_date_tables.OPERATION_KIND for o in operations):
-        return {}
+    """Inventory all consumed saved queries, plus report resources for extension deletion."""
+    auto_date = any(o.get('kind') == auto_date_tables.OPERATION_KIND for o in operations)
+    report_delete = any(o.get('kind') == report_measure_delete.OPERATION_KIND for o in operations)
     return {f'{artifact}/{path.relative_to(root).as_posix()}': path.read_bytes()
             for artifact, root in roots.items() for path in sorted(root.rglob('*'))
-            if path.suffix.lower() in QUERY_SUFFIXES and path.is_file() and not path.is_symlink()}
+            if path.is_file() and not path.is_symlink()
+            and (((auto_date or artifact != 'model') and path.suffix.lower() in QUERY_SUFFIXES)
+                 or (report_delete and artifact != 'model' and path.suffix.lower() not in SUFFIXES))}
 
 
 def _scope_hashes(roots, operations):
@@ -161,6 +184,8 @@ def _execute(op, roots):
             raise PlanError('Model rename and move must propagate through every report in the plan scope.')
         reports = selected
     kind = op.get('kind')
+    if kind == report_measure_delete.OPERATION_KIND:
+        return _result(report_measure_delete.delete_definitions(reports, op['entries']))
     if kind == 'actions':
         return _result(tmdl_writer.apply_actions(model, op.get('actions', [])))
     if kind == 'rename':
@@ -214,17 +239,21 @@ def _execute(op, roots):
     raise PlanError(f'Unsupported operation kind: {kind}')
 
 
-def _analyze(roots):
+def _analyze(roots, cache=None):
     try:
         reports = {k: p for k, p in roots.items() if k != 'model'}
+        # The files under these roots do not change while this function runs, so
+        # the whole-scope and per-report analyses share one parse of them (#169).
+        if cache is None:
+            cache = analyzer.AnalysisCache()
         result = analyzer.analyze(roots['model'].parent, model_paths=[roots['model']],
-                                  report_paths=list(reports.values()))
+                                  report_paths=list(reports.values()), cache=cache)
         # Report display names are not unique. Analyze report issues separately
         # so identical visual paths in distinct artifacts never hide new errors.
         result['_report_issues_by_artifact'] = {}
         for key, path in reports.items():
             single = result if len(reports) == 1 else analyzer.analyze(
-                roots['model'].parent, model_paths=[roots['model']], report_paths=[path])
+                roots['model'].parent, model_paths=[roots['model']], report_paths=[path], cache=cache)
             result['_report_issues_by_artifact'][key] = single.get('report_issues', [])
         return result
     except SystemExit as exc:
@@ -310,13 +339,22 @@ def create_plan(model_path, report_paths, operations):
     """Preview only; no input files or backups are written."""
     if not isinstance(operations, list) or not operations or any(not isinstance(o, dict) for o in operations):
         raise PlanError('operations must be a nonempty list of objects.')
+    report_delete = any(op.get('kind') == report_measure_delete.OPERATION_KIND for op in operations)
+    if report_delete and (len(operations) != 1):
+        raise PlanError('Delete report extension measures in a plan of their own.')
+    for op in operations:
+        for action in op.get('actions', []):
+            if (action.get('source_kind') == 'report' or action.get('sourceKind') == 'report'
+                    or action.get('report_path')
+                    or str(action.get('source_file', action.get('sourceFile', ''))).lower().endswith('.json')):
+                raise PlanError('Report identities cannot be used for semantic-model actions; use delete_report_measures.')
     originals = _roots(model_path, report_paths)
     before = _inventory(originals)
     queries = _query_inventory(originals, operations)
     _require_supported_write_encoding(before)
     # Destructive/refactoring plans cannot claim complete propagation while a
     # selected document is unreadable. Non-reference metadata edits can proceed.
-    strict = any(o.get('kind') in {'rename', 'move', 'promote', 'report_repair', 'dax', auto_date_tables.OPERATION_KIND} or
+    strict = report_delete or any(o.get('kind') in {'rename', 'move', 'promote', 'report_repair', 'dax', auto_date_tables.OPERATION_KIND} or
                  any(a.get('action') in {'delete', 'delete_table'} for a in o.get('actions', [])) for o in operations)
     bindings = [analyzer.report_binding_status(p, originals['model']) for key, p in originals.items() if key != 'model']
     if strict:
@@ -338,12 +376,29 @@ def create_plan(model_path, report_paths, operations):
         operations = [auto_date_tables.planned_operation(auto_date)]
     from .cleanup_policy import evaluate_deletion_policy
     actions = [a for op in operations if op.get('kind') == 'actions' for a in op.get('actions', [])]
-    policy = evaluate_deletion_policy(originals['model'], list(originals.values())[1:], actions)
+    # The originals are read-only here and the hash check at the end rejects any
+    # change to them, so the policy check and the baseline analysis share one parse.
+    analysis_cache = analyzer.AnalysisCache()
+    policy = evaluate_deletion_policy(originals['model'], list(originals.values())[1:], actions,
+                                      cache=analysis_cache)
     if not policy['ok']:
         raise PlanError('; '.join(policy['errors']))
     from . import metadata_validation
-    schema_before = metadata_validation.validate_metadata(before)
-    baseline = _analyze(originals)
+    # Unchanged documents validate once; the after snapshot replays their records.
+    schema_memo = {}
+    schema_before = metadata_validation.validate_metadata(before, memo=schema_memo)
+    baseline = _analyze(originals, analysis_cache)
+    report_deletions = []
+    if report_delete:
+        assessments = {report_measure_delete._key(r['entry']): r
+                       for r in baseline.get('report_measure_deletions', [])}
+        try:
+            report_deletions = report_measure_delete.check_operation(operations[0], assessments)
+            operations = [{'kind': report_measure_delete.OPERATION_KIND,
+                           'entries': [{key: entry[key] for key in ('report_path', 'table', 'name')}
+                                       for entry in report_deletions]}]
+        except ValueError as exc:
+            raise PlanError(str(exc)) from exc
     # Pure cleanup-action plans are judged against the simulated final state
     # (#91): a gap owned by a table the plan removes with all its consumers no
     # longer blocks. Rename/move/DAX propagation still needs complete coverage now.
@@ -354,15 +409,18 @@ def create_plan(model_path, report_paths, operations):
     # The auto-date action checks every selected file as text for any use of the
     # tables it removes, so analyzer parser gaps elsewhere do not hide a consumer.
     if strict and not baseline.get('coverage', {}).get('complete', True) and not final_state_complete \
-            and auto_date is None:
+            and auto_date is None and not report_delete:
         raise PlanError('Refactoring requires complete supported scan coverage. Resolve metadata limitations first.')
     with tempfile.TemporaryDirectory(prefix='smc-plan-') as temp:
         staged = {k: Path(temp).resolve() / k / p.name for k, p in originals.items()}
         for path in staged.values():
             path.mkdir(parents=True)
+        made = set()
         for key, content in before.items():
             path = _path(staged, key)
-            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.parent not in made:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                made.add(path.parent)
             path.write_bytes(content)
         for key, content in queries.items():  # Read-only, so the staged re-check sees the same queries.
             artifact, _, relative = key.partition('/')
@@ -379,7 +437,7 @@ def create_plan(model_path, report_paths, operations):
             _execute(mapped, staged)
         after = _inventory(staged)
         _validate_json(after, tolerate_existing=None if strict else before)
-        schema_after = metadata_validation.validate_metadata(after)
+        schema_after = metadata_validation.validate_metadata(after, memo=schema_memo)
         schema_comparison = metadata_validation.compare_validation(schema_before, schema_after)
         if schema_comparison["new_errors"] or schema_comparison["lost_validation"] or schema_comparison["truncated"]:
             raise PlanError("Change introduces schema errors, loses declared schema validation, or exceeds the schema error limit. Repair the metadata before applying.")
@@ -410,7 +468,8 @@ def create_plan(model_path, report_paths, operations):
                                          or bool(baseline.get('coverage', {}).get('complete', False)),
                                          'cleared_limitations': cleared}}, 'operations': operations,
             'inputs': _hashes({**before, **queries}), 'outputs': _hashes({**after, **queries}), 'changes': changes,
-            'validation': {'json_syntax': 'passed' if strict else 'changed files passed',
+            'validation': {'report_measure_deletions': report_deletions,
+                           'json_syntax': 'passed' if strict else 'changed files passed',
                            'reference_integrity': 'no new unresolved references',
                            'existing_problem_count': len(_problems(baseline)),
                            'remaining_problem_count': len(_problems(analysis)),

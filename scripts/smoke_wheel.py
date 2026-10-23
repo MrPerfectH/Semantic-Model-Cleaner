@@ -78,7 +78,7 @@ def _wait_for_web(base: str, process: subprocess.Popen, timeout: float = 30) -> 
 def _require_operations_contract(capabilities: dict, contract: dict, expected_version: str) -> None:
     expected_operations = {
         "actions", "rename", "move", "promote", "dax", "clean_stale", "report_issues",
-        "report_repair", "auto_date_tables",
+        "report_repair", "auto_date_tables", "delete_report_measures",
     }
     if (capabilities["tool_version"] != expected_version
             or capabilities["operations_schema_version"] != "1.0"

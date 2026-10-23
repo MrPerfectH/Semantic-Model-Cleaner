@@ -143,12 +143,18 @@ def validate_document(document, *, path: str = '', error_limit: int = 100) -> di
     return result
 
 
-def validate_metadata(files: Mapping[str, bytes | str], *, error_limit: int = 100) -> dict:
+def validate_metadata(files: Mapping[str, bytes | str], *, error_limit: int = 100,
+                      memo: dict | None = None) -> dict:
     """Validate a metadata snapshot, keyed by stable artifact-relative paths.
 
     Non-JSON metadata (including TMDL) is deliberately excluded. JSON syntax
     failures are reported separately from successfully executed schema checks.
     ``ok`` alone does not establish coverage; inspect ``complete`` and counts.
+
+    A record depends only on the document path, its exact bytes, the error
+    limit and the bundled schemas. ``memo`` is a caller-owned dict keyed by
+    those inputs; a plan validates one snapshot before and after its changes,
+    so unchanged documents are validated once and replayed (#169).
     """
     if error_limit < 1:
         raise ValueError('error_limit must be positive')
@@ -158,16 +164,23 @@ def validate_metadata(files: Mapping[str, bytes | str], *, error_limit: int = 10
             continue
         raw = content.encode('utf-8') if isinstance(content, str) else content
         fingerprint = hashlib.sha256(raw).hexdigest()
+        key = (path, fingerprint, error_limit)
+        if memo is not None and key in memo:
+            records.append(dict(memo[key]))
+            continue
         try:
             document = json.loads(raw)
         except (ValueError, UnicodeError) as exc:
-            records.append({'path': path, 'schema': None, 'status': 'invalid',
-                            'reason': 'invalid_json', 'content_hash': fingerprint,
-                            'errors': [{'path': '', 'schema_path': '', 'keyword': 'json_syntax',
-                                        'message': str(exc)}], 'truncated': False})
-            continue
-        result = validate_document(document, path=path, error_limit=error_limit)
-        records.append({**result, 'content_hash': fingerprint})
+            record = {'path': path, 'schema': None, 'status': 'invalid',
+                      'reason': 'invalid_json', 'content_hash': fingerprint,
+                      'errors': [{'path': '', 'schema_path': '', 'keyword': 'json_syntax',
+                                  'message': str(exc)}], 'truncated': False}
+        else:
+            record = {**validate_document(document, path=path, error_limit=error_limit),
+                      'content_hash': fingerprint}
+        if memo is not None:
+            memo[key] = dict(record)
+        records.append(record)
     counts = Counter(record['status'] for record in records)
     return {'ok': counts['invalid'] == 0,
             'complete': bool(records) and counts['not_validated'] == 0

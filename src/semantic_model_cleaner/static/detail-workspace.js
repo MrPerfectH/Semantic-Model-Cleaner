@@ -230,11 +230,11 @@
       : '';
     $('item-pane-dependencies').innerHTML = '<div class="object-stack">' + downstreamList(item.downstreamDependencies, 'item-downstream') + '<details class="dependency-support"><summary>Supporting dependency and retention evidence</summary>' + card('Inputs used by this item', formatDetailList(dependencies, {linkItems: true})) + metadataConsumerCards(item) + parentCard + perspectiveCard + translationCard + card('Model role and retention', '<p class="object-note">' + esc(usageHelpText(item)) + '</p>' + formatDetailList(roles(item))) + card('Reference problems', formatBrokenRefDetails(item.brokenDaxRefDetails || [], item.brokenDaxRefs || [])) + '</details></div>';
     bindDownstreamList(item.downstreamDependencies, 'item-downstream');
-    $('detailSharedActions').classList.toggle('hidden', isReportItem(item));
+    $('detailSharedActions').classList.toggle('hidden', isReportItem(item) && !canQueueReportDelete(item));
     var canRenameColumn = !isReportItem(item) && (item.type === 'Column' || item.type === 'Calculated Column');
     $('objectColumnRenameGroup').classList.toggle('hidden', !canRenameColumn);
     $('objectColumnRenameInput').value = canRenameColumn ? item.name : '';
-    $('detailActionHelpText').textContent = 'Choose a change, then review its files and validation before applying.';
+    $('detailActionHelpText').textContent = isReportItem(item) ? detailActionHelpText(item) : 'Choose a change, then review its files and validation before applying.';
     $('detailFolderInput').placeholder = 'Display folder';
 
     $('detailTechnicalSummary').textContent = 'Inspect the definition before editing. Changes are reviewed and statically validated before writing.';
@@ -516,6 +516,10 @@
     var labels = { json_syntax: 'JSON metadata', reference_integrity: 'Reference integrity', existing_problem_count: 'Existing problems', remaining_problem_count: 'Remaining problems', tmdl_syntax: 'TMDL syntax' };
     var rows = Object.keys(labels).filter(function (key) { return validation[key] !== undefined; }).map(function (key) { return '<dt>' + labels[key] + '</dt><dd>' + esc(String(validation[key])) + '</dd>'; }).join('');
     if (validation.pbir_schema) { var schema = validation.pbir_schema; var counts = schema.after; rows += '<dt>Declared PBIR schemas</dt><dd>' + counts.valid + ' valid · ' + counts.invalid + ' existing invalid · ' + counts.not_validated + ' not validated</dd><dt>Changed JSON coverage</dt><dd>' + (schema.comparison_complete ? 'No unvalidated JSON changes' : 'Incomplete — review unvalidated files') + '</dd>'; }
+    var deletions = validation.report_measure_deletions || [];
+    if (deletions.length) rows += '<dt>Report extension deletions</dt><dd><ul>' + deletions.map(function (entry) {
+      return '<li>' + esc(entry.report_path + ' / ' + entry.table + '[' + entry.name + ']') + ': ' + esc(entry.reason) + '</li>';
+    }).join('') + '</ul></dd>';
     var limitations = Array.isArray(validation.limitations) ? validation.limitations : [];
     var confirmations = Array.isArray(validation.confirmations) ? validation.confirmations : [];
     var confirmHtml = confirmations.length ? '<div class="object-confirmations"><strong>Confirm before applying</strong><ul>' + confirmations.map(function (text) { return '<li>' + esc(text) + '</li>'; }).join('') + '</ul></div>' : '';
@@ -637,7 +641,14 @@
   cleanReportHealthStale = function () { return quickCleanStale(reportHealthStaleEntries(), function () { return $('reportHealthActionStatus'); }, 'Clean stale report metadata'); };
   reviewReportHealthStale = function () { var entries = reportHealthStaleEntries(); if (entries.length) return reviewOperations([{ kind: 'clean_stale', entries: entries }], 'Clean stale report metadata'); };
   function currentItemOperation(make, title, after) { var item = getItemByKey(detailItemKey); if (!item) return; var operation = make(item); if (operation) return reviewOperations([operation], title, function () { if (after) after(item, operation); }); }
-  applyQueuedActions = function () { if (!pendingActions.size) return; return reviewOperations([{ kind: 'actions', actions: Array.from(pendingActions.values()) }], 'Review queued changes', function () { pendingActions.forEach(function (action, key) { actionStatus.set(key, 'Applied: ' + actionLabel(action)); }); pendingActions.clear(); clearActionPlanPreview(); updateApplyButtonState(); }); };
+  applyQueuedActions = function () { if (!pendingActions.size) return; var actions = Array.from(pendingActions.values());
+    var local = actions.filter(function(action) { return !!action.report_path; });
+    var model = actions.filter(function(action) { return !action.report_path; });
+    if (local.length && model.length) { alert('Review report extension deletions separately from model changes.'); return; }
+    var operations = local.length ? [{kind: 'delete_report_measures', entries: local.map(function(action) {
+      return {report_path: action.report_path, table: action.table, name: action.name};
+    })}] : [{kind: 'actions', actions: model}];
+    return reviewOperations(operations, 'Review queued changes', function () { pendingActions.forEach(function (action, key) { actionStatus.set(key, 'Applied: ' + actionLabel(action)); }); pendingActions.clear(); clearActionPlanPreview(); updateApplyButtonState(); }); };
   renameCurrentMeasure = function () { return currentItemOperation(function (item) { return { kind: 'rename', measure_renames: [{ table: item.table, name: item.name, target_name: $('detailMeasureRenameInput').value.trim() }] }; }, 'Rename measure', function (item, operation) { detailItemKey = item.type + ':::' + item.table + ':::' + operation.measure_renames[0].target_name; }); };
   moveCurrentMeasureToTable = function () { return currentItemOperation(function (item) { return { kind: 'move', moves: [{ table: item.table, name: item.name, target_table: $('detailMoveMeasureTableSelect').value }] }; }, 'Move measure home table', function (item, operation) { detailItemKey = item.type + ':::' + operation.moves[0].target_table + ':::' + item.name; }); };
   renameCurrentTable = function () { return reviewOperations([{ kind: 'rename', table_renames: [{ table: detailTableName, target_table: $('tableRenameInput').value.trim() }] }], 'Rename table', function () { detailTableName = $('tableRenameInput').value.trim(); }); };
