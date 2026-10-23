@@ -5147,9 +5147,22 @@ def analyze(
                     message="Saved DAX query reference coverage is incomplete: " + str(exc)))
                 continue
             for table, name in sorted(set(query_refs), key=str):
-                for target in local_items:
-                    if target.name.casefold() != name.casefold() or (table is not None and target.table.casefold() != table.casefold()):
-                        continue
+                if name is None:
+                    # A local DEFINE MEASURE still requires its model table.
+                    # Retain all its model items so last-item deletion cannot
+                    # remove the owner, including through cached plan analyses.
+                    targets = [target for target in local_items if target.source_kind == "model"
+                               and target.table.casefold() == table.casefold()]
+                    if not targets:
+                        all_report_issues.append(ReportIssue(
+                            severity="warning", issue_type="unsupported_saved_dax_query",
+                            report=report_display_name(report_path), report_path=str(report_path.resolve()),
+                            artifact_kind="Saved DAX Query", artifact_path=query_path.relative_to(report_path).as_posix(),
+                            message="Saved DAX DEFINE MEASURE owner table cannot be resolved from model items: " + table))
+                else:
+                    targets = [target for target in local_items if target.name.casefold() == name.casefold()
+                               and (table is None or target.table.casefold() == table.casefold())]
+                for target in targets:
                     all_definition_meta_usages.append(UsageRef(
                         table=target.table, name=target.name, ref_type=target.item_type,
                         report=report_display_name(report_path), report_path=str(report_path.resolve()),

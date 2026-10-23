@@ -114,7 +114,7 @@ def test_table_query_blocks_model_column_and_table_delete_plan(tmp_path, text, t
 @pytest.mark.parametrize("text,expected", [
     ('DEFINE VAR Sales = {1} EVALUATE Sales', []),
     ('DEFINE VAR X = [Revenue] VAR Y = X EVALUATE ROW("v", Y)', [(None, "Revenue")]),
-    ('DEFINE VAR X = [Revenue] MEASURE Sales[Local] = X EVALUATE {[Local]}', [(None, "Revenue")]),
+    ('DEFINE VAR X = [Revenue] MEASURE Sales[Local] = X EVALUATE {[Local]}', [("Sales", None), (None, "Revenue")]),
     ('EVALUATE ROW("Sales FILTER(Sales) [Revenue]", 1) // Sales\n/* Sales */', []),
     ("EVALUATE {SUM('Sales'[Amount])}", [("Sales", "Amount")]),
 ])

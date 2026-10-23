@@ -119,6 +119,10 @@ def expression_references(text):
 def query_references(text):
     """Return external (table-or-None, name) refs after DEFINE shadowing.
 
+    A (table, None) reference retains a DEFINE MEASURE owner table. It is
+    required even for an unused or fully shadowing local declaration. Callers
+    must resolve it against model items and protect the table from disappearing.
+
     Qualified local references shadow only their exact identity. Bare local
     references shadow by unique local name. Every local body is scanned, so
     transitive external dependencies remain even when a body is not evaluated.
@@ -232,7 +236,11 @@ def query_references(text):
             if available is not None and n >= available:
                 continue
         raise DaxCoverageError("Unsupported standalone table or identifier binding: " + token.value)
-    refs = []
+    # DEFINE shadowing removes references to the local *measure*, never its
+    # required model owner table. Consumers conservatively retain every model
+    # item in that table rather than guessing which surviving item anchors it.
+    refs = [(table, None) for table in dict.fromkeys(
+        tokens[n - 1].value for n in sorted(declarations))]
     names = {name for _, name in local}
     for n, token in enumerate(tokens):
         if token.kind != "object" or n in declarations:

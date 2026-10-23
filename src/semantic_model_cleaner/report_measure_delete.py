@@ -87,6 +87,14 @@ def assessment(model_path, report_paths, analysis):
                         report_reasons[owner].append(f"Saved report DAX query coverage: {path.relative_to(report)}: {exc}")
                         continue
                     for table, name in refs:
+                        if name is None:
+                            # DEFINE owners are model tables, not report-local
+                            # measures. An unresolved owner blocks this report.
+                            if table.casefold() not in entities:
+                                report_reasons[owner].append(
+                                    "Saved DAX DEFINE MEASURE owner table cannot be resolved: "
+                                    + table + " in " + path.relative_to(report).as_posix())
+                            continue
                         for key in local:
                             if key[2] == name.casefold() and (table is None or key[1] == table.casefold()):
                                 reasons[key].append("Saved report DAX query reference in " + path.relative_to(report).as_posix() + ".")
