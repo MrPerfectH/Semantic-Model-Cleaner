@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from . import analyzer, metadata_validation
-from .reference_tokens import dax_references
+from .saved_dax import DaxCoverageError, expression_references, query_references
 
 OPERATION_KIND = "delete_report_measures"
 EXTENSION = Path("definition/reportExtensions.json")
@@ -62,7 +62,7 @@ def assessment(model_path, report_paths, analysis):
             if r["item"].source_kind == "report"}
     reasons = defaultdict(list)
     scope_reasons = []
-    if not reports or not analysis.get("coverage", {}).get("complete", False):
+    if not reports:
         scope_reasons.append("Complete supported analysis coverage is required.")
     model_items = [r["item"] for r in analysis["items"] if r["item"].source_kind == "model"]
     model_names = {i.name.casefold() for i in model_items if i.item_type == "Measure"}
@@ -81,7 +81,16 @@ def assessment(model_path, report_paths, analysis):
                 if path.is_symlink():
                     raise ValueError("Symlinks are not supported.")
                 if path.is_file() and path.suffix.lower() == ".dax":
-                    raise ValueError("Saved report DAX queries are not covered by report extension deletion.")
+                    try:
+                        refs = query_references(path.read_text(encoding="utf-8-sig"))
+                    except DaxCoverageError as exc:
+                        report_reasons[owner].append(f"Saved report DAX query coverage: {path.relative_to(report)}: {exc}")
+                        continue
+                    for table, name in refs:
+                        for key in local:
+                            if key[2] == name.casefold() and (table is None or key[1] == table.casefold()):
+                                reasons[key].append("Saved report DAX query reference in " + path.relative_to(report).as_posix() + ".")
+                    continue
                 if not path.is_file() or path.suffix.lower() not in {".json", ".pbir"}:
                     continue
                 if path == report / EXTENSION and path.read_bytes().startswith(b"\xef\xbb\xbf"):
@@ -91,12 +100,14 @@ def assessment(model_path, report_paths, analysis):
                     raise ValueError(f"Expected a metadata object: {path.relative_to(report)}")
                 if path == report / EXTENSION:
                     _extension_dependencies(document, local, model_items, model_names,
-                                            entities, dependencies)
+                                            entities, dependencies, reasons)
                 else:
                     if "$schema" in document:
                         validation = metadata_validation.validate_document(document)
                         if validation["status"] != "valid" or validation["truncated"]:
-                            raise ValueError(f"Invalid or unsupported report metadata schema: {path.relative_to(report)}")
+                            detail = validation["reason"] + "; " + str(document.get("$schema", ""))
+                            errors = ", ".join(e["path"] + ":" + e["keyword"] for e in validation["errors"][:3])
+                            report_reasons[owner].append(f"Invalid or unsupported report metadata schema: {path.relative_to(report)} ({detail}; {errors})")
                     strings = list(_strings(document))
                     for key in local:
                         if any(_mentions(value, local[key]["item"].name) for value in strings):
@@ -131,7 +142,10 @@ def assessment(model_path, report_paths, analysis):
     for key, row in rows.items():
         blockers = list(dict.fromkeys(reasons[key]))
         if key not in candidates and not blockers:
-            blockers.append("Required by a retained report extension dependency chain.")
+            blockers.extend("Required by retained report extension " + rows[source]["item"].table + "[" + rows[source]["item"].name + "]."
+                            for source in sorted(consumers[key]) if source not in candidates)
+            if not blockers:
+                blockers.append("Required by a retained report extension dependency chain.")
         needed = set()
         todo = list(consumers[key])
         while todo:
@@ -154,48 +168,65 @@ def assessment(model_path, report_paths, analysis):
     return output
 
 
-def _extension_dependencies(document, local, model_items, model_names, entities, dependencies):
+def _extension_dependencies(document, local, model_items, model_names, entities, dependencies, reasons):
     validation = metadata_validation.validate_document(document)
     if validation["status"] != "valid" or validation["truncated"]:
         raise ValueError("Report extension metadata must validate against its supported declared schema.")
     owner = next(iter(local))[0]
-    if analyzer.scan_report_extension_issues(Path(owner)):
-        raise ValueError("Report extension metadata contains invalid or unrecognized references.")
     seen = set()
+    name_counts = defaultdict(int)
+    for key in local:
+        name_counts[key[2]] += 1
     for entity in document.get("entities", []):
-        if entity["name"].casefold() not in entities:
-            raise ValueError("Report extension entity is absent from the selected model.")
         for measure in entity.get("measures", []):
             key = (owner, entity["name"].casefold(), measure["name"].casefold())
+            label = entity["name"] + "[" + measure["name"] + "]"
             if key in seen or key not in local:
                 raise ValueError("Duplicate or unreadable report extension identity.")
             seen.add(key)
-            if not measure["name"].strip() or not measure["expression"].strip():
-                raise ValueError("Empty report extension identity or expression.")
-            if measure["name"].casefold() in model_names:
-                raise ValueError("Report extension name collides with a semantic-model measure.")
-            if analyzer._expression_uses_dynamic_measure_context(measure["expression"]):
-                raise ValueError("Dynamic report extension dependencies cannot be proved.")
+            if not measure["name"].strip():
+                raise ValueError("Empty report extension identity.")
+            if entity["name"].casefold() not in entities:
+                reasons[key].append("Extension entity is absent from the selected model: " + label)
+            if not measure["expression"].strip():
+                reasons[key].append("Empty report extension expression: " + label + "; identity and inbound dependencies retained.")
+            if measure["name"].casefold() in model_names or name_counts[key[2]] > 1:
+                reasons[key].append("Report extension name is not unique across model and extension measures: " + label)
+            try:
+                refs = expression_references(measure["expression"])
+            except DaxCoverageError as exc:
+                # Opaque binding could depend on any local identity. Unlike a
+                # missing static target, this cannot safely be scoped to owner.
+                raise ValueError("Uncovered report extension DAX in " + label + ": " + str(exc)) from exc
             if local[key].get("broken_dax_refs"):
-                raise ValueError("Unresolved report extension DAX dependencies.")
-            # Qualified names resolve in this report/entity only. Bare names
-            # conservatively retain every candidate, never a global first match.
-            for table, name in dax_references(measure["expression"]):
+                reasons[key].append("Unresolved static DAX references in " + label + "; owner retained.")
+            if measure.get("references", {}).get("unrecognizedReferences"):
+                # Standard schema flag, not a new reference format. Retain the
+                # owner and every static target. Lexical closure above excludes
+                # hidden dynamic names; missing static targets cannot gain edges.
+                reasons[key].append("Producer marked unrecognized references in " + label + "; owner and static dependencies retained.")
+            for table, name in refs:
                 dependencies[key].update(target for target in local
                     if target[2] == name.casefold()
                     and (table is None or target[1] == table.casefold()))
             for ref in measure.get("references", {}).get("measures", []):
-                if ref.get("schema", "") not in ("", document["name"]):
-                    raise ValueError("Unknown report extension reference schema.")
                 target = (owner, ref["entity"].casefold(), ref["name"].casefold())
-                candidates = [i for i in model_items if i.item_type == "Measure"
-                              and analyzer.normalize_key(*i.key) == target[1:]]
-                if target not in local and not candidates:
-                    raise ValueError("Unresolved explicit report extension dependency.")
-                if ref.get("schema") and target not in local:
-                    raise ValueError("Explicit extension reference does not resolve in this report.")
-                if target in local:
-                    dependencies[key].add(target)
+                schema = ref.get("schema", "")
+                model_target = any(i.item_type == "Measure"
+                    and analyzer.normalize_key(*i.key) == target[1:] for i in model_items)
+                if schema == document["name"]:
+                    if target in local:
+                        dependencies[key].add(target)
+                    else:
+                        reasons[key].append("Unresolved explicit extension dependency in " + label)
+                elif schema == "":
+                    # Official schema: omitted/empty schema means model.
+                    if not model_target:
+                        reasons[key].append("Unresolved explicit model dependency in " + label)
+                else:
+                    reasons[key].append("Unknown explicit reference schema in " + label)
+                    if target in local:
+                        dependencies[key].add(target)
     if seen != set(local):
         raise ValueError("Report extension inventory does not match current identities.")
 

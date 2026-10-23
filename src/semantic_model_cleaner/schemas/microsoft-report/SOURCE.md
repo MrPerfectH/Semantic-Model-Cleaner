@@ -1,10 +1,10 @@
 # Microsoft report schema snapshot
 
 Upstream: https://github.com/microsoft/json-schemas
-Commit: `83ce11373faada0d01e76264a5cceb0ba70003e6`
+Commit: `5e1199a15b80e3d51198fe017b1a6fb9bb0871a6`
 Directory: `fabric/item/report`
 
-All 97 upstream JSON files are preserved byte-for-byte, including transitive
+All 113 upstream JSON files are preserved byte-for-byte, including transitive
 embedded schema dependencies. `manifest.json` records retrieval URLs, declared
 IDs and SHA-256 checksums. Microsoft's original MIT license is in `LICENSE`.
 

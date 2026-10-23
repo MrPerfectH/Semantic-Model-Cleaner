@@ -380,7 +380,7 @@ def create_plan(model_path, report_paths, operations):
     # The auto-date action checks every selected file as text for any use of the
     # tables it removes, so analyzer parser gaps elsewhere do not hide a consumer.
     if strict and not baseline.get('coverage', {}).get('complete', True) and not final_state_complete \
-            and auto_date is None:
+            and auto_date is None and not report_delete:
         raise PlanError('Refactoring requires complete supported scan coverage. Resolve metadata limitations first.')
     with tempfile.TemporaryDirectory(prefix='smc-plan-') as temp:
         staged = {k: Path(temp).resolve() / k / p.name for k, p in originals.items()}

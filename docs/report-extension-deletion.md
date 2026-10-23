@@ -9,7 +9,7 @@ The analysis JSON and browser API expose `reportMeasureDelete` on report items:
 listed `requiredGroup` can be deleted together. The UI enables Delete for these
 supported candidates. Select every required group member, then review the actual
 diff and validation before applying. Blocked items expose their reasons. These are
-operation eligibility fields; they do not change the meaning of Safe.
+operation eligibility fields. An unused blocked item receives Review with its coverage or dependency reason; a closed group receives Caution.
 
 ## Minimal operation
 
@@ -60,7 +60,7 @@ bare name conservatively retains all matching local candidates.
   additional metadata. A conservative string scan also blocks possible references
   on opaque surfaces, including stale selectors. This may retain a measure whose
   name occurs in a title or descriptive string; it never rewrites that text.
-  Invalid or unknown declared schemas and saved report DAX query files block deletion.
+  Invalid or unknown declared schemas and unsupported saved DAX query syntax block deletion within the affected report.
 - Report extension deletion is a separate plan; model changes, reference repair,
   promotion and stale cleanup must be reviewed first in their own plans.
 - Only selected measure JSON objects and their adjacent array separators are
@@ -75,3 +75,46 @@ bare name conservatively retains all matching local candidates.
 - Verification proves that current metadata matches the statically validated
   planned output. It does not refresh data, execute DAX, or establish rendered
   visual parity.
+
+
+## Coverage and identity rules
+
+Saved report `.dax` files are inspected without executing queries. Comment-only
+tabs have no dependencies. Supported DEFINE MEASURE and VAR bodies, EVALUATE and
+ORDER BY expressions are scanned; strings/comments cannot invent references.
+Query-local definitions shadow exact qualified references and unique bare names.
+All local bodies contribute external dependencies, including transitive chains
+and unused definitions. Unsupported bindings (FUNCTION/TABLE/COLUMN), unknown
+functions, dynamic measure context and incomplete lexical input fail closed.
+This reference scanner does not compile or type-check DAX.
+
+The public Microsoft [DEFINE documentation](https://learn.microsoft.com/en-us/dax/define-statement-dax)
+defines query-local scope and shadowing.
+The [reportExtension schema](https://github.com/microsoft/json-schemas/blob/5e1199a15b80e3d51198fe017b1a6fb9bb0871a6/fabric/item/report/definition/reportExtension/1.0.0/schema.json)
+defines explicit reference binding: omitted/empty schema means model; the
+extension name means that report's extension. Neither resolver falls back from a
+missing model reference to a report measure. Extension names must be unique
+across model measures and the report's extensions, even across different tables.
+
+An empty expression still has an identity and may have incoming dependencies.
+It remains retained with an explicit reason. The standard producer flag
+`unrecognizedReferences: true` also retains its owner. When complete lexical
+coverage proves the finite static reference set, every matching dependency is
+retained and independent identities may be deleted. Missing static targets do
+not invent edges to unrelated names. An opaque or dynamic expression instead
+blocks its whole report. No defective metadata is repaired or removed to obtain
+coverage; retained measure properties and bytes are preserved by the span writer.
+
+Coverage is evaluated separately for each selected report. An unsupported query,
+unknown schema or invalid metadata in one report does not poison an independent
+report's extension assessment. The plan still verifies every selected report's
+binding and bytes and rejects new unresolved references or schema errors.
+Model-wide metadata limitations cannot hide consumers of report-local measures,
+because model expressions do not bind to report extensions.
+
+The exact pinned Microsoft schema bundle now includes visualContainer 2.10–2.13
+and their dependencies. The recursive reference/string scan also covers nested
+formatting expressions in these versions. Unknown 2.14 remains blocked; a new
+version requires an official source snapshot, dependency closure and fixtures.
+Unused report rows with blocked eligibility receive Review and explicit reasons;
+dependency-closed groups receive Caution and the complete required selection.

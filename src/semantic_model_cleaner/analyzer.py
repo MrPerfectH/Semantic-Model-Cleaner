@@ -78,6 +78,8 @@ class ModelItem:
     # TMDL formatStringDefinition DAX; also appended to dax_body so its refs count as dependencies.
     format_string_expression: str = ""
     explicit_measure_refs: tuple[tuple[str, str], ...] = ()
+    # model/report/unknown binding from the official reportExtension schema.
+    explicit_measure_bindings: tuple[tuple[str, str, str], ...] = ()
     data_type: str = ""
     source_column: str = ""
     description: str = ""
@@ -2091,9 +2093,10 @@ def parse_report_extension_measures(
                 continue
             measure_name = str(measure.get("name", "")).strip()
             expression = str(measure.get("expression", "") or "")
-            if not measure_name or not expression:
+            if not measure_name:
                 continue
             explicit_refs = []
+            explicit_bindings = []
             references = measure.get("references", {})
             if isinstance(references, dict):
                 for ref in references.get("measures", []):
@@ -2103,6 +2106,9 @@ def parse_report_extension_measures(
                     ref_name = str(ref.get("name", "")).strip()
                     if ref_entity and ref_name:
                         explicit_refs.append((ref_entity, ref_name))
+                        schema = ref.get("schema", "")
+                        binding = "model" if schema == "" else "report" if schema == data.get("name") else "unknown"
+                        explicit_bindings.append((binding, ref_entity, ref_name))
 
             items.append(ModelItem(
                 item_type="Measure",
@@ -2116,6 +2122,7 @@ def parse_report_extension_measures(
                 source_file=str(report_extensions),
                 format_string=str(measure.get("formatString", "") or ""),
                 explicit_measure_refs=tuple(explicit_refs),
+                explicit_measure_bindings=tuple(explicit_bindings),
             ))
 
     return items
@@ -2240,12 +2247,17 @@ def scan_report_extension_issues(report_path: Path) -> list[ReportIssue]:
             subject = _report_extension_measure_subject(entity_name, measure)
             for required_field in ("dataType", "expression", "name"):
                 value = measure.get(required_field)
-                if not isinstance(value, str) or not value.strip():
+                if not isinstance(value, str) or (required_field != "expression" and not value.strip()):
                     issues.append(_report_extension_issue(
                         report_path=report_path,
                         issue_type="invalid_report_extension_measure",
                         message=f"{subject} is missing required field '{required_field}'.",
                     ))
+            if measure.get("expression") == "":
+                issues.append(_report_extension_issue(
+                    report_path=report_path, issue_type="empty_report_extension_expression",
+                    message=f"{subject} has an empty expression; identity is retained.",
+                ))
 
             data_type = measure.get("dataType")
             if (
@@ -4767,7 +4779,7 @@ def scoped_dependency_graphs(items: list[ModelItem]) -> dict:
         # same-name definition, including a local definition with no expression.
         source_context = context if local is model_items else [
             replace(item, dax_body="", explicit_measure_refs=()) for item in model_items
-        ] + local
+        ] + [replace(item, explicit_measure_refs=()) if item.explicit_measure_bindings else item for item in local]
         for name, builder in builders.items():
             plain = builder(source_context)
             for item in local:
@@ -4790,6 +4802,19 @@ def scoped_dependency_graphs(items: list[ModelItem]) -> dict:
                         targets |= {target for target in candidates[normalize_key(*item.key)]
                                     if target[1] == "Measure" and target != identity}
                 graphs[name][identity] = targets
+        if local is not model_items:
+            for item in local:
+                identity = item_identity(item)
+                for binding, table, measure in item.explicit_measure_bindings:
+                    pool = model_items if binding == "model" else local if binding == "report" else []
+                    matches = {item_identity(target) for target in pool
+                               if target.item_type == "Measure"
+                               and normalize_key(*target.key) == normalize_key(table, measure)}
+                    graphs["measures"].setdefault(identity, set()).update(matches - {identity})
+                    if not matches:
+                        graphs["broken"].setdefault(identity, []).append({
+                            "kind": "measure", "ref": format_item_ref((table, measure)),
+                            "message": "Unresolved explicit " + binding + " measure reference: " + format_item_ref((table, measure))})
     return graphs
 
 
@@ -4946,6 +4971,29 @@ def analyze(
             ))
             continue
         all_report_issues.extend(scan_report_extension_issues(report_path))
+        from .saved_dax import query_references, DaxCoverageError
+        local_items = [i for i in all_items if i.source_kind == "model"
+                       or Path(i.source_file).parent.parent.resolve() == report_path.resolve()]
+        for query_path in sorted(report_path.rglob("*.dax")):
+            try:
+                query_refs = query_references(query_path.read_text(encoding="utf-8-sig"))
+            except (DaxCoverageError, OSError, UnicodeError) as exc:
+                all_report_issues.append(ReportIssue(
+                    severity="warning", issue_type="unsupported_saved_dax_query",
+                    report=report_display_name(report_path), report_path=str(report_path.resolve()),
+                    artifact_kind="Saved DAX Query", artifact_path=query_path.relative_to(report_path).as_posix(),
+                    message="Saved DAX query reference coverage is incomplete: " + str(exc)))
+                continue
+            for table, name in sorted(set(query_refs), key=str):
+                for target in local_items:
+                    if target.name.casefold() != name.casefold() or (table is not None and target.table.casefold() != table.casefold()):
+                        continue
+                    all_definition_meta_usages.append(UsageRef(
+                        table=target.table, name=target.name, ref_type=target.item_type,
+                        report=report_display_name(report_path), report_path=str(report_path.resolve()),
+                        context="Saved report DAX query", source_path=str(query_path),
+                        artifact_kind="Saved DAX Query", artifact_path=query_path.relative_to(report_path).as_posix()))
+
         visual_usages, stale_visual_usages, visual_meta = scan_report_visuals(report_path, all_invalid_json_issues)
         all_visual_usages.extend(visual_usages)
         all_stale_visual_usages.extend(stale_visual_usages)
@@ -5116,7 +5164,7 @@ def analyze(
     # Every limitation is explained once; shared ones apply to every item with
     # no use found in scope, targeted ones only to the items they reference.
     invalid_report_issues = [
-        issue for issue in report_issues if issue.issue_type in {"invalid_report_json", "unsupported_report_format", "ambiguous_extension_identity"}
+        issue for issue in report_issues if issue.issue_type in {"invalid_report_json", "unsupported_report_format", "ambiguous_extension_identity", "unsupported_saved_dax_query"}
     ]
     analysis_limitations: list[dict] = []
     seen_limitation_ids: set[str] = set()
@@ -5353,6 +5401,22 @@ def analyze(
     for row in results:
         row["review_basis"] = review_basis(row)
 
+    report_deletions = {}
+    if any(row["item"].source_kind == "report" for row in results):
+        from .report_measure_delete import assessment, _entry, _key
+        report_deletions = assessment(models[0], reports, {
+            "items": results, "coverage": {"complete": not coverage_limitations,
+                                         "limitations": coverage_limitations}})
+        for row in results:
+            if row["item"].source_kind != "report":
+                continue
+            evidence = report_deletions[_key(_entry(row["item"]))]
+            row["report_measure_delete"] = evidence
+            if not evidence["eligible"] and row_usage_status(row) == "NOT USED":
+                row["removal_risk"] = "Caution" if evidence["groupEligible"] else "Review"
+                row["review_triggers"] = list(dict.fromkeys(row["review_triggers"] + evidence["reasons"]))
+                row["review_basis"] = review_basis(row)
+
     checkpoint("Building table summaries")
     # ── Table-level summary ──
     field_parameter_issues_by_table: dict[str, list[str]] = defaultdict(list)
@@ -5476,6 +5540,7 @@ def analyze(
                                key=str.casefold),
         },
         "items": results,
+        "report_measure_deletions": list(report_deletions.values()),
         "dependency_graphs": graphs,
         # Preserve scanner evidence such as hierarchy-level references that do
         # not have a same-named item row. This is an internal projection input;
@@ -5486,13 +5551,6 @@ def analyze(
         "warnings": [_serialize_warning(w) for w in warnings],
         "report_issues": [_serialize_report_issue(issue) for issue in report_issues],
     }
-    if any(row["item"].source_kind == "report" for row in results):
-        from .report_measure_delete import assessment, _entry, _key
-        deletion = assessment(models[0], reports, output)
-        output["report_measure_deletions"] = list(deletion.values())
-        for row in results:
-            if row["item"].source_kind == "report":
-                row["report_measure_delete"] = deletion[_key(_entry(row["item"]))]
     if scope is not None:
         record_report_scope(output, scope)
     return output

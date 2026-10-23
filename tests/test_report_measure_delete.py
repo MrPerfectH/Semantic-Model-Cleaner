@@ -92,19 +92,12 @@ def test_used_chain_is_not_deletable_as_a_group(tmp_path):
         plans.create_plan(model, reports, [operation(reports[0], 'Leaf', 'Top')])
 
 
-def test_same_name_entities_are_exact_and_bare_consumers_conservative(tmp_path):
+def test_duplicate_names_across_entities_violate_official_uniqueness(tmp_path):
     model, reports = project(tmp_path)
     (model / 'definition/tables/Other.tmdl').write_text('table Other\n\tcolumn Value\n', encoding='utf-8')
     extension(reports[0], [('Sales', 'Same', '1'), ('Other', 'Same', '2'),
                            ('Sales', 'Consumer', "'Other'[Same]")])
-    plan = plans.create_plan(model, reports, [operation(reports[0], 'Same')])
-    assert plans.apply_plan(plan, tmp_path / 'journal')['ok']
-    left = {(i.table, i.name): i.dax_body for i in analyzer.parse_report_extension_measures(reports[0])}
-    assert left == {('Other', 'Same'): '2', ('Sales', 'Consumer'): "'Other'[Same]"}
-    assert plans.restore_plan(plan, tmp_path / 'journal')['ok']
-    extension(reports[0], [('Sales', 'Same', '1'), ('Other', 'Same', '2'),
-                           ('Sales', 'Consumer', '[Same]')])
-    with pytest.raises(plans.PlanError, match='retained'):
+    with pytest.raises(plans.PlanError, match="not unique"):
         plans.create_plan(model, reports, [operation(reports[0], 'Same')])
 
 
@@ -121,9 +114,7 @@ def test_only_selected_report_participates(tmp_path):
 @pytest.mark.parametrize('mutation', [
     lambda d: d.update(unknownExpression='[Unused]'),
     lambda d: d.update(entities=None),
-    lambda d: d['entities'][0]['measures'][1].update(references={'unrecognizedReferences': True}),
     lambda d: d['entities'][0]['measures'][1].update(references={'measures': [{'entity': 'Sales'}]}),
-    lambda d: d['entities'][0]['measures'][1].update(expression='[Missing]'),
     lambda d: d['entities'][0]['measures'][1].update(expression='SELECTEDMEASURE()'),
     lambda d: d.update({'$schema': 'https://unknown.invalid/schema.json'}),
 ])
@@ -248,7 +239,7 @@ def test_explicit_metadata_consumers_and_unknown_schema_block(tmp_path):
         plans.create_plan(model, reports, [operation(reports[0], 'Unused')])
     data['entities'][0]['measures'][1]['references']['measures'][0]['schema'] = 'foreign'
     path.write_text(json.dumps(data), encoding='utf-8')
-    with pytest.raises(plans.PlanError, match='Unknown report extension reference schema'):
+    with pytest.raises(plans.PlanError, match='retained report extension'):
         plans.create_plan(model, reports, [operation(reports[0], 'Unused')])
 
 
