@@ -82,7 +82,8 @@ def assessment(model_path, report_paths, analysis):
                     raise ValueError("Symlinks are not supported.")
                 if path.is_file() and path.suffix.lower() == ".dax":
                     try:
-                        refs = query_references(path.read_text(encoding="utf-8-sig"))
+                        refs = query_references(path.read_text(encoding="utf-8-sig"),
+                                                items=model_items + [r["item"] for r in local.values()])
                     except DaxCoverageError as exc:
                         report_reasons[owner].append(f"Saved report DAX query coverage: {path.relative_to(report)}: {exc}")
                         continue

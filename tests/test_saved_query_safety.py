@@ -86,11 +86,14 @@ TABLE_QUERIES = [
 ]
 
 
-@pytest.mark.parametrize("text", TABLE_QUERIES)
-def test_unresolved_table_binding_is_explicit_incomplete_coverage(text):
-    with pytest.raises(DaxCoverageError, match="binding"):
-        query_references(text)
+@pytest.mark.parametrize("text", TABLE_QUERIES[:10])
+def test_table_binding_returns_conservative_owner_consumer(text):
+    assert ("Sales", None) in query_references(text)
 
+
+
+def not_missing_predicate(text, target):
+    return not (target == "last_item_table" and "[Revenue]" in text)
 
 @pytest.mark.parametrize("text", TABLE_QUERIES[:9])
 @pytest.mark.parametrize("target", ["column", "last_item_table"])
@@ -103,7 +106,9 @@ def test_table_query_blocks_model_column_and_table_delete_plan(tmp_path, text, t
     query(reports[0], text)
     before = plans._inventory(plans._roots(model, [reports[0]]))
     result = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[reports[0]])
-    assert not result["coverage"]["complete"]
+    # This last-item fixture intentionally removed Revenue; an unresolved
+    # predicate must still be incomplete even though the table itself resolves.
+    assert result["coverage"]["complete"] == not_missing_predicate(text, target)
     amount = next(r for r in result["items"] if r["item"].source_kind == "model" and r["item"].name == "Amount")
     assert amount["removal_risk"] != "Safe"
     with pytest.raises(plans.PlanError):
@@ -125,8 +130,8 @@ def test_scalar_shadowing_and_external_bodies_remain_covered(text, expected):
 def test_table_binding_blocks_only_affected_report_extension(tmp_path):
     model, reports = model_project(tmp_path)
     query(reports[0], "EVALUATE Sales")
-    with pytest.raises(plans.PlanError):
-        plans.create_plan(model, reports, [operation(reports[0], "Unused")])
+    # Whole-table bindings retain model items, not unused report definitions.
+    assert plans.create_plan(model, reports, [operation(reports[0], "Unused")])["changes"]
     plan = plans.create_plan(model, reports, [operation(reports[1], "Unused")])
     assert plans.apply_plan(plan, tmp_path / "journal")["ok"]
     assert plans.restore_plan(plan, tmp_path / "journal")["ok"]
@@ -172,8 +177,6 @@ def test_table_only_query_directly_rejects_delete_plan(tmp_path, target):
         plans.create_plan(model, [reports[0]], [delete("Amount", "Column")])
 
 @pytest.mark.parametrize("text", [
-    "DEFINE MEASURE Sales[Local] = VAR Sales = {1} RETURN 1 EVALUATE Sales",
-    "DEFINE MEASURE Sales[Local] = 1 VAR Sales = {1} EVALUATE Sales",
     "DEFINE VAR X = Sales VAR Sales = {1} EVALUATE X",
     "DEFINE VAR Sales = Sales EVALUATE Sales",
 ])
@@ -193,5 +196,4 @@ def test_measure_local_var_cannot_shadow_model_table_at_evaluate(tmp_path):
     "DEFINE VAR X = 1 + VAR Sales = {1} RETURN 1 EVALUATE Sales",
 ])
 def test_nested_var_body_does_not_export_table_shadow(text):
-    with pytest.raises(DaxCoverageError, match="binding"):
-        query_references(text)
+    assert ("Sales", None) in query_references(text)

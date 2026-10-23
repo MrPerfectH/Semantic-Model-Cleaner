@@ -5133,22 +5133,23 @@ def analyze(
         all_bookmark_usages.extend(scanned["bookmark_usages"])
         all_stale_bookmark_usages.extend(scanned["stale_bookmark_usages"])
         all_definition_meta_usages.extend(scanned["definition_meta_usages"])
-        from .saved_dax import query_references, DaxCoverageError
+        from .saved_dax import query_references, DaxCoverageError, DaxBindingError
         local_items = [i for i in all_items if i.source_kind == "model"
                        or Path(i.source_file).parent.parent.resolve() == report_path.resolve()]
-        for query_path in sorted(report_path.rglob("*.dax")):
+        for query_path in sorted(p for p in report_path.rglob("*")
+                                 if p.is_file() and p.suffix.casefold() == ".dax"):
             try:
-                query_refs = query_references(query_path.read_text(encoding="utf-8-sig"))
+                query_refs = query_references(query_path.read_text(encoding="utf-8-sig"), items=local_items)
             except (DaxCoverageError, OSError, UnicodeError) as exc:
                 all_report_issues.append(ReportIssue(
-                    severity="warning", issue_type="unsupported_saved_dax_query",
+                    severity="error" if isinstance(exc, DaxBindingError) else "warning", issue_type="unsupported_saved_dax_query",
                     report=report_display_name(report_path), report_path=str(report_path.resolve()),
                     artifact_kind="Saved DAX Query", artifact_path=query_path.relative_to(report_path).as_posix(),
                     message="Saved DAX query reference coverage is incomplete: " + str(exc)))
                 continue
             for table, name in sorted(set(query_refs), key=str):
                 if name is None:
-                    # A local DEFINE MEASURE still requires its model table.
+                    # Whole-table results and DEFINE owners require their model table.
                     # Retain all its model items so last-item deletion cannot
                     # remove the owner, including through cached plan analyses.
                     targets = [target for target in local_items if target.source_kind == "model"
