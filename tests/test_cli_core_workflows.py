@@ -40,6 +40,8 @@ def test_reviewed_cli_roundtrips_preserve_report_consumers(project, tmp_path, ki
     root, model, report, operations = project
     if kind == "promote":
         add_visual(report, "LocalPage", name="Local")
+    visual_path = report / "definition/pages/P/visuals/V/visual.json"
+    original_visual = json.loads(visual_path.read_text(encoding="utf-8"))
     before = snapshot(root)
     operation = {"kind": kind, **operations[kind]}
     if kind == "clean_stale":
@@ -60,7 +62,7 @@ def test_reviewed_cli_roundtrips_preserve_report_consumers(project, tmp_path, ki
     if kind == "rename":
         usage = run(tmp_path, ["usage", *select(project), "--table", "Sales", "--item", "Net Revenue", "--format", "json"])
         assert usage["report_used"] and usage["cleanup"] == "Blocked"
-        visual = json.loads((report / "definition/pages/P/visuals/V/visual.json").read_text(encoding="utf-8"))
+        visual = json.loads(visual_path.read_text(encoding="utf-8"))
         assert visual["visual"]["query"]["queryState"]["Values"]["projections"][0]["field"]["Measure"]["Property"] == "Net Revenue"
     elif kind == "move":
         usage = run(tmp_path, ["usage", *select(project), "--table", "Measures", "--item", "Revenue", "--format", "json"])
@@ -74,8 +76,7 @@ def test_reviewed_cli_roundtrips_preserve_report_consumers(project, tmp_path, ki
         assert usage["report_used"] and usage["item"]["source"] == "model"
     else:
         run(tmp_path, ["clean-stale", *select(project), "--format", "json"])
-        visual = json.loads((report / "definition/pages/P/visuals/V/visual.json").read_text(encoding="utf-8"))
-        original_visual = json.loads(before["R.Report/definition/pages/P/visuals/V/visual.json"])
+        visual = json.loads(visual_path.read_text(encoding="utf-8"))
         assert visual["visual"]["query"] == original_visual["visual"]["query"]
         usage = run(tmp_path, ["usage", *select(project), "--table", "Sales", "--item", "Revenue", "--format", "json"])
         assert usage["report_used"]
