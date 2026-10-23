@@ -10,14 +10,21 @@ from . import analyzer
 
 
 def evaluate_deletion_policy(
-    model_path: Path, report_paths: list[Path], actions: list[dict]
+    model_path: Path, report_paths: list[Path], actions: list[dict], *,
+    cache: "analyzer.AnalysisCache | None" = None,
 ) -> dict:
-    """Validate deletion with fresh analysis; used by all mutation workflows."""
-    return _evaluate_deletion_policy(model_path, report_paths, actions)
+    """Validate deletion with fresh analysis; used by all mutation workflows.
+
+    ``cache`` lets one change plan share the parse of its unchanged inputs
+    between this check and its own baseline analysis (#169). It only replays
+    files this run already read; it never stands in for the scan itself.
+    """
+    return _evaluate_deletion_policy(model_path, report_paths, actions, cache=cache)
 
 
 def _evaluate_deletion_policy(
     model_path: Path, report_paths: list[Path], actions: list[dict], *, analysis: dict | None = None,
+    cache: "analyzer.AnalysisCache | None" = None,
 ) -> dict:
     """Return {ok, errors, violations, scope}; never write project files.
 
@@ -73,7 +80,8 @@ def _evaluate_deletion_policy(
     # The public entry point always scans afresh before any mutation workflow.
     if analysis is None:
         try:
-            analysis = analyzer.analyze(model_path.parent, model_paths=[model_path], report_paths=reports)
+            analysis = analyzer.analyze(model_path.parent, model_paths=[model_path], report_paths=reports,
+                                        cache=cache)
         except (Exception, SystemExit) as exc:
             reject("SMC-D001", f"Fresh analysis failed: {exc}")
             return result()

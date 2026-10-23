@@ -48,10 +48,10 @@ def test_unchanged_query_staged_and_exact_lifecycle(tmp_path, monkeypatch):
     before = plans._inventory(roots)
     original_analyze = plans._analyze
     staged_seen = []
-    def inspect(staged):
+    def inspect(staged, cache=None):
         if staged["model"] != model:
             staged_seen.append((staged["report-1"] / "DAXQueries/query.dax").read_bytes())
-        return original_analyze(staged)
+        return original_analyze(staged, cache)
     monkeypatch.setattr(plans, "_analyze", inspect)
     plan = plans.create_plan(model, [reports[0]], [delete()])
     assert staged_seen == [path.read_bytes()]
@@ -141,9 +141,9 @@ def test_saved_query_drift_during_prepare_blocks_plan(tmp_path, monkeypatch, dri
         path.unlink()
     original_analyze = plans._analyze
     changed = False
-    def race(roots):
+    def race(roots, cache=None):
         nonlocal changed
-        result = original_analyze(roots)
+        result = original_analyze(roots, cache)
         if not changed:
             changed = True
             if drift == "delete":

@@ -62,13 +62,34 @@ def _roots(model_path, report_paths):
     return {('model' if i == 0 else f'report-{i}'): p for i, p in enumerate(paths)}
 
 
+def _scan(root):
+    """Every path below root in Path.rglob('*') order, typed from directory listings.
+
+    Path.is_symlink() and Path.is_file() each open a handle per entry on Windows;
+    a bulk plan (#169) spent most of its inventory time there. DirEntry answers
+    both from the listing with the same meaning: symlinks are reported, never
+    followed, and only regular files are read.
+    """
+    found = []
+    pending = [Path(root)]
+    while pending:
+        with os.scandir(pending.pop()) as entries:
+            for entry in entries:
+                path = Path(entry.path)
+                symlink = entry.is_symlink()
+                found.append((path, symlink, not symlink and entry.is_file(follow_symlinks=False)))
+                if not symlink and entry.is_dir(follow_symlinks=False):
+                    pending.append(path)
+    return sorted(found)
+
+
 def _inventory(roots):
     inventory = {}
     for artifact, root in roots.items():
-        for path in sorted(root.rglob('*')):
-            if path.is_symlink():
+        for path, symlink, is_file in _scan(root):
+            if symlink:
                 raise PlanError(f'Symlinks are not supported in change-plan scope: {path}')
-            if path.is_file() and path.suffix.lower() in SUFFIXES:
+            if is_file and path.suffix.lower() in SUFFIXES:
                 inventory[f'{artifact}/{path.relative_to(root).as_posix()}'] = path.read_bytes()
     return inventory
 
@@ -218,17 +239,21 @@ def _execute(op, roots):
     raise PlanError(f'Unsupported operation kind: {kind}')
 
 
-def _analyze(roots):
+def _analyze(roots, cache=None):
     try:
         reports = {k: p for k, p in roots.items() if k != 'model'}
+        # The files under these roots do not change while this function runs, so
+        # the whole-scope and per-report analyses share one parse of them (#169).
+        if cache is None:
+            cache = analyzer.AnalysisCache()
         result = analyzer.analyze(roots['model'].parent, model_paths=[roots['model']],
-                                  report_paths=list(reports.values()))
+                                  report_paths=list(reports.values()), cache=cache)
         # Report display names are not unique. Analyze report issues separately
         # so identical visual paths in distinct artifacts never hide new errors.
         result['_report_issues_by_artifact'] = {}
         for key, path in reports.items():
             single = result if len(reports) == 1 else analyzer.analyze(
-                roots['model'].parent, model_paths=[roots['model']], report_paths=[path])
+                roots['model'].parent, model_paths=[roots['model']], report_paths=[path], cache=cache)
             result['_report_issues_by_artifact'][key] = single.get('report_issues', [])
         return result
     except SystemExit as exc:
@@ -351,12 +376,18 @@ def create_plan(model_path, report_paths, operations):
         operations = [auto_date_tables.planned_operation(auto_date)]
     from .cleanup_policy import evaluate_deletion_policy
     actions = [a for op in operations if op.get('kind') == 'actions' for a in op.get('actions', [])]
-    policy = evaluate_deletion_policy(originals['model'], list(originals.values())[1:], actions)
+    # The originals are read-only here and the hash check at the end rejects any
+    # change to them, so the policy check and the baseline analysis share one parse.
+    analysis_cache = analyzer.AnalysisCache()
+    policy = evaluate_deletion_policy(originals['model'], list(originals.values())[1:], actions,
+                                      cache=analysis_cache)
     if not policy['ok']:
         raise PlanError('; '.join(policy['errors']))
     from . import metadata_validation
-    schema_before = metadata_validation.validate_metadata(before)
-    baseline = _analyze(originals)
+    # Unchanged documents validate once; the after snapshot replays their records.
+    schema_memo = {}
+    schema_before = metadata_validation.validate_metadata(before, memo=schema_memo)
+    baseline = _analyze(originals, analysis_cache)
     report_deletions = []
     if report_delete:
         assessments = {report_measure_delete._key(r['entry']): r
@@ -384,9 +415,12 @@ def create_plan(model_path, report_paths, operations):
         staged = {k: Path(temp).resolve() / k / p.name for k, p in originals.items()}
         for path in staged.values():
             path.mkdir(parents=True)
+        made = set()
         for key, content in before.items():
             path = _path(staged, key)
-            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.parent not in made:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                made.add(path.parent)
             path.write_bytes(content)
         for key, content in queries.items():  # Read-only, so the staged re-check sees the same queries.
             artifact, _, relative = key.partition('/')
@@ -403,7 +437,7 @@ def create_plan(model_path, report_paths, operations):
             _execute(mapped, staged)
         after = _inventory(staged)
         _validate_json(after, tolerate_existing=None if strict else before)
-        schema_after = metadata_validation.validate_metadata(after)
+        schema_after = metadata_validation.validate_metadata(after, memo=schema_memo)
         schema_comparison = metadata_validation.compare_validation(schema_before, schema_after)
         if schema_comparison["new_errors"] or schema_comparison["lost_validation"] or schema_comparison["truncated"]:
             raise PlanError("Change introduces schema errors, loses declared schema validation, or exceeds the schema error limit. Repair the metadata before applying.")
