@@ -6,6 +6,7 @@ from pathlib import Path
 
 from . import __version__, insights
 from .cli_contract import ArgumentParser, emit_json, json_requested
+from .cli_selection import add_path_options, resolve_path_options
 
 
 COMMANDS = {
@@ -26,7 +27,10 @@ def capabilities():
                           "options": _options(name)} for name, description in COMMANDS.items()],
             "structured_item_fields": {"status_code": ["used", "indirect", "unused", "broken"], "via": "Immediate model consumers; status retains its legacy display label"},
             "formats": ["text", "json"], "default_format": "text (capabilities: json)",
-            "path_base": "PROJECT for --model and each exact --report; PROJECT is relative to CWD",
+            "path_base": "PROJECT for --model-path/--report-path and legacy --model/--report; PROJECT is relative to CWD",
+            "artifact_selection": {"model": "--model-path", "reports": "--report-path (repeatable)",
+                                   "path_base": "PROJECT", "absolute_paths": True,
+                                   "legacy_selectors": "Existing --model/--report meanings are unchanged; do not mix selectors for the same artifact type."},
             "matching": "Exact case-insensitive --table and --item; --search is a substring",
             "defaults": {"project": ".", "source": "model", "limit": 20, "offset": 0},
             "limits": {"max_page_size": 1000, "unbounded": "--all", "pagination": "Each collection has total, offset, limit, has_more, items; counts cover all results."},
@@ -60,6 +64,8 @@ def _options(command):
         return options
     options += [{"flag": "--model", "value": "Exact Semantic Model path"},
                 {"flag": "--report", "value": "Exact connected Report path", "repeatable": True},
+                {"flag": "--model-path", "value": "Exact Semantic Model path relative to PROJECT (or absolute)"},
+                {"flag": "--report-path", "value": "Exact connected Report path relative to PROJECT (or absolute)", "repeatable": True},
                 {"flag": "--limit", "type": "integer", "minimum": 1, "maximum": 1000, "default": 20},
                 {"flag": "--offset", "type": "integer", "minimum": 0, "default": 0}]
     options.append({"flag": "--model-only", "type": "boolean"})
@@ -87,6 +93,7 @@ def _parser(command, machine):
     if command == "capabilities":
         return parser
     parser.add_argument("project_path", nargs="?", default=".")
+    add_path_options(parser)
     parser.add_argument("--model", help="Exact Semantic Model folder, relative to PROJECT.")
     parser.add_argument("--report", action="append", help="Exact connected Report folder, relative to PROJECT; repeatable.")
     parser.add_argument("--limit", type=int, default=20, help="Rows per collection (1-1000, default 20). Totals remain complete.")
@@ -189,6 +196,9 @@ def render(command, result):
         more("Tables", result["tables"])
     elif command == "review":
         print("\nReview " + ("passed." if result["ok"] else "found issues meeting the threshold."))
+        for requirement in result.get("gate", {}).get("requirements", []):
+            if not requirement["passed"]:
+                print("  Gate " + clean(requirement["requirement"]) + ": " + clean(requirement["reason"]))
         for row in result["groups"]:
             print(f"  {row['rule']} {row['label']}: {row['count']} ({row['suppressed']} suppressed)")
         for row in result["findings"]["items"]:
@@ -221,7 +231,8 @@ def main(argv):
                 parsed.limit = None
             if command == "items" and parsed.unused and parsed.used_in_reports:
                 raise insights.QueryError("--unused cannot be combined with --used-in-reports.")
-            root, model, reports, scope = insights.select_scope(parsed.project_path, parsed.model, parsed.report,
+            exact_model, exact_reports = resolve_path_options(parsed, parsed.project_path)
+            root, model, reports, scope = insights.select_scope(parsed.project_path, exact_model or parsed.model, exact_reports or parsed.report,
                                                                getattr(parsed, "model_only", False))
             if command == "review":
                 from .ci import run_check

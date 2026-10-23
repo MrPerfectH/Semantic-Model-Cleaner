@@ -4,6 +4,7 @@
 
 ```sh
 smc check ./project --format json
+smc check ./project --model-path Models/Sales.SemanticModel --report-path Reports/Executive.Report
 smc check ./project --model Models/Sales.SemanticModel --fail-on warning
 smc check ./project --report Executive --report Operations
 smc check ./project --write-baseline smc-baseline.json
@@ -11,6 +12,12 @@ smc check ./project --baseline smc-baseline.json
 ```
 
 `--model` is an artifact path relative to the project directory (an absolute path also works). Without it, exactly one discovered semantic model is required. Report discovery is under the project directory. Repeatable `--report` arguments are case-insensitive name substring filters, applied to reports bound to the selected model. Unmatched selection is an input error. `--format` defaults to `json`; `text` is intended for interactive use.
+
+For new scripts, `--model-path` and repeatable `--report-path` select exact folders
+relative to PROJECT (absolute paths also work). These options work consistently
+across project commands. The `--model`/`--report` behavior above is retained for
+compatibility; do not mix selectors for the same artifact type. See the
+[selection and migration guide](README.md#recommended-exact-selection).
 
 Exit codes:
 
@@ -58,10 +65,46 @@ follow the existing binding validation.
 | SMC006 | source severity | Other Report Health issue, including missing references. |
 | SMC007 | warning | Analyzer warning, such as unresolved field parameter targets. |
 | SMC008 | error | A discovered report has an unverified binding and was excluded. |
+| SMC009 | warning | Naming policy proposes a change. |
+| SMC010 | error | Naming policy has conflicting targets. |
+| SMC011 | error | Declared Report schema validation failed or its errors were truncated. |
+| SMC012 | warning | JSON metadata has no supported declared schema validation. |
+
+## Repository gates and Markdown summaries
+
+An optional `ci_gate` in `.smc-policy.json` can make naming findings block CI
+while unused-item findings stay advisory, or fail specifically on unused items
+with a selected Cleanup Recommendation. It can independently require complete
+dependency analysis, complete JSON schema validation, and all known connected
+Reports. See [gate settings and precedence](review-policy.md#ci-gates). Findings
+retain their severity, identity and scope; `gate.blocking` and `gate.reason`
+explain the effective decision. The check and focused review use the same gate.
+
+```sh
+smc check ./bi --format json --summary-output smc-summary.md > smc-findings.json
+```
+
+`--summary-output` writes a UTF-8 Markdown companion, leaving JSON stdout and the
+check exit code unchanged. A findings/requirement failure is distinct from an
+input/execution failure. Selected/excluded Reports, coverage, gate outcomes,
+suppressed/reviewed findings and available source locations remain visible.
+Report Health and Analysis Limitations have separate sections.
+
+Metadata is escaped; at most 200 findings, 100 entries per scope collection and
+20 execution errors are shown. Each metadata field is capped at 800 characters.
+Truncation/omission is explicit; use JSON for full details. The summary does not
+include entire model expressions, but can contain confidential names and paths.
+It is written for handled input/execution errors after argument parsing succeeds;
+argument syntax errors do not create a summary.
+
+Use an existing external output directory. Artifact folders and resolved aliases
+are protected. A summary cannot overwrite policy, baseline input, or baseline
+output; existing multiply-linked outputs are refused. Unsafe destinations or
+summary write failures return exit 2. The CLI does not post comments or upload data.
 
 ## Baselines
 
-A baseline is `{ "schema_version": "1.0", "fingerprints": ["..."] }`. `--write-baseline` writes the current eligible fingerprints; it does not change the current check's exit code. Commit the file after reviewing the findings, then use `--baseline` in CI. Suppressed findings remain in output and counts. SMC002, SMC003, and SMC008 cannot be baselined, so accepted debt cannot hide missing coverage. A baseline is not a deletion authorization. Baseline output must be outside Semantic Model and Report artifact folders; symlink destinations are checked too.
+A baseline is `{ "schema_version": "1.0", "fingerprints": ["..."] }`. `--write-baseline` writes the current eligible fingerprints; it does not change the current check's exit code. Commit the file after reviewing the findings, then use `--baseline` in CI. Suppressed findings remain in output and counts. SMC002, SMC003, SMC008, SMC010, SMC011 and SMC012 cannot be baselined, so accepted debt cannot hide missing coverage or protected validation failures. A baseline is not a deletion authorization. Baseline output must be outside Semantic Model and Report artifact folders; symlink destinations are checked too.
 
 ## Shared deletion policy
 
@@ -85,8 +128,10 @@ These are observations for one synthetic fixture, not a performance guarantee. T
 
 ## GitHub Actions example
 
-This assumes the model/report project is under `bi/`. Replace that path. The
-example pins the public beta tag so tool behavior cannot change between runs.
+This assumes the model/report project is under `bi/` with a reviewed
+`.smc-policy.json`. Replace that path and the tool ref placeholder with a reviewed
+commit containing the new gate/summary features. Older beta tags do not provide
+these options. Keep that ref pinned so behavior cannot change between runs.
 
 ```yaml
 jobs:
@@ -97,25 +142,33 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MrPerfectH/Semantic-Model-Cleaner
-          ref: 'v0.4.0b2'
+          ref: '<reviewed-commit-containing-this-feature>'
           path: .tools/smc
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
       - run: python -m pip install ./.tools/smc
-      - run: smc check ./bi --format json > smc-findings.json
+      - run: smc check ./bi --format json --summary-output smc-summary.md > smc-findings.json
+      - name: Show check summary
+        if: always()
+        run: |
+          if [ -f smc-summary.md ]; then
+            cat smc-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: semantic-check
-          path: smc-findings.json
+          path: |
+            smc-findings.json
+            smc-summary.md
 ```
 
 ## Azure Pipelines example
 
-This example checks out the public beta tag from GitHub, then scans only `bi/`
-in the calling repository. Replace the project path. The final step publishes
-findings even when the policy gate fails.
+This example checks out the reviewed tool commit from GitHub, then scans only
+`bi/` in the calling repository. Replace the project path and ref placeholder.
+It publishes findings and displays the summary even when the policy gate fails.
 
 ```yaml
 pool:
@@ -128,15 +181,23 @@ steps:
   - bash: |
       set -euo pipefail
       git clone https://github.com/MrPerfectH/Semantic-Model-Cleaner.git .tools/smc
-      git -C .tools/smc checkout 'v0.4.0b2'
+      git -C .tools/smc checkout '<reviewed-commit-containing-this-feature>'
       python -m pip install ./.tools/smc
     displayName: Install reviewed Semantic Model Cleaner
-  - bash: smc check ./bi --format json > smc-findings.json
+  - bash: |
+      mkdir -p smc-results
+      smc check ./bi --format json --summary-output smc-results/summary.md > smc-results/findings.json
     displayName: Check model and report references
+  - bash: |
+      if [ -f smc-results/summary.md ]; then
+        echo "##vso[task.uploadsummary]$PWD/smc-results/summary.md"
+      fi
+    condition: always()
+    displayName: Show check summary
   - task: PublishPipelineArtifact@1
     condition: always()
     inputs:
-      targetPath: smc-findings.json
+      targetPath: smc-results
       artifact: semantic-check
 ```
 

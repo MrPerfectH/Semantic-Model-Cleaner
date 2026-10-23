@@ -5,6 +5,7 @@ from pathlib import Path
 
 from . import analyzer, review_policy
 from .analysis_export import validate_export_destination
+from .cli_selection import add_path_options, resolve_path_options, select_exact_reports
 
 
 def main(argv=None) -> int:
@@ -13,6 +14,7 @@ def main(argv=None) -> int:
     policy = commands.add_parser("policy")
     policy.add_argument("action", choices=("show", "validate", "init", "add", "remove"))
     policy.add_argument("project_path", nargs="?", default=".")
+    add_path_options(policy)
     policy.add_argument("--file", help="Policy path inside the project (default .smc-policy.json).")
     policy.add_argument("--finding", help="Finding fingerprint from smc check.")
     policy.add_argument("--model", help="Model path relative to project_path.")
@@ -25,6 +27,7 @@ def main(argv=None) -> int:
     naming = commands.add_parser("naming")
     naming.add_argument("action", choices=("preview",))
     naming.add_argument("project_path", nargs="?", default=".")
+    add_path_options(naming)
     naming.add_argument("--file", help="Policy path inside the project.")
     naming.add_argument("--model", help="Model path relative to project_path.")
     naming.add_argument("--report", action="append", help="Exact report path relative to project_path.")
@@ -32,6 +35,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     root = Path(args.project_path).resolve()
     try:
+        exact_model, exact_reports = resolve_path_options(args, root)
         if not root.is_dir():
             raise review_policy.PolicyError("Project directory does not exist.")
         if args.file and not (root / args.file).is_file() and not (args.command == "policy" and args.action == "init"):
@@ -51,10 +55,13 @@ def main(argv=None) -> int:
                 current = review_policy.remove_decision(root, args.id, args.file)
             print(json.dumps({"ok": True, "policy": current}, indent=2))
             return 0
-        models = [(root / args.model).resolve()] if args.model else analyzer.discover_models([root])
+        models = [exact_model] if exact_model else ([(root / args.model).resolve()] if args.model else analyzer.discover_models([root]))
         if len(models) != 1:
             raise review_policy.PolicyError("Select exactly one Semantic Model using --model.")
-        reports = [(root / path).resolve() for path in args.report] if args.report else analyzer.filter_reports_bound_to_model(analyzer.discover_reports([root]), models[0])
+        reports = exact_reports or ([(root / path).resolve() for path in args.report] if args.report else analyzer.filter_reports_bound_to_model(analyzer.discover_reports([root]), models[0]))
+        if exact_reports:
+            select_exact_reports(exact_reports, [report for report in exact_reports
+                if analyzer.report_binding_status(report, models[0])['status'] in analyzer.BOUND_REPORT_STATUSES])
         if args.command == "policy":
             if not all((args.finding, args.disposition, args.reason, args.owner, args.expires_on)):
                 raise review_policy.PolicyError("policy add requires --finding, --disposition, --reason, --owner, and --expires-on.")

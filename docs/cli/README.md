@@ -20,6 +20,43 @@ their versioned options with `smc capabilities`.
 
 Relative project/search paths start at the current working directory (CWD).
 
+### Recommended exact selection
+
+Usually no selectors are needed: SMC discovers one Semantic Model and its connected
+Reports. When selecting explicitly, use `--model-path` and repeatable `--report-path`.
+They select exact artifact folders **relative to PROJECT**, or accept absolute
+paths, consistently across analysis, `clean-stale`, `check`, focused queries,
+`policy`, `naming preview`, and `plan`.
+
+From a terminal outside `project`, these select the same artifacts:
+
+```sh
+smc project --model-path Models/Sales.SemanticModel --report-path Reports/Executive.Report --format json
+smc check project --model-path Models/Sales.SemanticModel --report-path Reports/Executive.Report
+smc items project --model-path Models/Sales.SemanticModel --report-path Reports/Executive.Report
+smc plan project --model-path Models/Sales.SemanticModel --report-path Reports/Executive.Report --operations operations.json -o review/changes.plan.json
+```
+
+Repeat `--report-path` to select additional connected Reports. Names containing
+spaces require shell quoting. Missing folders, missing `definition` directories,
+unconnected Reports and contradictory selectors fail rather than silently using
+discovery or broadening a name search. A narrowed Report scope still does not
+verify external consumers or prove global non-use.
+
+### Compatibility and migration
+
+Existing scripts keep their current behavior. The table below describes **legacy
+selectors**, which are retained for compatibility. For new scripts, prefer the
+canonical path options above. Do not combine `--model-path` with `--model` or
+`--models-path`; do not combine `--report-path` with `--report`, `--reports-path`,
+`--all-reports` or `--model-only`. A canonical model selector can be used with a
+legacy Report selector, and vice versa; each legacy selector keeps its meaning.
+
+To migrate a name filter such as `check --report Executive`, identify the exact
+Report(s) it selected and supply a `--report-path` for each. To migrate legacy
+`plan` paths, express them relative to PROJECT, or retain absolute paths. Output,
+operations, baseline and journal locations remain relative to CWD.
+
 | Command family | `--model` | `--report` | Other path bases |
 | --- | --- | --- | --- |
 | Analysis, `clean-stale` | Case-insensitive name substring filter | Name substring filter on connected Reports | `--models-path`, `--reports-path`: CWD, including direct artifact search roots |
@@ -129,5 +166,9 @@ create backups as a substitute for refusing unsafe export destinations.
 
 See [reviewed plans](plans.md), [CI checks](check.md), and
 [review policy and naming](review-policy.md) for operation-specific limits.
+Checks support repository-configured [CI gates](review-policy.md#ci-gates) and
+`--summary-output FILE` for a bounded Markdown artifact alongside JSON stdout.
+See [core workflow verification](workflow-verification.md) for the existing
+coverage audit and public CLI rename/promotion/cleanup scenarios.
 Machine-readable operations schemas and new AI integrations remain separate
 follow-up work.
