@@ -319,7 +319,7 @@ Analyzer-specific usage and caveats are documented in [scripts/analyze_model_usa
 
 ## Reviewed CLI changes
 
-The CLI and web UI share a staged change-plan engine for model cleanup, renames, measure moves, report-measure promotion and report repairs. Prepare a plan from an operations JSON file, inspect its exact differences, then apply it with freshness checks and a recovery journal:
+The CLI and web UI share a staged change-plan engine for model cleanup, renames, measure moves, [report extension measure deletion](docs/report-extension-deletion.md), report-measure promotion and report repairs. Prepare a plan from an operations JSON file, inspect its exact differences, then apply it with freshness checks and a recovery journal:
 
 ```bash
 smc plan /path/to/project --operations operations.json -o review/change.plan.json

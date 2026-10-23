@@ -5486,6 +5486,13 @@ def analyze(
         "warnings": [_serialize_warning(w) for w in warnings],
         "report_issues": [_serialize_report_issue(issue) for issue in report_issues],
     }
+    if any(row["item"].source_kind == "report" for row in results):
+        from .report_measure_delete import assessment, _entry, _key
+        deletion = assessment(models[0], reports, output)
+        output["report_measure_deletions"] = list(deletion.values())
+        for row in results:
+            if row["item"].source_kind == "report":
+                row["report_measure_delete"] = deletion[_key(_entry(row["item"]))]
     if scope is not None:
         record_report_scope(output, scope)
     return output
@@ -5698,6 +5705,7 @@ def format_json_output(results: dict) -> str:
             "table": r["item"].table,
             "name": r["item"].name,
             "sourceKind": r["item"].source_kind,
+            "reportMeasureDelete": r.get("report_measure_delete"),
             "sourceArtifact": r["item"].source_artifact or None,
             "sourceFile": r["item"].source_file or None,
             "displayFolder": r["item"].display_folder,

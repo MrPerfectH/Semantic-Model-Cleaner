@@ -220,6 +220,8 @@ def test_wheel_smoke_accepts_current_installed_operations_contract():
     lambda capabilities, contract: capabilities.update(tool_version='wrong'),
     lambda capabilities, contract: capabilities.update(operations_schema_version='2.0'),
     lambda capabilities, contract: capabilities['operations'].remove('auto_date_tables'),
+    lambda capabilities, contract: capabilities['operations'].remove('delete_report_measures'),
+    lambda capabilities, contract: contract['$defs'].pop('delete_report_measures'),
     lambda capabilities, contract: contract['$defs'].pop('auto_date_tables'),
     # Keep the same count while substituting an unsupported operation.
     lambda capabilities, contract: contract['$defs'].update(
