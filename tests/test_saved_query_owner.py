@@ -103,3 +103,16 @@ def test_define_owner_blocks_explicit_whole_table_delete(tmp_path, text):
     with pytest.raises(plans.PlanError):
         plans.create_plan(model, reports, [deletion(item_type='Table')])
     assert plans._inventory(roots) == before
+
+
+@pytest.mark.parametrize('text', QUERIES)
+def test_rename_cannot_strand_define_owner(tmp_path, text):
+    model, reports = fixture(tmp_path)
+    path = query(reports[0], text)
+    roots = plans._roots(model, reports)
+    before = plans._inventory(roots)
+    with pytest.raises(plans.PlanError, match='unresolved references'):
+        plans.create_plan(model, reports, [{'kind': 'rename', 'table_renames': [
+            {'table': 'Sales', 'target_table': 'Renamed'}]}])
+    assert plans._inventory(roots) == before
+    assert path.read_text() == text

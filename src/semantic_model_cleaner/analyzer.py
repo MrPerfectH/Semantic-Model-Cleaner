@@ -5155,7 +5155,7 @@ def analyze(
                                and target.table.casefold() == table.casefold()]
                     if not targets:
                         all_report_issues.append(ReportIssue(
-                            severity="warning", issue_type="unsupported_saved_dax_query",
+                            severity="error", issue_type="unsupported_saved_dax_query",
                             report=report_display_name(report_path), report_path=str(report_path.resolve()),
                             artifact_kind="Saved DAX Query", artifact_path=query_path.relative_to(report_path).as_posix(),
                             message="Saved DAX DEFINE MEASURE owner table cannot be resolved from model items: " + table))
