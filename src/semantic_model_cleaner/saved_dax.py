@@ -170,6 +170,63 @@ def query_references(text):
         raise DaxCoverageError("Saved DAX query has no EVALUATE statement.")
     if word(0, "define") and not definitions and not any(word(n, "var") for n in range(len(tokens))):
         raise DaxCoverageError("Empty or unsupported DEFINE block.")
+    # Item references alone cannot describe a whole-table result: removing any
+    # column can change EVALUATE/FILTER/ALL/VALUES(table). Until table lineage
+    # is represented, standalone table bindings must make coverage incomplete.
+    # Only query-global DEFINE VAR names have a provable scope here; local VAR
+    # expression scopes, VAR after MEASURE, and other bare identifiers are
+    # deliberately unsupported. A VAR is visible only in later bindings/evaluation.
+    variables = {}
+    pending_variable = None
+    measure_body = False
+    variable_declarations = set()
+    depth = 0
+    evaluated = False
+    for n, token in enumerate(tokens):
+        if token.kind == "punctuation":
+            if token.value in "({":
+                depth += 1
+            elif token.value in ")}":
+                depth -= 1
+        if word(n, "return"):
+            raise DaxCoverageError("Unsupported local VAR binding scope.")
+        if depth == 0 and any(word(n, keyword) for keyword in ("var", "measure", "evaluate")):
+            if pending_variable is not None:
+                variables[pending_variable] = n
+                pending_variable = None
+            if word(n, "measure"):
+                measure_body = True
+        if word(n, "evaluate") and depth == 0:
+            evaluated = True
+        if not word(n, "var"):
+            continue
+        if (depth or evaluated or measure_body or not word(0, "define") or n + 3 >= len(tokens)
+                or tokens[n + 1].kind != "identifier" or tokens[n + 2].value != "="):
+            raise DaxCoverageError("Unsupported local or malformed VAR binding.")
+        name = tokens[n + 1].value.casefold()
+        if name in variables:
+            raise DaxCoverageError("Ambiguous duplicate VAR binding.")
+        variables[name] = len(tokens)  # Self/forward references have no proven binding.
+        pending_variable = name
+        variable_declarations.add(n + 1)
+    keywords = {"define", "measure", "evaluate", "var", "order", "by",
+                "asc", "desc", "start", "at", "return", "in", "not",
+                "and", "or", "true", "false"}
+    for n, token in enumerate(tokens):
+        if token.kind not in {"identifier", "table"}:
+            continue
+        following = tokens[n + 1] if n + 1 < len(tokens) else None
+        if following and following.kind == "object":
+            continue  # Explicit item owner, including DEFINE MEASURE owner.
+        if token.kind == "identifier":
+            if n in variable_declarations or token.value.casefold() in keywords:
+                continue
+            if following and following.value == "(":
+                continue  # covered_tokens already checked the function allowlist.
+            available = variables.get(token.value.casefold())
+            if available is not None and n >= available:
+                continue
+        raise DaxCoverageError("Unsupported standalone table or identifier binding: " + token.value)
     refs = []
     names = {name for _, name in local}
     for n, token in enumerate(tokens):

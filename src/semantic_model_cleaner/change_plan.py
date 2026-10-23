@@ -20,7 +20,7 @@ import uuid
 from . import __version__, analyzer, auto_date_tables, report_writer, tmdl_writer, report_measure_delete
 
 SUFFIXES = {'.tmdl', '.json', '.pbir', '.pbism'}
-# Saved DAX query files: read-only inputs of the auto-date action only; never written.
+# Saved DAX queries are read-only analysis inputs for every plan; never written.
 QUERY_SUFFIXES = {'.dax'}
 SCHEMA_VERSION = 1
 
@@ -74,15 +74,13 @@ def _inventory(roots):
 
 
 def _query_inventory(roots, operations):
-    """Read-only inputs: auto-date queries and all other report bytes for extension deletion."""
+    """Inventory all consumed saved queries, plus report resources for extension deletion."""
     auto_date = any(o.get('kind') == auto_date_tables.OPERATION_KIND for o in operations)
     report_delete = any(o.get('kind') == report_measure_delete.OPERATION_KIND for o in operations)
-    if not auto_date and not report_delete:
-        return {}
     return {f'{artifact}/{path.relative_to(root).as_posix()}': path.read_bytes()
             for artifact, root in roots.items() for path in sorted(root.rglob('*'))
             if path.is_file() and not path.is_symlink()
-            and ((auto_date and path.suffix.lower() in QUERY_SUFFIXES)
+            and (((auto_date or artifact != 'model') and path.suffix.lower() in QUERY_SUFFIXES)
                  or (report_delete and artifact != 'model' and path.suffix.lower() not in SUFFIXES))}
 
 

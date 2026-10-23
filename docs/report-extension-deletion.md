@@ -80,10 +80,10 @@ bare name conservatively retains all matching local candidates.
 ## Coverage and identity rules
 
 Saved report `.dax` files are inspected without executing queries. Comment-only
-tabs have no dependencies. Supported DEFINE MEASURE and VAR bodies, EVALUATE and
+tabs have no dependencies. Supported DEFINE MEASURE and query-global VAR bodies with explicit item bindings, EVALUATE and
 ORDER BY expressions are scanned; strings/comments cannot invent references.
 Query-local definitions shadow exact qualified references and unique bare names.
-All local bodies contribute external dependencies, including transitive chains
+All supported local bodies contribute external dependencies, including transitive chains
 and unused definitions. Unsupported bindings (FUNCTION/TABLE/COLUMN), unknown
 functions, dynamic measure context and incomplete lexical input fail closed.
 This reference scanner does not compile or type-check DAX.
@@ -112,9 +112,27 @@ binding and bytes and rejects new unresolved references or schema errors.
 Model-wide metadata limitations cannot hide consumers of report-local measures,
 because model expressions do not bind to report extensions.
 
-The exact pinned Microsoft schema bundle now includes visualContainer 2.10–2.13
+The exact pinned Microsoft schema bundle now includes visualContainer 2.10ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“2.13
 and their dependencies. The recursive reference/string scan also covers nested
 formatting expressions in these versions. Unknown 2.14 remains blocked; a new
 version requires an official source snapshot, dependency closure and fixtures.
 Unused report rows with blocked eligibility receive Review and explicit reasons;
 dependency-closed groups receive Caution and the complete required selection.
+
+Standalone table bindings currently make saved-query coverage incomplete. This
+includes quoted and unquoted tables in EVALUATE, FILTER, ALL, VALUES and other
+table functions, including DEFINE VAR bodies that bind to whole model tables. These queries block
+model deletion in the selected scope and extension deletion in the affected
+report; they are never treated as reference-free. Qualified column/measure
+references and query-global DEFINE VAR chains using item references, literal
+constructors and allowlisted functions remain supported. Local
+VAR scopes, VAR declarations after DEFINE MEASURE (ambiguous body scope),
+self/forward variable references, duplicate variables and unresolved bare
+identifiers fail closed.
+Strings and comments remain opaque. No whole-table lineage or DAX type checking
+is claimed. Unselected reports do not enter the analysis or plan inventory.
+
+Every change plan stages and fingerprints saved report DAX inputs, including
+their file inventory. Adding, removing or editing a selected saved query after
+preview invalidates apply, even for ordinary model cleanup operations. Queries
+remain read-only inputs and are never included in plan writes or restore writes.
