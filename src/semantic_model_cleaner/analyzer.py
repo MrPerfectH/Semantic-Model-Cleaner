@@ -1343,6 +1343,13 @@ def _report_scan_limitation(issue: ReportIssue) -> dict:
             "Reference ownership between the report-local and model definition cannot be proven.",
         )
         message = issue.message
+    elif issue.issue_type == "unsupported_saved_dax_query":
+        feature, checked, unchecked = (
+            "unsupported saved DAX query binding",
+            "Saved query reference coverage was attempted; supported report files were scanned.",
+            issue.message,
+        )
+        message = f"Incomplete saved DAX query coverage: {location}. {issue.message}".strip()
     elif issue.issue_type == "unsupported_report_format":
         feature, checked, unchecked = (
             "legacy report layout",

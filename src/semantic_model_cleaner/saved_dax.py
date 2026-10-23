@@ -202,7 +202,12 @@ def query_references(text):
             continue
         if (depth or evaluated or measure_body or not word(0, "define") or n + 3 >= len(tokens)
                 or tokens[n + 1].kind != "identifier" or tokens[n + 2].value != "="):
-            raise DaxCoverageError("Unsupported local or malformed VAR binding.")
+            raise DaxCoverageError(
+                "Unsupported local or malformed VAR binding: "
+                + ("expression-local VAR inside nested delimiters; lexical scope and transitive bindings are not resolved."
+                   if depth else "VAR after EVALUATE; expression-local scope is not resolved."
+                   if evaluated else "VAR following DEFINE MEASURE; declaration boundary and lexical scope are not resolved."
+                   if measure_body else "expected query-global DEFINE VAR name = expression."))
         name = tokens[n + 1].value.casefold()
         if name in variables:
             raise DaxCoverageError("Ambiguous duplicate VAR binding.")
