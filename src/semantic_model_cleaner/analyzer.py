@@ -26,6 +26,7 @@ from contextlib import redirect_stderr
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -3872,6 +3873,7 @@ def scan_additional_definition_json(
 # ── DAX Dependency Analysis ──────────────────────────────────────────────────
 
 
+@lru_cache(maxsize=16384)
 def _split_dax_comments(dax_body: str) -> tuple[str, str]:
     """Return reference code with comments/literals masked, plus real comments.
 

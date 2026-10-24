@@ -6,6 +6,7 @@ expression sites and are never passed to the DAX transformer.
 """
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 
 from .tmdl_identifiers import quote_dax_object_name, quote_dax_table_name
 
@@ -19,6 +20,12 @@ class Token:
 
 
 def dax_tokens(text: str) -> list[Token]:
+    """Tokens of one expression; analysis asks for the same text many times."""
+    return list(_dax_tokens(text))
+
+
+@lru_cache(maxsize=16384)
+def _dax_tokens(text: str) -> tuple[Token, ...]:
     tokens = []
     i = 0
     while i < len(text):
@@ -60,7 +67,10 @@ def dax_tokens(text: str) -> list[Token]:
             continue
         i += 1
         tokens.append(Token('punctuation', char, start, i))
-    return tokens
+    return tuple(tokens)
+
+
+dax_tokens.cache_info = _dax_tokens.cache_info
 
 
 def _reference_owner(token: Token | None) -> str | None:

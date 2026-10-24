@@ -76,3 +76,15 @@ def test_plan_analysis_never_computes_repair_suggestions(project, monkeypatch):
     full = analyzer.analyze(model.parent, model_paths=[model], report_paths=reports)
     assert calls, "interactive analysis still offers suggestions"
     assert any(i["name"] == "Gone" for i in full["report_issues"])
+
+
+def test_dax_tokenising_is_cached_but_callers_get_independent_lists():
+    from semantic_model_cleaner import reference_tokens
+    text = "SUMX('Sales', [Amount]) // note"
+    first = reference_tokens.dax_tokens(text)
+    first.append("caller mutation")
+    second = reference_tokens.dax_tokens(text)
+    assert "caller mutation" not in second and second == first[:-1]
+    assert reference_tokens.dax_tokens.cache_info().hits >= 1
+    assert analyzer._split_dax_comments(text) == analyzer._split_dax_comments(text)
+    assert analyzer._split_dax_comments.cache_info().hits >= 1
