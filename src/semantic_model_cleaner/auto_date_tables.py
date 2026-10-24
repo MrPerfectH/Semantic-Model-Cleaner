@@ -39,9 +39,10 @@ import re
 from . import analyzer
 from .tmdl_declarations import TmdlDeclaration, scan_tmdl_declarations
 from .tmdl_identifiers import parse_tmdl_dotted_ref, unquote_tmdl_name
+from .artifact_scope import METADATA_SUFFIXES, artifact_role, declared_report_resources
 
 OPERATION_KIND = "auto_date_tables"
-SUFFIXES = {".tmdl", ".json", ".pbir", ".pbism"}
+SUFFIXES = METADATA_SUFFIXES
 
 _GUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 _GUID_RE = re.compile(_GUID, re.I)
@@ -172,11 +173,13 @@ def _dax_ref(value: str) -> tuple[str, str]:
 def _read_scope(model: Path, reports: list[Path]) -> tuple[list[_File], list[str]]:
     files, problems = [], []
     for artifact, root in [("model", model), *((report.name, report) for report in reports)]:
+        resources = declared_report_resources(root)
         for path in sorted(root.rglob("*")):
             if path.is_symlink():
                 problems.append(f"{artifact}/{path.relative_to(root).as_posix()} is a symlink; it cannot be checked.")
                 continue
-            if not path.is_file() or path.suffix.lower() not in SUFFIXES:
+            if (not path.is_file() or path.suffix.lower() not in SUFFIXES
+                    or artifact_role(root, path, resources) == "scratch"):
                 continue
             key = f"{artifact}/{path.relative_to(root).as_posix()}"
             raw = path.read_bytes()

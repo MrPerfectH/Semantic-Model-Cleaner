@@ -333,3 +333,6 @@ Use `smc history` to inspect receipts and `smc restore review/change.plan.json` 
 Read [CI checks and baselines](docs/cli/check.md), [supported workflows](docs/support.md), and the [beta quick start](docs/quickstart.md).
 
 External/saved .dax queries (including developer scratch and DAXQueries files) are outside semantic-model and report cleanup scope. They are not analyzed, fingerprinted, staged, changed or restored. Query edits, additions and deletions do not invalidate a cleanup plan. Model TMDL expressions and report-extension DAX remain analyzed.
+
+
+Scratch query scope includes the exact `DAXQueries/.pbi/daxQueries.json` editor index. Its contents, including unsupported or malformed state, do not affect cleanup eligibility, coverage or plan drift. Apply and restore preserve concurrent scratch edits, additions and deletions. Declared report resources and files in `StaticResources` keep their resource guards regardless of extension (including `.dax`); a declaration that collides with the editor-index path takes precedence. Other JSON and `.pbi` metadata remain guarded.

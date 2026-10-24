@@ -264,3 +264,6 @@ The UI uses the same engine through these local endpoints:
 Plan IDs are 32 lowercase hexadecimal characters. Creation/lookup errors generally return HTTP `400`; unsuccessful apply/verify/restore/recovery results return `409`. Unknown operation names return `404`. The API is a local app interface, not a service for accepting arbitrary remote plans. Successful apply/restore invalidates the app's cached analysis; request a fresh analysis before interpreting current usage.
 
 See [CI checks](check.md) for read-only policy gates and [supported workflows](../support.md) for broader product limits.
+
+
+Scratch query scope includes the exact `DAXQueries/.pbi/daxQueries.json` editor index. Its contents, including unsupported or malformed state, do not affect cleanup eligibility, coverage or plan drift. Apply and restore preserve concurrent scratch edits, additions and deletions. Declared report resources and files in `StaticResources` keep their resource guards regardless of extension (including `.dax`); a declaration that collides with the editor-index path takes precedence. Other JSON and `.pbi` metadata remain guarded.

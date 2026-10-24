@@ -68,7 +68,7 @@ bare name conservatively retains all matching local candidates.
   annotations and unrelated report files stay unchanged. Metadata owned by a
   deleted measure disappears with that measure.
 - Plan validation checks schema changes and newly unresolved references on staged
-  copies. The plan records each deletion and its required group. All selected model metadata and every selected report file except external/saved .dax queries are fingerprinted; any drift before apply blocks the whole operation.
+  copies. The plan records each deletion and its required group. All selected model metadata and every selected report file except developer scratch queries and their DAX editor index are fingerprinted; any drift before apply blocks the whole operation.
 - The shared transaction records exact original bytes in the saved plan and an
   atomic journal. Apply failures roll back completed writes. Restore refuses to
   overwrite later user edits and otherwise restores the exact original bytes.
@@ -103,9 +103,12 @@ binding and bytes and rejects new unresolved references or schema errors.
 Model-wide metadata limitations cannot hide consumers of report-local measures,
 because model expressions do not bind to report extensions.
 
-The exact pinned Microsoft schema bundle now includes visualContainer 2.10ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“2.13
+The exact pinned Microsoft schema bundle now includes visualContainer 2.10ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ2.13
 and their dependencies. The recursive reference/string scan also covers nested
 formatting expressions in these versions. Unknown 2.14 remains blocked; a new
 version requires an official source snapshot, dependency closure and fixtures.
 Unused report rows with blocked eligibility receive Review and explicit reasons;
 dependency-closed groups receive Caution and the complete required selection.
+
+
+Scratch query scope includes the exact `DAXQueries/.pbi/daxQueries.json` editor index. Its contents, including unsupported or malformed state, do not affect cleanup eligibility, coverage or plan drift. Apply and restore preserve concurrent scratch edits, additions and deletions. Declared report resources and files in `StaticResources` keep their resource guards regardless of extension (including `.dax`); a declaration that collides with the editor-index path takes precedence. Other JSON and `.pbi` metadata remain guarded.

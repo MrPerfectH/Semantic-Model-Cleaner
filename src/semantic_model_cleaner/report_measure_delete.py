@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from . import analyzer, metadata_validation
+from .artifact_scope import artifact_role, declared_report_resources
 from .report_dax import DaxCoverageError, expression_references
 
 OPERATION_KIND = "delete_report_measures"
@@ -77,10 +78,12 @@ def assessment(model_path, report_paths, analysis):
         if not local:
             continue
         try:
+            resources = declared_report_resources(report)
             for path in sorted(report.rglob("*")):
                 if path.is_symlink():
                     raise ValueError("Symlinks are not supported.")
-                if not path.is_file() or path.suffix.lower() not in {".json", ".pbir"}:
+                if (not path.is_file() or artifact_role(report, path, resources) == "scratch"
+                        or path.suffix.lower() not in {".json", ".pbir"}):
                     continue
                 if path == report / EXTENSION and path.read_bytes().startswith(b"\xef\xbb\xbf"):
                     raise ValueError("Report extension deletion requires UTF-8 without a BOM.")

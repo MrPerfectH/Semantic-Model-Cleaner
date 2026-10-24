@@ -18,8 +18,9 @@ import tempfile
 import uuid
 
 from . import __version__, analyzer, auto_date_tables, report_writer, tmdl_writer, report_measure_delete
+from .artifact_scope import METADATA_SUFFIXES, artifact_role, declared_report_resources
 
-SUFFIXES = {'.tmdl', '.json', '.pbir', '.pbism'}
+SUFFIXES = METADATA_SUFFIXES
 SCHEMA_VERSION = 1
 
 
@@ -84,10 +85,12 @@ def _scan(root):
 def _inventory(roots):
     inventory = {}
     for artifact, root in roots.items():
+        resources = declared_report_resources(root)
         for path, symlink, is_file in _scan(root):
             if symlink:
                 raise PlanError(f'Symlinks are not supported in change-plan scope: {path}')
-            if is_file and path.suffix.lower() in SUFFIXES:
+            if (is_file and path.suffix.lower() in SUFFIXES
+                    and artifact_role(root, path, resources) != "scratch"):
                 inventory[f'{artifact}/{path.relative_to(root).as_posix()}'] = path.read_bytes()
     return inventory
 
@@ -95,13 +98,18 @@ def _inventory(roots):
 def _resource_inventory(roots, operations):
     """Preserve report-resource drift guards for extension deletion; ignore scratch queries."""
     report_delete = any(o.get('kind') == report_measure_delete.OPERATION_KIND for o in operations)
-    if not report_delete:
-        return {}
-    return {f'{artifact}/{path.relative_to(root).as_posix()}': path.read_bytes()
-            for artifact, root in roots.items() if artifact != 'model'
-            for path in sorted(root.rglob('*'))
-            if path.is_file() and not path.is_symlink()
-            and path.suffix.lower() not in SUFFIXES | {'.dax'}}
+    inventory = {}
+    for artifact, root in roots.items():
+        if artifact == 'model':
+            continue
+        declared = declared_report_resources(root)
+        for path, symlink, is_file in _scan(root):
+            if (is_file and not symlink and path.suffix.lower() not in SUFFIXES
+                    and artifact_role(root, path, declared) != "scratch"
+                    and (report_delete or path.relative_to(root).as_posix().casefold() in declared
+                         or path.relative_to(root).as_posix().casefold().startswith("staticresources/"))):
+                inventory[f'{artifact}/{path.relative_to(root).as_posix()}'] = path.read_bytes()
+    return inventory
 
 
 def _scope_hashes(roots, operations):
