@@ -1343,13 +1343,6 @@ def _report_scan_limitation(issue: ReportIssue) -> dict:
             "Reference ownership between the report-local and model definition cannot be proven.",
         )
         message = issue.message
-    elif issue.issue_type == "unsupported_saved_dax_query":
-        feature, checked, unchecked = (
-            "unsupported saved DAX query binding",
-            "Saved query reference coverage was attempted; supported report files were scanned.",
-            issue.message,
-        )
-        message = f"Incomplete saved DAX query coverage: {location}. {issue.message}".strip()
     elif issue.issue_type == "unsupported_report_format":
         feature, checked, unchecked = (
             "legacy report layout",
@@ -5133,41 +5126,6 @@ def analyze(
         all_bookmark_usages.extend(scanned["bookmark_usages"])
         all_stale_bookmark_usages.extend(scanned["stale_bookmark_usages"])
         all_definition_meta_usages.extend(scanned["definition_meta_usages"])
-        from .saved_dax import query_references, DaxCoverageError
-        local_items = [i for i in all_items if i.source_kind == "model"
-                       or Path(i.source_file).parent.parent.resolve() == report_path.resolve()]
-        for query_path in sorted(report_path.rglob("*.dax")):
-            try:
-                query_refs = query_references(query_path.read_text(encoding="utf-8-sig"))
-            except (DaxCoverageError, OSError, UnicodeError) as exc:
-                all_report_issues.append(ReportIssue(
-                    severity="warning", issue_type="unsupported_saved_dax_query",
-                    report=report_display_name(report_path), report_path=str(report_path.resolve()),
-                    artifact_kind="Saved DAX Query", artifact_path=query_path.relative_to(report_path).as_posix(),
-                    message="Saved DAX query reference coverage is incomplete: " + str(exc)))
-                continue
-            for table, name in sorted(set(query_refs), key=str):
-                if name is None:
-                    # A local DEFINE MEASURE still requires its model table.
-                    # Retain all its model items so last-item deletion cannot
-                    # remove the owner, including through cached plan analyses.
-                    targets = [target for target in local_items if target.source_kind == "model"
-                               and target.table.casefold() == table.casefold()]
-                    if not targets:
-                        all_report_issues.append(ReportIssue(
-                            severity="error", issue_type="unsupported_saved_dax_query",
-                            report=report_display_name(report_path), report_path=str(report_path.resolve()),
-                            artifact_kind="Saved DAX Query", artifact_path=query_path.relative_to(report_path).as_posix(),
-                            message="Saved DAX DEFINE MEASURE owner table cannot be resolved from model items: " + table))
-                else:
-                    targets = [target for target in local_items if target.name.casefold() == name.casefold()
-                               and (table is None or target.table.casefold() == table.casefold())]
-                for target in targets:
-                    all_definition_meta_usages.append(UsageRef(
-                        table=target.table, name=target.name, ref_type=target.item_type,
-                        report=report_display_name(report_path), report_path=str(report_path.resolve()),
-                        context="Saved report DAX query", source_path=str(query_path),
-                        artifact_kind="Saved DAX Query", artifact_path=query_path.relative_to(report_path).as_posix()))
 
 
     direct_usages = (
@@ -5324,7 +5282,7 @@ def analyze(
     # Every limitation is explained once; shared ones apply to every item with
     # no use found in scope, targeted ones only to the items they reference.
     invalid_report_issues = [
-        issue for issue in report_issues if issue.issue_type in {"invalid_report_json", "unsupported_report_format", "ambiguous_extension_identity", "unsupported_saved_dax_query"}
+        issue for issue in report_issues if issue.issue_type in {"invalid_report_json", "unsupported_report_format", "ambiguous_extension_identity"}
     ]
     analysis_limitations: list[dict] = []
     seen_limitation_ids: set[str] = set()

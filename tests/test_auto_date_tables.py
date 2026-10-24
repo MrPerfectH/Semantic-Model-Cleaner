@@ -505,7 +505,7 @@ def test_writer_level_removal_refuses_a_blocked_group(tmp_path):
     before = snapshot(tmp_path)
     result = auto_date_tables.remove_all(model, [report])
     assert not result["ok"] and BLOCKED_USE in result["error"]
-    assert "1 table: the model or a saved DAX query names it." in result["error"]
+    assert "1 table: the model names it." in result["error"]
     assert snapshot(tmp_path) == before
 
 
@@ -833,30 +833,28 @@ def write_query(root, text, name="Query 1.dax"):
     ("model", "EVALUATE\r\n\tROW(\"y\", MAX('Sales'[OrderDate].[Rok]))\r\n", "variation_dax", 2),  # Reviewer probe E1.
     ("report", "EVALUATE\r\n\tROW(\"y\", MAX('Sales'[OrderDate] /* c */ .[Rok]))\r\n", "variation_dax", 2),
 ])
-def test_saved_dax_query_use_blocks_the_group_and_the_query_is_never_edited(tmp_path, artifact, query, code, line):
+def test_saved_dax_queries_are_outside_auto_date_scope(tmp_path, artifact, query, code, line):
     model, report = project(tmp_path)
-    root, prefix = (model, "model") if artifact == "model" else (report, "SCORECARD.Report")
+    root = model if artifact == "model" else report
     path = write_query(root, query)
     before = path.read_bytes()
     tables = tables_by_name(model, report)
     entry = tables[ORDER]
-    assert [b["code"] for b in entry["blockers"]] == [code]
-    assert entry["blockers"][0]["location"] == f"{prefix}/DAXQueries/Query 1.dax:{line}"
-    assert "Saved DAX query" in blocker_text(entry)
-    assert tables[SHIP]["removable"]
-    blocked(model, report)
-    assert BLOCKED_USE in plan_error(model, report)
+    assert entry["removable"] and tables[SHIP]["removable"]
+    plan = all_plan(model, report)
+    assert change_plan.apply_plan(plan, journal_of(tmp_path))["ok"]
+    assert change_plan.restore_plan(plan, journal_of(tmp_path))["ok"]
     assert path.read_bytes() == before
 
 
 @pytest.mark.parametrize("artifact", ["model", "report"])
-def test_unrelated_saved_dax_queries_are_plan_inputs_and_never_edited(tmp_path, artifact):
+def test_saved_dax_queries_are_not_plan_inputs_and_never_edited(tmp_path, artifact):
     model, report = project(tmp_path)
     path = write_query(model if artifact == "model" else report, "EVALUATE\r\n\tSales\r\n")
     before = path.read_bytes()
     original = snapshot(tmp_path)
     plan = all_plan(model, report)
-    assert f"{'model' if artifact == 'model' else 'report-1'}/DAXQueries/Query 1.dax" in plan["inputs"]
+    assert f"{'model' if artifact == 'model' else 'report-1'}/DAXQueries/Query 1.dax" not in plan["inputs"]
     assert not any(c["path"].endswith(".dax") for c in plan["changes"])
     assert change_plan.apply_plan(plan, journal_of(tmp_path))["ok"]
     assert change_plan.verify_plan(plan)["state"] == "applied"
@@ -878,14 +876,17 @@ def _remove_query(model):
 
 
 @pytest.mark.parametrize("edit", [_add_query_use, _edit_query, _remove_query])
-def test_saved_dax_queries_changed_after_preview_make_the_plan_stale(tmp_path, edit):
+def test_saved_dax_query_changes_coexist_with_auto_date_plan(tmp_path, edit):
     model, report = project(tmp_path)
     write_query(model, "EVALUATE Sales\r\n")
     plan = all_plan(model, report)
-    assert plan["inputs"]["model/DAXQueries/Query 1.dax"] == plan["outputs"]["model/DAXQueries/Query 1.dax"]
+    assert not any(k.endswith(".dax") for k in plan["inputs"])
     edit(model)
-    apply_refused(tmp_path, plan, "Stale plan")
-    assert change_plan.verify_plan(plan)["state"] == "changed"
+    queries = {p.name: p.read_bytes() for p in model.rglob("*.dax")}
+    assert change_plan.apply_plan(plan, journal_of(tmp_path))["ok"]
+    assert change_plan.verify_plan(plan)["state"] == "applied"
+    assert change_plan.restore_plan(plan, journal_of(tmp_path))["ok"]
+    assert {p.name: p.read_bytes() for p in model.rglob("*.dax")} == queries
 
 
 def test_saved_dax_queries_stay_outside_other_plan_kinds(tmp_path):
