@@ -3,11 +3,26 @@ import html
 import re
 
 
+# Entities keep pasted summaries from @mentioning people or rendering $math$.
+_ENTITIES = {"@": "&#64;", "$": "&#36;"}
+
+
+def _escape(char):
+    if char in _ENTITIES:
+        return _ENTITIES[char]
+    return re.sub(r"([\\`*_{}\[\]()#+.!|~:\-])", r"\\\1", html.escape(char, quote=True))
+
+
 def _text(value, limit=800):
-    value = " ".join(str(value).split())
-    if len(value) > limit:
-        value = value[:limit] + "… [truncated]"
-    return re.sub(r"([\\`*_{}\[\]()#+.!|~:\-])", r"\\\1", html.escape(value, quote=True))
+    """Escape first, then bound the escaped output without splitting an escape."""
+    pieces, size = [], 0
+    for char in " ".join(str(value).split()):
+        piece = _escape(char)
+        if size + len(piece) > limit:
+            return "".join(pieces) + "… [truncated]"
+        pieces.append(piece)
+        size += len(piece)
+    return "".join(pieces)
 
 
 def render_summary(payload, exit_code):
