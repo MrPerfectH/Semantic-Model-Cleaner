@@ -217,15 +217,18 @@ def _execute(op, roots):
 def _analyze(roots):
     try:
         reports = {k: p for k, p in roots.items() if k != 'model'}
+        # Plans compare problem identities; repair suggestions are never used here.
         result = analyzer.analyze(roots['model'].parent, model_paths=[roots['model']],
-                                  report_paths=list(reports.values()))
-        # Report display names are not unique. Analyze report issues separately
-        # so identical visual paths in distinct artifacts never hide new errors.
-        result['_report_issues_by_artifact'] = {}
-        for key, path in reports.items():
-            single = result if len(reports) == 1 else analyzer.analyze(
-                roots['model'].parent, model_paths=[roots['model']], report_paths=[path])
-            result['_report_issues_by_artifact'][key] = single.get('report_issues', [])
+                                  report_paths=list(reports.values()), suggestions=False)
+        # Report display names are not unique. Group issues by their exact
+        # artifact so identical visual paths in distinct Reports never hide
+        # new errors. An issue without a known Report counts for every Report.
+        artifact = {os.path.normcase(str(path)): key for key, path in reports.items()}
+        result['_report_issues_by_artifact'] = grouped = {key: [] for key in reports}
+        for issue in result.get('report_issues', []):
+            key = artifact.get(os.path.normcase(str(issue.get('reportPath') or '')))
+            for target in [key] if key else grouped:
+                grouped[target].append(issue)
         return result
     except SystemExit as exc:
         raise PlanError('Analysis could not read the selected TMDL/PBIR scope.') from exc

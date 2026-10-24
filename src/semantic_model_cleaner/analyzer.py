@@ -3154,6 +3154,7 @@ def build_report_issues(
     model_items: list[ModelItem],
     hierarchies: list[HierarchyInfo],
     warnings: list[AnalyzerWarning],
+    suggestions: bool = True,
 ) -> list[ReportIssue]:
     model_table_names = {item.table.casefold() for item in model_items}
     report_entity_names = {item.table.casefold() for item in all_items if item.source_kind == "report"}
@@ -3193,7 +3194,7 @@ def build_report_issues(
             issue_context = "Inactive Filter"
         suggestion_key = (usage.report_path, usage.table.casefold(), usage.name.casefold(), usage.ref_type.casefold())
         if suggestion_key not in suggestion_cache:
-            suggestion_cache[suggestion_key] = _fuzzy_suggestions(usage, scoped_items)
+            suggestion_cache[suggestion_key] = _fuzzy_suggestions(usage, scoped_items) if suggestions else []
         issues.append(_report_issue_from_usage(
             usage,
             issue_type=issue_type,
@@ -4819,6 +4820,7 @@ def analyze(
     allow_model_only: bool = False,
     unselected_reports: list[Path] | None = None,
     unverified_reports: list[Path] | None = None,
+    suggestions: bool = True,
 ) -> dict:
     def checkpoint(stage, current=0, total=None):
         if progress is not None:
@@ -4998,6 +5000,7 @@ def analyze(
         model_items=parsed_model_items,
         hierarchies=all_hierarchies,
         warnings=warnings,
+        suggestions=suggestions,
     )
 
     usage_index: dict[tuple[str, str], list[UsageRef]] = defaultdict(list)
