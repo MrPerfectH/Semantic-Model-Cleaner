@@ -2168,7 +2168,9 @@ def api_plans():
         if error:
             return jsonify(error[0]), error[1]
         reports = data.get("report_paths") if "report_paths" in data else _state["report_paths"]
-        plan = change_plan.create_plan(model_path, reports or [], data.get("operations"))
+        known = analyzer.discover_reports([Path(r) for r in _effective_report_roots()])
+        plan = change_plan.create_plan(model_path, reports or [], data.get("operations"), known_reports=known,
+                                       allow_partial_report_scope=data.get("allow_partial_report_scope") is True)
         change_plan.save_plan(plan, _plan_directory())
         return jsonify({"ok": True, "plan": plan})
     except (ValueError, OSError, KeyError, TypeError) as exc:

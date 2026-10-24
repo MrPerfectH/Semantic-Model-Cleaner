@@ -306,11 +306,68 @@ def _check_auto_date_tables(roots, operation, *, planned=False):
     return assessment
 
 
-def create_plan(model_path, report_paths, operations):
-    """Preview only; no input files or backups are written."""
+def _invalidates_report_references(operation):
+    """Model changes that can break Report References in any connected Report.
+
+    Display-only actions, DAX edits and report-only work leave every Report
+    Reference resolvable, so they do not depend on the full Report selection.
+    """
+    return operation.get('kind') in {'rename', 'move', 'promote', auto_date_tables.OPERATION_KIND} or any(
+        action.get('action') in {'delete', 'delete_table'} for action in operation.get('actions', []))
+
+
+def report_selection(model_path, report_paths, known_reports):
+    """Selected Reports against every known Report bound, or possibly bound, to the model.
+
+    ``known_reports`` are the Reports the caller discovered for the project;
+    ``None`` records that completeness was not checked.
+    """
+    if known_reports is None:
+        return {'checked': False, 'complete': None, 'selected': [], 'unselected_connected': [], 'unverified': []}
+    chosen = {Path(p).resolve() for p in report_paths}
+    scope = analyzer.report_binding_scope(Path(model_path), [*map(Path, known_reports), *chosen])
+    row = lambda binding: {key: binding[key] for key in ('name', 'path', 'status', 'message')}
+    rows = scope['selected'] + scope['excluded']
+    selection = {
+        'checked': True,
+        'selected': [row(b) for b in rows if Path(b['path']) in chosen],
+        'unselected_connected': [row(b) for b in scope['selected'] if Path(b['path']) not in chosen],
+        'unverified': [row(b) for b in scope['excluded']
+                       if Path(b['path']) not in chosen and b['status'] != 'not_connected'],
+    }
+    selection['complete'] = not selection['unselected_connected'] and not selection['unverified']
+    return selection
+
+
+def _selection_gaps(selection):
+    gaps = []
+    if selection['unselected_connected']:
+        gaps.append(f"{len(selection['unselected_connected'])} connected Report(s) are not selected: "
+                    + ', '.join(f"{b['name']} ({b['path']})" for b in selection['unselected_connected']) + '.')
+    if selection['unverified']:
+        gaps.append(f"{len(selection['unverified'])} Report binding(s) could not be verified: "
+                    + ', '.join(f"{b['name']} ({b['status']}, {b['path']})" for b in selection['unverified']) + '.')
+    return ' '.join(gaps)
+
+
+def create_plan(model_path, report_paths, operations, *, known_reports=None, allow_partial_report_scope=False):
+    """Preview only; no input files or backups are written.
+
+    Pass ``known_reports`` (the project's discovered Reports) so a plan that
+    can break Report References refuses a partial Report selection unless
+    ``allow_partial_report_scope`` explicitly accepts it.
+    """
     if not isinstance(operations, list) or not operations or any(not isinstance(o, dict) for o in operations):
         raise PlanError('operations must be a nonempty list of objects.')
     originals = _roots(model_path, report_paths)
+    selection = report_selection(originals['model'], list(originals.values())[1:], known_reports)
+    selection['partial_scope_allowed'] = bool(allow_partial_report_scope)
+    if selection['complete'] is False and not allow_partial_report_scope \
+            and any(_invalidates_report_references(op) for op in operations):
+        raise PlanError('Not planned: this change can break Report References in Reports outside the selection. '
+                        + _selection_gaps(selection) + ' Select every connected Report (omit --report-path and '
+                        '--report to select them all), or explicitly allow a partial Report scope '
+                        '(--allow-partial-report-scope) and check the other Reports yourself.')
     before = _inventory(originals)
     queries = _query_inventory(originals, operations)
     _require_supported_write_encoding(before)
@@ -405,9 +462,12 @@ def create_plan(model_path, report_paths, operations):
             'created_at': datetime.now(timezone.utc).isoformat(),
             'scope': {k: str(p) for k, p in originals.items()},
             'coverage': {'reports': [{k: b.get(k) for k in ('name', 'status', 'message')} for b in bindings],
+                         'report_selection': selection,
                          'analysis': baseline.get('coverage', {}),
-                         'final_state': {'complete': final_state_complete
-                                         or bool(baseline.get('coverage', {}).get('complete', False)),
+                         # Unselected or unverified Reports were never checked, so the final state cannot be complete.
+                         'final_state': {'complete': (final_state_complete
+                                                      or bool(baseline.get('coverage', {}).get('complete', False)))
+                                                     and selection['complete'] is not False,
                                          'cleared_limitations': cleared}}, 'operations': operations,
             'inputs': _hashes({**before, **queries}), 'outputs': _hashes({**after, **queries}), 'changes': changes,
             'validation': {'json_syntax': 'passed' if strict else 'changed files passed',
@@ -420,6 +480,9 @@ def create_plan(model_path, report_paths, operations):
                                            'bundle_commit': schema_after['bundle'].get('commit')},
                            'limitations': ['Static analysis of selected TMDL/PBIR only.',
                                            'Only supported declared PBIR schemas are validated; TMDL/DAX engine validation is not performed.']
+                                          + (['Report selection is incomplete; Report References in these Reports '
+                                              'were not checked. ' + _selection_gaps(selection)]
+                                             if selection['complete'] is False else [])
                                           + sorted({entry['cleared_reason'] for entry in cleared})
                                           + _auto_date_limitations(auto_date),
                            # Tool entities (#103) are deleted only after the user confirms them here.
