@@ -154,6 +154,8 @@ still apply.
 
 A home-table move is different from changing a display folder.
 
+Rename and move resolve query aliases per query. A subquery source, such as the one Power BI Desktop writes for a Top-N filter, is a derived table: references to it are left unchanged, and references inside its nested query are rewritten like any other. A plan is refused only when a reference that needs rewriting goes through a source that cannot be resolved.
+
 ### Promote a report measure
 
 ```json

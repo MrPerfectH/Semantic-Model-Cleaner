@@ -560,6 +560,8 @@ def _rewrite_query_ref(
         return value, False
     table_or_alias, name = parts
     alias = aliases.get(table_or_alias.casefold())
+    if alias and alias.get("subquery"):
+        return value, False
     if alias and alias.get("ambiguous"):
         if table_lookup or any(key[1] == name.casefold() for key in (*measure_lookup, *column_lookup)):
             raise ValueError(f"Cannot resolve query alias '{table_or_alias}' for '{value}'; propagation is ambiguous.")
@@ -606,12 +608,19 @@ def _collect_source_aliases(obj, path_parts, bindings) -> dict[str, dict] | None
                 continue
             alias_name = source["Name"]
             if id(source) not in bindings:
+                # A subquery source (Desktop Top-N filters) is a derived table,
+                # not a model entity. Its nested Query has its own namespace,
+                # which the walk resolves and rewrites like any other query.
+                subquery = isinstance(source.get("Expression"), dict) and isinstance(
+                    source["Expression"].get("Subquery"), dict) and "Entity" not in source
                 bindings[id(source)] = {
                     "name": alias_name,
                     "original_entity": source.get("Entity"),
                     "source": source,
                     "entity_path": path_parts + ["From", f"[{idx}]", "Entity"],
-                    "ambiguous": not isinstance(source.get("Entity"), str) or not source["Entity"].strip(),
+                    "subquery": subquery,
+                    "ambiguous": not subquery and (not isinstance(source.get("Entity"), str)
+                                                   or not source["Entity"].strip()),
                 }
             alias_key = alias_name.casefold()
             aliases[alias_key] = ({"ambiguous": True} if alias_key in aliases else bindings[id(source)])
@@ -665,6 +674,9 @@ def _resolve_reference_source(source_ref, prop, aliases, table_lookup, object_lo
         return entity, None
     source_alias = source_ref.get("Source")
     alias = aliases.get(source_alias.casefold()) if isinstance(source_alias, str) else None
+    if alias and alias.get("subquery"):
+        # Subquery output names are query labels, never model items to rewrite.
+        return None, None
     if alias and not alias.get("ambiguous"):
         return alias["original_entity"], alias
     moving_objects = any(target[0].casefold() != key[0] for key, target in object_lookup.items())
