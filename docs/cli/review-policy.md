@@ -87,7 +87,7 @@ them. JSON includes `gate.settings`, requirement results and counts; every findi
 has `gate.blocking` and `gate.reason`. `summary.failure_count` counts blocking
 findings plus failed requirements. Exit codes remain 0 passed, 1 blocked, 2 invalid
 input/execution failure. `review` retains the same gate results even when findings
-are paginated. Policy saving, decisions and naming edits preserve the gate object.
+are paginated, and accepts the same `--policy` and `--baseline` options as `check`. Policy saving, decisions and naming edits preserve the gate object.
 
 ## Saved decisions
 

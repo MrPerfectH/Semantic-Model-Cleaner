@@ -77,6 +77,8 @@ def _options(command):
                     {"flag": "--search" if command == "items" else "--item", "value": "Name"}]
     if command == "review":
         options.append({"flag": "--fail-on", "choices": ["error", "warning"], "default": "error"})
+        options.append({"flag": "--policy", "value": "Repository review policy JSON relative to PROJECT (default: PROJECT/.smc-policy.json)"})
+        options.append({"flag": "--baseline", "value": "Baseline JSON relative to CWD; suppresses matching findings like smc check"})
     if command == "usage":
         options.append({"flag": "--include-expression", "type": "boolean"})
     if command == "items":
@@ -113,6 +115,8 @@ def _parser(command, machine):
             parser.add_argument("--include-expression", action="store_true", help="Include the selected item's DAX expression (omitted by default).")
     if command == "review":
         parser.add_argument("--fail-on", choices=["error", "warning"], default="error")
+        parser.add_argument("--policy", type=Path, help="Repository review policy JSON, relative to PROJECT (default: PROJECT/.smc-policy.json).")
+        parser.add_argument("--baseline", type=Path, help="Suppress matching existing findings like smc check, except incomplete coverage; relative to CWD.")
     return parser
 
 
@@ -235,9 +239,10 @@ def main(argv):
             root, model, reports, scope = insights.select_scope(parsed.project_path, exact_model or parsed.model, exact_reports or parsed.report,
                                                                getattr(parsed, "model_only", False))
             if command == "review":
-                from .ci import run_check
+                from .ci import load_gate_inputs, run_check
+                policy, baseline = load_gate_inputs(Path(parsed.project_path), parsed.policy, parsed.baseline)
                 code, payload = run_check(root, model_path=model, report_paths=reports, fail_on=parsed.fail_on,
-                                          allow_model_only=parsed.model_only)
+                                          allow_model_only=parsed.model_only, policy=policy, baseline=baseline)
                 result = insights.compact_review(payload, parsed.limit, parsed.offset)
             else:
                 query = insights.Insights(root, model, reports, scope)

@@ -36,6 +36,7 @@ smc items . --report Reports/Executive.Report --used-in-reports --type table
 # Compact model and Report review using the existing SMC check rules.
 smc review .
 smc review . --fail-on warning --format json
+smc review . --policy custom-policy.json --baseline smc-baseline.json
 
 # No Reports available: inspect model dependencies explicitly.
 smc usage . --table Sales --item Revenue --model-only
