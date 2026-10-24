@@ -439,7 +439,7 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None, all
             _execute(mapped, staged)
         after = _inventory(staged)
         _validate_json(after, tolerate_existing=None if strict else before)
-        schema_after = metadata_validation.validate_metadata(after)
+        schema_after = metadata_validation.validate_metadata(after, previous=schema_before)
         schema_comparison = metadata_validation.compare_validation(schema_before, schema_after)
         if schema_comparison["new_errors"] or schema_comparison["lost_validation"] or schema_comparison["truncated"]:
             raise PlanError("Change introduces schema errors, loses declared schema validation, or exceeds the schema error limit. Repair the metadata before applying.")

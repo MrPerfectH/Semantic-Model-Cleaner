@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping
+from copy import deepcopy
 from functools import lru_cache
 import hashlib
 from itertools import islice
@@ -143,21 +144,30 @@ def validate_document(document, *, path: str = '', error_limit: int = 100) -> di
     return result
 
 
-def validate_metadata(files: Mapping[str, bytes | str], *, error_limit: int = 100) -> dict:
+def validate_metadata(files: Mapping[str, bytes | str], *, error_limit: int = 100,
+                      previous: dict | None = None) -> dict:
     """Validate a metadata snapshot, keyed by stable artifact-relative paths.
 
     Non-JSON metadata (including TMDL) is deliberately excluded. JSON syntax
     failures are reported separately from successfully executed schema checks.
     ``ok`` alone does not establish coverage; inspect ``complete`` and counts.
+    ``previous`` (an earlier snapshot of the same bundle and error limit) lets
+    files with identical bytes reuse their record instead of validating again.
     """
     if error_limit < 1:
         raise ValueError('error_limit must be positive')
+    reusable = {}
+    if previous and previous.get('error_limit') == error_limit and previous.get('bundle') == bundle_info():
+        reusable = {(record['path'], record['content_hash']): record for record in previous['files']}
     records = []
     for path, content in sorted(files.items()):
         if Path(path).suffix.lower() not in METADATA_SUFFIXES:
             continue
         raw = content.encode('utf-8') if isinstance(content, str) else content
         fingerprint = hashlib.sha256(raw).hexdigest()
+        if (path, fingerprint) in reusable:
+            records.append(deepcopy(reusable[(path, fingerprint)]))
+            continue
         try:
             document = json.loads(raw)
         except (ValueError, UnicodeError) as exc:
@@ -173,7 +183,7 @@ def validate_metadata(files: Mapping[str, bytes | str], *, error_limit: int = 10
             'complete': bool(records) and counts['not_validated'] == 0
                         and not any(record['truncated'] or record['reason'] == 'invalid_json' for record in records),
             'counts': {key: counts[key] for key in ('valid', 'invalid', 'not_validated')},
-            'files': records, 'bundle': bundle_info()}
+            'files': records, 'bundle': bundle_info(), 'error_limit': error_limit}
 
 
 def compare_validation(before: dict, after: dict) -> dict:
