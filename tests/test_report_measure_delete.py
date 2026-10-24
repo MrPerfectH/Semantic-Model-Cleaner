@@ -163,7 +163,6 @@ def test_model_name_collision_blocks_report_deletion(tmp_path):
         plans.create_plan(model, reports, [operation(reports[0], 'Revenue')])
 
 
-
 @pytest.mark.parametrize('deleted', [('A',), ('B',), ('C',), ('A', 'C'), ('A', 'B'), ('B', 'C'), ('A', 'B', 'C')])
 def test_minimal_writer_preserves_all_retained_bytes(tmp_path, deleted):
     from semantic_model_cleaner import report_measure_delete as deletion
@@ -271,7 +270,6 @@ def test_ui_routes_report_deletion_through_reviewed_plan():
     assert "entries: local.map" in script
 
 
-
 def test_forward_slash_paths_canonicalize_before_staging(tmp_path):
     model, reports = project(tmp_path)
     op = operation(reports[0], 'Unused')
@@ -316,7 +314,6 @@ def test_cli_plan_diff_apply_verify_restore(tmp_path, capsys):
         assert json.loads(capsys.readouterr().out)['ok']
 
 
-
 def test_non_json_numeric_constants_block(tmp_path):
     model, reports = project(tmp_path)
     (reports[0] / 'definition/report.json').write_text('{"opaque": NaN}')
@@ -332,10 +329,3 @@ def test_nonmetadata_report_byte_drift_blocks_apply(tmp_path):
     image.write_bytes(b'changed bytes')
     with pytest.raises(plans.PlanError, match='Stale plan'):
         plans.apply_plan(plan, tmp_path / 'journal')
-
-
-def test_unknown_saved_report_dax_queries_block(tmp_path):
-    model, reports = project(tmp_path)
-    (reports[0] / 'query.dax').write_text('EVALUATE ROW("X", [Unused])')
-    with pytest.raises(plans.PlanError, match='Saved report DAX'):
-        plans.create_plan(model, reports, [operation(reports[0], 'Unused')])

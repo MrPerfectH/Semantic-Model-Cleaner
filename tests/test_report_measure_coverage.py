@@ -5,83 +5,13 @@ from copy import deepcopy
 import pytest
 
 from semantic_model_cleaner import analyzer, change_plan as plans, metadata_validation
-from semantic_model_cleaner.saved_dax import query_references, DaxCoverageError
 from test_report_measure_delete import project, extension, operation
-
-
-def query(report, text):
-    path = report / "DAXQueries/query.dax"
-    path.parent.mkdir(exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    return path
 
 
 def rows(tmp_path, model, reports):
     result = analyzer.analyze(tmp_path, model_paths=[model], report_paths=reports)
     return {r["item"].name: r for r in result["items"]
             if r["item"].source_kind == "report"}
-
-
-@pytest.mark.parametrize("text,expected", [
-    ('// [Unused]\n/* EVALUATE [Unused] */', []),
-    ('EVALUATE ROW("literal [Unused]", 1) // [Unused]', []),
-    ('EVALUATE ROW("X", [Unused])', [(None, "Unused")]),
-    ("DEFINE MEASURE Sales[Unused] = 1 EVALUATE { [Unused] }", [("Sales", None)]),
-    ("DEFINE MEASURE Sales[Local] = [Unused] MEASURE Sales[Top] = [Local] EVALUATE { [Top] }", [("Sales", None), (None, "Unused")]),
-    ("DEFINE MEASURE Sales[Unused] = 1 EVALUATE { Other[Unused] }", [("Sales", None), ("Other", "Unused")]),
-    ("DEFINE MEASURE Sales[Local] = [Unused] EVALUATE { 1 }", [("Sales", None), (None, "Unused")]),
-    ('DEFINE VAR X = [Unused] EVALUATE ROW("X", X)', [(None, "Unused")]),
-    ('EVALUATE {1} ORDER BY [Unused]', [(None, "Unused")]),
-    ("EVALUATE { 'It''s'[A]]B] }", [("It's", "A]B")]),
-])
-def test_saved_query_reference_binding(text, expected):
-    assert query_references(text) == expected
-
-
-@pytest.mark.parametrize("text", [
-    'EVALUATE ROW("X", [Unused)', 'EVALUATE {1} /* open',
-    'EVALUATE ROW("open, [Unused])', 'EXECUTE("query")',
-    'DEFINE FUNCTION F = () => 1 EVALUATE {F()}',
-    'DEFINE TABLE T = Sales EVALUATE T',
-    'DEFINE COLUMN Sales[X] = 1 EVALUATE Sales',
-    'EVALUATE { SELECTEDMEASURE() }',
-    'EVALUATE { ArbitraryFunction() }',
-    'EVALUATE { Namespace.Function() }',
-    'DEFINE MEASURE Sales[X] = EVALUATE {1}',
-    'DEFINE MEASURE Sales[X] = 1 MEASURE Other[X] = 2 EVALUATE {[X]}',
-])
-def test_opaque_saved_query_fails_closed(text):
-    with pytest.raises(DaxCoverageError):
-        query_references(text)
-
-
-def test_saved_query_retains_leaf_and_report_scope(tmp_path):
-    model, reports = project(tmp_path)
-    extension(reports[0], [('Sales', 'Leaf', '1'), ('Sales', 'Top', '[Leaf]')])
-    query(reports[0], "EVALUATE { [Top] }")
-    found = rows(tmp_path, model, [reports[0]])
-    assert all(not r["report_measure_delete"]["groupEligible"] for r in found.values())
-    assert found["Top"]["usage_status"] == "USED"
-    assert found["Leaf"]["usage_status"].startswith("INDIRECT")
-    with pytest.raises(plans.PlanError):
-        plans.create_plan(model, reports, [operation(reports[0], 'Leaf', 'Top')])
-    # Another report's query does not retain this report's local identity.
-    assert plans.create_plan(model, reports, [operation(reports[1], "Unused")])["changes"]
-
-
-def test_shadowed_measure_definition_does_not_retain_original(tmp_path):
-    model, reports = project(tmp_path)
-    query(reports[0], "DEFINE MEASURE Sales[Unused] = 1 EVALUATE { [Unused] }")
-    assert plans.create_plan(model, [reports[0]], [operation(reports[0], "Unused")])["changes"]
-
-
-def test_query_unknown_blocks_own_report_not_other(tmp_path):
-    model, reports = project(tmp_path)
-    query(reports[0], 'EVALUATE { UnknownFunction() }')
-    found = rows(tmp_path, model, [reports[0]])
-    assert not found["Unused"]["report_measure_delete"]["groupEligible"]
-    assert found["Unused"]["removal_risk"] != "Safe"
-    assert plans.create_plan(model, reports, [operation(reports[1], "Unused")])["changes"]
 
 
 def test_unrecognized_static_owner_retains_targets_but_allows_independent_delete(tmp_path):
@@ -106,10 +36,9 @@ def test_empty_expression_inventory_and_inbound_reference(tmp_path):
     model, reports = project(tmp_path)
     extension(reports[0], [('Sales', 'Empty', ''), ('Sales', 'Consumer', '[Empty]'),
                            ('Sales', 'Unused', '1')])
-    query(reports[0], 'EVALUATE {[Consumer]}')
     found = rows(tmp_path, model, [reports[0]])
     assert set(found) == {"Empty", "Consumer", "Unused"}
-    assert found["Empty"]["usage_status"].startswith("INDIRECT")
+    assert not found["Empty"]["report_measure_delete"]["eligible"]
     assert not found["Empty"]["report_measure_delete"]["groupEligible"]
     assert plans.create_plan(model, [reports[0]], [operation(reports[0], "Unused")])["changes"]
 
@@ -164,15 +93,6 @@ def test_unpublished_visual_schema_remains_unknown(tmp_path):
         plans.create_plan(model, [reports[0]], [operation(reports[0], "Unused")])
 
 
-
-def test_static_or_and_substitutewithindex_references():
-    assert query_references('EVALUATE { IF([A] > 0 || [B] > 0, 1, 0) }') == [(None, "A"), (None, "B")]
-    assert ("Sales", None) in query_references(
-        'EVALUATE SUBSTITUTEWITHINDEX(Sales, "Index", Sales, Sales[Amount], ASC)')
-    with pytest.raises(DaxCoverageError):
-        query_references("EVALUATE { [A] | [B] }")
-
-
 def test_static_malformed_owner_does_not_hide_empty_target(tmp_path):
     model, reports = project(tmp_path)
     path = extension(reports[0], [('Sales', 'Empty', ''), ('Sales', 'Malformed', 'VAR X = [Empty]'),
@@ -185,16 +105,6 @@ def test_static_malformed_owner_does_not_hide_empty_target(tmp_path):
     assert not found["Malformed"]["report_measure_delete"]["groupEligible"]
     assert found["Unused"]["report_measure_delete"]["eligible"]
 
-
-def test_saved_query_keeps_model_measure_and_transitive_model_dependency(tmp_path):
-    model, reports = project(tmp_path)
-    (model / "definition/tables/Sales.tmdl").write_text(
-        "table Sales\n\tcolumn Amount\n\tmeasure Revenue = SUM(Sales[Amount])\n\tmeasure Total = [Revenue]\n")
-    query(reports[0], "EVALUATE {[Total]}")
-    a = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[reports[0]])
-    found = {r["item"].name:r for r in a["items"] if r["item"].source_kind=="model"}
-    assert found["Total"]["usage_status"] == "USED"
-    assert found["Revenue"]["usage_status"].startswith("INDIRECT")
 
 def test_conflicting_schema_identity_and_dependent_still_fail_closed(tmp_path, monkeypatch):
     import hashlib

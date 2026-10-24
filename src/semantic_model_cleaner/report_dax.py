@@ -1,8 +1,7 @@
-"""Static reference coverage for saved DAX queries; never executes DAX.
+"""Bounded static reference coverage for report-extension DAX expressions.
 
-This is a reference lexer, not a type checker or DAX evaluator. Every expression
-body (including unused DEFINE measures/variables) contributes dependencies.
-Unsupported binding constructs and incomplete lexical input fail closed.
+This lexer does not compile or evaluate DAX. Unsupported dynamic reference
+constructs and incomplete lexical input fail closed for report deletion.
 """
 from __future__ import annotations
 
@@ -44,10 +43,6 @@ def _reference_owner(token):
 
 class DaxCoverageError(ValueError):
     """The reference surface cannot be covered statically."""
-
-
-class DaxBindingError(DaxCoverageError):
-    """A required external binding is missing in this model/report scope."""
 
 
 def covered_tokens(text):
@@ -118,16 +113,3 @@ def expression_references(text):
     tokens = covered_tokens(text)
     return [( _reference_owner(tokens[n - 1] if n else None), token.value)
             for n, token in enumerate(tokens) if token.kind == "object"]
-
-
-def query_references(text, *, items=None):
-    """Conservative external bindings, including whole-table owner consumers.
-
-    With items supplied, every external binding must resolve in that report's
-    model/extension scope. Virtual names are resolved by expression ownership.
-    """
-    from .saved_dax_bindings import bind_query
-    try:
-        return bind_query(text, items)
-    except RecursionError as exc:
-        raise DaxCoverageError("Saved query binding nesting exceeds the supported bound.") from exc

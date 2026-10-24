@@ -11,7 +11,7 @@ exactly the generated structure: flags, annotations, template columns, hierarchy
 calculated partition, one generated relationship and one matching variation.
 
 Consumer checks do not rely on the analyzer's parsed usage. Every ``.tmdl``, ``.json``,
-``.pbir``, ``.pbism`` and saved DAX query (``.dax``) file under the selected model and
+``.pbir``, ``.pbism`` file under the selected model and
 report folders is searched for the table name, its relationship id and its lineage tags,
 for column-variation DAX (``[OrderDate].[Year]``, also with comments around the dot)
 and for report ``PropertyVariationSource`` references. JSON files and culture ``linguisticMetadata``
@@ -41,8 +41,7 @@ from .tmdl_declarations import TmdlDeclaration, scan_tmdl_declarations
 from .tmdl_identifiers import parse_tmdl_dotted_ref, unquote_tmdl_name
 
 OPERATION_KIND = "auto_date_tables"
-# Saved DAX query files (".dax", for example DAXQueries/Query 1.dax) are read, never written.
-SUFFIXES = {".tmdl", ".json", ".pbir", ".pbism", ".dax"}
+SUFFIXES = {".tmdl", ".json", ".pbir", ".pbism"}
 
 _GUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 _GUID_RE = re.compile(_GUID, re.I)
@@ -573,9 +572,6 @@ def _scan_mentions(candidates: list[_Candidate], files: list[_File]) -> None:
 
 def _mention_reason(file: _File, line: int, candidate: _Candidate) -> tuple[str, str, str]:
     location = _location(file, line)
-    if file.key.lower().endswith(".dax"):
-        return ("model_reference" if file.artifact == "model" else "report_reference",
-                f"Saved DAX query {file.key} names this table ({location}).", location)
     if file.artifact != "model":
         return ("report_reference", f"Report {file.artifact} names this table ({location}).", location)
     if file.key.startswith("model/definition/cultures/"):
@@ -634,8 +630,7 @@ def _scan_variation_dax(candidates: list[_Candidate], files: list[_File]) -> Non
                         continue
                     location = _location(file, line_of(offset))
                     table, column = candidate.owner
-                    where = (f"Saved DAX query {file.key}" if file.key.lower().endswith(".dax")
-                             else f"Report {file.artifact}" if file.artifact != "model" else "DAX in the model")
+                    where = f"Report {file.artifact}" if file.artifact != "model" else "DAX in the model"
                     candidate.block("variation_dax", f"{where} may use the auto date hierarchy of {table}[{column}] "
                                     f"through [{column}].[…] ({location}).", location)
 
@@ -800,7 +795,7 @@ def assess(model_path, report_paths, *, require_bound: bool = True) -> dict:
 _DEPENDENCY_REASONS = {
     "report_hierarchy": "a selected report uses its date hierarchy",
     "report_reference": "a selected report names it",
-    "model_reference": "the model or a saved DAX query names it",
+    "model_reference": "the model names it",
     "variation_dax": "DAX may use its date hierarchy through [Column].[…]",
     "linguistic_hierarchy": "Q&A linguistic metadata binds its date hierarchy",
 }

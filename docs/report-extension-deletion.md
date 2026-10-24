@@ -60,7 +60,7 @@ bare name conservatively retains all matching local candidates.
   additional metadata. A conservative string scan also blocks possible references
   on opaque surfaces, including stale selectors. This may retain a measure whose
   name occurs in a title or descriptive string; it never rewrites that text.
-  Invalid or unknown declared schemas and unsupported saved DAX query syntax block deletion within the affected report.
+  Invalid or unknown declared schemas and unsupported report-extension DAX block deletion within the affected report.
 - Report extension deletion is a separate plan; model changes, reference repair,
   promotion and stale cleanup must be reviewed first in their own plans.
 - Only selected measure JSON objects and their adjacent array separators are
@@ -68,7 +68,7 @@ bare name conservatively retains all matching local candidates.
   annotations and unrelated report files stay unchanged. Metadata owned by a
   deleted measure disappears with that measure.
 - Plan validation checks schema changes and newly unresolved references on staged
-  copies. The plan records each deletion and its required group. All selected model metadata and every selected report file are fingerprinted; any drift before apply blocks the whole operation.
+  copies. The plan records each deletion and its required group. All selected model metadata and every selected report file except external/saved .dax queries are fingerprinted; any drift before apply blocks the whole operation.
 - The shared transaction records exact original bytes in the saved plan and an
   atomic journal. Apply failures roll back completed writes. Restore refuses to
   overwrite later user edits and otherwise restores the exact original bytes.
@@ -79,17 +79,8 @@ bare name conservatively retains all matching local candidates.
 
 ## Coverage and identity rules
 
-Saved report `.dax` files are inspected without executing queries. Comment-only
-tabs have no dependencies. Supported DEFINE MEASURE and query-global VAR bodies with explicit item bindings, EVALUATE and
-ORDER BY expressions are scanned; strings/comments cannot invent references.
-Query-local definitions shadow exact qualified references and unique bare names.
-All supported local bodies contribute external dependencies, including transitive chains
-and unused definitions. Unsupported bindings (FUNCTION/TABLE/COLUMN), unknown
-functions, dynamic measure context and incomplete lexical input fail closed.
-This reference scanner does not compile or type-check DAX.
+External/saved .dax queries are developer scratch files outside model/report cleanup scope. They do not contribute usage, coverage gaps, blockers or plan inputs. Apply and restore leave their current bytes and inventory untouched, including queries changed after preview or apply.
 
-The public Microsoft [DEFINE documentation](https://learn.microsoft.com/en-us/dax/define-statement-dax)
-defines query-local scope and shadowing.
 The [reportExtension schema](https://github.com/microsoft/json-schemas/blob/5e1199a15b80e3d51198fe017b1a6fb9bb0871a6/fabric/item/report/definition/reportExtension/1.0.0/schema.json)
 defines explicit reference binding: omitted/empty schema means model; the
 extension name means that report's extension. Neither resolver falls back from a
@@ -105,7 +96,7 @@ not invent edges to unrelated names. An opaque or dynamic expression instead
 blocks its whole report. No defective metadata is repaired or removed to obtain
 coverage; retained measure properties and bytes are preserved by the span writer.
 
-Coverage is evaluated separately for each selected report. An unsupported query,
+Coverage is evaluated separately for each selected report. An unsupported report-extension expression,
 unknown schema or invalid metadata in one report does not poison an independent
 report's extension assessment. The plan still verifies every selected report's
 binding and bytes and rejects new unresolved references or schema errors.
@@ -118,21 +109,3 @@ formatting expressions in these versions. Unknown 2.14 remains blocked; a new
 version requires an official source snapshot, dependency closure and fixtures.
 Unused report rows with blocked eligibility receive Review and explicit reasons;
 dependency-closed groups receive Caution and the complete required selection.
-
-Standalone table bindings currently make saved-query coverage incomplete. This
-includes quoted and unquoted tables in EVALUATE, FILTER, ALL, VALUES and other
-table functions, including DEFINE VAR bodies that bind to whole model tables. These queries block
-model deletion in the selected scope and extension deletion in the affected
-report; they are never treated as reference-free. Qualified column/measure
-references and query-global DEFINE VAR chains using item references, literal
-constructors and allowlisted functions remain supported. Local
-VAR scopes, VAR declarations after DEFINE MEASURE (ambiguous body scope),
-self/forward variable references, duplicate variables and unresolved bare
-identifiers fail closed.
-Strings and comments remain opaque. No whole-table lineage or DAX type checking
-is claimed. Unselected reports do not enter the analysis or plan inventory.
-
-Every change plan stages and fingerprints saved report DAX inputs, including
-their file inventory. Adding, removing or editing a selected saved query after
-preview invalidates apply, even for ordinary model cleanup operations. Queries
-remain read-only inputs and are never included in plan writes or restore writes.
