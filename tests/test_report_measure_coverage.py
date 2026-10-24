@@ -167,8 +167,8 @@ def test_unpublished_visual_schema_remains_unknown(tmp_path):
 
 def test_static_or_and_substitutewithindex_references():
     assert query_references('EVALUATE { IF([A] > 0 || [B] > 0, 1, 0) }') == [(None, "A"), (None, "B")]
-    with pytest.raises(DaxCoverageError, match="binding"):
-        query_references('EVALUATE SUBSTITUTEWITHINDEX(Sales, "Index", Sales, Sales[Amount], ASC)')
+    assert ("Sales", None) in query_references(
+        'EVALUATE SUBSTITUTEWITHINDEX(Sales, "Index", Sales, Sales[Amount], ASC)')
     with pytest.raises(DaxCoverageError):
         query_references("EVALUATE { [A] | [B] }")
 
