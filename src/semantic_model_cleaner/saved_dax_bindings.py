@@ -238,6 +238,24 @@ class Binder:
                        if n == name.casefold() and (table is None or t == table.casefold())
                        for item in values]
             if not matches:
+                # Engine-generated helpers are not persisted source objects.
+                # Detect only an exact native measure owner with dynamic-format
+                # metadata. Lineage/runtime binding remains unsupported, so no
+                # reference is accepted or cleanup coverage relaxed here.
+                folded = name.casefold()
+                if folded.startswith("_") and folded.endswith(" formatstring"):
+                    owner_name = folded[1:-len(" formatstring")]
+                    owners = [item for (t, n), values in self.objects.items()
+                              if n == owner_name and (table is None or t == table.casefold())
+                              for item in values if item.source_kind == "model"
+                              and item.item_type == "Measure"
+                              and item.format_string_expression.strip()]
+                    if owners:
+                        raise DaxCoverageError(
+                            "Unsupported generated dynamic-format binding: "
+                            + (table or "") + "[" + name + "]"
+                            + "; native owner formatStringDefinition exists; "
+                            + "generated lineage and runtime binding are not verified.")
                 raise DaxBindingError("Unresolved object binding: " + (table or "") + "[" + name + "]")
             identities = {(i.source_kind, i.table.casefold(), i.name.casefold()) for i in matches}
             if len(identities) > 1:
@@ -290,10 +308,13 @@ class Binder:
                     raise DaxCoverageError("Ambiguous virtual/column binding: " + name)
                 if any(n == name.casefold() for _, n in self.locals):
                     raise DaxCoverageError("Ambiguous query measure/column binding: " + name)
-                if any(o[0] == "virtual" for o in origins) and any(
+                # DAX column/measure name precedence is not established by
+                # this symbolic binder. Never silently discard a same-name
+                # measure merely because a native or virtual row column exists.
+                if any(
                         n == name.casefold() and any(i.item_type == "Measure" for i in values)
                         for (_, n), values in self.objects.items()):
-                    raise DaxCoverageError("Ambiguous model measure/virtual column binding: " + name)
+                    raise DaxCoverageError("Ambiguous model/report measure/row column binding: " + name)
                 return Shape({name.casefold(): origins}, "column")
             if not any(n == name.casefold() for _, n in self.locals):
                 self.external(None, name)
@@ -390,9 +411,18 @@ class Binder:
             if len(args) <= index:
                 raise DaxCoverageError("Missing iterator table binding in " + name)
             source = table(args[index])
+            row = Shape.merge([context, source])
+            # Zero-based expression positions only. Scalar options are evaluated
+            # in the caller context, which can itself contain an outer row.
+            # RANKX value/order/ties must not inherit its expression's row.
+            row_args = {1}
+            if name == "topn":
+                row_args = set(range(2, len(args), 2))
+            elif name == "concatenatex":
+                row_args |= set(range(3, len(args), 2))
             for i, arg in enumerate(args):
                 if i != index:
-                    visit(arg, Shape.merge([context, source]) if i > index else context)
+                    visit(arg, row if i in row_args else context)
             return source if name in {"filter", "topn"} else Shape()
         if name in {"naturalinnerjoin", "naturalleftouterjoin", "crossjoin", "generate", "generateall"}:
             if len(args) < 2:
@@ -408,8 +438,8 @@ class Binder:
             if len(args) < 3:
                 raise DaxCoverageError("Missing SUBSTITUTEWITHINDEX table binding.")
             left, right = table(args[0]), table(args[2])
-            for arg in args[3:]:
-                visit(arg, Shape.merge([context, right]))
+            for i, arg in enumerate(args[3:], 3):
+                visit(arg, Shape.merge([context, right]) if i % 2 else context)
             output = Shape({key: origins for key, origins in left.columns.items()
                             if key not in right.columns}, "table")
             add_alias(output, args[1])
