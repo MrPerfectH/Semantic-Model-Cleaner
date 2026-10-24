@@ -4818,6 +4818,7 @@ def analyze(
     progress=None,
     allow_model_only: bool = False,
     unselected_reports: list[Path] | None = None,
+    unverified_reports: list[Path] | None = None,
 ) -> dict:
     def checkpoint(stage, current=0, total=None):
         if progress is not None:
@@ -5152,6 +5153,20 @@ def analyze(
             "unchecked": f"{len(names)} connected Report(s) were not selected: {shown}.",
             "effect": "Items without known use require Review; usage in unselected Reports is unknown.",
             "message": f"{len(names)} connected Report(s) were not selected for this analysis.",
+        })
+    if reports and unverified_reports:
+        # A Report whose binding cannot be read may use this model; its uses are unknown.
+        names = sorted(report_display_name(Path(p)) for p in unverified_reports)
+        shown = ", ".join(names[:3]) + (f", +{len(names) - 3} more" if len(names) > 3 else "")
+        analysis_limitations.append({
+            "id": "report_scan:unverified_binding", "kind": "report_scan", "area": "Report scan",
+            "feature": "report bindings not verified", "construct": "report_binding",
+            "owner": "selected Semantic Model", "table": "", "source_file": "", "line": 0,
+            "location": "selected Semantic Model", "scope": "shared", "targets": [],
+            "checked": f"{len(reports)} selected connected Report(s) were scanned.",
+            "unchecked": f"{len(names)} Report(s) with an unverified binding were not scanned: {shown}.",
+            "effect": "Items without known use require Review; usage in those Reports is unknown.",
+            "message": f"{len(names)} discovered Report(s) have a binding that could not be verified.",
         })
     coverage_limitations = [limitation for limitation in analysis_limitations if limitation["scope"] == "shared"]
     shared_limitation_trigger = _shared_limitation_trigger(coverage_limitations) if coverage_limitations else ""
@@ -5638,6 +5653,7 @@ def format_unused(results: dict) -> str:
     lines.append("# Unused Measures & Columns\n")
     lines.append(f"**Models**: {', '.join(s['models'])} | **Reports**: {', '.join(s['reports'])}\n")
     lines.extend(_format_warnings_section(results))
+    lines.extend(_format_analysis_limitations_section(results))
     lines.append(f"**{s['not_used']}** unused out of **{total}** total items\n")
 
     unused = [r for r in results["items"] if r["status"] == "NOT USED"]
@@ -6583,6 +6599,10 @@ def _analysis_cli(argv):
     scope = narrow_report_scope(scope, reports)
     for row in scope["excluded"]:
         print(f"Excluded {row['path']}: {row['message']}", file=sys.stderr)
+    # Same Safe -> Review rule as check/items: unscanned connected or unverified Reports keep usage unknown.
+    unselected = [Path(row["path"]) for row in scope["excluded"] if row["status"] == "not_selected"]
+    unverified = [Path(row["path"]) for row in scope["excluded"]
+                  if row["status"] not in {"not_selected", "not_connected"}]
 
     output_path = args.output
     if args.format == "xlsx" and not output_path:
@@ -6604,6 +6624,8 @@ def _analysis_cli(argv):
             report_paths=reports,
             model_search_roots=model_roots,
             report_search_roots=report_roots,
+            unselected_reports=unselected,
+            unverified_reports=unverified,
         )
     except UnsupportedSemanticModelError as exc:
         print(f"Error: {exc}", file=sys.stderr)
