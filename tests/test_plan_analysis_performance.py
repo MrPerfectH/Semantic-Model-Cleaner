@@ -88,3 +88,24 @@ def test_dax_tokenising_is_cached_but_callers_get_independent_lists():
     assert reference_tokens.dax_tokens.cache_info().hits >= 1
     assert analyzer._split_dax_comments(text) == analyzer._split_dax_comments(text)
     assert analyzer._split_dax_comments.cache_info().hits >= 1
+
+
+def test_dax_reference_extraction_is_cached_but_callers_get_independent_sets():
+    text = "SUMX('Sales', Sales[Amount]) + [Margin] // [Ignored]"
+    first_qualified = analyzer._extract_dax_qualified_refs(text)
+    first_unqualified = analyzer._extract_dax_unqualified_refs(text)
+    assert first_qualified == {("Sales", "Amount")} and first_unqualified == {"Margin"}
+    first_qualified.add(("caller", "mutation"))
+    first_unqualified.add("caller mutation")
+    assert analyzer._extract_dax_qualified_refs(text) == {("Sales", "Amount")}
+    assert analyzer._extract_dax_unqualified_refs(text) == {"Margin"}
+    assert analyzer._cached_dax_qualified_refs.cache_info().hits >= 1
+    assert analyzer._cached_dax_unqualified_refs.cache_info().hits >= 1
+
+
+def test_report_level_measure_only_satisfies_references_in_its_own_report(project):
+    model, reports = project
+    visual(reports[0], "L", "Sales", "Local")  # A uses B's report-level measure name
+    result = analyzer.analyze(model.parent, model_paths=[model], report_paths=reports, suggestions=False)
+    missing = {(issue["reportPath"], issue["name"]) for issue in result["report_issues"] if issue["name"] == "Local"}
+    assert missing == {(str(reports[0].resolve()), "Local")}

@@ -3158,25 +3158,25 @@ def build_report_issues(
     suggestions: bool = True,
 ) -> list[ReportIssue]:
     model_table_names = {item.table.casefold() for item in model_items}
-    report_entity_names = {item.table.casefold() for item in all_items if item.source_kind == "report"}
-    measure_keys = {normalize_key(*item.key) for item in all_items if item.item_type == "Measure"}
     column_keys = {normalize_key(*item.key) for item in all_items if item.item_type in ("Column", "Calculated Column")}
     hierarchy_keys = {normalize_key(info.table, info.name) for info in hierarchies}
 
     issues: list[ReportIssue] = list(invalid_json_issues)
     scope_cache = {}
-    def items_for_report(usage):
-        if not usage.report_path:
-            return all_items
+    def scope_for_report(usage):
         if usage.report_path not in scope_cache:
-            scope_cache[usage.report_path] = [item for item in all_items if item.source_kind != "report"
+            scoped_items = all_items if not usage.report_path else [
+                item for item in all_items if item.source_kind != "report"
                 or (item.source_file and str(Path(item.source_file).parent.parent.resolve()) == usage.report_path)]
+            scope_cache[usage.report_path] = (
+                scoped_items,
+                {item.table.casefold() for item in scoped_items if item.source_kind == "report"},
+                {normalize_key(*item.key) for item in scoped_items if item.item_type == "Measure"},
+            )
         return scope_cache[usage.report_path]
     suggestion_cache: dict[tuple, list[dict]] = {}
     for usage in direct_usages:
-        scoped_items = items_for_report(usage)
-        report_entity_names = {item.table.casefold() for item in scoped_items if item.source_kind == "report"}
-        measure_keys = {normalize_key(*item.key) for item in scoped_items if item.item_type == "Measure"}
+        scoped_items, report_entity_names, measure_keys = scope_for_report(usage)
         issue_type = _classify_missing_usage(
             usage,
             model_table_names=model_table_names,
@@ -4060,14 +4060,24 @@ def _skip_dax_whitespace(text: str, start: int) -> int:
 
 def _extract_dax_qualified_refs(dax_body: str) -> set[tuple[str, str]]:
     """Extract qualified refs: 'Table'[Name] and Table[Name]."""
+    return set(_cached_dax_qualified_refs(dax_body))
+
+
+@lru_cache(maxsize=16384)
+def _cached_dax_qualified_refs(dax_body: str) -> frozenset[tuple[str, str]]:
     active_dax, _ = _split_dax_comments(dax_body)
-    return _extract_dax_qualified_refs_from_text(active_dax)
+    return frozenset(_extract_dax_qualified_refs_from_text(active_dax))
 
 
 def _extract_dax_unqualified_refs(dax_body: str) -> set[str]:
     """Extract unqualified [Name] references."""
+    return set(_cached_dax_unqualified_refs(dax_body))
+
+
+@lru_cache(maxsize=16384)
+def _cached_dax_unqualified_refs(dax_body: str) -> frozenset[str]:
     active_dax, _ = _split_dax_comments(dax_body)
-    return _extract_dax_unqualified_refs_from_text(active_dax)
+    return frozenset(_extract_dax_unqualified_refs_from_text(active_dax))
 
 
 def _extract_dax_table_refs(dax_body: str) -> set[str]:
