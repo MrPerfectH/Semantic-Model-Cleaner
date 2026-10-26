@@ -16,6 +16,11 @@ and TMDL.
 
 ## Current Status
 
+AI agents can use the repository's [SKILL.md](SKILL.md) for command discovery,
+scope rules and the reviewed cleanup workflow. Maintainers regenerate it with
+`python scripts/generate_skill.py` after installing the project; CI checks it
+against `smc capabilities` with `python scripts/generate_skill.py --check`.
+
 - Project maturity: public beta `0.4.0b10`
 - Runtime shape: Python package with a CLI, a local web UI, and Windows desktop packaging
 - Stable entry points: `semantic-model-cleaner`, `semantic-model-cleaner-web`, `smc`, and `smc-web`
