@@ -46,6 +46,7 @@ async function snapshot(root) {
     const analysis = await server.request('/api/analyze', { model_paths: [scope.model],
       report_paths: scope.reports.map(report => report.path), report_selection: 'exact' });
     assert.ok(analysis.items.length > 0, 'Analysis must return Semantic Model Items.');
+    assert.ok(analysis.items.some(item => item.deleteSafety === 'Safe'), 'Clean demo scope must retain Safe recommendations.');
     // Keep the session token in memory; never print it or put it in a URL/file.
     const session = await fetch(`http://127.0.0.1:${server.port}/api/session`);
     assert.equal(session.status, 200);

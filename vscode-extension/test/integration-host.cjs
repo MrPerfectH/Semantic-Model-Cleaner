@@ -151,8 +151,10 @@ exports.run = async () => {
     assert.equal(await frame.evaluate(() => document.getElementById('viewToolbar').inert), false);
     const full = await frame.evaluate(() => ({ safe: allItems.filter(i => i.deleteSafety === 'Safe').length,
       limitations: allAnalysisLimitations.limitations.map(l => l.id) }));
-    assert.ok(full.safe > 0); assert.ok(!full.limitations.includes('report_scan:not_selected'));
-    pass('full selection analysis restores current results');
+    assert.equal(full.safe, 0, 'The unverified Legacy Draft binding still withholds Safe');
+    assert.ok(full.limitations.includes('report_scan:unverified_binding'));
+    assert.ok(!full.limitations.includes('report_scan:not_selected'));
+    pass('full selection clears the subset limitation but retains the unverified-binding safeguard');
 
     // 6. Zero reports: model-only analysis.
     await vscode.commands.executeCommand('semanticModelCleaner.clearReports');
@@ -216,6 +218,10 @@ exports.run = async () => {
     await until(async () => (await frame.locator('#smcHostScope').innerText()).includes('Ready: TestModel · 1 of 1 report'), 'second folder banner');
     await row('Analyze').click();
     await until(async () => (await frame.locator('#smcHostScope').innerText()).includes('Analyzed: TestModel · 1 of 1 report'), 'second folder analysis', 60000);
+    assert.ok(await frame.evaluate(() => allItems.some(item => item.deleteSafety === 'Safe')),
+      'The clean demo scope must retain Safe recommendations');
+    assert.equal(await frame.evaluate(() => allAnalysisLimitations.limitations.some(
+      limitation => limitation.id === 'report_scan:unverified_binding')), false);
     await shot('8-second-folder.png');
     pass('workspace switch resets scope; sole model auto-selected and analyzed');
 
