@@ -5,6 +5,20 @@ const path = require('node:path');
 const manifest = require('../package.json');
 const root = path.join(__dirname, '..');
 
+test('Mac acceptance resolves current Code bundles and retains older Electron bundles', t => {
+  const { resolveVSCodeExecutable } = require('../scripts/vscode-executable.cjs');
+  const directory = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'smc-mac-host-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const old = path.join(directory, 'Electron'), current = path.join(directory, 'Code');
+  fs.writeFileSync(old, 'old executable fixture');
+  assert.equal(resolveVSCodeExecutable(old, 'darwin'), old);
+  fs.renameSync(old, current);
+  assert.equal(resolveVSCodeExecutable(old, 'darwin'), current);
+  assert.throws(() => resolveVSCodeExecutable(old, 'linux'), /not found/);
+  fs.unlinkSync(current);
+  assert.throws(() => resolveVSCodeExecutable(old, 'darwin'), /not found/);
+});
+
 test('release version agrees with lockfile, package output and changelog', () => {
   const lock = require('../package-lock.json');
   assert.equal(manifest.version, '0.1.8');
