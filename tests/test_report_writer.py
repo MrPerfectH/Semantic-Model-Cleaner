@@ -605,7 +605,6 @@ def test_migrate_report_measure_to_model_preserves_supported_metadata(tmp_path):
     assert result["ok"] is True
     assert result["preserved_metadata"] == [
         "expression",
-        "dataType",
         "dataCategory",
         "description",
         "displayFolder",
@@ -615,6 +614,11 @@ def test_migrate_report_measure_to_model_preserves_supported_metadata(tmp_path):
     ]
     assert result["unpreserved_metadata"] == [
         {
+            "field": "dataType",
+            "reason": "A semantic model measure's data type is read-only: the engine derives it from the DAX "
+                      "expression, so TMDL does not write it.",
+        },
+        {
             "field": "measureTemplate",
             "reason": "Report extension measure templates are creation metadata and do not have a TMDL measure equivalent.",
         }
@@ -623,7 +627,7 @@ def test_migrate_report_measure_to_model_preserves_supported_metadata(tmp_path):
     sales_content = sales_file.read_text(encoding="utf-8")
     assert "\t/// Revenue defined in the report." in sales_content
     assert "\tmeasure 'Report Revenue' = [Existing] + 1" in sales_content
-    assert "\t\tdataType: double" in sales_content
+    assert "dataType" not in sales_content
     assert "\t\tdataCategory: Currency" in sales_content
     assert "\t\tformatString: $#,0.00" in sales_content
     assert "\t\tdisplayFolder: Executive" in sales_content

@@ -104,7 +104,9 @@ def test_exact_subset_records_unselected_reports_and_withholds_safe(workspace):
                        report_selection='exact')
     assert status == 202
     assert 'report_scan:not_selected' not in limitation_ids(full)
-    assert any(item['deleteSafety'] == 'Safe' for item in full['items'])
+    # Broken.Report's binding cannot be verified, so Safe is withheld like in the CLI.
+    assert 'report_scan:unverified_binding' in limitation_ids(full)
+    assert not any(item['deleteSafety'] == 'Safe' for item in full['items'])
     status, subset = run(jobs, model, [root / 'Reports/TestReport.Report'], report_selection='exact')
     assert status == 202
     assert 'report_scan:not_selected' in limitation_ids(subset)
@@ -114,6 +116,37 @@ def test_exact_subset_records_unselected_reports_and_withholds_safe(workspace):
                                                                   ('Broken', 'invalid_definition')}
     assert [row['name'] for row in subset['reportBinding']['selected']] == ['TestReport']
     assert webapp._state['report_paths'] == [str(root / 'Reports/TestReport.Report')]
+
+
+@pytest.mark.parametrize('selection', ['exact', None])
+def test_every_connected_report_with_verified_bindings_allows_safe(workspace, selection):
+    root, jobs = workspace
+    shutil.rmtree(root / 'Reports/Broken.Report')
+    model = root / 'Models/TestModel.SemanticModel'
+    extra = {'report_selection': selection} if selection else {}
+    status, full = run(jobs, model, [root / 'Reports/TestReport.Report', root / 'Reports/Report B.Report'], **extra)
+    assert status == 202
+    assert not limitation_ids(full) & {'report_scan:not_selected', 'report_scan:unverified_binding'}
+    assert any(item['deleteSafety'] == 'Safe' for item in full['items'])
+
+
+@pytest.mark.parametrize('endpoint', ['job', 'sync'])
+def test_standalone_analysis_withholds_safe_for_unverified_bindings_in_the_project(workspace, endpoint):
+    root, jobs = workspace
+    model = root / 'Models/TestModel.SemanticModel'
+    reports = [root / 'Reports/TestReport.Report', root / 'Reports/Report B.Report']
+    if endpoint == 'job':
+        status, result = run(jobs, model, reports)
+        assert status == 202
+    else:
+        response = webapp.app.test_client().post('/api/analyze', json={
+            'model_paths': [str(model)], 'report_paths': [str(r) for r in reports]})
+        assert response.status_code == 200, response.json
+        result = response.json
+    ids = limitation_ids(result) if endpoint == 'job' else {
+        row['id'] for row in result['analysisLimitations']['limitations']}
+    assert 'report_scan:unverified_binding' in ids
+    assert not any(item['deleteSafety'] == 'Safe' for item in result['items'])
 
 
 def test_exact_zero_reports_is_model_only(workspace):

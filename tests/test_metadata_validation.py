@@ -187,3 +187,23 @@ def test_report_schema_validation_across_windows_drives(tmp_path, monkeypatch):
     assert {record['path'] for record in result['files']} == {
         'report-1/definition.pbir', 'report-2/definition.pbir',
     }
+
+
+def test_previous_snapshot_is_reused_only_for_identical_bytes(monkeypatch):
+    unchanged = json.dumps(fixture('page-valid.json'))
+    broken = fixture('page-valid.json')
+    broken['width'] = 'bad'
+    before = metadata.validate_metadata({'report-1/a/page.json': unchanged, 'report-1/b/page.json': unchanged})
+    after_files = {'report-1/a/page.json': unchanged, 'report-1/b/page.json': json.dumps(broken)}
+    expected = metadata.validate_metadata(after_files)
+    calls = []
+    original = metadata.validate_document
+    monkeypatch.setattr(metadata, 'validate_document', lambda *a, **kw: calls.append(kw['path']) or original(*a, **kw))
+    reused = metadata.validate_metadata(after_files, previous=before)
+    assert calls == ['report-1/b/page.json']
+    assert reused == expected
+    assert metadata.compare_validation(before, reused)['new_errors']
+    # A different error limit never reuses evidence gathered under another limit.
+    calls.clear()
+    metadata.validate_metadata(after_files, previous=before, error_limit=5)
+    assert len(calls) == 2

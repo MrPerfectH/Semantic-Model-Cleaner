@@ -16,6 +16,11 @@ and TMDL.
 
 ## Current Status
 
+AI agents can use the repository's [SKILL.md](SKILL.md) for command discovery,
+scope rules and the reviewed cleanup workflow. Maintainers regenerate it with
+`python scripts/generate_skill.py` after installing the project; CI checks it
+against `smc capabilities` with `python scripts/generate_skill.py --check`.
+
 - Project maturity: public beta `0.4.0b10`
 - Runtime shape: Python package with a CLI, a local web UI, and Windows desktop packaging
 - Stable entry points: `semantic-model-cleaner`, `semantic-model-cleaner-web`, `smc`, and `smc-web`
@@ -114,6 +119,12 @@ smc summary .
 smc review . --format json
 smc capabilities
 ```
+
+SMC normally discovers one Semantic Model and its connected Reports. For explicit
+selection, use `--model-path Models/Sales.SemanticModel` and repeatable
+`--report-path Reports/Executive.Report`. These are exact paths relative to the
+project argument (absolute paths also work) across project commands. Existing
+selectors retain their behavior; see [selection and migration](docs/cli/README.md#recommended-exact-selection).
 
 These source-version commands explain direct and indirect usage by Report, page,
 and visual, summarize each Report's model footprint, and group existing check

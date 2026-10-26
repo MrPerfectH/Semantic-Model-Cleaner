@@ -72,6 +72,20 @@ def test_promotion_explicit_report_path_maps_to_correct_same_named_report(tmp_pa
     assert b"measure 'Local Derived'" in after['model/definition/tables/Sales.tmdl']
 
 
+@pytest.mark.parametrize('data_type', ['Double', 'Integer', 'NotAType'])
+def test_promotion_never_writes_a_measure_data_type_and_is_not_blocked_by_it(tmp_path, data_type):
+    """TOM Measure.DataType is read-only: the engine derives it from the expression."""
+    model, reports = project(tmp_path)
+    (reports[0] / 'definition/reportExtensions.json').write_text(json.dumps({'name': 'extension', 'entities': [
+        {'name': 'Sales', 'measures': [{'name': 'Local', 'dataType': data_type, 'expression': '[Revenue] + 1'}]}]}),
+        encoding="utf-8")
+    plan, after = round_trip(tmp_path, model, reports, [{'kind': 'promote', 'report_path': str(reports[0]),
+        'table': 'Sales', 'name': 'Local'}])
+    sales = after['model/definition/tables/Sales.tmdl']
+    assert b"measure Local = [Revenue] + 1" in sales
+    assert b"dataType: decimal" in sales and sales.count(b"dataType") == 1  # only the column keeps one
+
+
 def test_report_repair_round_trip_and_existing_error_reduction(tmp_path):
     model, reports = project(tmp_path)
     visual = reports[0] / 'definition/pages/P/visuals/V/visual.json'

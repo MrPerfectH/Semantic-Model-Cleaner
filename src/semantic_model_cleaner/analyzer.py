@@ -26,6 +26,7 @@ from contextlib import redirect_stderr
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -36,6 +37,7 @@ from semantic_model_cleaner.cli_contract import (
 )
 from semantic_model_cleaner.reference_tokens import dax_tokens
 from semantic_model_cleaner.console import configure_console_output
+from semantic_model_cleaner.cli_selection import add_path_options, resolve_path_options, select_exact_reports
 from semantic_model_cleaner.report_writer import STALE_CLEANUP_SUPPORTED_KINDS
 from semantic_model_cleaner.tmdl_declarations import (
     extract_culture_metadata,
@@ -3204,6 +3206,7 @@ def build_report_issues(
     hierarchies: list[HierarchyInfo],
     warnings: list[AnalyzerWarning],
     suggestion_cache: dict[tuple, list[dict]] | None = None,
+    suggestions: bool = True,
 ) -> list[ReportIssue]:
     model_table_names = {item.table.casefold() for item in model_items}
     column_keys = {normalize_key(*item.key) for item in all_items if item.item_type in ("Column", "Calculated Column")}
@@ -3247,14 +3250,14 @@ def build_report_issues(
             severity = "warning"
             issue_context = "Inactive Filter"
         suggestion_key = (usage.report_path, usage.table.casefold(), usage.name.casefold(), usage.ref_type.casefold())
-        if suggestion_key not in suggestion_cache:
+        if suggestions and suggestion_key not in suggestion_cache:
             suggestion_cache[suggestion_key] = _fuzzy_suggestions(usage, scoped_items)
         issues.append(_report_issue_from_usage(
             usage,
             issue_type=issue_type,
             severity=severity,
             message=_missing_issue_message(issue_type, usage),
-            suggestions=suggestion_cache[suggestion_key] if severity == "error" else [],
+            suggestions=suggestion_cache[suggestion_key] if suggestions and severity == "error" else [],
             context=issue_context,
         ))
 
@@ -3936,6 +3939,7 @@ def scan_additional_definition_json(
 # ── DAX Dependency Analysis ──────────────────────────────────────────────────
 
 
+@lru_cache(maxsize=16384)
 def _split_dax_comments(dax_body: str) -> tuple[str, str]:
     """Return reference code with comments/literals masked, plus real comments.
 
@@ -4122,14 +4126,24 @@ def _skip_dax_whitespace(text: str, start: int) -> int:
 
 def _extract_dax_qualified_refs(dax_body: str) -> set[tuple[str, str]]:
     """Extract qualified refs: 'Table'[Name] and Table[Name]."""
+    return set(_cached_dax_qualified_refs(dax_body))
+
+
+@lru_cache(maxsize=16384)
+def _cached_dax_qualified_refs(dax_body: str) -> frozenset[tuple[str, str]]:
     active_dax, _ = _split_dax_comments(dax_body)
-    return _extract_dax_qualified_refs_from_text(active_dax)
+    return frozenset(_extract_dax_qualified_refs_from_text(active_dax))
 
 
 def _extract_dax_unqualified_refs(dax_body: str) -> set[str]:
     """Extract unqualified [Name] references."""
+    return set(_cached_dax_unqualified_refs(dax_body))
+
+
+@lru_cache(maxsize=16384)
+def _cached_dax_unqualified_refs(dax_body: str) -> frozenset[str]:
     active_dax, _ = _split_dax_comments(dax_body)
-    return _extract_dax_unqualified_refs_from_text(active_dax)
+    return frozenset(_extract_dax_unqualified_refs_from_text(active_dax))
 
 
 def _extract_dax_table_refs(dax_body: str) -> set[str]:
@@ -5001,6 +5015,8 @@ def analyze(
     allow_model_only: bool = False,
     unselected_reports: list[Path] | None = None,
     cache: AnalysisCache | None = None,
+    unverified_reports: list[Path] | None = None,
+    suggestions: bool = True,
 ) -> dict:
     def checkpoint(stage, current=0, total=None):
         if progress is not None:
@@ -5204,6 +5220,7 @@ def analyze(
         hierarchies=all_hierarchies,
         warnings=warnings,
         suggestion_cache=cache.suggestions if cache is not None else None,
+        suggestions=suggestions,
     )
 
     usage_index: dict[tuple[str, str], list[UsageRef]] = defaultdict(list)
@@ -5359,6 +5376,20 @@ def analyze(
             "unchecked": f"{len(names)} connected Report(s) were not selected: {shown}.",
             "effect": "Items without known use require Review; usage in unselected Reports is unknown.",
             "message": f"{len(names)} connected Report(s) were not selected for this analysis.",
+        })
+    if reports and unverified_reports:
+        # A Report whose binding cannot be read may use this model; its uses are unknown.
+        names = sorted(report_display_name(Path(p)) for p in unverified_reports)
+        shown = ", ".join(names[:3]) + (f", +{len(names) - 3} more" if len(names) > 3 else "")
+        analysis_limitations.append({
+            "id": "report_scan:unverified_binding", "kind": "report_scan", "area": "Report scan",
+            "feature": "report bindings not verified", "construct": "report_binding",
+            "owner": "selected Semantic Model", "table": "", "source_file": "", "line": 0,
+            "location": "selected Semantic Model", "scope": "shared", "targets": [],
+            "checked": f"{len(reports)} selected connected Report(s) were scanned.",
+            "unchecked": f"{len(names)} Report(s) with an unverified binding were not scanned: {shown}.",
+            "effect": "Items without known use require Review; usage in those Reports is unknown.",
+            "message": f"{len(names)} discovered Report(s) have a binding that could not be verified.",
         })
     coverage_limitations = [limitation for limitation in analysis_limitations if limitation["scope"] == "shared"]
     shared_limitation_trigger = _shared_limitation_trigger(coverage_limitations) if coverage_limitations else ""
@@ -5862,6 +5893,7 @@ def format_unused(results: dict) -> str:
     lines.append("# Unused Measures & Columns\n")
     lines.append(f"**Models**: {', '.join(s['models'])} | **Reports**: {', '.join(s['reports'])}\n")
     lines.extend(_format_warnings_section(results))
+    lines.extend(_format_analysis_limitations_section(results))
     lines.append(f"**{s['not_used']}** unused out of **{total}** total items\n")
 
     unused = [r for r in results["items"] if r["status"] == "NOT USED"]
@@ -6566,6 +6598,7 @@ def _build_clean_stale_parser() -> argparse.ArgumentParser:
             "Exit codes: 0 clean, 1 candidates, 2 input/analysis error or withheld apply."
         ),
     )
+    add_path_options(parser)
     parser.add_argument(
         "project_path",
         nargs="?",
@@ -6638,6 +6671,7 @@ def clean_stale_command(argv: list[str]) -> int:
     results = {}
     error = None
     try:
+        exact_model, exact_reports = resolve_path_options(args, workspace)
         if not workspace.is_dir() and not args.models_path and not args.reports_path:
             raise ValueError(f"workspace path does not exist: {workspace}")
         model_roots = [Path(p).resolve() for p in args.models_path] if args.models_path else [workspace]
@@ -6645,15 +6679,17 @@ def clean_stale_command(argv: list[str]) -> int:
         for path in model_roots + report_roots:
             if not path.is_dir():
                 raise ValueError(f"search path does not exist: {path}")
-        models = filter_models(discover_models(model_roots), args.model)
+        models = [exact_model] if exact_model else filter_models(discover_models(model_roots), args.model)
         if len(models) != 1:
             raise ValueError(f"Exactly one semantic model must be selected; found {len(models)}.")
         discovered_reports = discover_reports(report_roots)
+        if exact_reports:
+            discovered_reports = sorted(set(discovered_reports) | set(exact_reports))
         if args.all_reports:
             bound, skipped = discovered_reports, []
         else:
             bound, skipped = partition_reports_by_binding(discovered_reports, models[0])
-        reports = filter_reports(bound, args.report)
+        reports = select_exact_reports(exact_reports, bound) if exact_reports else filter_reports(bound, args.report)
         binding_summary = {
             "allReports": args.all_reports,
             "model": model_label(models[0]),
@@ -6719,6 +6755,7 @@ def _analysis_cli(argv):
         json_errors=json_requested(argv),
     )
     parser.add_argument('--version', action='version', version=f'Semantic Model Cleaner {__version__}')
+    add_path_options(parser)
     parser.add_argument(
         "workspace",
         nargs="?",
@@ -6762,13 +6799,20 @@ def _analysis_cli(argv):
     )
     args = parser.parse_args(argv)
 
+    try:
+        exact_model, exact_reports = resolve_path_options(args, Path(args.workspace).resolve())
+    except ValueError as exc:
+        parser.error(str(exc))
+
     workspace, model_roots, report_roots = _resolve_search_roots(
         args.workspace, args.models_path, args.reports_path
     )
 
     discovered_models = discover_models(model_roots)
     discovered_reports = discover_reports(report_roots)
-    models = filter_models(discovered_models, args.model)
+    if exact_reports:
+        discovered_reports = sorted(set(discovered_reports) | set(exact_reports))
+    models = [exact_model] if exact_model else filter_models(discovered_models, args.model)
 
     if args.interactive:
         if not sys.stdin.isatty():
@@ -6781,7 +6825,11 @@ def _analysis_cli(argv):
         )
     _require_single_model(models)
     scope = report_binding_scope(models[0], discovered_reports)
-    reports = filter_reports([Path(row["path"]) for row in scope["selected"]], args.report)
+    connected = [Path(row["path"]) for row in scope["selected"]]
+    try:
+        reports = select_exact_reports(exact_reports, connected) if exact_reports else filter_reports(connected, args.report)
+    except ValueError as exc:
+        parser.error(str(exc))
     if args.interactive:
         reports = select_paths_interactively(
             "reports",
@@ -6792,6 +6840,10 @@ def _analysis_cli(argv):
     scope = narrow_report_scope(scope, reports)
     for row in scope["excluded"]:
         print(f"Excluded {row['path']}: {row['message']}", file=sys.stderr)
+    # Same Safe -> Review rule as check/items: unscanned connected or unverified Reports keep usage unknown.
+    unselected = [Path(row["path"]) for row in scope["excluded"] if row["status"] == "not_selected"]
+    unverified = [Path(row["path"]) for row in scope["excluded"]
+                  if row["status"] not in {"not_selected", "not_connected"}]
 
     output_path = args.output
     if args.format == "xlsx" and not output_path:
@@ -6813,6 +6865,8 @@ def _analysis_cli(argv):
             report_paths=reports,
             model_search_roots=model_roots,
             report_search_roots=report_roots,
+            unselected_reports=unselected,
+            unverified_reports=unverified,
         )
     except UnsupportedSemanticModelError as exc:
         print(f"Error: {exc}", file=sys.stderr)

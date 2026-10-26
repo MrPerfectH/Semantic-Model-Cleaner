@@ -17,7 +17,7 @@ COMMAND_GUIDE = """Commands (use COMMAND --help for details):
   smc clean-stale PROJECT          Discover stale Report metadata (read-only)
   smc plan PROJECT --operations FILE -o PLAN
                                   Prepare reviewed changes on copies
-  smc diff PLAN [CANDIDATE]        Show plan diff, or compare two model folders
+  smc diff PLAN                   Show the reviewed plan diff
   smc apply PLAN                  Apply the exact reviewed plan
   smc verify PLAN                 Check current files against the plan
   smc history                     List local change receipts
@@ -34,6 +34,11 @@ Examples:
   smc apply review/changes.json --format json
 
 Path rules:
+  Recommended: --model-path and repeated --report-path select exact folders
+  relative to PROJECT (or absolute paths) across all project command families.
+  Omit selectors to discover one model and its connected Reports automatically.
+  Do not mix canonical and legacy selectors for the same artifact type.
+  Legacy selectors below retain their existing meanings:
   Analysis/clean-stale --model and --report are name substring FILTERS.
   Analysis --models-path/--reports-path are search paths relative to the CWD.
   Check --model is an exact path relative to PROJECT; --report is a name filter.

@@ -29,6 +29,13 @@ class PlanError(ValueError):
     pass
 
 
+class PartialReportScopeError(PlanError):
+    """A change that can break Report References was asked for on a partial Report selection.
+
+    The message names the Reports left out; each surface adds its own way to select them.
+    """
+
+
 def _digest(value):
     return hashlib.sha256(value).hexdigest()
 
@@ -242,19 +249,20 @@ def _execute(op, roots):
 def _analyze(roots, cache=None):
     try:
         reports = {k: p for k, p in roots.items() if k != 'model'}
-        # The files under these roots do not change while this function runs, so
-        # the whole-scope and per-report analyses share one parse of them (#169).
         if cache is None:
             cache = analyzer.AnalysisCache()
+        # Plans compare problem identities; repair suggestions are never used here.
         result = analyzer.analyze(roots['model'].parent, model_paths=[roots['model']],
-                                  report_paths=list(reports.values()), cache=cache)
-        # Report display names are not unique. Analyze report issues separately
-        # so identical visual paths in distinct artifacts never hide new errors.
-        result['_report_issues_by_artifact'] = {}
-        for key, path in reports.items():
-            single = result if len(reports) == 1 else analyzer.analyze(
-                roots['model'].parent, model_paths=[roots['model']], report_paths=[path], cache=cache)
-            result['_report_issues_by_artifact'][key] = single.get('report_issues', [])
+                                  report_paths=list(reports.values()), suggestions=False, cache=cache)
+        # Report display names are not unique. Group issues by their exact
+        # artifact so identical visual paths in distinct Reports never hide
+        # new errors. An issue without a known Report counts for every Report.
+        artifact = {os.path.normcase(str(path)): key for key, path in reports.items()}
+        result['_report_issues_by_artifact'] = grouped = {key: [] for key in reports}
+        for issue in result.get('report_issues', []):
+            key = artifact.get(os.path.normcase(str(issue.get('reportPath') or '')))
+            for target in [key] if key else grouped:
+                grouped[target].append(issue)
         return result
     except SystemExit as exc:
         raise PlanError('Analysis could not read the selected TMDL/PBIR scope.') from exc
@@ -335,8 +343,57 @@ def _check_auto_date_tables(roots, operation, *, planned=False):
     return assessment
 
 
-def create_plan(model_path, report_paths, operations):
-    """Preview only; no input files or backups are written."""
+def _invalidates_report_references(operation):
+    """Model changes that can break Report References in any connected Report.
+
+    Display-only actions, DAX edits and report-only work leave every Report
+    Reference resolvable, so they do not depend on the full Report selection.
+    """
+    return operation.get('kind') in {'rename', 'move', 'promote', auto_date_tables.OPERATION_KIND} or any(
+        action.get('action') in {'delete', 'delete_table'} for action in operation.get('actions', []))
+
+
+def report_selection(model_path, report_paths, known_reports):
+    """Selected Reports against every known Report bound, or possibly bound, to the model.
+
+    ``known_reports`` are the Reports the caller discovered for the project;
+    ``None`` records that completeness was not checked.
+    """
+    if known_reports is None:
+        return {'checked': False, 'complete': None, 'selected': [], 'unselected_connected': [], 'unverified': []}
+    chosen = {Path(p).resolve() for p in report_paths}
+    scope = analyzer.report_binding_scope(Path(model_path), [*map(Path, known_reports), *chosen])
+    row = lambda binding: {key: binding[key] for key in ('name', 'path', 'status', 'message')}
+    rows = scope['selected'] + scope['excluded']
+    selection = {
+        'checked': True,
+        'selected': [row(b) for b in rows if Path(b['path']) in chosen],
+        'unselected_connected': [row(b) for b in scope['selected'] if Path(b['path']) not in chosen],
+        'unverified': [row(b) for b in scope['excluded']
+                       if Path(b['path']) not in chosen and b['status'] != 'not_connected'],
+    }
+    selection['complete'] = not selection['unselected_connected'] and not selection['unverified']
+    return selection
+
+
+def _selection_gaps(selection):
+    gaps = []
+    if selection['unselected_connected']:
+        gaps.append(f"{len(selection['unselected_connected'])} connected Report(s) are not selected: "
+                    + ', '.join(f"{b['name']} ({b['path']})" for b in selection['unselected_connected']) + '.')
+    if selection['unverified']:
+        gaps.append(f"{len(selection['unverified'])} Report binding(s) could not be verified: "
+                    + ', '.join(f"{b['name']} ({b['status']}, {b['path']})" for b in selection['unverified']) + '.')
+    return ' '.join(gaps)
+
+
+def create_plan(model_path, report_paths, operations, *, known_reports=None, allow_partial_report_scope=False):
+    """Preview only; no input files or backups are written.
+
+    Pass ``known_reports`` (the project's discovered Reports) so a plan that
+    can break Report References refuses a partial Report selection unless
+    ``allow_partial_report_scope`` explicitly accepts it.
+    """
     if not isinstance(operations, list) or not operations or any(not isinstance(o, dict) for o in operations):
         raise PlanError('operations must be a nonempty list of objects.')
     report_delete = any(op.get('kind') == report_measure_delete.OPERATION_KIND for op in operations)
@@ -349,6 +406,13 @@ def create_plan(model_path, report_paths, operations):
                     or str(action.get('source_file', action.get('sourceFile', ''))).lower().endswith('.json')):
                 raise PlanError('Report identities cannot be used for semantic-model actions; use delete_report_measures.')
     originals = _roots(model_path, report_paths)
+    selection = report_selection(originals['model'], list(originals.values())[1:], known_reports)
+    selection['partial_scope_allowed'] = bool(allow_partial_report_scope)
+    if selection['complete'] is False and not allow_partial_report_scope \
+            and any(_invalidates_report_references(op) for op in operations):
+        raise PartialReportScopeError('Not planned: this change can break Report References in Reports outside the '
+                                      'selection. ' + _selection_gaps(selection)
+                                      + ' A model change should reach every connected Report.')
     before = _inventory(originals)
     queries = _query_inventory(originals, operations)
     _require_supported_write_encoding(before)
@@ -437,7 +501,7 @@ def create_plan(model_path, report_paths, operations):
             _execute(mapped, staged)
         after = _inventory(staged)
         _validate_json(after, tolerate_existing=None if strict else before)
-        schema_after = metadata_validation.validate_metadata(after, memo=schema_memo)
+        schema_after = metadata_validation.validate_metadata(after, memo=schema_memo, previous=schema_before)
         schema_comparison = metadata_validation.compare_validation(schema_before, schema_after)
         if schema_comparison["new_errors"] or schema_comparison["lost_validation"] or schema_comparison["truncated"]:
             raise PlanError("Change introduces schema errors, loses declared schema validation, or exceeds the schema error limit. Repair the metadata before applying.")
@@ -463,9 +527,12 @@ def create_plan(model_path, report_paths, operations):
             'created_at': datetime.now(timezone.utc).isoformat(),
             'scope': {k: str(p) for k, p in originals.items()},
             'coverage': {'reports': [{k: b.get(k) for k in ('name', 'status', 'message')} for b in bindings],
+                         'report_selection': selection,
                          'analysis': baseline.get('coverage', {}),
-                         'final_state': {'complete': final_state_complete
-                                         or bool(baseline.get('coverage', {}).get('complete', False)),
+                         # Unselected or unverified Reports were never checked, so the final state cannot be complete.
+                         'final_state': {'complete': (final_state_complete
+                                                      or bool(baseline.get('coverage', {}).get('complete', False)))
+                                                     and selection['complete'] is not False,
                                          'cleared_limitations': cleared}}, 'operations': operations,
             'inputs': _hashes({**before, **queries}), 'outputs': _hashes({**after, **queries}), 'changes': changes,
             'validation': {'report_measure_deletions': report_deletions,
@@ -479,6 +546,9 @@ def create_plan(model_path, report_paths, operations):
                                            'bundle_commit': schema_after['bundle'].get('commit')},
                            'limitations': ['Static analysis of selected TMDL/PBIR only.',
                                            'Only supported declared PBIR schemas are validated; TMDL/DAX engine validation is not performed.']
+                                          + (['Report selection is incomplete; Report References in these Reports '
+                                              'were not checked. ' + _selection_gaps(selection)]
+                                             if selection['complete'] is False else [])
                                           + sorted({entry['cleared_reason'] for entry in cleared})
                                           + _auto_date_limitations(auto_date),
                            # Tool entities (#103) are deleted only after the user confirms them here.
