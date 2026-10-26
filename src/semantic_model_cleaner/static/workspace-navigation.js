@@ -20,13 +20,16 @@
   var summary = $('summarySection'); summary.classList.add('workspace-result-counts'); $('mainArea').insertBefore(summary, $('resultOverview'));
 
   var reportIntro = document.createElement('section'); reportIntro.className = 'reports-intro';
-  reportIntro.innerHTML = '<h2>Reports</h2><p>Metadata findings and scan coverage for the selected reports. This does not assess runtime performance, visual quality or rendered behavior.</p><p>Valid means a file matches its declared supported schema. Invalid means that check failed. Not validated means the schema was missing, unsupported or unavailable.</p><p id="reportsFindingSummary" role="status"></p><div id="reportInventory"></div><button type="button" class="btn btn-secondary btn-sm" id="reportsReferences">Browse report usage</button>';
-  $('reportsTableSection').prepend(reportIntro); $('reportsReferences').onclick = function () { switchView('refs'); };
-  $('reportsTableSection').insertBefore($('reportHealthBanner'), reportIntro.nextSibling);
+  // Errors first: what is missing from the model (missing-items.js), then every finding row.
+  reportIntro.innerHTML = '<h2>Reports</h2><p id="reportsFindingSummary" role="status"></p><div id="missingItemsHost"></div>'
+    + '<h3 id="reportFindingRowsHeading">All finding rows</h3><p class="mi-rows-note">Every finding in report metadata, one row per reference. Counts are rows, not unique visuals. Runtime performance and rendered appearance are not assessed.</p>';
+  $('reportsTableSection').prepend(reportIntro);
+  // Offline schema evidence is scan coverage, so it sits with the other scan details.
+  var schemaPanel = document.querySelector('.schema-evidence');
+  if (schemaPanel) $('analysisLimitationsBanner').after(schemaPanel);
   var oldResults = setResultsData;
   setResultsData = function (data) {
     var result = oldResults.apply(this, arguments);
-    $('reportsFindingSummary').textContent = ((data.reportHealth || {}).totalIssueCount || 0) + ' metadata finding row(s). Rows can overlap and do not count unique visuals. Broken references and invalid definitions require a source-report fix.';
     if (data.analysisLimitations && !data.analysisLimitations.affectedItemCount && !data.analysisLimitations.sharedCount) $('analysisLimitationsBanner').open = false;
     return result;
   };
@@ -35,8 +38,7 @@
     document.body.classList.add('sidebar-owned-scope');
     document.body.classList.remove('scope-open');
     window.smcOpenScope = function () {
-      var focusSidebar = document.querySelector('#smcHostScope button');
-      if (focusSidebar) focusSidebar.click();
+      if (typeof window.smcHostFocusScope === 'function') window.smcHostFocusScope();
     };
     return;
   }

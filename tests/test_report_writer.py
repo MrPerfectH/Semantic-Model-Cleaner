@@ -1915,3 +1915,24 @@ def test_column_move_does_not_corrupt_shared_aliased_from(tmp_path):
     assert "work_order_number" in props
     assert "work_order_id" not in props
     assert "shared query source" in result["error"]
+
+
+def test_measure_rename_can_point_a_broken_reference_at_another_table(tmp_path):
+    report_path = tmp_path / "Scorecard.Report"
+    visual_dir = report_path / "definition" / "pages" / "Page1" / "visuals" / "Visual1"
+    visual_dir.mkdir(parents=True)
+    visual_file = visual_dir / "visual.json"
+    measure = {"Expression": {"SourceRef": {"Entity": "_Measures"}}, "Property": "Load Order"}
+    visual_file.write_text(json.dumps({"visual": {"query": {"queryState": {"Y": {"projections": [
+        {"field": {"Measure": measure}, "queryRef": "_Measures.Load Order"}]}}}}}), encoding="utf-8")
+
+    result = report_writer.rewrite_model_reference_changes(
+        report_paths=[report_path],
+        measure_renames=[{"table": "_Measures", "name": "Load Order", "target_table": "PM Scorecard", "target_name": "Load Order %"}],
+    )
+
+    assert result["ok"] is True and result["updated_reference_count"] >= 1
+    projection = json.loads(visual_file.read_text(encoding="utf-8"))["visual"]["query"]["queryState"]["Y"]["projections"][0]
+    assert projection["field"]["Measure"]["Expression"]["SourceRef"]["Entity"] == "PM Scorecard"
+    assert projection["field"]["Measure"]["Property"] == "Load Order %"
+    assert projection["queryRef"] == "PM Scorecard.Load Order %"

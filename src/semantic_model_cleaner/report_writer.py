@@ -495,7 +495,10 @@ def _reference_lookup(
         name = str(rename.get("name", "") or "").strip()
         target_name = str(rename.get("target_name", "") or "").strip()
         if table and name and target_name:
-            resolved_table = table_lookup.get(table.casefold(), table)
+            # Target table defaults to the (possibly renamed) source table; an
+            # explicit one points a broken reference at a measure elsewhere.
+            target_table = str(rename.get("target_table", "") or "").strip()
+            resolved_table = target_table or table_lookup.get(table.casefold(), table)
             measure_lookup[(table.casefold(), name.casefold())] = (resolved_table, target_name)
 
     for rename in column_renames or []:

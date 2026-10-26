@@ -19,7 +19,7 @@
   }
 
   var style = document.createElement('style');
-  style.textContent = '#scopeChip,#scopeDrawer,#scopeOverlay,#setupSection,#welcomeCard{display:none!important}'
+  style.textContent = '#scopeChip,#scopeDrawer,#scopeOverlay,#setupSection,#welcomeCard,#smcHostScope[hidden]{display:none!important}'
     + '#smcHostScope{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:10px 16px;padding:10px 14px;'
     + 'border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;color:#0f172a;font-size:13px}'
     + '#smcHostScope[data-state="stale"],#smcHostScope[data-state="failed"]{border-color:#f59e0b;background:#fffbeb}'
@@ -29,10 +29,10 @@
   var banner = document.createElement('section');
   banner.id = 'smcHostScope'; banner.setAttribute('role', 'status'); banner.setAttribute('aria-label', 'Analysis scope');
   var text = document.createElement('span');
-  var change = document.createElement('button');
-  change.type = 'button'; change.className = 'btn btn-secondary btn-sm'; change.textContent = 'Change scope in sidebar';
-  change.onclick = function () { post({type: 'smc-focus-scope'}); };
-  banner.append(text, change);
+  banner.append(text);
+  // The sidebar already shows the selection; the banner only speaks up when
+  // results are missing, running, stale or failed.
+  window.smcHostFocusScope = function () { post({type: 'smc-focus-scope'}); };
   var header = document.querySelector('.header');
   if (header) header.after(banner); else document.body.prepend(banner);
 
@@ -45,6 +45,7 @@
     });
     var state = stale ? 'stale' : banner.dataset.error ? 'failed' : running ? 'running' : analyzed ? 'current' : 'empty';
     banner.dataset.state = state;
+    banner.hidden = state === 'current';
     text.textContent = '';
     var strong = document.createElement('strong');
     if (!current || !current.model) {

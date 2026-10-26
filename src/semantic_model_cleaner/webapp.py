@@ -749,6 +749,106 @@ def _build_report_root_cause_groups(report_issues: list[dict]) -> dict:
     }
 
 
+# Missing Items group broken Report References by the exact model item they
+# point at, so the Reports screen reads "what is missing from the model" rather
+# than a flat list of finding rows. A reference to a table that does not exist
+# groups under the table; a missing column or measure in an existing table
+# groups under that column or measure. Presentation-only, like root causes
+# (docs/adr/0001-report-issue-grouping-is-presentation-only.md).
+_MISSING_ITEM_KINDS = {
+    "missing_table": "table",
+    "missing_column": "column",
+    "missing_measure": "measure",
+    "missing_report_measure": "reportMeasure",
+}
+
+
+def _missing_item_identity(issue: dict) -> tuple[str, str, str] | None:
+    kind = _MISSING_ITEM_KINDS.get(str(issue.get("issueType", "") or ""))
+    if kind is None:
+        return None
+    table = str(issue.get("table", "") or "").strip()
+    name = str(issue.get("name", "") or "").strip()
+    if kind == "table":
+        return kind, table or "(unknown table)", ""
+    return kind, table, name
+
+
+def _build_missing_items(report_issues: list[dict]) -> dict:
+    items: dict[str, dict] = {}
+    visible_visuals: set[tuple[str, str, str]] = set()
+    reports: set[str] = set()
+    for issue in report_issues:
+        identity = _missing_item_identity(issue)
+        if identity is None:
+            continue
+        kind, table, name = identity
+        key = "missing:" + kind + ":" + table.casefold() + ("[" + name.casefold() + "]" if name else "")
+        issue["missingItemKey"] = key
+        item = items.get(key)
+        if item is None:
+            item = items[key] = {
+                "key": key, "kind": kind, "table": table, "name": name,
+                "label": f"{table}[{name}]" if name else table,
+                "totalCount": 0, "visibleCount": 0, "hiddenCount": 0,
+                "_visuals": set(), "_visibleVisuals": set(), "_fields": {}, "_reports": {},
+                "suggestion": None,
+            }
+        hidden = _report_issue_is_hidden(issue)
+        report_id = str(issue.get("reportPath") or issue.get("report") or "")
+        visual = (report_id, str(issue.get("page", "") or ""), str(issue.get("visualId", "") or ""))
+        item["totalCount"] += 1
+        item["hiddenCount" if hidden else "visibleCount"] += 1
+        if visual[2]:
+            item["_visuals"].add(visual)
+            if not hidden:
+                item["_visibleVisuals"].add(visual)
+                visible_visuals.add(visual)
+        field = str(issue.get("name", "") or "").strip()
+        if kind == "table" and field:
+            item["_fields"][field] = item["_fields"].get(field, 0) + 1
+        if report_id:
+            reports.add(report_id)
+            report = item["_reports"].setdefault(report_id, {
+                "report": issue.get("report", "") or report_id, "reportPath": issue.get("reportPath", ""),
+                "count": 0, "_pages": {}})
+            report["count"] += 1
+            page_name = str(issue.get("page", "") or "")
+            page = report["_pages"].setdefault(page_name, {"page": page_name, "hidden": bool(issue.get("pageHidden")), "count": 0})
+            page["count"] += 1
+        if item["suggestion"] is None:
+            for suggestion in issue.get("suggestions", []) or []:
+                if suggestion.get("action") == "suggest_replace" and suggestion.get("table"):
+                    item["suggestion"] = {
+                        "table": suggestion["table"],
+                        "name": suggestion.get("name", "") if kind != "table" else "",
+                        "confidence": suggestion.get("confidence", ""),
+                    }
+                    break
+
+    serialized = []
+    for item in items.values():
+        report_rows = sorted(item.pop("_reports").values(), key=lambda r: (-r["count"], str(r["report"]).casefold()))
+        for report in report_rows:
+            report["pages"] = sorted(report.pop("_pages").values(), key=lambda p: (p["hidden"], -p["count"], p["page"].casefold()))
+        fields = item.pop("_fields")
+        item["fields"] = [{"name": n, "count": c} for n, c in sorted(fields.items(), key=lambda f: (-f[1], f[0].casefold()))]
+        item["visualCount"] = len(item.pop("_visuals"))
+        item["visibleVisualCount"] = len(item.pop("_visibleVisuals"))
+        item["reportCount"] = len(report_rows)
+        item["reports"] = report_rows
+        serialized.append(item)
+    # Items breaking what people can see come first, then by size.
+    serialized.sort(key=lambda i: (i["visibleCount"] == 0, -i["totalCount"], i["label"].casefold()))
+    return {
+        "itemCount": len(serialized),
+        "referenceCount": sum(i["totalCount"] for i in serialized),
+        "visibleVisualCount": len(visible_visuals),
+        "reportCount": len(reports),
+        "items": serialized,
+    }
+
+
 def _serialize_translation(translation: dict) -> dict:
     """Translation Membership for the browser: owner, culture and file:line evidence."""
     line = translation.get("line") or 0
@@ -1282,6 +1382,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
         "reportHealth": _build_report_health(report_issues, items),
         "analysisLimitations": _build_analysis_limitations(results, items),
         "rootCauseGroups": _build_report_root_cause_groups(report_issues),
+        "missingItems": _build_missing_items(report_issues),
         "items": items,
         "references": references,
     }

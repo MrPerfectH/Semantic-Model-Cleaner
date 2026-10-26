@@ -657,6 +657,7 @@
   cleanCurrentItemStaleRefs = function () { var item = getItemByKey(detailItemKey); if (item) return quickCleanStale(staleCleanupEntriesForItems([item]), function () { return $('detailStaleStatus'); }, 'Clean stale report metadata'); };
   applyReportIssueActions = function (entries, label) { if (entries.length) return reviewOperations([{ kind: 'report_issues', entries: entries }], label || 'Review report changes', function () { selectedReportIssueKeys.clear(); }); };
   confirmRemoveWithPreview = function (entries, label) { return applyReportIssueActions(entries, label); };
+  window.smcReviewOperations = reviewOperations;
   applyRepair = function () { var group = activeRootCauseGroup(); if (group) return reviewOperations([{ kind: 'report_repair', table_renames: [{ table: group.targetLabel, target_table: repairTargetTable }] }], 'Repair table references in reports'); };
   applyColumnRepair = function () { var group = activeRootCauseGroup(); if (group) return reviewOperations([{ kind: 'report_repair', column_renames: buildColumnRenames(group) }], 'Repair column references in reports'); };
   cleanReportIssueEntries = function (entries) { if (entries.length) return reviewOperations([{ kind: 'clean_stale', entries: entries }], 'Clean stale report metadata', function () { selectedReportIssueKeys.clear(); }); };
@@ -783,13 +784,19 @@
     $('inventoryColumnOptions').innerHTML = '<p>Core columns stay visible. Other properties are also available in object details.</p>' + headers.map(function (header, index) {
       if (index === 0) return '';
       return '<label><input type="checkbox" data-inventory-column="' + index + '"' + (visibility[id].has(index) ? ' checked' : '') + (spec.required.includes(index) ? ' disabled' : '') + '> ' + esc(headerLabel(header, index)) + '</label>';
-    }).join('') + '<button type="button" class="btn btn-secondary btn-sm" id="inventoryResetColumns">Reset to compact defaults</button>';
+    }).join('') + '<div class="inventory-column-actions"><button type="button" class="btn btn-secondary btn-sm" id="inventoryShowAllColumns">Show all columns</button><button type="button" class="btn btn-secondary btn-sm" id="inventoryResetColumns">Reset to compact defaults</button></div>';
     $('inventoryColumnOptions').querySelectorAll('[data-inventory-column]').forEach(function (input) { input.onchange = function () {
       var index = Number(input.dataset.inventoryColumn); if (input.checked) visibility[id].add(index); else visibility[id].delete(index);
       try { localStorage.setItem(storagePrefix + id, JSON.stringify(Array.from(visibility[id]))); } catch (_) { /* Optional preference. */ }
       applyVisibility(id); applyTableWidths(id, calculateDefaultWidths(id));
     }; });
-    $('inventoryResetColumns').onclick = function () { visibility[id] = new Set(spec.primary); try { localStorage.removeItem(storagePrefix + id); } catch (_) {} updateMenu(); applyTableWidths(id, calculateDefaultWidths(id)); };
+    function setColumns(indexes, persist) {
+      visibility[id] = new Set(indexes); spec.required.forEach(function (index) { visibility[id].add(index); });
+      try { if (persist) localStorage.setItem(storagePrefix + id, JSON.stringify(Array.from(visibility[id]))); else localStorage.removeItem(storagePrefix + id); } catch (_) { /* Optional preference. */ }
+      updateMenu(); applyTableWidths(id, calculateDefaultWidths(id));
+    }
+    $('inventoryShowAllColumns').onclick = function () { setColumns(headers.map(function (_, index) { return index; }), true); };
+    $('inventoryResetColumns').onclick = function () { setColumns(spec.primary, false); };
   }
   var oldPageControls = updatePageControls;
   updatePageControls = function () {

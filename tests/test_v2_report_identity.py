@@ -28,7 +28,7 @@ def test_v2_same_named_reports_have_distinct_keys_filters_counts_and_mutation_pa
         "var allAnalyzedReports=chosenReports.slice(),allReportSchema=null;\n"
         "function isReportItem(item){return item.sourceKind==='report';}\n"
         "function esc(text){return String(text||'');} function issueValue(){return '';}\n"
-        "var reportIssueGroupFilter='all',reportIssueRootCauseFilter='__all__',reportIssueReportFilter='/B/Same.Report',reportIssuePageFilter='__all__';\n"
+        "var reportIssueGroupFilter='all',reportIssueRootCauseFilter='__all__',reportIssueReportFilter='/B/Same.Report',reportIssuePageFilter='__all__',reportIssueMissingItemFilter='__all__',reportIssueTypeFilter='__all__';\n"
         "function $(id){return {value:''};}\n"
         + '\n'.join(js_function(source, name) for name in names) + '\n'
         + r'''
