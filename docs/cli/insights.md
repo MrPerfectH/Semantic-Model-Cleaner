@@ -36,6 +36,7 @@ smc items . --report Reports/Executive.Report --used-in-reports --type table
 # Compact model and Report review using the existing SMC check rules.
 smc review .
 smc review . --fail-on warning --format json
+smc review . --policy custom-policy.json --baseline smc-baseline.json
 
 # No Reports available: inspect model dependencies explicitly.
 smc usage . --table Sales --item Revenue --model-only
@@ -61,6 +62,11 @@ Cleanup recommendation: Blocked
 This is illustrative output, not a claim about a bundled or private project.
 
 ## Selection and identity
+
+Prefer `--model-path` and repeated `--report-path` for exact PROJECT-relative
+artifact folders (absolute paths also work). The same options work with analysis,
+checks and planning. Existing `--model` and `--report` below keep their behavior;
+do not mix selectors for the same artifact type.
 
 `PROJECT` defaults to the current directory. The four project query commands
 (`items`, `usage`, `summary`, `review`; `capabilities` needs no project) accept the

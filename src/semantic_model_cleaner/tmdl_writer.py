@@ -501,7 +501,6 @@ def create_measure(
     name: str,
     dax_expression: str,
     *,
-    data_type: str = "",
     data_category: str = "",
     description: str = "",
     display_folder: str = "",
@@ -533,8 +532,6 @@ def create_measure(
 
     new_lines.append(f"\tmeasure {_quote_tmdl_name(name)} = {expression_lines[0]}")
     new_lines.extend(f"\t\t\t{line}" for line in expression_lines[1:])
-    if data_type:
-        new_lines.append(f"\t\tdataType: {data_type}")
     if data_category:
         new_lines.append(f"\t\tdataCategory: {data_category}")
     if format_string:

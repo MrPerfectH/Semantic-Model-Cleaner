@@ -380,9 +380,14 @@ def _exact_report_scope(model_path, report_paths) -> dict:
 
 
 def _requested_report_scope(model_path, report_paths, exact):
+    """Scope plus the Reports that keep usage unknown, as in the CLI's Safe -> Review rule."""
     scope = (_exact_report_scope if exact else _report_binding_scope)(model_path, report_paths)
     unselected = [Path(row["path"]) for row in scope["excluded"] if row["status"] == "not_selected"]
-    return scope, unselected
+    discovered = analyzer.discover_reports([Path(r) for r in _effective_report_roots()])
+    project = _report_binding_scope(model_path, [*discovered, *[Path(p) for p in report_paths]])
+    unverified = sorted({Path(row["path"]) for row in [*scope["excluded"], *project["excluded"]]
+                         if row["status"] not in {"not_selected", "not_connected"}})
+    return scope, unselected, unverified
 
 
 def configure_runtime(
@@ -1632,7 +1637,7 @@ def api_analyze():
         model_error = analyzer._unsupported_semantic_model_error(Path(model_paths[0]))
         if model_error:
             return jsonify({"error": model_error}), 400
-        scope, unselected = _requested_report_scope(model_paths[0], report_paths, exact)
+        scope, unselected, unverified = _requested_report_scope(model_paths[0], report_paths, exact)
         report_paths = [row["path"] for row in scope["selected"]]
         if not report_paths and not exact:
             return jsonify({"error": "No connected reports selected. Check report bindings or choose another model.",
@@ -1642,7 +1647,7 @@ def api_analyze():
             workspace=Path(_state["workspace"]) if _state["workspace"] else Path("."),
             model_paths=[Path(p) for p in model_paths],
             report_paths=[Path(p) for p in report_paths],
-            allow_model_only=exact, unselected_reports=unselected,
+            allow_model_only=exact, unselected_reports=unselected, unverified_reports=unverified,
         )
 
         _record_report_scope(results, scope)
@@ -1672,7 +1677,7 @@ def api_start_analysis_job():
         if model_error:
             return jsonify({"error": model_error}), 400
         requested_reports = reports
-        scope, unselected = _requested_report_scope(models[0], requested_reports, exact)
+        scope, unselected, unverified = _requested_report_scope(models[0], requested_reports, exact)
         reports = [row["path"] for row in scope["selected"]]
         if not reports and not exact:
             return jsonify({"error": "No connected reports selected. Check report bindings or choose another model.",
@@ -1686,7 +1691,8 @@ def api_start_analysis_job():
             progress("Reading selected metadata")
             result = analyzer.analyze(workspace=workspace, model_paths=[Path(p) for p in models],
                                       report_paths=[Path(p) for p in reports], progress=progress,
-                                      allow_model_only=exact, unselected_reports=unselected)
+                                      allow_model_only=exact, unselected_reports=unselected,
+                                      unverified_reports=unverified)
             from .metadata_validation import validate_report_paths
             schema = validate_report_paths(reports, workspace=workspace, progress=progress, include_report_identity=True)
             _record_report_scope(result, scope)
@@ -2169,9 +2175,13 @@ def api_plans():
         if error:
             return jsonify(error[0]), error[1]
         reports = data.get("report_paths") if "report_paths" in data else _state["report_paths"]
-        plan = change_plan.create_plan(model_path, reports or [], data.get("operations"))
+        known = analyzer.discover_reports([Path(r) for r in _effective_report_roots()])
+        plan = change_plan.create_plan(model_path, reports or [], data.get("operations"), known_reports=known,
+                                       allow_partial_report_scope=data.get("allow_partial_report_scope") is True)
         change_plan.save_plan(plan, _plan_directory())
         return jsonify({"ok": True, "plan": plan})
+    except change_plan.PartialReportScopeError as exc:
+        return jsonify({"ok": False, "error": f"{exc} Add the other connected Reports to the scope, then plan again."}), 400
     except (ValueError, OSError, KeyError, TypeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 

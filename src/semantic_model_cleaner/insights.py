@@ -437,6 +437,7 @@ def compact_review(payload, limit=20, offset=0):
               "SMC011": "Invalid Report schema", "SMC012": "Unvalidated Report schema"}
     findings = sorted(payload.get("findings", []), key=lambda f: (f["suppressed"], f["severity"] != "error", f["rule_id"], f["fingerprint"]))
     return {"ok": payload["ok"], "scope": payload["scope"], "summary": payload["summary"],
+            "gate": payload.get("gate", {}), "policy": payload.get("policy"),
             "errors": payload["errors"],
             "groups": [{"rule": rule, "label": labels.get(rule, rule), "count": len(rows),
                         "suppressed": sum(row["suppressed"] for row in rows)} for rule, rows in sorted(groups.items())],

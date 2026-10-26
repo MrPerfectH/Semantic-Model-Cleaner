@@ -59,9 +59,15 @@ Apply records a recovery journal automatically. There is no `--no-backup` option
 
 ## Scope and storage
 
+- Prefer `--model-path` and repeated `--report-path` for exact artifact folders
+  relative to PROJECT, or absolute paths. Existing `--model`/`--report` options
+  below retain their CWD-relative behavior. Do not mix selectors for the same
+  artifact type. See [migration guidance](README.md#compatibility-and-migration).
 - `plan [project_path]` defaults to the current directory. Without `--model`, it must discover exactly one model beneath that path.
 - For this command, `--model` and each repeated `--report` are exact folder paths, unlike the analyzer's name filters. Relative paths resolve from the current working directory.
 - Without explicit `--report` arguments, planning selects discovered reports bound to the chosen model. At least one report is required. Refactoring additionally requires supported report bindings and complete supported scan coverage.
+- A plan that deletes model items (`delete`/`delete_table` actions), renames, moves, promotes or removes auto-date tables can break Report References in every connected Report, not only the selected ones. When PROJECT contains connected Reports that are not selected, or Reports whose binding cannot be verified (for example a live connection without a readable model name, or a missing or invalid `definition.pbir`), such a plan is refused and the error names those Reports. Select every connected Report (omit `--report-path`/`--report`), or pass `--allow-partial-report-scope` to accept that the unselected Reports are not checked; check them yourself afterwards, for example with `smc check PROJECT`. Hide/unhide, display-folder and table-group changes, DAX edits, `report_repair`, `clean_stale` and `report_issues` only touch the selected Reports or leave every Report Reference resolvable, so they stay allowed on a subset. Reports bound to a different model (`not_connected`) never count as missing.
+- The saved plan records `coverage.report_selection`: `selected`, `unselected_connected` and `unverified` Reports (name, path, binding status and message), `complete` and `partial_scope_allowed`. When the selection is incomplete, `coverage.final_state.complete` is `false` and `validation.limitations` names the unchecked Reports. `coverage.analysis.complete` describes the scan of the selected artifacts only. The plan command JSON repeats this block as `reportSelection`.
 - Plan command JSON includes `reportBinding` selection/exclusion evidence, including when default discovery finds no connected Reports. Explicit `--report` uses `mode: explicit` with a binding row per requested Report; this is not proof of a verified connection. The saved plan's existing scope and coverage record the reviewed selection. Non-reference metadata edits retain their existing explicit-scope behavior, while refactoring/deletion still rejects unverified bindings.
 - The model must have a TMDL `definition` directory; reports must have PBIR `definition` directories. Artifact roots must be distinct and cannot contain one another. Symlinks within the selected scope are rejected.
 - The snapshot covers `.tmdl`, `.json`, `.pbir` and `.pbism` metadata. Other project files are outside its fingerprint and recovery scope.
@@ -148,6 +154,8 @@ still apply.
 
 A home-table move is different from changing a display folder.
 
+Rename and move resolve query aliases per query. A subquery source, such as the one Power BI Desktop writes for a Top-N filter, is a derived table: references to it are left unchanged, and references inside its nested query are rewritten like any other. A plan is refused only when a reference that needs rewriting goes through a source that cannot be resolved.
+
 ### Promote a report measure
 
 ```json
@@ -202,9 +210,8 @@ Prefer generating these from reviewed analyzer/UI evidence rather than guessing 
 
 | Command | Output / meaning |
 | --- | --- |
-| `smc plan … --operations FILE -o PLAN` | Create a plan; stdout JSON summary |
+| `smc plan … --operations FILE -o PLAN [--allow-partial-report-scope]` | Create a plan; stdout JSON summary |
 | `smc diff PLAN` | Print unified text differences from a validated plan |
-| `smc diff BASELINE_MODEL CANDIDATE_MODEL` | Print a model comparison as JSON; this is a separate comparison mode, not plan creation |
 | `smc apply PLAN [--journal-dir DIR]` | Apply reviewed bytes after input checks; JSON result and receipt |
 | `smc verify PLAN [--journal-dir DIR]` | Compare current metadata hashes to plan inputs/outputs; JSON state |
 | `smc history [--journal-dir DIR]` | List saved operation receipts as JSON; does not list unapplied plan files elsewhere |
@@ -253,7 +260,7 @@ The UI uses the same engine through these local endpoints:
 
 | Endpoint | Contract |
 | --- | --- |
-| `POST /api/plans` | Body: `{operations: [...], model_path: "…", report_paths: ["…"]}`. Returns `{ok: true, plan: {...}}`; omitted scope fields use the current app selection |
+| `POST /api/plans` | Body: `{operations: [...], model_path: "…", report_paths: ["…"], allow_partial_report_scope: false}`. Returns `{ok: true, plan: {...}}`; omitted scope fields use the current app selection. Reports discovered under the app's Report search roots decide selection completeness; `allow_partial_report_scope: true` is the same explicit opt-in as the CLI flag |
 | `GET /api/plans` | Returns `{plans: [...], receipts: [...]}`. Plan summaries omit input/output fingerprints and original/replacement bytes; they retain file diffs |
 | `GET /api/plans/<id>` | Returns the full validated stored plan |
 | `POST /api/plans/<id>/apply` | Apply a stored plan; returns result/receipt |

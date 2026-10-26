@@ -52,9 +52,15 @@ def validate_policy(policy: dict) -> dict:
     """Return a normalized copy with digest; raise PolicyError on invalid schema."""
     if not isinstance(policy, dict) or policy.get("schema_version") != SCHEMA_VERSION:
         raise PolicyError("Policy schema_version must be 1.0.")
-    if set(policy) - {"schema_version", "decisions", "naming_rules", "digest"}:
+    if set(policy) - {"schema_version", "decisions", "naming_rules", "digest", "ci_gate"}:
         raise PolicyError("Policy contains unknown fields.")
     result = empty_policy()
+    if "ci_gate" in policy:
+        from .ci_gate import validate_gate
+        try:
+            result["ci_gate"] = validate_gate(policy["ci_gate"])
+        except ValueError as exc:
+            raise PolicyError(str(exc)) from exc
     for key in ("decisions", "naming_rules"):
         value = policy.get(key, [])
         if not isinstance(value, list) or len(value) > (10000 if key == "decisions" else 100):
@@ -330,5 +336,6 @@ def naming_preview(workspace: Path, model_path: Path, report_paths: list[Path], 
         binding = analyzer.report_binding_status(Path(report), Path(model_path))
         if binding["status"] not in analyzer.BOUND_REPORT_STATUSES:
             raise PolicyError(f"Naming preview requires bound report scope: {binding['status']}.")
-    result["plan"] = create_plan(model_path, report_paths, result["operations"])
+    result["plan"] = create_plan(model_path, report_paths, result["operations"],
+                                 known_reports=analyzer.discover_reports([Path(workspace)]))
     return result

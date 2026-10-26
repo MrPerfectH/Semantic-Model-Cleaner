@@ -167,10 +167,10 @@ def test_plan_analysis_scans_each_report_once_per_snapshot(tmp_path, monkeypatch
     scans = _count_calls(monkeypatch, analyzer, "scan_report_visuals")
     analyses = _count_calls(monkeypatch, analyzer, "analyze")
     result = change_plan._analyze(roots)
-    assert len(analyses) == 1 + len(reports)
+    assert len(analyses) == 1
     assert len(scans) == len(reports)
     assert set(result["_report_issues_by_artifact"]) == {"report-1", "report-2"}
-    reference = {key: analyzer.analyze(root, model_paths=[model], report_paths=[path])["report_issues"]
+    reference = {key: analyzer.analyze(root, model_paths=[model], report_paths=[path], suggestions=False)["report_issues"]
                  for key, path in roots.items() if key != "model"}
     assert result["_report_issues_by_artifact"] == reference
 
