@@ -105,7 +105,20 @@ escapes; parsing it preserves non-English and non-BMP characters.
 | `report_issues` | `entries` array | Apply explicit report-reference replacements or removals |
 | `report_repair` | Rename arrays as above | Rewrite report references only; do not rename the model |
 
-An optional operation-level `report_paths` restricts report work to a subset of the plan's selected reports. It cannot introduce an outside report. Explicit `report_path` and `source_file` values must be absolute paths within the selected artifacts. Report `artifact_path` values must be relative to their report and cannot traverse outside it.
+An optional operation-level `report_paths` lists exact Report folders relative to
+`PROJECT`, the same as `--report-path`; absolute paths also work. Paths are
+resolved before analysis, independently of the current working directory, and
+saved as absolute paths in the plan. For example, use
+`"report_paths": ["Reports/Executive.Report"]`. An outside Report is refused with
+an error naming the offending paths and every Report in the plan scope. For
+operations that support a subset, this restricts work to those selected Reports;
+model `rename` and `move` must still include every Report in the plan scope.
+Low-level Python callers pass `project_path` to `create_plan` for PROJECT-relative
+paths; without it, relative paths resolve from the Semantic Model's parent.
+
+Explicit `report_path` and `source_file` values must be absolute paths within the
+selected artifacts. Report `artifact_path` values must be relative to their
+Report and cannot traverse outside it.
 
 ### Model actions
 

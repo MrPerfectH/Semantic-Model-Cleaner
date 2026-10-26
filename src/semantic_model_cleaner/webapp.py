@@ -2280,7 +2280,7 @@ def api_plans():
         report_roots = [Path(r) for r in _effective_report_roots()]
         known = analyzer.discover_reports(report_roots)
         plan = change_plan.create_plan(model_path, reports or [], data.get("operations"), known_reports=known,
-                                       report_search_roots=report_roots,
+                                       report_search_roots=report_roots, project_path=_state.get("workspace") or None,
                                        allow_partial_report_scope=data.get("allow_partial_report_scope") is True)
         change_plan.save_plan(plan, _plan_directory())
         return jsonify({"ok": True, "plan": plan})
