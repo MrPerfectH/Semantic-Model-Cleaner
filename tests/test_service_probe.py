@@ -26,10 +26,22 @@ OP_URL = f"{probe.FABRIC}/operations/{OPERATION}"
 
 
 def fixture():
-    return json.loads(FIXTURE.read_text())
+    data = json.loads(FIXTURE.read_text())
+    # Unit fixtures below address definitions by index; preflight is inserted by client_for.
+    data["responses"].pop(2)
+    return data
 
 
 def client_for(rows):
+    expanded, seen = [], set()
+    for row in rows:
+        if row["method"] == "POST" and "/getDefinition" in row["url"]:
+            workspace_url = row["url"].split("/semanticModels/")[0].split("/reports/")[0]
+            if workspace_url not in seen:
+                expanded.append({"method": "GET", "url": workspace_url, "status": 403})
+                seen.add(workspace_url)
+        expanded.append(row)
+    rows = expanded
     evidence = probe.Evidence("fixture")
     sleeps = []
     client = probe.Client(
@@ -241,7 +253,7 @@ def test_lro_and_rate_limit_honor_retry_after_and_fetch_result():
     client, evidence, sleeps = client_for(rows)
     assert client.definition(WORKSPACE, "semanticModels", MODEL, "model-1") == definition["body"]
     assert sum(sleeps) == 9
-    assert len(evidence.data["requests"]) == 5
+    assert len(evidence.data["requests"]) == 6
 
 
 def test_lro_location_escape_and_excessive_retry_fail_without_second_request():
@@ -574,3 +586,42 @@ def test_failed_network_attempt_is_preserved_in_request_evidence():
     assert evidence.data["requests"][0]["status"] is None
     assert evidence.data["requests"][0]["failure"] == "network_unavailable"
     assert "finished_at" in evidence.data["requests"][0]
+
+
+@pytest.mark.parametrize("state,status,expected_exit", [("Inactive", 200, 2), (None, 403, 0)])
+def test_actual_executable_capacity_preflight_contract(tmp_path, state, status, expected_exit):
+    data = json.loads(FIXTURE.read_text())
+    capacity = "abcdef12-abcd-4abc-8abc-abcdef123456"
+    data["responses"][2] = {
+        "method": "GET",
+        "url": f"{probe.FABRIC}/workspaces/{WORKSPACE}",
+        "body": {"id": WORKSPACE, "capacityId": capacity},
+    }
+    data["responses"].insert(3, {
+        "method": "GET",
+        "url": f"{probe.FABRIC}/capacities",
+        "status": status,
+        "body": {"value": [{"id": capacity.upper(), "state": state}], "message": "SECRET"},
+    })
+    path = tmp_path / "capacity-fixture.json"
+    path.write_text(json.dumps(data))
+    completed = subprocess.run(
+        [sys.executable, "-m", "semantic_model_cleaner.service_probe",
+         *cli_args(tmp_path), "--fixture", str(path)],
+        text=True, capture_output=True, timeout=30,
+    )
+    assert completed.returncode == expected_exit, completed.stdout + completed.stderr
+    public = (tmp_path / "evidence.json").read_text()
+    result = json.loads(public)
+    assert "SECRET" not in public
+    assert all(value not in public for value in (TENANT, WORKSPACE, MODEL, REPORT, capacity))
+    observation = next(row["capacity_preflight"] for row in result["requests"] if row.get("capacity_preflight"))
+    assert observation == {"capacityState": state or "Unknown", "capacityObservation": "preflight"}
+    if state == "Inactive":
+        assert result["status"] == "incomplete"
+        assert result["failure_diagnostics"] == observation
+        assert any(row["code"] == "capacity_inactive" and "administrator" in row["hint"] for row in result["analysis_limitations"])
+        assert all(row["method"] == "GET" for row in result["requests"])
+    else:
+        assert result["status"] == "bounded_probe_completed"
+        assert sum(row["method"] == "POST" for row in result["requests"]) == 2

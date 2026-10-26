@@ -29,6 +29,12 @@
       }
     },
     {
+      "method": "GET",
+      "url": "https://api.fabric.microsoft.com/v1/workspaces/00000000-0000-0000-0000-000000000002",
+      "status": 403,
+      "body": {}
+    },
+    {
       "method": "POST",
       "url": "https://api.fabric.microsoft.com/v1/workspaces/00000000-0000-0000-0000-000000000002/semanticModels/00000000-0000-0000-0000-000000000003/getDefinition?format=TMDL",
       "body": {

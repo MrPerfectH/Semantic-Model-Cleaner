@@ -130,6 +130,9 @@ def test_audit_real_analyzer_isolated_snapshot_and_no_cleanup(tmp_path):
     assert "_snapshot_path" not in result["reports"][0]
     assert "/tmp/smc-service-snapshot-" not in json.dumps(result)
     assert result["cleanup_available"] is False
+    assert public_summary(result)["capacity_observations"] == [
+        {"capacityState": "Unknown", "capacityObservation": "preflight"}
+    ]
 
 
 def replace_part(data, path, text):
@@ -148,7 +151,7 @@ def test_audit_broken_reference_has_report_location_and_findings_exit(tmp_path):
 
     data = transcript()
     replace_part(
-        data["responses"][2]["body"],
+        data["responses"][3]["body"],
         "definition/tables/Sales.tmdl",
         "table Sales\n\tmeasure Spare = 1\n",
     )
@@ -238,7 +241,7 @@ def test_candidate_existing_problem_separate_from_introduced(tmp_path):
 
     data = transcript()
     replace_part(
-        data["responses"][2]["body"],
+        data["responses"][3]["body"],
         "definition/tables/Sales.tmdl",
         "table Sales\n\tmeasure Spare = 2\n",
     )
@@ -254,7 +257,7 @@ def test_candidate_column_removal_against_same_reports(tmp_path):
 
     data = transcript()
     replace_part(
-        data["responses"][2]["body"],
+        data["responses"][3]["body"],
         "definition/tables/Sales.tmdl",
         "table Sales\n\tcolumn Revenue\n\t\tdataType: int64\n",
     )
@@ -336,7 +339,7 @@ def repository_fixture(tmp_path, count=4):
                 }
             )
     data["responses"][1]["body"]["value"] = inventory
-    data["responses"] = data["responses"][:3] + definitions
+    data["responses"] = data["responses"][:4] + definitions
     mapping = tmp_path / "mapping.json"
     mapping.write_text(
         json.dumps(
@@ -458,7 +461,7 @@ def test_snapshot_alias_paths_preserve_service_identity_and_durable_locations(
     )
     data = transcript()
     replace_part(
-        data["responses"][2]["body"],
+        data["responses"][3]["body"],
         "definition/tables/Sales.tmdl",
         "table Sales\n\tmeasure Spare = 1\n",
     )

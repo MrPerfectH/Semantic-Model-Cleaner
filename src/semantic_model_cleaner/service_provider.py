@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 from datetime import datetime, timezone
 import hashlib
+from http.client import IncompleteRead
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -16,7 +17,7 @@ import shutil
 import subprocess
 import time
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from uuid import UUID
 
@@ -53,8 +54,56 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+BODY_KINDS = frozenset({"null", "array", "string", "number", "boolean", "empty", "invalid_json"})
+
+
+# Public diagnostics are values from finite vocabularies, never service prose.
+SERVICE_ERROR_CODES = frozenset({
+    "UnknownError", "OperationNotSupportedForItem", "InsufficientPrivileges",
+    "ItemNotFound", "WorkspaceNotFound", "CapacityNotActive", "CapacityNotFound",
+    "InvalidCapacityException", "TooManyRequests", "ServiceUnavailable", "Other",
+})
+UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
+CAPACITY_MAX_PAGES = 5
+
+
+def diagnostic_uuid(value):
+    return value.lower() if isinstance(value, str) and UUID_PATTERN.fullmatch(value) else None
+
+
+def safe_diagnostics(value):
+    """Revalidate at each public projection; ignore arbitrary fields and malformed types."""
+    if not isinstance(value, dict):
+        return {}
+    result = {}
+    code = value.get("errorCode")
+    if isinstance(code, str):
+        result["errorCode"] = code if code in SERVICE_ERROR_CODES else "Other"
+    if type(value.get("isRetriable")) is bool:
+        result["isRetriable"] = value["isRetriable"]
+    for key in ("requestId", "responseRequestId"):
+        identity = diagnostic_uuid(value.get(key))
+        if key == "requestId" and not identity:
+            identity = diagnostic_uuid(value.get("RequestId"))
+        if identity:
+            result[key] = identity
+    state = value.get("capacityState")
+    if isinstance(state, str) and state in {"Active", "Inactive", "Unknown"}:
+        result["capacityState"] = state
+        result["capacityObservation"] = "preflight"
+    return result
+
+
 class ProbeError(Exception):
-    """Only fixed, non-sensitive codes may escape the boundary."""
+    """Only fixed, non-sensitive codes and bounded diagnostics may escape the boundary."""
+
+    def __init__(self, *args, status=None, body_kind=None, diagnostics=None):
+        super().__init__(*args)
+        self.diagnostics = safe_diagnostics(diagnostics)
+        self.status = status if type(status) is int and 100 <= status <= 599 else None
+        self.body_kind = (
+            body_kind if isinstance(body_kind, str) and body_kind in BODY_KINDS else None
+        )
 
 
 def guid(value):
@@ -82,31 +131,54 @@ class LiveTransport:
             headers={
                 "Authorization": "Bearer " + self.tokens[service],
                 "Accept": "application/json",
+                **({"Content-Type": "application/json"} if method == "POST" else {}),
             },
             data=b"" if method == "POST" else None,
         )
+        status = None
         try:
             try:
                 response = self.opener.open(request, timeout=30)
             except HTTPError as exc:
                 response = exc
             with response:
-                payload = response.read(MAX_BYTES + 1)
-                if len(payload) > MAX_BYTES:
-                    raise ProbeError("response_size_limit")
                 status = response.code
                 headers = dict(response.headers.items())
+                payload = response.read(MAX_BYTES + 1)
+                if len(payload) > MAX_BYTES:
+                    raise ProbeError("response_size_limit", status=status)
                 try:
                     body = json.loads(payload) if payload else {}
+                except RecursionError:
+                    # Excessive nesting fails closed even for acceptance/error bodies.
+                    raise ProbeError(
+                        "invalid_response_json", status=status, body_kind="invalid_json"
+                    ) from None
                 except (ValueError, UnicodeError):
-                    if status >= 400:
+                    if status == 202 or status >= 400:
                         return status, headers, {}
-                    raise ProbeError("invalid_response_json") from None
+                    raise ProbeError(
+                        "invalid_response_json", status=status, body_kind="invalid_json"
+                    ) from None
                 if not isinstance(body, dict):
-                    raise ProbeError("invalid_response_shape")
+                    if status == 202 or status >= 400:
+                        return status, headers, {}
+                    body_kind = (
+                        "null"
+                        if body is None
+                        else "array"
+                        if isinstance(body, list)
+                        else "string"
+                        if isinstance(body, str)
+                        else "boolean"
+                        if isinstance(body, bool)
+                        else "number"
+                    )
+                    raise ProbeError("invalid_response_shape", status=status, body_kind=body_kind)
+                # Initial acceptance is header-driven; polling needs valid JSON objects.
                 return status, headers, body
-        except (URLError, TimeoutError, OSError):
-            raise ProbeError("network_unavailable") from None
+        except (URLError, TimeoutError, OSError, IncompleteRead):
+            raise ProbeError("network_unavailable", status=status) from None
 
 
 class FixtureTransport:
@@ -166,6 +238,7 @@ class Evidence:
             "checked": "Only successful operations and parser counts recorded in this evidence were checked.",
             "unchecked": "The capability identified by this code is incomplete or outside the selected scope.",
             "effect": "No Use Found In Scope requires Review; cleanup safety is not established.",
+            "hint": error_hint(code),
         }
         if row not in self.data["analysis_limitations"]:
             self.data["analysis_limitations"].append(row)
@@ -176,6 +249,7 @@ class Client:
         self.transport, self.evidence, self.sleep = transport, evidence, sleep
         self.deadline = time.monotonic() + max_seconds
         self.progress = progress or (lambda *_: None)
+        self.capacity_observations = {}  # Reused only within this bounded run.
 
     def pause(self, headers):
         try:
@@ -188,7 +262,7 @@ class Client:
             self.progress("Waiting for service")
             self.sleep(1)
 
-    def request(self, method, url, operation, owner):
+    def request(self, method, url, operation, owner, *, retry=True):
         # Fixed read operations only, including the read-only POST getDefinition.
         parsed = urlsplit(url)
         uuid = r"[0-9a-fA-F-]{36}"
@@ -201,7 +275,7 @@ class Client:
                     and (
                         method == "GET"
                         and re.fullmatch(
-                            rf"/v1/(workspaces/{uuid}/semanticModels|operations/{uuid}(/result)?)",
+                            rf"/v1/(workspaces/{uuid}(/semanticModels)?|capacities|operations/{uuid}(/result)?)",
                             parsed.path,
                         )
                         or method == "POST"
@@ -220,7 +294,7 @@ class Client:
         )
         if not allowed:
             raise ProbeError("request_outside_read_allowlist")
-        for attempt in range(4):
+        for attempt in range(4 if retry else 1):
             self.progress(operation)
             if time.monotonic() >= self.deadline:
                 raise ProbeError("request_budget_exceeded")
@@ -235,13 +309,16 @@ class Client:
             try:
                 status, headers, body = self.transport(method, url)
             except ProbeError as exc:
+                receipt["status"] = exc.status
+                if exc.body_kind is not None:
+                    receipt["body_kind"] = exc.body_kind
                 receipt["failure"] = str(exc)
                 raise
             finally:
                 receipt["finished_at"] = now()
             receipt["status"] = status
             headers = {k.lower(): v for k, v in headers.items()}
-            if status == 429 and attempt < 3:
+            if status == 429 and retry and attempt < 3:
                 self.pause(headers)
                 continue
             if status not in (200, 202):
@@ -253,6 +330,7 @@ class Client:
                 }.get(status, "api_request_failed")
                 if body.get("errorCode") == "OperationNotSupportedForItem":
                     code = "definition_not_supported_possible_encryption"
+                receipt["failure"] = code
                 raise ProbeError(code)
             return status, headers, body
         raise ProbeError("rate_limited")
@@ -293,30 +371,111 @@ class Client:
             url = next_url
         raise ProbeError("pagination_limit")
 
+    def capacity_preflight(self, workspace):
+        """Advisory only: visibility is not required for definition access.
+
+        Exhaust the bounded collection before confirming a state so conflicting
+        duplicate capacity rows, incomplete pages and unsafe continuations cannot
+        yield a false Inactive. No retries or additional consent are requested.
+        """
+        workspace = guid(workspace)
+        if workspace in self.capacity_observations:
+            return self.capacity_observations[workspace]
+        state, matches = "Unknown", []
+        first_receipt = len(self.evidence.data["requests"])
+        owner = self.evidence.alias("workspace", workspace)
+        deadline = min(self.deadline, time.monotonic() + 10)
+        try:
+            status, _, body = self.request(
+                "GET", f"{FABRIC}/workspaces/{workspace}", "capacity_workspace", owner, retry=False
+            )
+            capacity_id = diagnostic_uuid(body.get("capacityId"))
+            if (status != 200 or diagnostic_uuid(body.get("id")) != workspace
+                    or not capacity_id):
+                raise ProbeError("capacity_state_unknown")
+            url, seen = FABRIC + "/capacities", set()
+            for _ in range(CAPACITY_MAX_PAGES):
+                parsed = urlsplit(url)
+                query = parse_qsl(parsed.query, keep_blank_values=True)
+                if (len(url) > 8192 or any(ord(c) < 32 for c in url)
+                        or parsed.scheme != "https" or parsed.netloc != "api.fabric.microsoft.com"
+                        or parsed.path != "/v1/capacities" or parsed.fragment
+                        or (parsed.query and (len(query) != 1 or query[0][0] != "continuationToken"))
+                        or url in seen or time.monotonic() >= deadline):
+                    raise ProbeError("capacity_state_unknown")
+                seen.add(url)
+                status, _, body = self.request("GET", url, "capacity_state", owner, retry=False)
+                if status != 200 or not isinstance(body.get("value"), list):
+                    raise ProbeError("capacity_state_unknown")
+                for row in body["value"]:
+                    if not isinstance(row, dict):
+                        raise ProbeError("capacity_state_unknown")
+                    if diagnostic_uuid(row.get("id")) == capacity_id:
+                        observed = row.get("state")
+                        matches.append(observed if isinstance(observed, str) else "Unknown")
+                next_url = body.get("continuationUri")
+                token = body.get("continuationToken")
+                if next_url is not None and not isinstance(next_url, str):
+                    raise ProbeError("capacity_state_unknown")
+                if token is not None and not isinstance(token, str):
+                    raise ProbeError("capacity_state_unknown")
+                if not next_url and token:
+                    next_url = FABRIC + "/capacities?" + urlencode({"continuationToken": token})
+                if not next_url:
+                    if matches and all(m == matches[0] for m in matches) and matches[0] in {"Active", "Inactive"}:
+                        state = matches[0]
+                    break
+                url = next_url
+        except (ProbeError, ValueError):
+            pass
+        self.capacity_observations[workspace] = state
+        if len(self.evidence.data["requests"]) > first_receipt:
+            self.evidence.data["requests"][-1]["capacity_preflight"] = {
+                "capacityState": state, "capacityObservation": "preflight",
+            }
+        return state
+
     def definition(self, workspace, kind, identity, owner):
+        capacity_state = self.capacity_preflight(workspace)
+        if capacity_state == "Inactive":
+            raise ProbeError("capacity_inactive", diagnostics={"capacityState": capacity_state})
         url = f"{FABRIC}/workspaces/{workspace}/{kind}/{identity}/getDefinition"
         if kind == "semanticModels":
             url += "?format=TMDL"
         status, headers, body = self.request("POST", url, "get_definition", owner)
         if status == 200:
             return body
-        operation = headers.get("location")
-        if not operation and headers.get("x-ms-operation-id"):
-            operation = FABRIC + "/operations/" + guid(headers["x-ms-operation-id"])
-        if not isinstance(operation, str) or not re.fullmatch(
-            re.escape(FABRIC) + r"/operations/[0-9a-fA-F-]{36}", operation
-        ):
-            raise ProbeError("invalid_operation_location")
+        # Location may name a regional host. Prefer the operation ID and construct
+        # a canonical Fabric URL; never follow a response-supplied host.
+        operation_id = headers.get("x-ms-operation-id")
+        if operation_id is None:
+            location = headers.get("location")
+            match = isinstance(location, str) and re.fullmatch(
+                re.escape(FABRIC) + r"/operations/([0-9a-fA-F-]{36})", location
+            )
+            operation_id = match.group(1) if match else None
+        try:
+            operation = FABRIC + "/operations/" + guid(operation_id)
+        except ProbeError:
+            raise ProbeError("invalid_operation_location") from None
         for _ in range(60):
             self.pause(headers)
             _, headers, body = self.request("GET", operation, "operation_state", owner)
             state = body.get("status")
             if state in {"Failed", "Cancelled", "Canceled"}:
-                raise ProbeError("definition_operation_failed")
+                error = body.get("error")
+                diagnostics = safe_diagnostics(error)
+                diagnostics.update(safe_diagnostics({
+                    "responseRequestId": headers.get("requestid"),
+                    "capacityState": capacity_state,
+                }))
+                self.evidence.data["requests"][-1].update(
+                    failure="definition_operation_failed", diagnostics=diagnostics
+                )
+                raise ProbeError("definition_operation_failed", diagnostics=diagnostics)
             if state == "Succeeded":
-                result_url = headers.get("location", operation + "/result")
-                if result_url != operation + "/result":
-                    raise ProbeError("invalid_operation_location")
+                # Never follow a response URL: use the operation validated above.
+                result_url = operation + "/result"
                 status, _, result = self.request("GET", result_url, "operation_result", owner)
                 if status != 200:
                     raise ProbeError("definition_result_incomplete")
@@ -368,6 +527,13 @@ def authenticate():
                     check=True,
                 )
                 token = json.loads(result.stdout)["accessToken"]
+            except subprocess.CalledProcessError as exc:
+                # Capture in memory only; neither stderr nor the CLI command escapes.
+                stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+                codes = set(re.findall(r"\bAADSTS(70043|700082|50076)\b", stderr))
+                code = ("sign_in_interaction_required" if "50076" in codes else
+                        "sign_in_expired" if codes else "linux_sign_in_required")
+                raise ProbeError(code) from None
             except (subprocess.SubprocessError, OSError, ValueError, KeyError):
                 raise ProbeError("linux_sign_in_required") from None
         observations[service] = token_claims(token, service)
@@ -540,6 +706,7 @@ def limitation(
         "checked": checked,
         "unchecked": unchecked or "This capability was not established for the selected scope.",
         "effect": "Items with No Use Found In Scope require Review. No cleanup is authorized.",
+        "hint": error_hint(code),
     }
 
 
@@ -573,6 +740,10 @@ def error_hint(code):
         "access_denied": "Check existing workspace visibility and item read/write permissions and required delegated scopes. The application does not grant access.",
         "authentication_rejected": "Renew the local sign-in for the selected tenant; no tenant fallback was attempted.",
         "token_expired": "Renew the local tokens or Azure CLI sign-in for the same selected tenant.",
+        "sign_in_expired": "The Azure CLI session needs renewal. Follow the project sign-in setup on this machine for the same selected tenant, then retry.",
+        "sign_in_interaction_required": "Microsoft requires interactive sign-in, which may include MFA. Follow the project sign-in setup on this machine for the same selected tenant, then retry.",
+        "capacity_inactive": "The workspace capacity was observed Inactive during preflight. Ask its capacity administrator to resume it before retrying. This tool never resumes capacity.",
+        "unsupported_legacy_report": "This report is stored in PBIR-Legacy. Obtain a supported PBIR export, save, or republish using supported Power BI tooling, then verify the stored format. Opening and saving alone is not guaranteed to convert it; consumer coverage remains incomplete.",
         "definition_not_supported_possible_encryption": "Definition retrieval is unsupported. Encrypted labels can block it; this response alone does not establish encryption.",
         "selected_model_not_visible_in_workspace": "Inspect the exact workspace and choose a visible model ID; names are not matched.",
         "request_budget_exceeded": "The bounded request budget expired. Retry the same explicit target later.",
@@ -752,6 +923,24 @@ def public_summary(result):
         "error_codes": [e["code"] for e in result["errors"]],
         "boundaries": result["boundaries"],
     }
+    summary["response_diagnostics"] = [
+        {key: row[key] for key in ("status", "body_kind") if key in row}
+        for row in result.get("requests", [])
+        if isinstance(row.get("body_kind"), str)
+        and row["body_kind"] in BODY_KINDS
+        and type(row.get("status")) is int
+        and 100 <= row["status"] <= 599
+    ]
+    summary["operation_diagnostics"] = [
+        safe_diagnostics(row.get("diagnostics"))
+        for row in result.get("requests", [])
+        if row.get("failure") == "definition_operation_failed"
+    ]
+    summary["capacity_observations"] = [
+        safe_diagnostics(row.get("capacity_preflight"))
+        for row in result.get("requests", [])
+        if isinstance(row.get("capacity_preflight"), dict)
+    ]
     summary["report_health_finding_count"] = len(result["report_health"]["findings"])
     summary["definition_receipts"] = [
         {
