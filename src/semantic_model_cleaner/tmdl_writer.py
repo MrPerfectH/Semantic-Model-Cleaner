@@ -1173,7 +1173,8 @@ def _delete_table_ref_from_model(model_path: Path, table: str) -> bool:
     if not model_file.exists():
         return False
 
-    lines = model_file.read_text(encoding="utf-8").splitlines()
+    # Preserve each retained line's original bytes, ending and final newline.
+    lines = model_file.read_bytes().decode("utf-8").splitlines(keepends=True)
     # Match: ref table TableName  or  ref table 'Table Name'
     pattern = re.compile(rf"^ref\s+table\s+{_tmdl_name_pattern(table)}\s*$", re.IGNORECASE)
 
@@ -1181,7 +1182,7 @@ def _delete_table_ref_from_model(model_path: Path, table: str) -> bool:
     if len(new_lines) == len(lines):
         return False
 
-    model_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    model_file.write_bytes("".join(new_lines).encode("utf-8"))
     return True
 
 
@@ -1263,6 +1264,20 @@ def _delete_all_relationships_for_table(model_path: Path, table: str) -> list[st
     return removed
 
 
+def _owned_description_start(lines: list[str], declaration: int) -> int:
+    """Include only contiguous /// lines at the declaration's indentation.
+
+    Expression text is indented deeper; blank lines and unrelated comments
+    break attachment. A following declaration keeps its own documentation.
+    """
+    line = lines[declaration]
+    indent = line[:len(line) - len(line.lstrip("\t"))]
+    start = declaration
+    while start > 0 and lines[start - 1].startswith(indent + "///"):
+        start -= 1
+    return start
+
+
 def delete_item(
     model_path: Path,
     table: str,
@@ -1282,6 +1297,7 @@ def delete_item(
     tmdl_file, lines, block = source
 
     start, end = block
+    start = _owned_description_start(lines, start)
     # Slice original lines, including their endings, so neighboring fragments
     # keep their exact bytes even when this fragment loses its final item.
     raw_lines = tmdl_file.read_bytes().decode("utf-8").splitlines(keepends=True)
@@ -1323,6 +1339,7 @@ def delete_item(
     # Whole-table cleanup requires absence of items in every table fragment.
     if not retained_items:
         _, table_start, table_end = declarations[0]
+        table_start = _owned_description_start(lines, table_start)
         del raw_lines[table_start:table_end]
         remaining_text = "".join(raw_lines)
         if remaining_text.strip():
