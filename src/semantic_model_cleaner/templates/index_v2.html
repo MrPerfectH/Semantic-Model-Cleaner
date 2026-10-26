@@ -258,6 +258,10 @@ body.is-resizing-columns { cursor: col-resize; user-select: none; }
 .item-link:hover { text-decoration: underline; }
 
 /* ===== report health view ===== */
+#rootCausePanel, #reportHealthBanner { display: none !important; }
+body:not(.limitations-view) .schema-evidence { display: none !important; }
+.report-health-pill-active { border-color: var(--primary-border); background: var(--primary-soft); color: var(--primary); }
+.report-health-pill-clear { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; padding: 0 2px; line-height: 1; }
 .report-health-toolbar { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: stretch; padding: 10px 12px; border-bottom: 1px solid var(--border-soft); background: #fff; }
 .report-health-summary { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
 .report-health-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; background: #f1f5f9; color: var(--text-light); font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -1236,6 +1240,8 @@ var reportIssueSortCol = 'severity';
 var reportIssueSortAsc = true;
 var reportIssueGroupFilter = 'all';
 var reportIssueReportFilter = '__all__';
+var reportIssueMissingItemFilter = '__all__';
+var reportIssueTypeFilter = '__all__';
 var reportIssuePageFilter = '__all__';
 var reportIssueRootCauseFilter = '__all__';
 var allRootCauseGroups = { totalCount: 0, visibleCount: 0, hiddenCount: 0, groupedCount: 0, groups: [] };
@@ -3581,6 +3587,8 @@ function filterReportIssues() {
     if (reportIssueGroupFilter === 'other' && (isReportIssueBrokenRef(issue) || isReportIssueCleanup(issue))) return false;
     if (reportIssueRootCauseFilter !== '__all__' && reportIssueRootCauseKey(issue) !== reportIssueRootCauseFilter) return false;
     if (reportIssueReportFilter !== '__all__' && reportReferenceId(issue) !== reportIssueReportFilter) return false;
+    if (reportIssueMissingItemFilter !== '__all__' && issue.missingItemKey !== reportIssueMissingItemFilter) return false;
+    if (reportIssueTypeFilter !== '__all__' && issue.issueType !== reportIssueTypeFilter) return false;
     if (reportIssuePageFilter !== '__all__' && (issue.page || '') !== reportIssuePageFilter) return false;
     if (!search) return true;
     var haystack = [
@@ -3671,8 +3679,20 @@ function renderReportHealthControls() {
     '<span class="report-health-pill error"><strong>' + esc(String(brokenCount)) + '</strong> broken refs</span>',
     '<span class="report-health-pill stale"><strong>' + esc(String(cleanupCount)) + '</strong> cleanup</span>',
     '<span class="report-health-pill"><strong>' + esc(String(hiddenCount)) + '</strong> not visible</span>',
-    '<span class="report-health-pill other"><strong>' + esc(String(otherCount)) + '</strong> other</span>'
+    '<span class="report-health-pill other"><strong>' + esc(String(otherCount)) + '</strong> other</span>',
+    reportFilterChip('report', 'Report', reportIssueReportFilter === '__all__' ? '' : reportReferenceLabel(reportIssueReportFilter)),
+    reportFilterChip('missing', 'Missing item', reportIssueMissingItemFilter === '__all__' ? '' : missingItemLabel(reportIssueMissingItemFilter)),
+    reportFilterChip('type', 'Problem', reportIssueTypeFilter === '__all__' ? '' : reportIssueTypeLabel(reportIssueTypeFilter))
   ].join('');
+  $('reportHealthSummary').querySelectorAll('[data-clear-report-filter]').forEach(function(button) {
+    button.onclick = function() {
+      var which = button.dataset.clearReportFilter;
+      if (which === 'report') { reportIssueReportFilter = '__all__'; reportIssuePageFilter = '__all__'; }
+      if (which === 'missing') reportIssueMissingItemFilter = '__all__';
+      if (which === 'type') reportIssueTypeFilter = '__all__';
+      currentPageByView.reports = 1; applyReportIssueFilters();
+    };
+  });
 
   document.querySelectorAll('#reportIssueCategoryButtons .report-segment').forEach(function(btn) {
     btn.classList.toggle('active', btn.dataset.reportIssueGroup === reportIssueGroupFilter);
@@ -3704,6 +3724,15 @@ function renderReportHealthControls() {
   $('checkAllReportIssues').disabled = actionableVisible.length === 0;
   $('checkAllReportIssues').checked = actionableVisible.length > 0 && selectedVisible === actionableVisible.length;
   $('checkAllReportIssues').indeterminate = selectedVisible > 0 && selectedVisible < actionableVisible.length;
+}
+
+function reportFilterChip(which, label, value) {
+  return value ? '<span class="report-health-pill report-health-pill-active">' + esc(label) + ': <strong>' + esc(value) + '</strong> <button type="button" class="report-health-pill-clear" data-clear-report-filter="' + which + '" aria-label="Clear ' + esc(label.toLowerCase()) + ' filter">&times;</button></span>' : '';
+}
+
+function missingItemLabel(key) {
+  var issue = allReportIssues.find(function(i) { return i.missingItemKey === key; });
+  return issue ? (issue.issueType === 'missing_table' ? issue.table : issue.table + '[' + issue.name + ']') : key;
 }
 
 function sortReportIssues() {
@@ -6778,6 +6807,7 @@ if (initialConfig.initialModelExclusions.length) {
 <script src="{{ url_for('static', filename='accessible-layers.js') }}"></script>
 <script src="{{ url_for('static', filename='workspace-navigation.js') }}"></script>
 <script src="{{ url_for('static', filename='report-usage.js') }}"></script>
+<script src="{{ url_for('static', filename='missing-items.js') }}"></script>
 {% if config.get('SMC_WEBVIEW_ANCESTORS') and config.get('SMC_VSCODE_HOST_SCOPE') %}<script src="{{ url_for('static', filename='host-scope.js') }}"></script>{% endif %}
 </body>
 </html>

@@ -45,7 +45,8 @@
     $('overviewLimitations').classList.toggle('has-impact', impacted);
     var findings = (data.reportHealth || {}).totalIssueCount || (data.reportIssues || []).length;
     $('overviewReportFindings').hidden = !findings;
-    $('overviewReportFindings').textContent = findings + ' report metadata finding(s)';
+    var missing = (data.missingItems || {}).itemCount || 0;
+    $('overviewReportFindings').textContent = missing ? missing + ' missing model item' + (missing === 1 ? '' : 's') + ' break report visuals' : findings + ' report finding' + (findings === 1 ? '' : 's');
     $('resultScopeBody').innerHTML = '<p>Analysis checked the following scope. Pending selection changes do not change these results.</p><ul>'
       + chosenModels.map(function (m) { return '<li>Model: ' + esc(m.path) + '</li>'; }).join('')
       + reports.map(function (r) { return '<li>Report: ' + esc(r.name) + ' <span>' + esc(r.path) + '</span></li>'; }).join('') + '</ul>'

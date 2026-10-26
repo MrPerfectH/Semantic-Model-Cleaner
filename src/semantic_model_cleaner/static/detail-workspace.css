@@ -94,6 +94,7 @@ label[hidden] { display:none!important; }
 .inventory-column-options { position:absolute; top:calc(100% + 6px); right:0; z-index:35; width:260px; max-height:60vh; overflow:auto; padding:14px; border:1px solid #cbd5e1; border-radius:9px; background:#fff; box-shadow:0 10px 24px #0f172a24; }
 .inventory-column-options p { margin:0 0 10px; font-size:12px; color:#64748b; line-height:1.4; }
 .inventory-column-options label { display:flex; align-items:center; gap:8px; padding:6px 0; }
+.inventory-column-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
 .inventory-column-options button { margin-top:10px; }
 .inventory-evidence { margin-top:6px; font-size:11px; white-space:normal; }
 .inventory-evidence summary { color:#2563eb; cursor:pointer; }
