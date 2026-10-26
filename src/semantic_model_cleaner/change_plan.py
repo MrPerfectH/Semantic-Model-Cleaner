@@ -489,8 +489,8 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
     baseline = _analyze(originals, analysis_cache)
     report_deletions = []
     if report_delete:
-        assessments = {report_measure_delete._key(r['entry']): r
-                       for r in baseline.get('report_measure_deletions', [])}
+        assessments = report_measure_delete.assessment(
+            originals['model'], list(originals.values())[1:], baseline)
         try:
             report_deletions = report_measure_delete.check_operation(operations[0], assessments)
             operations = [{'kind': report_measure_delete.OPERATION_KIND,

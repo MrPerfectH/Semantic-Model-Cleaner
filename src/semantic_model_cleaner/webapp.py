@@ -1749,6 +1749,7 @@ def api_analyze():
             model_paths=[Path(p) for p in model_paths],
             report_paths=[Path(p) for p in report_paths],
             allow_model_only=exact, unselected_reports=unselected, unverified_reports=unverified,
+            include_report_measure_deletions=True,
         )
 
         _record_report_scope(results, scope)
@@ -1793,7 +1794,7 @@ def api_start_analysis_job():
             result = analyzer.analyze(workspace=workspace, model_paths=[Path(p) for p in models],
                                       report_paths=[Path(p) for p in reports], progress=progress,
                                       allow_model_only=exact, unselected_reports=unselected,
-                                      unverified_reports=unverified)
+                                      unverified_reports=unverified, include_report_measure_deletions=True)
             from .metadata_validation import validate_report_paths
             schema = validate_report_paths(reports, workspace=workspace, progress=progress, include_report_identity=True)
             _record_report_scope(result, scope)
