@@ -18,10 +18,9 @@ import tempfile
 import uuid
 
 from . import __version__, analyzer, auto_date_tables, report_writer, tmdl_writer, report_measure_delete
+from .artifact_scope import METADATA_SUFFIXES, artifact_role, declared_report_resources
 
-SUFFIXES = {'.tmdl', '.json', '.pbir', '.pbism'}
-# Saved DAX queries are read-only analysis inputs for every plan; never written.
-QUERY_SUFFIXES = {'.dax'}
+SUFFIXES = METADATA_SUFFIXES
 SCHEMA_VERSION = 1
 
 
@@ -93,27 +92,35 @@ def _scan(root):
 def _inventory(roots):
     inventory = {}
     for artifact, root in roots.items():
+        resources = declared_report_resources(root)
         for path, symlink, is_file in _scan(root):
             if symlink:
                 raise PlanError(f'Symlinks are not supported in change-plan scope: {path}')
-            if is_file and path.suffix.lower() in SUFFIXES:
+            if (is_file and path.suffix.lower() in SUFFIXES
+                    and artifact_role(root, path, resources) != "scratch"):
                 inventory[f'{artifact}/{path.relative_to(root).as_posix()}'] = path.read_bytes()
     return inventory
 
 
-def _query_inventory(roots, operations):
-    """Inventory all consumed saved queries, plus report resources for extension deletion."""
-    auto_date = any(o.get('kind') == auto_date_tables.OPERATION_KIND for o in operations)
+def _resource_inventory(roots, operations):
+    """Preserve report-resource drift guards for extension deletion; ignore scratch queries."""
     report_delete = any(o.get('kind') == report_measure_delete.OPERATION_KIND for o in operations)
-    return {f'{artifact}/{path.relative_to(root).as_posix()}': path.read_bytes()
-            for artifact, root in roots.items() for path in sorted(root.rglob('*'))
-            if path.is_file() and not path.is_symlink()
-            and (((auto_date or artifact != 'model') and path.suffix.lower() in QUERY_SUFFIXES)
-                 or (report_delete and artifact != 'model' and path.suffix.lower() not in SUFFIXES))}
+    inventory = {}
+    for artifact, root in roots.items():
+        if artifact == 'model':
+            continue
+        declared = declared_report_resources(root)
+        for path, symlink, is_file in _scan(root):
+            if (is_file and not symlink and path.suffix.lower() not in SUFFIXES
+                    and artifact_role(root, path, declared) != "scratch"
+                    and (report_delete or path.relative_to(root).as_posix().casefold() in declared
+                         or path.relative_to(root).as_posix().casefold().startswith("staticresources/"))):
+                inventory[f'{artifact}/{path.relative_to(root).as_posix()}'] = path.read_bytes()
+    return inventory
 
 
 def _scope_hashes(roots, operations):
-    return _hashes({**_inventory(roots), **_query_inventory(roots, operations)})
+    return _hashes({**_inventory(roots), **_resource_inventory(roots, operations)})
 
 
 def _path(roots, key):
@@ -414,7 +421,7 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None, all
                                       'selection. ' + _selection_gaps(selection)
                                       + ' A model change should reach every connected Report.')
     before = _inventory(originals)
-    queries = _query_inventory(originals, operations)
+    resources = _resource_inventory(originals, operations)
     _require_supported_write_encoding(before)
     # Destructive/refactoring plans cannot claim complete propagation while a
     # selected document is unreadable. Non-reference metadata edits can proceed.
@@ -486,7 +493,7 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None, all
                 path.parent.mkdir(parents=True, exist_ok=True)
                 made.add(path.parent)
             path.write_bytes(content)
-        for key, content in queries.items():  # Read-only, so the staged re-check sees the same queries.
+        for key, content in resources.items():  # Read-only report resources are staged for the same guarded scope.
             artifact, _, relative = key.partition('/')
             path = staged[artifact] / relative
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -509,7 +516,7 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None, all
         added = _problems(analysis) - _problems(baseline, operations)
         if added:
             raise PlanError('Change introduces unresolved references: ' + '; '.join(str(x) for x in sorted(added)))
-    if _hashes(_inventory(originals)) != _hashes(before) or _query_inventory(originals, operations) != queries:
+    if _hashes(_inventory(originals)) != _hashes(before) or _resource_inventory(originals, operations) != resources:
         raise PlanError('Input changed while preview was being prepared; re-analyze and retry.')
     changes = []
     for key in sorted(before.keys() | after.keys()):
@@ -534,7 +541,7 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None, all
                                                       or bool(baseline.get('coverage', {}).get('complete', False)))
                                                      and selection['complete'] is not False,
                                          'cleared_limitations': cleared}}, 'operations': operations,
-            'inputs': _hashes({**before, **queries}), 'outputs': _hashes({**after, **queries}), 'changes': changes,
+            'inputs': _hashes({**before, **resources}), 'outputs': _hashes({**after, **resources}), 'changes': changes,
             'validation': {'report_measure_deletions': report_deletions,
                            'json_syntax': 'passed' if strict else 'changed files passed',
                            'reference_integrity': 'no new unresolved references',

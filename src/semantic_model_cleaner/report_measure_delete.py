@@ -7,7 +7,8 @@ import json
 from pathlib import Path
 
 from . import analyzer, metadata_validation
-from .saved_dax import DaxCoverageError, expression_references, query_references
+from .artifact_scope import artifact_role, declared_report_resources
+from .report_dax import DaxCoverageError, expression_references
 
 OPERATION_KIND = "delete_report_measures"
 EXTENSION = Path("definition/reportExtensions.json")
@@ -77,29 +78,12 @@ def assessment(model_path, report_paths, analysis):
         if not local:
             continue
         try:
+            resources = declared_report_resources(report)
             for path in sorted(report.rglob("*")):
                 if path.is_symlink():
                     raise ValueError("Symlinks are not supported.")
-                if path.is_file() and path.suffix.lower() == ".dax":
-                    try:
-                        refs = query_references(path.read_text(encoding="utf-8-sig"))
-                    except DaxCoverageError as exc:
-                        report_reasons[owner].append(f"Saved report DAX query coverage: {path.relative_to(report)}: {exc}")
-                        continue
-                    for table, name in refs:
-                        if name is None:
-                            # DEFINE owners are model tables, not report-local
-                            # measures. An unresolved owner blocks this report.
-                            if table.casefold() not in entities:
-                                report_reasons[owner].append(
-                                    "Saved DAX DEFINE MEASURE owner table cannot be resolved: "
-                                    + table + " in " + path.relative_to(report).as_posix())
-                            continue
-                        for key in local:
-                            if key[2] == name.casefold() and (table is None or key[1] == table.casefold()):
-                                reasons[key].append("Saved report DAX query reference in " + path.relative_to(report).as_posix() + ".")
-                    continue
-                if not path.is_file() or path.suffix.lower() not in {".json", ".pbir"}:
+                if (not path.is_file() or artifact_role(report, path, resources) == "scratch"
+                        or path.suffix.lower() not in {".json", ".pbir"}):
                     continue
                 if path == report / EXTENSION and path.read_bytes().startswith(b"\xef\xbb\xbf"):
                     raise ValueError("Report extension deletion requires UTF-8 without a BOM.")
