@@ -21,13 +21,11 @@ Copy-Item $NodeExecutable $node
 try {
     # Only ephemeral CI runners may temporarily enable disabled firewall profiles.
     foreach ($profile in $disabled) { Set-NetFirewallProfile -Profile $profile.Name -Enabled True }
-    # CIDRs avoid Windows' rejection of ranges spanning reserved IPv6 addresses.
-    # Cleaner binds IPv4 loopback only; block every other IPv4 address and all IPv6.
-    $outsideLoopback = @('0.0.0.0/2', '64.0.0.0/3', '96.0.0.0/4', '112.0.0.0/5',
-                        '120.0.0.0/6', '124.0.0.0/7', '126.0.0.0/8', '128.0.0.0/1', '::/0')
+    # Program-scoped rules avoid reserved-address prefix restrictions. The test
+    # requires both a blocked external probe and working Win32 loopback traffic.
     foreach ($program in @($node, $engine)) {
         New-NetFirewallRule -DisplayName ($group + ' ' + [IO.Path]::GetFileName($program)) -Group $group `
-            -Direction Outbound -Action Block -Program $program -RemoteAddress $outsideLoopback `
+            -Direction Outbound -Action Block -Program $program -RemoteAddress Any `
             -Profile Any -Enabled True | Out-Null
     }
     & $node $ChildScript
