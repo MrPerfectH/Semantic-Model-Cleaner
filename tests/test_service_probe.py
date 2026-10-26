@@ -26,10 +26,22 @@ OP_URL = f"{probe.FABRIC}/operations/{OPERATION}"
 
 
 def fixture():
-    return json.loads(FIXTURE.read_text())
+    data = json.loads(FIXTURE.read_text())
+    # Unit fixtures below address definitions by index; preflight is inserted by client_for.
+    data["responses"].pop(2)
+    return data
 
 
 def client_for(rows):
+    expanded, seen = [], set()
+    for row in rows:
+        if row["method"] == "POST" and "/getDefinition" in row["url"]:
+            workspace_url = row["url"].split("/semanticModels/")[0].split("/reports/")[0]
+            if workspace_url not in seen:
+                expanded.append({"method": "GET", "url": workspace_url, "status": 403})
+                seen.add(workspace_url)
+        expanded.append(row)
+    rows = expanded
     evidence = probe.Evidence("fixture")
     sleeps = []
     client = probe.Client(
@@ -241,7 +253,7 @@ def test_lro_and_rate_limit_honor_retry_after_and_fetch_result():
     client, evidence, sleeps = client_for(rows)
     assert client.definition(WORKSPACE, "semanticModels", MODEL, "model-1") == definition["body"]
     assert sum(sleeps) == 9
-    assert len(evidence.data["requests"]) == 5
+    assert len(evidence.data["requests"]) == 6
 
 
 def test_lro_location_escape_and_excessive_retry_fail_without_second_request():

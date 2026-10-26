@@ -54,7 +54,7 @@ def exercise(wheel: Path, root: Path) -> None:
     project = root / "project with spaces"
     model = project / "Candidate.SemanticModel"
     report = project / "R.Report"
-    for directory, response in [(model, data["responses"][2]), (report, data["responses"][3])]:
+    for directory, response in [(model, data["responses"][3]), (report, data["responses"][4])]:
         for part in response["body"]["definition"]["parts"]:
             path = directory / part["path"]
             path.parent.mkdir(parents=True, exist_ok=True)

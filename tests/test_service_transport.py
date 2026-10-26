@@ -34,7 +34,10 @@ def client_for(monkeypatch, responses):
     monkeypatch.setattr(transport.opener, "open", open_response)
     evidence = provider.Evidence("fixture")
     sleeps = []
-    return provider.Client(transport, evidence, sleep=sleeps.append), evidence, requests, sleeps
+    client = provider.Client(transport, evidence, sleep=sleeps.append)
+    # These tests isolate LRO transport. Capacity uses the real transport in test_service_capacity.
+    monkeypatch.setattr(client, "capacity_preflight", lambda workspace: "Unknown")
+    return client, evidence, requests, sleeps
 
 
 @pytest.mark.parametrize("payload", [b"", b"null", b"[]", b"invalid JSON", b'"SECRET BODY"'])

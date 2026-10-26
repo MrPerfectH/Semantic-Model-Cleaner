@@ -36,6 +36,7 @@ from .service_provider import (  # noqa: F401
     shutil,
     Target,
     ServiceProvider,
+    safe_diagnostics,
 )
 
 
@@ -240,6 +241,8 @@ def main(argv=None):
             )
     except ProbeError as exc:
         evidence.limitation(str(exc))
+        if exc.diagnostics:
+            evidence.data["failure_diagnostics"] = safe_diagnostics(exc.diagnostics)
     except Exception:
         evidence.limitation("probe_input_or_runtime_failure")
     evidence.data["finished_at"] = now()

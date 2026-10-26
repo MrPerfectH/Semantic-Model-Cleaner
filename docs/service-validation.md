@@ -250,8 +250,8 @@ JSON nesting fails closed with `invalid_response_json` and the fixed `invalid_js
 body kind for every status, including 202. Incomplete response reads fail closed
 with `network_unavailable`. Both failures preserve a known integer HTTP status;
 parse failures also retain the fixed body-kind label in request evidence. Public
-summaries expose only those status/body-kind diagnostics,
-without response bodies, headers, URLs or server messages.
+summaries expose fixed status/body-kind diagnostics and the bounded operation
+diagnostics below, without raw response bodies, URLs or server messages.
 
 For initial HTTP 202 acceptance, `x-ms-operation-id` takes precedence over
 Location, including a regional or conflicting Location. The ID is GUID-validated
@@ -273,3 +273,56 @@ Contract references: [Get Semantic Model Definition](https://learn.microsoft.com
 and [Fabric long-running operations](https://learn.microsoft.com/en-us/rest/api/fabric/articles/long-running-operation)
 (checked 2026-10-21). These deterministic checks do not establish live acceptance
 or identify the original failure's unknown raw response.
+
+
+### Capacity and sign-in diagnostics (2026-10-26)
+
+Before each workspace's first definition retrieval in a bounded run, the provider
+reads the exact workspace and its visible Fabric capacity list. Only a UUID-matched,
+consistent `Inactive` state blocks model/report export with `capacity_inactive`.
+An administrator must resume that capacity; this tool never resumes it. `Active`
+proceeds. Missing capacity assignments, inaccessible metadata (including 403/404),
+unknown/malformed states, missing matches, conflicting rows or incomplete pagination
+produce `Unknown` and still attempt the original definition request. Capacity
+visibility is not a prerequisite and no additional consent is requested.
+
+The advisory pass has no retries, at most one workspace GET plus five capacity
+pages, canonical same-collection continuation URLs, the existing 64 MiB response
+cap and 30-second per-request timeout, and a ten-second scheduling budget within
+the existing operation deadline. A request already in flight may finish after
+that scheduling budget. Workspace observations are reused only within that run.
+
+A terminal LRO retains `definition_operation_failed`. Its receipt and public summary
+carry only allowlisted service `errorCode` values (including `UnknownError`, with
+arbitrary strings mapped to `Other`), strict boolean `isRetriable`, UUID-only
+`requestId`/`responseRequestId`, and `capacityState` explicitly labeled
+`capacityObservation: preflight`. It is not a state sampled at the instant of
+failure. There is no extra probe/retry after failure. Messages, target/account IDs,
+URLs and raw responses are not copied into these diagnostics. A 202 response alone
+does not establish complete backend authorization or successful retrieval.
+
+Azure CLI errors AADSTS70043/700082 produce `sign_in_expired`; AADSTS50076 produces
+`sign_in_interaction_required` because MFA does not itself prove expiry. Renew the
+session using the project's documented local sign-in setup and the same selected
+tenant. Stderr remains in memory and is never printed in receipts or hints.
+Unknown CLI failures keep their previous fixed code. Fabric and Power BI audiences
+and selected-tenant checks are unchanged.
+
+A report definition stored in PBIR-Legacy remains unsupported and consumer coverage
+incomplete. Obtain a supported PBIR export/save/republish with Power BI tooling and
+verify the stored format before rerunning. Opening and saving is not guaranteed to
+convert a report. Inventory metadata alone does not prove a definition was exported
+or parsed. No conversion, parser bypass or service mutation is performed.
+
+These changes have mocked Linux coverage, not current live target acceptance.
+A capacity connectivity error can motivate a paused-capacity hypothesis; it cannot
+confirm that hypothesis without a matching live observation. The parent acceptance
+run must use this exact build, retrieve full TMDL and the supported bound report
+definitions, and verify analyzer coverage. No alternate identity or incomplete
+XMLA fallback is introduced. Full TOM can in principle be serialized to TMDL;
+there is no current evidence requiring a transport replacement here.
+
+Contracts: [Get Workspace](https://learn.microsoft.com/en-us/rest/api/fabric/core/workspaces/get-workspace)
+(`Workspace.Read.All`) and [List Capacities](https://learn.microsoft.com/en-us/rest/api/fabric/core/capacities/list-capacities)
+(`Capacity.Read.All`, capacities visible to administrators/contributors, pagination).
+Those capacity permissions are deliberately not requested just for this advisory check.
