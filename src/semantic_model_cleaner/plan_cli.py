@@ -117,6 +117,9 @@ def main(argv=None):
         return 0
     except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
         error = {'ok': False, 'error': str(exc)}
+        if isinstance(exc, change_plan.PartialReportScopeError):
+            error['error'] += (' Omit --report-path and --report to select them all, or explicitly allow a partial '
+                               'Report scope (--allow-partial-report-scope) and check the other Reports yourself.')
         if scope is not None:
             error['reportBinding'] = scope
         if machine:

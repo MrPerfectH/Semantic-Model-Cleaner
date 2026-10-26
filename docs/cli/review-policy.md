@@ -127,7 +127,7 @@ smc diff ./naming.plan.json
 smc apply ./naming.plan.json
 ```
 
-Naming never invokes writers against the original project during suggestion generation. `naming preview` uses the existing change-plan engine, which stages copies, rewrites selected report references, validates static integrity, and exports exact diffs. Applying remains a separate existing `smc apply` operation. Policy and plan output files cannot overwrite selected artifact metadata.
+Naming never invokes writers against the original project during suggestion generation. `naming preview` uses the existing change-plan engine, which stages copies, rewrites selected report references, validates static integrity, and exports exact diffs. Applying remains a separate existing `smc apply` operation. Naming renames reach every connected Report, so a preview on a narrowed Report selection is refused; omit `--report-path`/`--report`. Policy and plan output files cannot overwrite selected artifact metadata.
 
 Rules require unique `id` and `item_type` (`Table`, `Measure`, or `Column`; Column includes calculated columns). Optional fields:
 

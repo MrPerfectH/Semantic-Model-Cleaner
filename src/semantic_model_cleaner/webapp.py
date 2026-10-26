@@ -2173,6 +2173,8 @@ def api_plans():
                                        allow_partial_report_scope=data.get("allow_partial_report_scope") is True)
         change_plan.save_plan(plan, _plan_directory())
         return jsonify({"ok": True, "plan": plan})
+    except change_plan.PartialReportScopeError as exc:
+        return jsonify({"ok": False, "error": f"{exc} Add the other connected Reports to the scope, then plan again."}), 400
     except (ValueError, OSError, KeyError, TypeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 

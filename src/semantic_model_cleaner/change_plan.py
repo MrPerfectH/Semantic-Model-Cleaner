@@ -29,6 +29,13 @@ class PlanError(ValueError):
     pass
 
 
+class PartialReportScopeError(PlanError):
+    """A change that can break Report References was asked for on a partial Report selection.
+
+    The message names the Reports left out; each surface adds its own way to select them.
+    """
+
+
 def _digest(value):
     return hashlib.sha256(value).hexdigest()
 
@@ -367,10 +374,9 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None, all
     selection['partial_scope_allowed'] = bool(allow_partial_report_scope)
     if selection['complete'] is False and not allow_partial_report_scope \
             and any(_invalidates_report_references(op) for op in operations):
-        raise PlanError('Not planned: this change can break Report References in Reports outside the selection. '
-                        + _selection_gaps(selection) + ' Select every connected Report (omit --report-path and '
-                        '--report to select them all), or explicitly allow a partial Report scope '
-                        '(--allow-partial-report-scope) and check the other Reports yourself.')
+        raise PartialReportScopeError('Not planned: this change can break Report References in Reports outside the '
+                                      'selection. ' + _selection_gaps(selection)
+                                      + ' A model change should reach every connected Report.')
     before = _inventory(originals)
     queries = _query_inventory(originals, operations)
     _require_supported_write_encoding(before)

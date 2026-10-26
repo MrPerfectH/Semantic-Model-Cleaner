@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from semantic_model_cleaner import change_plan, webapp
+from semantic_model_cleaner import change_plan, policy_cli, review_policy, webapp
 from test_cli_insights import visual, write_json
 from test_cli_path_selection import run
 
@@ -143,14 +143,27 @@ def test_web_plan_api_refuses_subset_unless_opted_in(project, tmp_path, monkeypa
     body = {"model_path": str(model), "report_paths": [str(reports["Exec"])], "operations": [delete("OpsOnly")]}
     before = snapshot(root)
     response = client.post("/api/plans", json=body)
-    assert response.status_code == 400 and "Ops" in response.get_json()["error"]
+    error = response.get_json()["error"]
+    assert response.status_code == 400 and "Ops" in error
+    assert "--" not in error and "scope" in error  # browser users get no CLI flags
     response = client.post("/api/plans", json={**body, "allow_partial_report_scope": True})
     assert response.status_code == 200
     assert response.get_json()["plan"]["coverage"]["report_selection"]["complete"] is False
     assert snapshot(root) == before
 
 
+def test_naming_preview_on_a_subset_points_to_the_full_scope_without_an_opt_in(project, capsys):
+    root, model, reports = project
+    review_policy.save_policy(root, {**review_policy.empty_policy(), "naming_rules": [
+        {"id": "prefix", "item_type": "Measure", "case": "preserve", "prefix": "m_"}]})
+    before = snapshot(root)
+    assert policy_cli.main(["naming", "preview", str(root), *map(str, exec_only(root, reports))]) == 2
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert "Ops" in error and "--report-path" in error and "--allow-partial-report-scope" not in error
+    assert snapshot(root) == before
+
+
 def test_engine_guard_uses_known_reports(project):
     root, model, reports = project
-    with pytest.raises(change_plan.PlanError, match="Ops"):
+    with pytest.raises(change_plan.PartialReportScopeError, match="Ops"):
         change_plan.create_plan(model, [reports["Exec"]], [rename("OpsOnly")], known_reports=list(reports.values()))

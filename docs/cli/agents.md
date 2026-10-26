@@ -31,6 +31,8 @@ smc plan PROJECT --operations agent-folder.json -o reviewed-plan.json --format j
 smc diff reviewed-plan.json --format json
 ```
 
+Before planning, confirm the Report scope with the user. Analysis JSON lists the connected Reports in `reportBinding.selected`. The default is every connected Report: a rename, move, promote or delete in the Semantic Model changes what every Report bound to it can resolve, so changing only some of them breaks the rest. Narrow the scope only when the user names Reports to leave out and accepts that they will not be checked; only then pass `--allow-partial-report-scope`.
+
 Stop for the user's explicit approval of the exact diff, selected model and reports. Creating a plan only stages copies. After approval:
 
 ```powershell
