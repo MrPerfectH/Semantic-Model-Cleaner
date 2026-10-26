@@ -18,12 +18,30 @@ if (-not (Test-Path $engine)) { throw 'Set SMC_ENGINE_EXTENSION to the disposabl
 New-Item -ItemType Directory -Path $temporary | Out-Null
 $node = Join-Path $temporary 'node.exe'
 Copy-Item $NodeExecutable $node
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class SmcOfflinePaths {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern uint GetLongPathName(string path, StringBuilder output, uint length);
+}
+'@
+function Expand-ProgramPath([string]$Path) {
+    $buffer = [Text.StringBuilder]::new(32768)
+    $length = [SmcOfflinePaths]::GetLongPathName($Path, $buffer, $buffer.Capacity)
+    if ($length -eq 0 -or $length -ge $buffer.Capacity) { throw "Cannot resolve program path: $Path" }
+    return $buffer.ToString()
+}
+$node = Expand-ProgramPath $node
+$engine = Expand-ProgramPath $engine
 try {
     # Only ephemeral CI runners may temporarily enable disabled firewall profiles.
     foreach ($profile in $disabled) { Set-NetFirewallProfile -Profile $profile.Name -Enabled True }
     # Program-scoped rules avoid reserved-address prefix restrictions. The test
     # requires both a blocked external probe and working Win32 loopback traffic.
     foreach ($program in @($node, $engine)) {
+        Write-Output ('Offline firewall program: ' + $program)
         New-NetFirewallRule -DisplayName ($group + ' ' + [IO.Path]::GetFileName($program)) -Group $group `
             -Direction Outbound -Action Block -Program $program -RemoteAddress Any `
             -Profile Any -Enabled True | Out-Null
