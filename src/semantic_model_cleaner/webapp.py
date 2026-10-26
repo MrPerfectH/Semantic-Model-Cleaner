@@ -908,6 +908,7 @@ def _serialize_results(results: dict, model_paths=None) -> dict:
             "table": item.table,
             "name": item.name,
             "sourceKind": item.source_kind,
+            "reportMeasureDelete": r.get("report_measure_delete"),
             "sourceArtifact": item.source_artifact or None,
             "sourceFile": item.source_file or None,
             "displayFolder": item.display_folder,

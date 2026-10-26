@@ -24,8 +24,8 @@ def snapshot(document, path='report-1/definition/pages/Overview/page.json'):
 
 def test_bundle_has_pinned_source_license_and_complete_local_references():
     info = metadata.bundle_info()
-    assert info['commit'] == '83ce11373faada0d01e76264a5cceb0ba70003e6'
-    assert info['schema_count'] == 97
+    assert info['commit'] == '5e1199a15b80e3d51198fe017b1a6fb9bb0871a6'
+    assert info['schema_count'] == 113
     assert info['network_access'] is False
     assert info['format_assertions'] is False
     assert 'Microsoft Corporation' in (metadata.BUNDLE_ROOT / 'LICENSE').read_text(encoding="utf-8")
@@ -68,10 +68,10 @@ def test_unknown_or_missing_declarations_are_not_passed_or_inferred(document, re
     'visualContainer/1.8.0/schema.json',
     'visualContainerMobileState/1.5.0/schema.json',
 ])
-def test_upstream_identity_conflicts_and_dependents_do_not_use_wrong_schema(name):
+def test_upstream_repaired_identity_conflicts_validate_exact_current_schema(name):
     result = metadata.validate_document({'$schema': BASE + name})
-    assert result['status'] == 'not_validated'
-    assert 'identity_conflict' in result['reason']
+    assert result['status'] == 'invalid'  # Supported; required fields absent.
+    assert result['reason'] == 'schema_errors'
 
 
 def test_snapshot_distinguishes_invalid_json_unknown_schema_and_excluded_tmdl():

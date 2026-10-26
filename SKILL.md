@@ -103,7 +103,7 @@ command also runs analysis; it does not launch a REPL.
    smc verify reviewed-plan.json --format json
    ```
 
-Operation kinds: `actions`, `rename`, `report_repair`, `move`, `promote`, `dax`, `clean_stale`, `report_issues`, `auto_date_tables`. Schema validation alone does not establish
+Operation kinds: `delete_report_measures`, `actions`, `rename`, `report_repair`, `move`, `promote`, `dax`, `clean_stale`, `report_issues`, `auto_date_tables`. Schema validation alone does not establish
 that a change is safe; plan creation also checks dependencies and metadata.
 
 For recovery, inspect `smc restore --help` and obtain approval for the intended

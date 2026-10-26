@@ -2,7 +2,7 @@
 
 `semantic_model_cleaner.metadata_validation` validates a JSON document only when it declares an exact `$schema` URI available in the bundled Microsoft report schemas. It does not infer a schema from a filename, a `version` property, or the application's interpretation of that file.
 
-The bundle is copied from [Microsoft's JSON schema repository at commit `83ce11373faada0d01e76264a5cceb0ba70003e6`](https://github.com/microsoft/json-schemas/tree/83ce11373faada0d01e76264a5cceb0ba70003e6/fabric/item/report). It contains all 97 JSON schema files under `fabric/item/report` at that commit, including embedded schemas needed by transitive references, plus Microsoft's MIT license. Each original file is preserved byte-for-byte and has a SHA-256 entry in the local manifest. The module checks bundle integrity and reference closure before using it.
+The bundle is copied from [Microsoft's JSON schema repository at commit `5e1199a15b80e3d51198fe017b1a6fb9bb0871a6`](https://github.com/microsoft/json-schemas/tree/5e1199a15b80e3d51198fe017b1a6fb9bb0871a6/fabric/item/report). It contains all 113 JSON schema files under `fabric/item/report` at that commit, including embedded schemas needed by transitive references, plus Microsoft's MIT license. Each original file is preserved byte-for-byte and has a SHA-256 entry in the local manifest. The module checks bundle integrity and reference closure before using it.
 
 The validator's registry can resolve only bundled resources. It never downloads a schema at runtime, follows an untrusted `$schema` URL, or transmits model/report metadata. Unknown versions and missing declarations remain explicitly **not validated**.
 
@@ -71,12 +71,17 @@ A schema update can change validation results for unchanged models. Treat bundle
 
 ## Upstream identity conflicts
 
-The pristine pinned source has identity problems that cannot safely be resolved by silently guessing a different version:
+The current pin includes Microsoft's corrections to the older
+`visualConfiguration/1.8.0/schema-embedded.json` and
+`visualConfiguration/2.0.0/schema.json` identities. Their dependent schemas can
+now validate against their exact declared versions. The registry still rejects
+a conflicting identity and all of its transitive dependents; a synthetic
+collision regression covers this independently of future upstream corrections.
 
-- `visualConfiguration/1.8.0/schema-embedded.json` declares the ID of its sibling `schema.json`, with different contents.
-- `visualConfiguration/2.0.0/schema.json` declares the 2.1.0 identity and 2.1.0 `$schema` constant.
-
-These retrieval URIs are marked `upstream_schema_identity_conflict`. Dependent `visualContainer/1.8.0/schema.json` and `visualContainerMobileState/1.5.0/schema.json` are also marked not validated. The module computes the dependency closure, so an unusable dependency does not produce a false success for its caller.
+The same pin adds visualContainer 2.10.0 through 2.13.0, their visualConfiguration
+2.5.0 through 2.8.0 dependencies and mobile schemas. Version 2.14.0 is absent from
+this official revision and remains unknown. Version numbers are never rewritten
+or approved by an allowlist.
 
 Other embedded schema filenames use `schema-embedded.json` while their `$id` uses `schema.embedded.json`. Where those names are unambiguous, both authoritative upstream names are registered locally. No schema bytes are rewritten.
 

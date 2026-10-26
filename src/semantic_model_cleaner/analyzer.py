@@ -80,6 +80,8 @@ class ModelItem:
     # TMDL formatStringDefinition DAX; also appended to dax_body so its refs count as dependencies.
     format_string_expression: str = ""
     explicit_measure_refs: tuple[tuple[str, str], ...] = ()
+    # model/report/unknown binding from the official reportExtension schema.
+    explicit_measure_bindings: tuple[tuple[str, str, str], ...] = ()
     data_type: str = ""
     source_column: str = ""
     description: str = ""
@@ -1343,6 +1345,13 @@ def _report_scan_limitation(issue: ReportIssue) -> dict:
             "Reference ownership between the report-local and model definition cannot be proven.",
         )
         message = issue.message
+    elif issue.issue_type == "unsupported_saved_dax_query":
+        feature, checked, unchecked = (
+            "unsupported saved DAX query binding",
+            "Saved query reference coverage was attempted; supported report files were scanned.",
+            issue.message,
+        )
+        message = f"Incomplete saved DAX query coverage: {location}. {issue.message}".strip()
     elif issue.issue_type == "unsupported_report_format":
         feature, checked, unchecked = (
             "legacy report layout",
@@ -2093,9 +2102,10 @@ def parse_report_extension_measures(
                 continue
             measure_name = str(measure.get("name", "")).strip()
             expression = str(measure.get("expression", "") or "")
-            if not measure_name or not expression:
+            if not measure_name:
                 continue
             explicit_refs = []
+            explicit_bindings = []
             references = measure.get("references", {})
             if isinstance(references, dict):
                 for ref in references.get("measures", []):
@@ -2105,6 +2115,9 @@ def parse_report_extension_measures(
                     ref_name = str(ref.get("name", "")).strip()
                     if ref_entity and ref_name:
                         explicit_refs.append((ref_entity, ref_name))
+                        schema = ref.get("schema", "")
+                        binding = "model" if schema == "" else "report" if schema == data.get("name") else "unknown"
+                        explicit_bindings.append((binding, ref_entity, ref_name))
 
             items.append(ModelItem(
                 item_type="Measure",
@@ -2118,6 +2131,7 @@ def parse_report_extension_measures(
                 source_file=str(report_extensions),
                 format_string=str(measure.get("formatString", "") or ""),
                 explicit_measure_refs=tuple(explicit_refs),
+                explicit_measure_bindings=tuple(explicit_bindings),
             ))
 
     return items
@@ -2242,12 +2256,17 @@ def scan_report_extension_issues(report_path: Path) -> list[ReportIssue]:
             subject = _report_extension_measure_subject(entity_name, measure)
             for required_field in ("dataType", "expression", "name"):
                 value = measure.get(required_field)
-                if not isinstance(value, str) or not value.strip():
+                if not isinstance(value, str) or (required_field != "expression" and not value.strip()):
                     issues.append(_report_extension_issue(
                         report_path=report_path,
                         issue_type="invalid_report_extension_measure",
                         message=f"{subject} is missing required field '{required_field}'.",
                     ))
+            if measure.get("expression") == "":
+                issues.append(_report_extension_issue(
+                    report_path=report_path, issue_type="empty_report_extension_expression",
+                    message=f"{subject} has an empty expression; identity is retained.",
+                ))
 
             data_type = measure.get("dataType")
             if (
@@ -2876,6 +2895,26 @@ def _visual_position(data: dict) -> dict:
     return position if isinstance(position, dict) else {}
 
 
+def _read_report_json(path: Path, documents: dict | None = None):
+    """Parse one report JSON file, replaying the outcome within one report scan (#169).
+
+    Every scanner used to open and parse the same files again. With ``documents``
+    (one dict per report scan) each file is read once; the exception a read
+    raised is re-raised unchanged, so every scanner keeps its own handling.
+    """
+    if documents is None:
+        return json.loads(path.read_text(encoding="utf-8"))
+    if path not in documents:
+        try:
+            documents[path] = (json.loads(path.read_text(encoding="utf-8")), None)
+        except (OSError, ValueError) as exc:
+            documents[path] = (None, exc)
+    document, error = documents[path]
+    if error is not None:
+        raise error
+    return document
+
+
 def _artifact_rel_path(report_path: Path, file_path: Path) -> str:
     try:
         return file_path.relative_to(report_path).as_posix()
@@ -2901,8 +2940,9 @@ def _invalid_json_artifact_kind(rel_path: str) -> str:
     return "Definition JSON"
 
 
-def scan_invalid_report_json(report_path: Path) -> list[ReportIssue]:
+def scan_invalid_report_json(report_path: Path, documents: dict | None = None) -> list[ReportIssue]:
     rpt_name = report_display_name(report_path)
+    report_root = str(report_path.resolve())
     definition_dir = report_path / "definition"
     issues: list[ReportIssue] = []
     json_files = []
@@ -2914,7 +2954,7 @@ def scan_invalid_report_json(report_path: Path) -> list[ReportIssue]:
 
     for json_file in json_files:
         try:
-            json.loads(json_file.read_text(encoding="utf-8"))
+            _read_report_json(json_file, documents)
         except json.JSONDecodeError as exc:
             rel_path = _artifact_rel_path(report_path, json_file)
             parts = rel_path.split("/")
@@ -2933,7 +2973,7 @@ def scan_invalid_report_json(report_path: Path) -> list[ReportIssue]:
                 severity="error",
                 issue_type="invalid_report_json",
                 report=rpt_name,
-                report_path=str(report_path.resolve()),
+                report_path=report_root,
                 page=page,
                 visual_id=visual_id,
                 artifact_kind=_invalid_json_artifact_kind(rel_path),
@@ -2946,7 +2986,7 @@ def scan_invalid_report_json(report_path: Path) -> list[ReportIssue]:
                 severity="warning",
                 issue_type="invalid_report_json",
                 report=rpt_name,
-                report_path=str(report_path.resolve()),
+                report_path=report_root,
                 artifact_kind=_invalid_json_artifact_kind(rel_path),
                 artifact_path=rel_path,
                 message=f"Could not read PBIR JSON file: {exc}",
@@ -3082,8 +3122,18 @@ def _fuzzy_suggestions(usage: UsageRef, items: list[ModelItem]) -> list[dict]:
         ):
             continue
 
-        name_score = SequenceMatcher(None, target_name, item_name).ratio()
-        table_score = SequenceMatcher(None, target_table, item_table).ratio() if target_table and item_table else 0.0
+        name_matcher = SequenceMatcher(None, target_name, item_name)
+        table_matcher = SequenceMatcher(None, target_table, item_table) if target_table and item_table else None
+        if target_name != item_name:
+            # quick_ratio() bounds ratio() from above, so a candidate whose best
+            # possible score is below the threshold is skipped without changing
+            # the result; this ran for every missing reference in every analysis (#169).
+            bound = name_matcher.quick_ratio() * 0.75 + (
+                table_matcher.quick_ratio() * 0.25 if table_matcher is not None else 0.0)
+            if bound < 0.64:
+                continue
+        name_score = name_matcher.ratio()
+        table_score = table_matcher.ratio() if table_matcher is not None else 0.0
         score = (name_score * 0.75) + (table_score * 0.25)
         if target_name == item_name:
             score = max(score, 0.93)
@@ -3155,6 +3205,7 @@ def build_report_issues(
     model_items: list[ModelItem],
     hierarchies: list[HierarchyInfo],
     warnings: list[AnalyzerWarning],
+    suggestion_cache: dict[tuple, list[dict]] | None = None,
     suggestions: bool = True,
 ) -> list[ReportIssue]:
     model_table_names = {item.table.casefold() for item in model_items}
@@ -3163,20 +3214,25 @@ def build_report_issues(
 
     issues: list[ReportIssue] = list(invalid_json_issues)
     scope_cache = {}
-    def scope_for_report(usage):
-        if usage.report_path not in scope_cache:
-            scoped_items = all_items if not usage.report_path else [
-                item for item in all_items if item.source_kind != "report"
-                or (item.source_file and str(Path(item.source_file).parent.parent.resolve()) == usage.report_path)]
-            scope_cache[usage.report_path] = (
-                scoped_items,
-                {item.table.casefold() for item in scoped_items if item.source_kind == "report"},
-                {normalize_key(*item.key) for item in scoped_items if item.item_type == "Measure"},
+
+    def report_scope(usage):
+        """Items visible to one report and their name indexes, built once per report (#169)."""
+        key = usage.report_path
+        if key not in scope_cache:
+            scoped = all_items if not key else [item for item in all_items if item.source_kind != "report"
+                or (item.source_file and str(Path(item.source_file).parent.parent.resolve()) == key)]
+            scope_cache[key] = (
+                scoped,
+                {item.table.casefold() for item in scoped if item.source_kind == "report"},
+                {normalize_key(*item.key) for item in scoped if item.item_type == "Measure"},
             )
-        return scope_cache[usage.report_path]
-    suggestion_cache: dict[tuple, list[dict]] = {}
+        return scope_cache[key]
+    # Suggestions depend on the usage key and the items of its report scope only,
+    # so a caller may keep the memo across analyses of the same unchanged items.
+    if suggestion_cache is None:
+        suggestion_cache = {}
     for usage in direct_usages:
-        scoped_items, report_entity_names, measure_keys = scope_for_report(usage)
+        scoped_items, report_entity_names, measure_keys = report_scope(usage)
         issue_type = _classify_missing_usage(
             usage,
             model_table_names=model_table_names,
@@ -3194,14 +3250,14 @@ def build_report_issues(
             severity = "warning"
             issue_context = "Inactive Filter"
         suggestion_key = (usage.report_path, usage.table.casefold(), usage.name.casefold(), usage.ref_type.casefold())
-        if suggestion_key not in suggestion_cache:
-            suggestion_cache[suggestion_key] = _fuzzy_suggestions(usage, scoped_items) if suggestions else []
+        if suggestions and suggestion_key not in suggestion_cache:
+            suggestion_cache[suggestion_key] = _fuzzy_suggestions(usage, scoped_items)
         issues.append(_report_issue_from_usage(
             usage,
             issue_type=issue_type,
             severity=severity,
             message=_missing_issue_message(issue_type, usage),
-            suggestions=suggestion_cache[suggestion_key] if severity == "error" else [],
+            suggestions=suggestion_cache[suggestion_key] if suggestions and severity == "error" else [],
             context=issue_context,
         ))
 
@@ -3250,9 +3306,11 @@ def build_report_issues(
 def scan_report_visuals(
     report_path: Path,
     invalid_json_issues: list[ReportIssue] | None = None,
+    documents: dict | None = None,
 ) -> tuple[list[UsageRef], list[UsageRef], dict]:
     """Returns (live_usages, stale_usages, visual_meta) where visual_meta maps visual_id -> info."""
     rpt_name = report_display_name(report_path)
+    report_root = str(report_path.resolve())
     pages_dir = report_path / "definition" / "pages"
     usages = []
     stale_usages = []
@@ -3279,14 +3337,14 @@ def scan_report_visuals(
                 continue
 
             try:
-                data = json.loads(visual_json.read_text(encoding="utf-8"))
+                data = _read_report_json(visual_json, documents)
             except json.JSONDecodeError as exc:
                 if invalid_json_issues is not None:
                     invalid_json_issues.append(ReportIssue(
                         severity="error",
                         issue_type="invalid_report_json",
                         report=rpt_name,
-                        report_path=str(report_path.resolve()),
+                        report_path=report_root,
                         page=page_name,
                         visual_id=visual_dir.name,
                         artifact_kind="Visual",
@@ -3351,7 +3409,7 @@ def scan_report_visuals(
                     name=ref["name"],
                     ref_type=ref["ref_type"],
                     report=rpt_name,
-                    report_path=str(report_path.resolve()),
+                    report_path=report_root,
                     page=page_name,
                     visual_type=visual_type,
                     visual_title=visual_title,
@@ -3403,8 +3461,10 @@ def scan_visual_interactions(
     report_path: Path,
     visual_meta: dict,
     invalid_json_issues: list[ReportIssue] | None = None,
+    documents: dict | None = None,
 ) -> list[UsageRef]:
     rpt_name = report_display_name(report_path)
+    report_root = str(report_path.resolve())
     pages_dir = report_path / "definition" / "pages"
     usages = []
 
@@ -3420,14 +3480,14 @@ def scan_visual_interactions(
             continue
 
         try:
-            data = json.loads(page_json.read_text(encoding="utf-8"))
+            data = _read_report_json(page_json, documents)
         except json.JSONDecodeError as exc:
             if invalid_json_issues is not None:
                 invalid_json_issues.append(ReportIssue(
                     severity="error",
                     issue_type="invalid_report_json",
                     report=rpt_name,
-                    report_path=str(report_path.resolve()),
+                    report_path=report_root,
                     page=page_dir.name,
                     artifact_kind="Page",
                     artifact_path=_artifact_rel_path(report_path, page_json),
@@ -3461,7 +3521,7 @@ def scan_visual_interactions(
                         name=name,
                         ref_type="Column",
                         report=rpt_name,
-                        report_path=str(report_path.resolve()),
+                        report_path=report_root,
                         page=page_name,
                         visual_type=f"slicer \u2192 {target_label}",
                         visual_title=source_meta.get("title", ""),
@@ -3501,7 +3561,7 @@ def scan_visual_interactions(
                         name=ref["name"],
                         ref_type=ref["ref_type"],
                         report=rpt_name,
-                        report_path=str(report_path.resolve()),
+                        report_path=report_root,
                         page=page_name,
                         visual_type=visual_type,
                         visual_title="",
@@ -3526,7 +3586,7 @@ def scan_visual_interactions(
                         name=ref["name"],
                         ref_type=ref["ref_type"],
                         report=rpt_name,
-                        report_path=str(report_path.resolve()),
+                        report_path=report_root,
                         page=page_name,
                         visual_type="Drillthrough",
                         visual_title="",
@@ -3545,7 +3605,7 @@ def scan_visual_interactions(
                     name=ref["name"],
                     ref_type=ref["ref_type"],
                     report=rpt_name,
-                    report_path=str(report_path.resolve()),
+                    report_path=report_root,
                     page=page_name,
                     visual_type="Drillthrough",
                     visual_title="",
@@ -3563,8 +3623,10 @@ def scan_visual_interactions(
 def scan_report_filters(
     report_path: Path,
     invalid_json_issues: list[ReportIssue] | None = None,
+    documents: dict | None = None,
 ) -> list[UsageRef]:
     rpt_name = report_display_name(report_path)
+    report_root = str(report_path.resolve())
     report_json = report_path / "definition" / "report.json"
     usages = []
 
@@ -3572,14 +3634,14 @@ def scan_report_filters(
         return usages
 
     try:
-        data = json.loads(report_json.read_text(encoding="utf-8"))
+        data = _read_report_json(report_json, documents)
     except json.JSONDecodeError as exc:
         if invalid_json_issues is not None:
             invalid_json_issues.append(ReportIssue(
                 severity="error",
                 issue_type="invalid_report_json",
                 report=rpt_name,
-                report_path=str(report_path.resolve()),
+                report_path=report_root,
                 artifact_kind="Report",
                 artifact_path=_artifact_rel_path(report_path, report_json),
                 message=f"Could not parse PBIR JSON file: {exc}",
@@ -3601,7 +3663,7 @@ def scan_report_filters(
                 name=ref["name"],
                 ref_type=ref["ref_type"],
                 report=rpt_name,
-                report_path=str(report_path.resolve()),
+                report_path=report_root,
                 page="",
                 visual_type="Filters pane",
                 visual_title="All pages",
@@ -3619,8 +3681,10 @@ def scan_bookmarks(
     report_path: Path,
     visual_meta: dict | None = None,
     invalid_json_issues: list[ReportIssue] | None = None,
+    documents: dict | None = None,
 ) -> tuple[list[UsageRef], list[UsageRef]]:
     rpt_name = report_display_name(report_path)
+    report_root = str(report_path.resolve())
     bookmarks_dir = report_path / "definition" / "bookmarks"
     usages = []
     stale_usages = []
@@ -3631,14 +3695,14 @@ def scan_bookmarks(
 
     for bm_file in sorted(bookmarks_dir.glob("*.bookmark.json")):
         try:
-            data = json.loads(bm_file.read_text(encoding="utf-8"))
+            data = _read_report_json(bm_file, documents)
         except json.JSONDecodeError as exc:
             if invalid_json_issues is not None:
                 invalid_json_issues.append(ReportIssue(
                     severity="error",
                     issue_type="invalid_report_json",
                     report=rpt_name,
-                    report_path=str(report_path.resolve()),
+                    report_path=report_root,
                     visual_type="Bookmark",
                     visual_title=bm_file.stem,
                     visual_id=bm_file.stem,
@@ -3675,7 +3739,7 @@ def scan_bookmarks(
                             severity="warning",
                             issue_type="orphan_bookmark_visual_state",
                             report=rpt_name,
-                            report_path=str(report_path.resolve()),
+                            report_path=report_root,
                             page=page_name,
                             visual_type="Bookmark",
                             visual_title=bm_name,
@@ -3786,7 +3850,7 @@ def scan_bookmarks(
                 name=ref["name"],
                 ref_type=ref["ref_type"],
                 report=rpt_name,
-                report_path=str(report_path.resolve()),
+                report_path=report_root,
                 page=page_name,
                 visual_type=visual_type,
                 visual_title=visual_title or bm_name,
@@ -3818,9 +3882,11 @@ def scan_additional_definition_json(
     report_path: Path,
     excluded_files: set[Path],
     invalid_json_issues: list[ReportIssue] | None = None,
+    documents: dict | None = None,
 ) -> list[UsageRef]:
     """Fallback scan for model refs in report JSON not covered by visual/page/bookmark scanners."""
     rpt_name = report_display_name(report_path)
+    report_root = str(report_path.resolve())
     definition_dir = report_path / "definition"
     usages = []
 
@@ -3832,14 +3898,14 @@ def scan_additional_definition_json(
             continue
 
         try:
-            data = json.loads(json_file.read_text(encoding="utf-8"))
+            data = _read_report_json(json_file, documents)
         except json.JSONDecodeError as exc:
             if invalid_json_issues is not None:
                 invalid_json_issues.append(ReportIssue(
                     severity="error",
                     issue_type="invalid_report_json",
                     report=rpt_name,
-                    report_path=str(report_path.resolve()),
+                    report_path=report_root,
                     artifact_kind=_invalid_json_artifact_kind(_artifact_rel_path(report_path, json_file)),
                     artifact_path=_artifact_rel_path(report_path, json_file),
                     message=f"Could not parse PBIR JSON file: {exc}",
@@ -3856,7 +3922,7 @@ def scan_additional_definition_json(
                 name=ref["name"],
                 ref_type=ref["ref_type"],
                 report=rpt_name,
-                report_path=str(report_path.resolve()),
+                report_path=report_root,
                 page="",
                 visual_type="Definition JSON",
                 visual_title="",
@@ -4756,12 +4822,21 @@ def item_identity(item: ModelItem) -> tuple[str, str, str, str]:
     return (owner, item.item_type, item.table, item.name)
 
 
-def scoped_dependency_graphs(items: list[ModelItem]) -> dict:
+def _same_objects(first: list, second: list) -> bool:
+    return len(first) == len(second) and all(a is b for a, b in zip(first, second))
+
+
+def scoped_dependency_graphs(items: list[ModelItem], memo: dict | None = None) -> dict:
     """Resolve model and report-local formulas in independent artifact contexts.
 
     Plain-key graph builders remain public compatibility helpers. Only this graph
     is suitable for multi-report analysis. A local/model name collision resolves
     conservatively to both candidates and is separately a coverage blocker.
+
+    Each context (the model, or one report's local definitions with the model)
+    is resolved on its own, so ``memo`` may replay a context whose item objects
+    are exactly the ones resolved before; a caller keeps it only while the
+    parsed items are unchanged.
     """
     model_items = [item for item in items if item.source_kind != "report"]
     contexts = defaultdict(list)
@@ -4772,6 +4847,13 @@ def scoped_dependency_graphs(items: list[ModelItem]) -> dict:
     builders = {"measures": build_dax_dependency_graph, "columns": build_dax_column_deps,
                 "tables": build_dax_table_deps, "broken": find_broken_dax_references}
     for local in [model_items, *contexts.values()]:
+        memo_key = "model" if local is model_items else local[0].source_file
+        known = memo.get(memo_key) if memo is not None else None
+        if known is not None and _same_objects(known[0], model_items) and _same_objects(known[1], local):
+            for name in graphs:
+                graphs[name].update(known[2][name])
+            continue
+        partial = {name: {} for name in graphs}
         context = local if local is model_items else model_items + local
         candidates = defaultdict(set)
         for candidate in context:
@@ -4781,14 +4863,14 @@ def scoped_dependency_graphs(items: list[ModelItem]) -> dict:
         # same-name definition, including a local definition with no expression.
         source_context = context if local is model_items else [
             replace(item, dax_body="", explicit_measure_refs=()) for item in model_items
-        ] + local
+        ] + [replace(item, explicit_measure_refs=()) if item.explicit_measure_bindings else item for item in local]
         for name, builder in builders.items():
             plain = builder(source_context)
             for item in local:
                 identity = item_identity(item)
                 value = plain.get(item.key, [] if name == "broken" else set())
                 if name in ("tables", "broken"):
-                    graphs[name][identity] = value
+                    partial[name][identity] = value
                     continue
                 allowed_types = {"Measure"} if name == "measures" else {"Column", "Calculated Column"}
                 targets = {target for key in value for target in candidates[normalize_key(*key)]
@@ -4803,7 +4885,24 @@ def scoped_dependency_graphs(items: list[ModelItem]) -> dict:
                     if self_ref:
                         targets |= {target for target in candidates[normalize_key(*item.key)]
                                     if target[1] == "Measure" and target != identity}
-                graphs[name][identity] = targets
+                partial[name][identity] = targets
+        if local is not model_items:
+            for item in local:
+                identity = item_identity(item)
+                for binding, table, measure in item.explicit_measure_bindings:
+                    pool = model_items if binding == "model" else local if binding == "report" else []
+                    matches = {item_identity(target) for target in pool
+                               if target.item_type == "Measure"
+                               and normalize_key(*target.key) == normalize_key(table, measure)}
+                    partial["measures"].setdefault(identity, set()).update(matches - {identity})
+                    if not matches:
+                        partial["broken"].setdefault(identity, []).append({
+                            "kind": "measure", "ref": format_item_ref((table, measure)),
+                            "message": "Unresolved explicit " + binding + " measure reference: " + format_item_ref((table, measure))})
+        for name in graphs:
+            graphs[name].update(partial[name])
+        if memo is not None:
+            memo[memo_key] = (list(model_items), list(local), partial)
     return graphs
 
 
@@ -4820,6 +4919,90 @@ def _usage_belongs_to_item(item: ModelItem, usage: UsageRef) -> bool:
         bool(item.source_file) and str(Path(item.source_file).parent.parent.resolve()) == usage.report_path)
 
 
+class AnalysisCache:
+    """Parsed inputs replayed by repeated analyses of one unchanged scope (#169).
+
+    A change plan analyzes the same files several times in a row: the whole
+    scope, then each report alone, so report issues stay apart per artifact.
+    Nothing on disk changes between those runs, so the model parse, each report
+    scan, each dependency-graph context and each fuzzy suggestion is computed
+    once and replayed. The owner creates one cache per unchanged scope and drops
+    it before any file changes; it is never shared across plan steps.
+    """
+
+    def __init__(self):
+        self.model: dict[Path, dict] = {}
+        self.extensions: dict[Path, dict] = {}
+        self.reports: dict[Path, dict] = {}
+        self.graphs: dict = {}
+        self.suggestions: dict[tuple, list[dict]] = {}
+
+
+def _read_model_scope(model_path: Path) -> dict:
+    """Parse one Semantic Model folder: the pure, cacheable model part of analyze()."""
+    unsupported_error = _unsupported_semantic_model_error(model_path)
+    if unsupported_error:
+        raise UnsupportedSemanticModelError(unsupported_error)
+    warnings: list[AnalyzerWarning] = []
+    items = parse_model_items(model_path)
+    return {
+        "items": items,
+        "relationship_details": parse_relationship_details(model_path),
+        "rls_refs": parse_rls_roles(model_path),
+        "hierarchies": parse_hierarchies(model_path),
+        "unsupported_metadata_refs": parse_unsupported_metadata_refs(model_path),
+        "calculation_group_tables": parse_calculation_group_tables(model_path),
+        "metadata": parse_model_metadata(model_path),
+        "field_parameters": resolve_field_parameter_targets(
+            parse_field_parameters(model_path, warnings), items, model_path.name, warnings),
+        "warnings": warnings,
+    }
+
+
+def _read_report_extensions(report_path: Path) -> dict:
+    warnings: list[AnalyzerWarning] = []
+    return {"items": parse_report_extension_measures(report_path, warnings), "warnings": warnings}
+
+
+def _scan_report_scope(report_path: Path) -> dict:
+    """Scan one PBIR report folder: the pure, cacheable report part of analyze()."""
+    invalid_json_issues: list[ReportIssue] = []
+    documents: dict = {}  # each JSON file of this report is read and parsed once
+    # Syntax diagnostics remain useful even when the report format itself is unsupported.
+    report_issues = list(scan_invalid_report_json(report_path, documents))
+    scanned = {"report_issues": report_issues, "invalid_json_issues": invalid_json_issues,
+               "visual_usages": [], "stale_visual_usages": [], "interaction_usages": [],
+               "filter_usages": [], "bookmark_usages": [], "stale_bookmark_usages": [],
+               "definition_meta_usages": []}
+    if not (report_path / "definition").is_dir():
+        report_issues.append(ReportIssue(
+            severity="error", issue_type="unsupported_report_format",
+            report=report_display_name(report_path), report_path=str(report_path.resolve()),
+            artifact_kind="report", artifact_path="report.json" if (report_path / "report.json").exists() else "definition/",
+            message=("Unsupported report format: the selected report has no PBIR definition directory. "
+                     "Save it in enhanced PBIR format before relying on usage or cleanup recommendations."),
+        ))
+        return scanned
+    report_issues.extend(scan_report_extension_issues(report_path))
+    visual_usages, stale_visual_usages, visual_meta = scan_report_visuals(
+        report_path, invalid_json_issues, documents)
+    scanned["visual_usages"] = visual_usages
+    scanned["stale_visual_usages"] = stale_visual_usages
+    scanned["interaction_usages"] = scan_visual_interactions(
+        report_path, visual_meta, invalid_json_issues, documents)
+    scanned["filter_usages"] = scan_report_filters(report_path, invalid_json_issues, documents)
+    scanned["bookmark_usages"], scanned["stale_bookmark_usages"] = scan_bookmarks(
+        report_path, visual_meta, invalid_json_issues, documents)
+
+    excluded_files = set(report_path.glob("definition/pages/*/visuals/*/visual.json"))
+    excluded_files |= set(report_path.glob("definition/pages/*/page.json"))
+    excluded_files.add(report_path / "definition" / "report.json")
+    excluded_files |= set(report_path.glob("definition/bookmarks/*.bookmark.json"))
+    scanned["definition_meta_usages"] = scan_additional_definition_json(
+        report_path, excluded_files, invalid_json_issues, documents)
+    return scanned
+
+
 def analyze(
     workspace: Path,
     model_filters: list[str] | None = None,
@@ -4831,6 +5014,7 @@ def analyze(
     progress=None,
     allow_model_only: bool = False,
     unselected_reports: list[Path] | None = None,
+    cache: AnalysisCache | None = None,
     unverified_reports: list[Path] | None = None,
     suggestions: bool = True,
 ) -> dict:
@@ -4884,42 +5068,43 @@ def analyze(
 
     for model_index, model_path in enumerate(models):
         checkpoint("Reading model metadata", model_index, len(models))
-        unsupported_error = _unsupported_semantic_model_error(model_path)
-        if unsupported_error:
-            raise UnsupportedSemanticModelError(unsupported_error)
-
-        model_items = parse_model_items(model_path)
+        parsed = cache.model.get(model_path) if cache is not None else None
+        if parsed is None:
+            parsed = _read_model_scope(model_path)
+            if cache is not None:
+                cache.model[model_path] = parsed
+        warnings.extend(parsed["warnings"])
+        model_items = parsed["items"]
         parsed_model_items.extend(model_items)
         all_items.extend(model_items)
-        relationship_details = parse_relationship_details(model_path)
+        relationship_details = parsed["relationship_details"]
         all_relationship_details.extend(relationship_details)
         all_relationship_cols |= {
             (rel.from_table, rel.from_column) for rel in relationship_details
         } | {
             (rel.to_table, rel.to_column) for rel in relationship_details
         }
-        all_rls_refs.extend(parse_rls_roles(model_path))
-        all_hierarchies.extend(parse_hierarchies(model_path))
-        all_unsupported_metadata_refs.extend(parse_unsupported_metadata_refs(model_path))
+        all_rls_refs.extend(parsed["rls_refs"])
+        all_hierarchies.extend(parsed["hierarchies"])
+        all_unsupported_metadata_refs.extend(parsed["unsupported_metadata_refs"])
         all_calculation_group_tables |= {
-            name.casefold() for name in parse_calculation_group_tables(model_path)
+            name.casefold() for name in parsed["calculation_group_tables"]
         }
-        parsed_metadata = parse_model_metadata(model_path)
+        parsed_metadata = parsed["metadata"]
         model_metadata.calculation_groups.update(parsed_metadata.calculation_groups)
         model_metadata.perspective_members.extend(parsed_metadata.perspective_members)
         model_metadata.translations.extend(parsed_metadata.translations)
-        all_field_parameters.extend(
-            resolve_field_parameter_targets(
-                parse_field_parameters(model_path, warnings),
-                model_items,
-                model_path.name,
-                warnings,
-            )
-        )
+        all_field_parameters.extend(parsed["field_parameters"])
 
     for report_index, report_path in enumerate(reports):
         checkpoint("Reading report extensions", report_index, len(reports))
-        all_items.extend(parse_report_extension_measures(report_path, warnings))
+        extensions = cache.extensions.get(report_path) if cache is not None else None
+        if extensions is None:
+            extensions = _read_report_extensions(report_path)
+            if cache is not None:
+                cache.extensions[report_path] = extensions
+        warnings.extend(extensions["warnings"])
+        all_items.extend(extensions["items"])
 
     all_items = _dedupe_items_with_warnings(all_items, warnings)
     model_keys = {normalize_key(*item.key) + (item.item_type,) for item in parsed_model_items}
@@ -4950,34 +5135,56 @@ def analyze(
 
     for report_index, report_path in enumerate(reports):
         checkpoint("Scanning reports", report_index, len(reports))
-        # Syntax diagnostics remain useful even when the report format itself is unsupported.
-        all_report_issues.extend(scan_invalid_report_json(report_path))
-        if not (report_path / "definition").is_dir():
-            all_report_issues.append(ReportIssue(
-                severity="error", issue_type="unsupported_report_format",
-                report=report_display_name(report_path), report_path=str(report_path.resolve()),
-                artifact_kind="report", artifact_path="report.json" if (report_path / "report.json").exists() else "definition/",
-                message=("Unsupported report format: the selected report has no PBIR definition directory. "
-                         "Save it in enhanced PBIR format before relying on usage or cleanup recommendations."),
-            ))
-            continue
-        all_report_issues.extend(scan_report_extension_issues(report_path))
-        visual_usages, stale_visual_usages, visual_meta = scan_report_visuals(report_path, all_invalid_json_issues)
-        all_visual_usages.extend(visual_usages)
-        all_stale_visual_usages.extend(stale_visual_usages)
-        all_interaction_usages.extend(scan_visual_interactions(report_path, visual_meta, all_invalid_json_issues))
-        all_report_filter_usages.extend(scan_report_filters(report_path, all_invalid_json_issues))
-        bookmark_usages, stale_bookmark_usages = scan_bookmarks(report_path, visual_meta, all_invalid_json_issues)
-        all_bookmark_usages.extend(bookmark_usages)
-        all_stale_bookmark_usages.extend(stale_bookmark_usages)
+        scanned = cache.reports.get(report_path) if cache is not None else None
+        if scanned is None:
+            scanned = _scan_report_scope(report_path)
+            if cache is not None:
+                cache.reports[report_path] = scanned
+        all_report_issues.extend(scanned["report_issues"])
+        all_invalid_json_issues.extend(scanned["invalid_json_issues"])
+        all_visual_usages.extend(scanned["visual_usages"])
+        all_stale_visual_usages.extend(scanned["stale_visual_usages"])
+        all_interaction_usages.extend(scanned["interaction_usages"])
+        all_report_filter_usages.extend(scanned["filter_usages"])
+        all_bookmark_usages.extend(scanned["bookmark_usages"])
+        all_stale_bookmark_usages.extend(scanned["stale_bookmark_usages"])
+        all_definition_meta_usages.extend(scanned["definition_meta_usages"])
+        from .saved_dax import query_references, DaxCoverageError
+        local_items = [i for i in all_items if i.source_kind == "model"
+                       or Path(i.source_file).parent.parent.resolve() == report_path.resolve()]
+        for query_path in sorted(report_path.rglob("*.dax")):
+            try:
+                query_refs = query_references(query_path.read_text(encoding="utf-8-sig"))
+            except (DaxCoverageError, OSError, UnicodeError) as exc:
+                all_report_issues.append(ReportIssue(
+                    severity="warning", issue_type="unsupported_saved_dax_query",
+                    report=report_display_name(report_path), report_path=str(report_path.resolve()),
+                    artifact_kind="Saved DAX Query", artifact_path=query_path.relative_to(report_path).as_posix(),
+                    message="Saved DAX query reference coverage is incomplete: " + str(exc)))
+                continue
+            for table, name in sorted(set(query_refs), key=str):
+                if name is None:
+                    # A local DEFINE MEASURE still requires its model table.
+                    # Retain all its model items so last-item deletion cannot
+                    # remove the owner, including through cached plan analyses.
+                    targets = [target for target in local_items if target.source_kind == "model"
+                               and target.table.casefold() == table.casefold()]
+                    if not targets:
+                        all_report_issues.append(ReportIssue(
+                            severity="error", issue_type="unsupported_saved_dax_query",
+                            report=report_display_name(report_path), report_path=str(report_path.resolve()),
+                            artifact_kind="Saved DAX Query", artifact_path=query_path.relative_to(report_path).as_posix(),
+                            message="Saved DAX DEFINE MEASURE owner table cannot be resolved from model items: " + table))
+                else:
+                    targets = [target for target in local_items if target.name.casefold() == name.casefold()
+                               and (table is None or target.table.casefold() == table.casefold())]
+                for target in targets:
+                    all_definition_meta_usages.append(UsageRef(
+                        table=target.table, name=target.name, ref_type=target.item_type,
+                        report=report_display_name(report_path), report_path=str(report_path.resolve()),
+                        context="Saved report DAX query", source_path=str(query_path),
+                        artifact_kind="Saved DAX Query", artifact_path=query_path.relative_to(report_path).as_posix()))
 
-        excluded_files = set(report_path.glob("definition/pages/*/visuals/*/visual.json"))
-        excluded_files |= set(report_path.glob("definition/pages/*/page.json"))
-        excluded_files.add(report_path / "definition" / "report.json")
-        excluded_files |= set(report_path.glob("definition/bookmarks/*.bookmark.json"))
-        all_definition_meta_usages.extend(
-            scan_additional_definition_json(report_path, excluded_files, all_invalid_json_issues)
-        )
 
     direct_usages = (
         all_visual_usages
@@ -5012,6 +5219,7 @@ def analyze(
         model_items=parsed_model_items,
         hierarchies=all_hierarchies,
         warnings=warnings,
+        suggestion_cache=cache.suggestions if cache is not None else None,
         suggestions=suggestions,
     )
 
@@ -5027,7 +5235,7 @@ def analyze(
 
     checkpoint("Resolving model dependencies")
     # ── DAX dependencies ──
-    graphs = scoped_dependency_graphs(all_items)
+    graphs = scoped_dependency_graphs(all_items, memo=cache.graphs if cache is not None else None)
     dax_deps, dax_col_deps, dax_table_deps, broken_dax_refs = (
         graphs[name] for name in ("measures", "columns", "tables", "broken"))
     items_by_identity = {item_identity(item): item for item in all_items}
@@ -5133,7 +5341,7 @@ def analyze(
     # Every limitation is explained once; shared ones apply to every item with
     # no use found in scope, targeted ones only to the items they reference.
     invalid_report_issues = [
-        issue for issue in report_issues if issue.issue_type in {"invalid_report_json", "unsupported_report_format", "ambiguous_extension_identity"}
+        issue for issue in report_issues if issue.issue_type in {"invalid_report_json", "unsupported_report_format", "ambiguous_extension_identity", "unsupported_saved_dax_query"}
     ]
     analysis_limitations: list[dict] = []
     seen_limitation_ids: set[str] = set()
@@ -5384,6 +5592,22 @@ def analyze(
     for row in results:
         row["review_basis"] = review_basis(row)
 
+    report_deletions = {}
+    if any(row["item"].source_kind == "report" for row in results):
+        from .report_measure_delete import assessment, _entry, _key
+        report_deletions = assessment(models[0], reports, {
+            "items": results, "coverage": {"complete": not coverage_limitations,
+                                         "limitations": coverage_limitations}})
+        for row in results:
+            if row["item"].source_kind != "report":
+                continue
+            evidence = report_deletions[_key(_entry(row["item"]))]
+            row["report_measure_delete"] = evidence
+            if not evidence["eligible"] and row_usage_status(row) == "NOT USED":
+                row["removal_risk"] = "Caution" if evidence["groupEligible"] else "Review"
+                row["review_triggers"] = list(dict.fromkeys(row["review_triggers"] + evidence["reasons"]))
+                row["review_basis"] = review_basis(row)
+
     checkpoint("Building table summaries")
     # ── Table-level summary ──
     field_parameter_issues_by_table: dict[str, list[str]] = defaultdict(list)
@@ -5507,6 +5731,7 @@ def analyze(
                                key=str.casefold),
         },
         "items": results,
+        "report_measure_deletions": list(report_deletions.values()),
         "dependency_graphs": graphs,
         # Preserve scanner evidence such as hierarchy-level references that do
         # not have a same-named item row. This is an internal projection input;
@@ -5730,6 +5955,7 @@ def format_json_output(results: dict) -> str:
             "table": r["item"].table,
             "name": r["item"].name,
             "sourceKind": r["item"].source_kind,
+            "reportMeasureDelete": r.get("report_measure_delete"),
             "sourceArtifact": r["item"].source_artifact or None,
             "sourceFile": r["item"].source_file or None,
             "displayFolder": r["item"].display_folder,

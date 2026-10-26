@@ -61,13 +61,88 @@ def _resolve_source_file(model_path: Path, source_file: str | Path | None) -> Pa
         return candidate
 
 
-def _candidate_item_files(model_path: Path, source_file: str | Path | None = None) -> list[Path]:
+def _item_files(model_path: Path) -> list[Path]:
+    return [path for path in _iter_tmdl_files(model_path) if not is_membership_file(model_path, path)]
+
+
+class BatchFileCache:
+    """Text of the model's TMDL files during one writer batch (#169).
+
+    Every action in a batch used to list the definition directory, resolve every
+    file path and read every table file again. The cache serves those repeated
+    reads from memory. Only writer functions in this module change the model;
+    each caller invalidates the files it wrote (or everything, when it cannot
+    name them) before any later read, so a cached text is always the text on
+    disk. One cache serves one batch and is never shared across batches.
+    """
+
+    def __init__(self, model_path: Path):
+        self.model_path = model_path
+        self._item_files: list[Path] | None = None
+        self._text: dict[Path, str] = {}
+        self._lines: dict[Path, list[str]] = {}
+        self._tables: dict[Path, set[str]] = {}
+
+    def item_files(self) -> list[Path]:
+        if self._item_files is None:
+            self._item_files = _item_files(self.model_path)
+        return list(self._item_files)
+
+    def read_text(self, path: Path) -> str:
+        text = self._text.get(path)
+        if text is None:
+            text = path.read_text(encoding="utf-8")
+            self._text[path] = text
+        return text
+
+    def read_lines(self, path: Path) -> list[str]:
+        """Lines of ``path``; the list is shared, so callers must not change it."""
+        lines = self._lines.get(path)
+        if lines is None:
+            lines = self.read_text(path).splitlines()
+            self._lines[path] = lines
+        return lines
+
+    def declares_table(self, path: Path, table: str) -> bool:
+        """Whether ``path`` has a top-level ``table`` declaration named ``table``."""
+        names = self._tables.get(path)
+        if names is None:
+            names = {_unquote_tmdl_name(line[6:]).casefold()
+                     for line in self.read_lines(path) if line.startswith("table ")}
+            self._tables[path] = names
+        return table.casefold() in names
+
+    def invalidate(self, *paths: Path, files_changed: bool = False) -> None:
+        for path in paths:
+            self._text.pop(path, None)
+            self._lines.pop(path, None)
+            self._tables.pop(path, None)
+        if files_changed:
+            self._item_files = None
+
+    def clear(self) -> None:
+        self._text.clear()
+        self._lines.clear()
+        self._tables.clear()
+        self._item_files = None
+
+
+def _candidate_item_files(
+    model_path: Path,
+    source_file: str | Path | None = None,
+    cache: BatchFileCache | None = None,
+) -> list[Path]:
     files = []
-    resolved_source = _resolve_source_file(model_path, source_file)
-    if resolved_source and resolved_source.is_file() and not is_membership_file(model_path, resolved_source):
-        files.append(resolved_source)
-    for filepath in _iter_tmdl_files(model_path):
-        if filepath not in files and not is_membership_file(model_path, filepath):
+    item_files = cache.item_files() if cache is not None else _item_files(model_path)
+    if cache is not None and isinstance(source_file, Path) and source_file in item_files:
+        # The file a validated lookup of this batch found; already a listing entry.
+        files.append(source_file)
+    else:
+        resolved_source = _resolve_source_file(model_path, source_file)
+        if resolved_source and resolved_source.is_file() and not is_membership_file(model_path, resolved_source):
+            files.append(resolved_source)
+    for filepath in item_files:
+        if filepath not in files:
             files.append(filepath)
     return files
 
@@ -213,10 +288,17 @@ def _find_item_source(
     item_type: str,
     *,
     source_file: str | Path | None = None,
+    cache: BatchFileCache | None = None,
 ) -> tuple[Path, list[str], tuple[int, int]] | None:
-    for filepath in _candidate_item_files(model_path, source_file):
+    for filepath in _candidate_item_files(model_path, source_file, cache):
         try:
-            lines = filepath.read_text(encoding="utf-8").splitlines()
+            if cache is not None:
+                # A file without the table declaration cannot hold the item.
+                if not cache.declares_table(filepath, table):
+                    continue
+                lines = cache.read_lines(filepath)  # shared: read-only for cache users
+            else:
+                lines = filepath.read_text(encoding="utf-8").splitlines()
         except OSError:
             continue
         table_block = _find_table_block(lines, table)
@@ -1285,12 +1367,13 @@ def delete_item(
     item_type: str,
     *,
     source_file: str | Path | None = None,
+    cache: BatchFileCache | None = None,
 ) -> dict:
     """Delete an entire measure or column block from the TMDL file.
     If the item is a column, also removes any relationships referencing it.
     If the table has no remaining columns or measures, deletes the table file
     and all its relationships."""
-    source = _find_item_source(model_path, table, name, item_type, source_file=source_file)
+    source = _find_item_source(model_path, table, name, item_type, source_file=source_file, cache=cache)
     if not source:
         return {"ok": False, "error": f"Item '{name}' not found in table '{table}' TMDL source files"}
 
@@ -1307,10 +1390,15 @@ def delete_item(
     declarations = []
     retained_items = False
     try:
-        for candidate in _iter_tmdl_files(model_path):
-            if is_membership_file(model_path, candidate):
-                continue
-            candidate_lines = lines if candidate == tmdl_file else candidate.read_text(encoding="utf-8").splitlines()
+        for candidate in (cache.item_files() if cache is not None else _item_files(model_path)):
+            if candidate == tmdl_file:
+                candidate_lines = lines
+            elif cache is not None:
+                if not cache.declares_table(candidate, table):
+                    continue  # no fragment of this table here
+                candidate_lines = cache.read_lines(candidate)
+            else:
+                candidate_lines = candidate.read_text(encoding="utf-8").splitlines()
             for table_start, table_end in _table_declaration_blocks(candidate_lines, table):
                 declarations.append((candidate, table_start, table_end))
                 retained_items |= _table_has_items(candidate_lines[table_start + 1:table_end])
@@ -1360,6 +1448,15 @@ def delete_item(
     for path, content in membership_edits.items():
         path.write_bytes(content)
     result["membership_files"] = [str(path) for path in membership_edits]
+    if cache is not None:
+        if tmdl_file in cache.item_files():
+            # Every file this deletion may have rewritten or removed.
+            cache.invalidate(tmdl_file, model_path / "definition" / "relationships.tmdl",
+                             model_path / "definition" / "model.tmdl", *membership_edits,
+                             files_changed=bool(result.get("table_deleted")))
+        else:
+            # An explicit source file may name the item file in another spelling.
+            cache.clear()
 
     return result
 
@@ -1402,7 +1499,8 @@ def _action_plan_description(action: dict) -> str:
 
 def plan_actions(model_path: Path, actions: list[dict]) -> dict:
     """Validate model cleanup actions and return the dry-run plan without writing files."""
-    validation_results = [_validate_action(model_path, act) for act in actions]
+    cache = BatchFileCache(model_path)
+    validation_results = [_validate_action(model_path, act, cache) for act in actions]
     plan_entries: list[dict] = []
     affected_files: set[str] = set()
 
@@ -1460,7 +1558,8 @@ def apply_actions(model_path: Path, actions: list[dict]) -> list[dict]:
     }
     Returns list of result dicts.
     """
-    validation_results = [_validate_action(model_path, act) for act in actions]
+    cache = BatchFileCache(model_path)
+    validation_results = [_validate_action(model_path, act, cache) for act in actions]
     if any(not result["ok"] for result in validation_results):
         return [
             {
@@ -1476,7 +1575,7 @@ def apply_actions(model_path: Path, actions: list[dict]) -> list[dict]:
 
     snapshots = _snapshot_model_files(model_path)
     results = []
-    for act in actions:
+    for act, validation in zip(actions, validation_results, strict=True):
         action = act["action"]
         table = act["table"]
         name = act["name"]
@@ -1513,17 +1612,23 @@ def apply_actions(model_path: Path, actions: list[dict]) -> list[dict]:
                     source_file=_action_source_file(act),
                 )
             elif action == "delete":
+                # Validation already found the item's file; look there first.
+                validated = Path(validation["source_file"]) if validation.get("source_file") else None
                 r = delete_item(
                     model_path,
                     table,
                     name,
                     item_type,
-                    source_file=_action_source_file(act),
+                    source_file=_action_source_file(act) or validated,
+                    cache=cache,
                 )
             else:
                 r = {"ok": False, "error": f"Unknown action '{action}'"}
         except Exception as exc:
             r = {"ok": False, "error": str(exc)}
+        if action != "delete":
+            # Other writers do not report the files they touched.
+            cache.clear()
 
         r.update({
             "table": table,
@@ -1549,7 +1654,7 @@ def apply_actions(model_path: Path, actions: list[dict]) -> list[dict]:
     return results
 
 
-def _validate_action(model_path: Path, act: dict) -> dict:
+def _validate_action(model_path: Path, act: dict, cache: BatchFileCache | None = None) -> dict:
     action = act.get("action")
     table = act.get("table")
     name = act.get("name")
@@ -1584,7 +1689,7 @@ def _validate_action(model_path: Path, act: dict) -> dict:
             return {**result, "ok": False, "error": f"Table block for '{table}' not found in {tmdl_file.name}"}
         return result
 
-    source = _find_item_source(model_path, table, name, item_type, source_file=source_file)
+    source = _find_item_source(model_path, table, name, item_type, source_file=source_file, cache=cache)
     if not source:
         if source_file:
             return {

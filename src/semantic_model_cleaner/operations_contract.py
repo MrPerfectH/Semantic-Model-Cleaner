@@ -57,6 +57,9 @@ def schema():
         definitions[kind] = _obj({"kind": {"const": kind}, "report_paths": _array(TEXT),
                                   **properties}, ["kind", *required])
 
+    operation("delete_report_measures", {"entries": _array(_obj(
+        {"report_path": TEXT, **item}, ["report_path", "table", "name"]))}, ["entries"])
+    definitions["delete_report_measures"]["properties"].pop("report_paths")
     operation("actions", {"actions": _array(action)}, ["actions"])
     for kind in ("rename", "report_repair"):
         operation(kind, renames, [])

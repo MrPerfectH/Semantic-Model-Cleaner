@@ -145,19 +145,26 @@ def validate_document(document, *, path: str = '', error_limit: int = 100) -> di
 
 
 def validate_metadata(files: Mapping[str, bytes | str], *, error_limit: int = 100,
-                      previous: dict | None = None) -> dict:
+                      memo: dict | None = None, previous: dict | None = None) -> dict:
     """Validate a metadata snapshot, keyed by stable artifact-relative paths.
 
     Non-JSON metadata (including TMDL) is deliberately excluded. JSON syntax
     failures are reported separately from successfully executed schema checks.
     ``ok`` alone does not establish coverage; inspect ``complete`` and counts.
+
+    A record depends only on the document path, its exact bytes, the error
+    limit and the bundled schemas. ``memo`` is a caller-owned dict keyed by
+    those inputs; a plan validates one snapshot before and after its changes,
+    so unchanged documents are validated once and replayed (#169).
     ``previous`` (an earlier snapshot of the same bundle and error limit) lets
     files with identical bytes reuse their record instead of validating again.
     """
     if error_limit < 1:
         raise ValueError('error_limit must be positive')
+    bundle = bundle_info()
+    bundle_key = json.dumps(bundle, sort_keys=True)
     reusable = {}
-    if previous and previous.get('error_limit') == error_limit and previous.get('bundle') == bundle_info():
+    if previous and previous.get('error_limit') == error_limit and previous.get('bundle') == bundle:
         reusable = {(record['path'], record['content_hash']): record for record in previous['files']}
     records = []
     for path, content in sorted(files.items()):
@@ -165,19 +172,26 @@ def validate_metadata(files: Mapping[str, bytes | str], *, error_limit: int = 10
             continue
         raw = content.encode('utf-8') if isinstance(content, str) else content
         fingerprint = hashlib.sha256(raw).hexdigest()
+        key = (path, fingerprint, error_limit, bundle_key)
+        if memo is not None and key in memo:
+            records.append(deepcopy(memo[key]))
+            continue
         if (path, fingerprint) in reusable:
             records.append(deepcopy(reusable[(path, fingerprint)]))
             continue
         try:
             document = json.loads(raw)
         except (ValueError, UnicodeError) as exc:
-            records.append({'path': path, 'schema': None, 'status': 'invalid',
-                            'reason': 'invalid_json', 'content_hash': fingerprint,
-                            'errors': [{'path': '', 'schema_path': '', 'keyword': 'json_syntax',
-                                        'message': str(exc)}], 'truncated': False})
-            continue
-        result = validate_document(document, path=path, error_limit=error_limit)
-        records.append({**result, 'content_hash': fingerprint})
+            record = {'path': path, 'schema': None, 'status': 'invalid',
+                      'reason': 'invalid_json', 'content_hash': fingerprint,
+                      'errors': [{'path': '', 'schema_path': '', 'keyword': 'json_syntax',
+                                  'message': str(exc)}], 'truncated': False}
+        else:
+            record = {**validate_document(document, path=path, error_limit=error_limit),
+                      'content_hash': fingerprint}
+        if memo is not None:
+            memo[key] = deepcopy(record)
+        records.append(record)
     counts = Counter(record['status'] for record in records)
     return {'ok': counts['invalid'] == 0,
             'complete': bool(records) and counts['not_validated'] == 0

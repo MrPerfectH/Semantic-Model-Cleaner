@@ -44,7 +44,7 @@ def roots(model, reports):
 
 def test_one_analysis_groups_issues_like_separate_per_report_analyses(project, monkeypatch):
     model, reports = project
-    expected = {key: analyzer.analyze(model.parent, model_paths=[model], report_paths=[path])["report_issues"]
+    expected = {key: analyzer.analyze(model.parent, model_paths=[model], report_paths=[path], suggestions=False)["report_issues"]
                 for key, path in roots(model, reports).items() if key != "model"}
     calls = []
     original = analyzer.analyze

@@ -7,8 +7,8 @@ from semantic_model_cleaner.analysis_jobs import AnalysisJobs
 from semantic_model_cleaner import webapp
 
 
-def wait_done(jobs, identity):
-    deadline = time.monotonic() + 3
+def wait_done(jobs, identity, timeout=3):
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         job = jobs.get(identity)
         if job['status'] not in {'running', 'cancelling'}:
@@ -64,7 +64,9 @@ def test_job_api_real_demo_and_invalid_scope(tmp_path, monkeypatch):
         response = client.post('/api/analysis-jobs', json={'model_paths': [str(model)], 'report_paths': [str(report)]})
         assert response.status_code == 202
         identity = response.json['job']['id']
-        result = wait_done(jobs, identity)
+        # This is a functional filesystem integration check, not a three-second
+        # performance SLA. Cold schema reads on Windows can exceed that deadline.
+        result = wait_done(jobs, identity, timeout=30)
         assert result['status'] == 'completed', result
         assert len(result['result']['items']) == 9
         assert client.get('/api/analysis-jobs/' + identity).json['job']['result']['items']
