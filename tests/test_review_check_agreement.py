@@ -8,7 +8,9 @@ import pytest
 
 from test_cli_insights import visual
 from test_cli_path_selection import ROOT
-from test_partial_report_scope import project  # noqa: F401  (fixture)
+from test_partial_report_scope import project as scope_project
+
+project = scope_project
 
 
 def code(tmp_path, args):
