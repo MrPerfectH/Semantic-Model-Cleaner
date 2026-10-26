@@ -394,12 +394,31 @@ def _selection_gaps(selection):
     return ' '.join(gaps)
 
 
-def create_plan(model_path, report_paths, operations, *, known_reports=None, allow_partial_report_scope=False):
+def _report_discovery_roots(roots, known_reports, search_roots):
+    """Keep the caller's search boundary, including explicitly selected outside Reports."""
+    paths = sorted({Path(path).resolve() for path in search_roots or []})
+    if not paths:
+        paths = [roots['model'].parent]
+    for report in [*list(roots.values())[1:], *map(Path, known_reports)]:
+        report = report.resolve()
+        if not any(report.is_relative_to(root) for root in paths):
+            paths.append(report.parent)
+    paths = sorted(set(paths))
+    if any(not path.is_dir() for path in paths):
+        raise PlanError('Report discovery roots must be existing directories.')
+    return [str(path) for path in paths if not any(parent in path.parents for parent in paths)]
+
+
+def create_plan(model_path, report_paths, operations, *, known_reports=None,
+                report_search_roots=None, allow_partial_report_scope=False):
     """Preview only; no input files or backups are written.
 
     Pass ``known_reports`` (the project's discovered Reports) so a plan that
     can break Report References refuses a partial Report selection unless
-    ``allow_partial_report_scope`` explicitly accepts it.
+    ``allow_partial_report_scope`` explicitly accepts it. ``report_search_roots``
+    records the discovery boundary for a fresh check on apply; without explicit
+    roots, checked callers use the model's parent and outside Reports' parents.
+    Omitting both scope arguments retains the low-level explicit-scope contract.
     """
     if not isinstance(operations, list) or not operations or any(not isinstance(o, dict) for o in operations):
         raise PlanError('operations must be a nonempty list of objects.')
@@ -413,7 +432,16 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None, all
                     or str(action.get('source_file', action.get('sourceFile', ''))).lower().endswith('.json')):
                 raise PlanError('Report identities cannot be used for semantic-model actions; use delete_report_measures.')
     originals = _roots(model_path, report_paths)
+    if report_search_roots is not None:
+        report_search_roots = list(report_search_roots)
+        known_reports = list(known_reports or [])
+    if known_reports is not None:
+        known_reports = sorted({Path(p).resolve() for p in known_reports})
+        discovery_roots = _report_discovery_roots(originals, known_reports, report_search_roots)
+        known_reports = sorted(set(known_reports) | set(analyzer.discover_reports([Path(p) for p in discovery_roots])))
     selection = report_selection(originals['model'], list(originals.values())[1:], known_reports)
+    if known_reports is not None:
+        selection['discovery_roots'] = discovery_roots
     selection['partial_scope_allowed'] = bool(allow_partial_report_scope)
     if selection['complete'] is False and not allow_partial_report_scope \
             and any(_invalidates_report_references(op) for op in operations):
@@ -672,16 +700,41 @@ def _receipt(plan, status, **extra):
             'validation': plan['validation'], 'updated_at': datetime.now(timezone.utc).isoformat(), **extra}
 
 
+def _check_current_report_selection(plan, roots):
+    """New Reports are outside selected-file fingerprints; discover them before writes."""
+    if not any(_invalidates_report_references(op) for op in plan['operations']):
+        return
+    selection = plan.get('coverage', {}).get('report_selection', {})
+    # Low-level callers that never supplied a discovered Report scope retain their
+    # explicit-scope contract. Public CLI/API plans always record a checked scope.
+    if selection.get('checked') is False or selection.get('partial_scope_allowed') is True:
+        return
+    if selection.get('checked') is not True:
+        raise PlanError('This older plan did not record Report discovery scope. Generate a new plan before applying this change.')
+    paths = selection.get('discovery_roots')
+    if not isinstance(paths, list) or not paths or any(not isinstance(p, str) or not Path(p).is_absolute() for p in paths):
+        raise PlanError('This plan did not record Report discovery roots. Generate a new plan before applying this change.')
+    if any(not Path(path).is_dir() for path in paths):
+        raise PlanError('A Report discovery root is unavailable. Generate a new plan; nothing was written.')
+    current = report_selection(roots['model'], list(roots.values())[1:],
+                               analyzer.discover_reports([Path(path) for path in paths]))
+    if not current['complete']:
+        raise PlanError('Report selection changed since preview: ' + _selection_gaps(current)
+                        + ' Generate a new plan that includes the current connected Reports; nothing was written.')
+
+
 def apply_plan(plan, directory):
     roots = _check(plan)
     # Older saved previews must not bypass a newly withheld write capability.
     _require_supported_write_encoding(_inventory(roots))
+    _check_current_report_selection(plan, roots)
     journal = Path(directory) / f'{plan["id"]}.receipt.json'
     with _lock(roots, directory):
         if journal.exists():
             raise PlanError('This operation already has a receipt. Inspect it or generate a new plan.')
         if _scope_hashes(roots, plan['operations']) != plan['inputs']:
             raise PlanError('Stale plan: selected files changed. Generate a new preview; nothing was written.')
+        _check_current_report_selection(plan, roots)
         for operation in plan['operations']:
             if operation.get('kind') == auto_date_tables.OPERATION_KIND:
                 try:

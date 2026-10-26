@@ -337,5 +337,6 @@ def naming_preview(workspace: Path, model_path: Path, report_paths: list[Path], 
         if binding["status"] not in analyzer.BOUND_REPORT_STATUSES:
             raise PolicyError(f"Naming preview requires bound report scope: {binding['status']}.")
     result["plan"] = create_plan(model_path, report_paths, result["operations"],
-                                 known_reports=analyzer.discover_reports([Path(workspace)]))
+                                 known_reports=analyzer.discover_reports([Path(workspace)]),
+                                 report_search_roots=[Path(workspace)])
     return result
