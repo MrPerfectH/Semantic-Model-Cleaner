@@ -1,0 +1,16 @@
+{
+  "name": "semantic-model-cleaner",
+  "display_name": "Semantic Model Cleaner",
+  "version": "0.4.0b10",
+  "description": "Analyze local Power BI TMDL and PBIR metadata, trace item usage, and prepare reviewed cleanup plans.",
+  "requires": "Python 3.11+; local Power BI Project with TMDL and PBIR files",
+  "homepage": "https://mrperfecth.github.io/Semantic-Model-Cleaner/",
+  "source_url": "https://github.com/MrPerfectH/Semantic-Model-Cleaner",
+  "install_cmd": "pip install git+https://github.com/MrPerfectH/Semantic-Model-Cleaner.git",
+  "entry_point": "smc",
+  "skill_md": "https://raw.githubusercontent.com/MrPerfectH/Semantic-Model-Cleaner/main/SKILL.md",
+  "category": "database",
+  "contributors": [
+    {"name": "MrPerfectH", "url": "https://github.com/MrPerfectH"}
+  ]
+}

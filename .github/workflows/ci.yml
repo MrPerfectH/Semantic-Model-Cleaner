@@ -29,6 +29,9 @@ jobs:
       - name: Lint
         run: python -m ruff check .
 
+      - name: Check generated agent skill
+        run: python scripts/generate_skill.py --check
+
       - name: Test
         run: python -m pytest
 
