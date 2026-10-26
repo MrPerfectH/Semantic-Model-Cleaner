@@ -1,0 +1,275 @@
+{
+  "changed_files": 40,
+  "environment": {
+    "machine": "x86_64",
+    "python": "3.14.7",
+    "system": "Linux"
+  },
+  "equivalence": {
+    "changes": "be5e0788af932dbc2fa1fae0bc1008e1b55bd3c9a2b49bb55525c575cbf64d58",
+    "inputs": "ea44fe883c3cb3b6846daf37011feb5bedb9c41d090fb71ff9297850f3668a9a",
+    "outputs": "68ecf4997df7a0cb1787f7625e718c0324ab2a48cd8185954a25914ddb4ade22",
+    "validation": "5e6d352d5d1082984398cd36be3a1f2e74d2b93fe891bd54a73558f17fd6f175"
+  },
+  "fixture": {
+    "delete_actions": 787,
+    "items": 1960,
+    "operations": 1,
+    "pages": 160,
+    "reports": 8,
+    "tables": 40,
+    "visuals": 5067
+  },
+  "ok": true,
+  "phases_inclusive": {
+    "deletion_policy": {
+      "calls": 1,
+      "cpu_s": 12.442435339,
+      "wall_s": 12.541336298920214
+    },
+    "metadata_inventory": {
+      "calls": 3,
+      "cpu_s": 3.8079066780000232,
+      "wall_s": 3.8444329095073044
+    },
+    "plan_analysis": {
+      "calls": 2,
+      "cpu_s": 55.18978491000001,
+      "wall_s": 55.59007168468088
+    },
+    "schema_validation": {
+      "calls": 2,
+      "cpu_s": 52.697880958999995,
+      "wall_s": 53.0778958410956
+    },
+    "staged_writes": {
+      "calls": 1,
+      "cpu_s": 30.825209729999997,
+      "wall_s": 31.023122258018702
+    }
+  },
+  "planning": {
+    "cpu_s": 163.037340815,
+    "wall_s": 164.2108529228717
+  },
+  "planning_reads": {
+    "bytes": 16793,
+    "text": 125855
+  },
+  "profiled": true,
+  "proof": {
+    "apply_verified": true,
+    "planning_read_only": true,
+    "removed_items": 787,
+    "restored_byte_exact": true
+  },
+  "top_cumulative_functions": [
+    {
+      "calls": 1,
+      "cumulative_s": 164.20172179000002,
+      "file": "change_plan.py",
+      "function": "create_plan",
+      "line": 313,
+      "own_s": 0.043953766000000005,
+      "primitive_calls": 1
+    },
+    {
+      "calls": 9,
+      "cumulative_s": 156.076933905,
+      "file": "benchmark_bulk_plan.py",
+      "function": "measured",
+      "line": 113,
+      "own_s": 0.004339208000000001,
+      "primitive_calls": 9
+    },
+    {
+      "calls": 19,
+      "cumulative_s": 67.713734281,
+      "file": "analyzer.py",
+      "function": "analyze",
+      "line": 4834,
+      "own_s": 1.0476692920000001,
+      "primitive_calls": 19
+    },
+    {
+      "calls": 2,
+      "cumulative_s": 55.58597184800001,
+      "file": "change_plan.py",
+      "function": "_analyze",
+      "line": 221,
+      "own_s": 0.049037964,
+      "primitive_calls": 2
+    },
+    {
+      "calls": 2,
+      "cumulative_s": 53.077863463,
+      "file": "metadata_validation.py",
+      "function": "validate_metadata",
+      "line": 146,
+      "own_s": 0.663017172,
+      "primitive_calls": 2
+    },
+    {
+      "calls": 10486,
+      "cumulative_s": 51.718892597,
+      "file": "metadata_validation.py",
+      "function": "validate_document",
+      "line": 106,
+      "own_s": 0.17468902,
+      "primitive_calls": 10486
+    },
+    {
+      "calls": 1854955,
+      "cumulative_s": 46.200670472000006,
+      "file": "validators.py",
+      "function": "iter_errors",
+      "line": 349,
+      "own_s": 2.354467667,
+      "primitive_calls": 10567
+    },
+    {
+      "calls": 474775,
+      "cumulative_s": 45.432893702,
+      "file": "validators.py",
+      "function": "descend",
+      "line": 396,
+      "own_s": 2.4355165640000003,
+      "primitive_calls": 53579
+    },
+    {
+      "calls": 121747,
+      "cumulative_s": 45.309001145,
+      "file": "_keywords.py",
+      "function": "properties",
+      "line": 290,
+      "own_s": 0.627537487,
+      "primitive_calls": 10567
+    },
+    {
+      "calls": 120987,
+      "cumulative_s": 43.971045419,
+      "file": "_keywords.py",
+      "function": "ref",
+      "line": 274,
+      "own_s": 0.262368325,
+      "primitive_calls": 23736
+    },
+    {
+      "calls": 114491,
+      "cumulative_s": 38.784231433,
+      "file": "_keywords.py",
+      "function": "additionalProperties",
+      "line": 36,
+      "own_s": 0.304685397,
+      "primitive_calls": 51202
+    },
+    {
+      "calls": 12495,
+      "cumulative_s": 34.124050927,
+      "file": "_legacy_keywords.py",
+      "function": "items_draft6_draft7_draft201909",
+      "line": 124,
+      "own_s": 0.044246890000000004,
+      "primitive_calls": 12215
+    },
+    {
+      "calls": 1,
+      "cumulative_s": 31.023725784000003,
+      "file": "change_plan.py",
+      "function": "_execute",
+      "line": 155,
+      "own_s": 2.1156000000000002e-05,
+      "primitive_calls": 1
+    },
+    {
+      "calls": 1,
+      "cumulative_s": 31.022978135000002,
+      "file": "tmdl_writer.py",
+      "function": "apply_actions",
+      "line": 1454,
+      "own_s": 0.022674684,
+      "primitive_calls": 1
+    },
+    {
+      "calls": 19,
+      "cumulative_s": 27.508789985,
+      "file": "analyzer.py",
+      "function": "build_report_issues",
+      "line": 3159,
+      "own_s": 11.956734716000001,
+      "primitive_calls": 19
+    },
+    {
+      "calls": 30402,
+      "cumulative_s": 26.776211184,
+      "file": "_keywords.py",
+      "function": "oneOf",
+      "line": 351,
+      "own_s": 1.665054513,
+      "primitive_calls": 30402
+    },
+    {
+      "calls": 787,
+      "cumulative_s": 21.049136704000002,
+      "file": "tmdl_writer.py",
+      "function": "delete_item",
+      "line": 1284,
+      "own_s": 0.254886446,
+      "primitive_calls": 787
+    },
+    {
+      "calls": 96801,
+      "cumulative_s": 19.85720912,
+      "file": "membership_writer.py",
+      "function": "is_membership_file",
+      "line": 37,
+      "own_s": 0.583515624,
+      "primitive_calls": 96801
+    },
+    {
+      "calls": 1574,
+      "cumulative_s": 19.672587921,
+      "file": "tmdl_writer.py",
+      "function": "_find_item_source",
+      "line": 209,
+      "own_s": 0.17365412800000002,
+      "primitive_calls": 1574
+    },
+    {
+      "calls": 1574,
+      "cumulative_s": 16.548608495,
+      "file": "tmdl_writer.py",
+      "function": "_candidate_item_files",
+      "line": 64,
+      "own_s": 0.40101677700000005,
+      "primitive_calls": 1574
+    }
+  ],
+  "validation": {
+    "confirmations": [],
+    "existing_problem_count": 0,
+    "json_syntax": "passed",
+    "limitations": [
+      "Static analysis of selected TMDL/PBIR only.",
+      "Only supported declared PBIR schemas are validated; TMDL/DAX engine validation is not performed."
+    ],
+    "pbir_schema": {
+      "after": {
+        "invalid": 0,
+        "not_validated": 16,
+        "valid": 5227
+      },
+      "before": {
+        "invalid": 0,
+        "not_validated": 16,
+        "valid": 5227
+      },
+      "bundle_commit": "5e1199a15b80e3d51198fe017b1a6fb9bb0871a6",
+      "changed_not_validated": [],
+      "comparison_complete": true
+    },
+    "reference_integrity": "no new unresolved references",
+    "remaining_problem_count": 0,
+    "report_measure_deletions": []
+  }
+}

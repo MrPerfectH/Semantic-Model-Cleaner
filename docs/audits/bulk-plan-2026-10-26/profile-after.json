@@ -1,0 +1,280 @@
+{
+  "changed_files": 40,
+  "environment": {
+    "machine": "x86_64",
+    "python": "3.14.7",
+    "system": "Linux"
+  },
+  "equivalence": {
+    "changes": "be5e0788af932dbc2fa1fae0bc1008e1b55bd3c9a2b49bb55525c575cbf64d58",
+    "inputs": "ea44fe883c3cb3b6846daf37011feb5bedb9c41d090fb71ff9297850f3668a9a",
+    "outputs": "68ecf4997df7a0cb1787f7625e718c0324ab2a48cd8185954a25914ddb4ade22",
+    "validation": "5e6d352d5d1082984398cd36be3a1f2e74d2b93fe891bd54a73558f17fd6f175"
+  },
+  "fixture": {
+    "delete_actions": 787,
+    "items": 1960,
+    "operations": 1,
+    "pages": 160,
+    "reports": 8,
+    "tables": 40,
+    "visuals": 5067
+  },
+  "ok": true,
+  "phases_inclusive": {
+    "deletion_policy": {
+      "calls": 1,
+      "cpu_s": 3.717388708,
+      "wall_s": 3.738009176682681
+    },
+    "metadata_inventory": {
+      "calls": 3,
+      "cpu_s": 5.386045493999996,
+      "wall_s": 5.416192085947841
+    },
+    "plan_analysis": {
+      "calls": 2,
+      "cpu_s": 4.238655025999993,
+      "wall_s": 4.262510333675891
+    },
+    "resource_inventory": {
+      "calls": 2,
+      "cpu_s": 0.7276629860000043,
+      "wall_s": 0.7308690859936178
+    },
+    "schema_validation": {
+      "calls": 2,
+      "cpu_s": 23.498287356999995,
+      "wall_s": 23.62474613916129
+    },
+    "staged_writes": {
+      "calls": 1,
+      "cpu_s": 2.657877650000003,
+      "wall_s": 2.670866584405303
+    }
+  },
+  "planning": {
+    "cpu_s": 47.112602517999996,
+    "wall_s": 47.38054033368826
+  },
+  "planning_reads": {
+    "bytes": 16879,
+    "text": 13368
+  },
+  "profiled": true,
+  "proof": {
+    "apply_verified": true,
+    "planning_read_only": true,
+    "removed_items": 787,
+    "restored_byte_exact": true
+  },
+  "top_cumulative_functions": [
+    {
+      "calls": 1,
+      "cumulative_s": 47.367598459,
+      "file": "change_plan.py",
+      "function": "create_plan",
+      "line": 412,
+      "own_s": 0.052353054,
+      "primitive_calls": 1
+    },
+    {
+      "calls": 11,
+      "cumulative_s": 40.443274417000005,
+      "file": "benchmark_bulk_plan.py",
+      "function": "measured",
+      "line": 113,
+      "own_s": 0.0010184010000000002,
+      "primitive_calls": 11
+    },
+    {
+      "calls": 2,
+      "cumulative_s": 23.624233158000003,
+      "file": "metadata_validation.py",
+      "function": "validate_metadata",
+      "line": 147,
+      "own_s": 0.28753052300000004,
+      "primitive_calls": 2
+    },
+    {
+      "calls": 927534,
+      "cumulative_s": 20.35935254,
+      "file": "validators.py",
+      "function": "iter_errors",
+      "line": 349,
+      "own_s": 0.999054164,
+      "primitive_calls": 5340
+    },
+    {
+      "calls": 280629,
+      "cumulative_s": 20.038573002,
+      "file": "validators.py",
+      "function": "descend",
+      "line": 396,
+      "own_s": 1.153607112,
+      "primitive_calls": 27284
+    },
+    {
+      "calls": 70917,
+      "cumulative_s": 19.990947581,
+      "file": "_keywords.py",
+      "function": "properties",
+      "line": 290,
+      "own_s": 0.309193105,
+      "primitive_calls": 5340
+    },
+    {
+      "calls": 5243,
+      "cumulative_s": 19.834947797,
+      "file": "metadata_validation.py",
+      "function": "validate_document",
+      "line": 107,
+      "own_s": 0.06634503700000001,
+      "primitive_calls": 5243
+    },
+    {
+      "calls": 75224,
+      "cumulative_s": 19.397748680000003,
+      "file": "_keywords.py",
+      "function": "ref",
+      "line": 274,
+      "own_s": 0.12195585900000001,
+      "primitive_calls": 13442
+    },
+    {
+      "calls": 58594,
+      "cumulative_s": 17.252750504,
+      "file": "_keywords.py",
+      "function": "additionalProperties",
+      "line": 36,
+      "own_s": 0.138617019,
+      "primitive_calls": 25707
+    },
+    {
+      "calls": 7428,
+      "cumulative_s": 14.190824282000001,
+      "file": "_legacy_keywords.py",
+      "function": "items_draft6_draft7_draft201909",
+      "line": 124,
+      "own_s": 0.022840936000000003,
+      "primitive_calls": 7148
+    },
+    {
+      "calls": 15201,
+      "cumulative_s": 11.030987327,
+      "file": "_keywords.py",
+      "function": "oneOf",
+      "line": 351,
+      "own_s": 0.6719249690000001,
+      "primitive_calls": 15201
+    },
+    {
+      "calls": 3,
+      "cumulative_s": 7.857084292000001,
+      "file": "analyzer.py",
+      "function": "analyze",
+      "line": 4999,
+      "own_s": 0.18395576100000002,
+      "primitive_calls": 3
+    },
+    {
+      "calls": 461097,
+      "cumulative_s": 6.641586107,
+      "file": "validators.py",
+      "function": "is_valid",
+      "line": 485,
+      "own_s": 0.895526216,
+      "primitive_calls": 461097
+    },
+    {
+      "calls": 104984,
+      "cumulative_s": 6.156985304,
+      "file": "<frozen _collections_abc>",
+      "function": "__contains__",
+      "line": 1025,
+      "own_s": 0.441497114,
+      "primitive_calls": 104984
+    },
+    {
+      "calls": 16,
+      "cumulative_s": 5.807253436000001,
+      "file": "analyzer.py",
+      "function": "_scan_report_scope",
+      "line": 4960,
+      "own_s": 0.01211067,
+      "primitive_calls": 16
+    },
+    {
+      "calls": 582495,
+      "cumulative_s": 5.581187602,
+      "file": "~",
+      "function": "<built-in method builtins.next>",
+      "line": 0,
+      "own_s": 0.22335053700000002,
+      "primitive_calls": 582495
+    },
+    {
+      "calls": 729232,
+      "cumulative_s": 5.444450405,
+      "file": "validators.py",
+      "function": "evolve",
+      "line": 339,
+      "own_s": 2.072328197,
+      "primitive_calls": 729232
+    },
+    {
+      "calls": 3,
+      "cumulative_s": 5.4161506500000005,
+      "file": "change_plan.py",
+      "function": "_inventory",
+      "line": 92,
+      "own_s": 0.098363924,
+      "primitive_calls": 3
+    },
+    {
+      "calls": 5284,
+      "cumulative_s": 5.315364099,
+      "file": "change_plan.py",
+      "function": "_path",
+      "line": 126,
+      "own_s": 0.09859129300000001,
+      "primitive_calls": 5284
+    },
+    {
+      "calls": 609897,
+      "cumulative_s": 5.136240245000001,
+      "file": "<frozen _collections_abc>",
+      "function": "__iter__",
+      "line": 1015,
+      "own_s": 0.32505992,
+      "primitive_calls": 609897
+    }
+  ],
+  "validation": {
+    "confirmations": [],
+    "existing_problem_count": 0,
+    "json_syntax": "passed",
+    "limitations": [
+      "Static analysis of selected TMDL/PBIR only.",
+      "Only supported declared PBIR schemas are validated; TMDL/DAX engine validation is not performed."
+    ],
+    "pbir_schema": {
+      "after": {
+        "invalid": 0,
+        "not_validated": 16,
+        "valid": 5227
+      },
+      "before": {
+        "invalid": 0,
+        "not_validated": 16,
+        "valid": 5227
+      },
+      "bundle_commit": "5e1199a15b80e3d51198fe017b1a6fb9bb0871a6",
+      "changed_not_validated": [],
+      "comparison_complete": true
+    },
+    "reference_integrity": "no new unresolved references",
+    "remaining_problem_count": 0,
+    "report_measure_deletions": []
+  }
+}

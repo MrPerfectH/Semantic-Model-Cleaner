@@ -85,6 +85,7 @@ def main(argv=None):
             operations = parse_operations(raw)
             result = change_plan.create_plan(models[0], reports, operations,
                                              known_reports=analyzer.discover_reports([root]),
+                                             report_search_roots=[root],
                                              allow_partial_report_scope=args.allow_partial_report_scope)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(result, indent=2) + '\n', encoding="utf-8")
