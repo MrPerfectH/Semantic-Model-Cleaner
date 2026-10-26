@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from importlib import metadata
 from pathlib import Path
 import platform
@@ -60,6 +61,9 @@ def main() -> None:
                '--console', '--name', 'smc-engine', '--paths', str(ROOT / 'src'),
                '--distpath', str(build / 'dist'), '--workpath', str(build / 'work'),
                '--specpath', str(build)]
+    signing_identity = os.environ.get('SMC_CODESIGN_IDENTITY')
+    if sys.platform == 'darwin' and signing_identity:
+        command += ['--codesign-identity', signing_identity]
     for directory in ('templates', 'static', 'schemas', 'demo_workspace'):
         source = ROOT / 'src' / 'semantic_model_cleaner' / directory
         command += ['--add-data', f'{source}{":" if sys.platform != "win32" else ";"}semantic_model_cleaner/{directory}']
@@ -69,11 +73,23 @@ def main() -> None:
     shutil.copytree(build / 'dist' / 'smc-engine', stage)
     shutil.copy2(ROOT / 'LICENSE', stage / 'LICENSE')
     copy_notices(stage, project['dependencies'])
+    signing = 'unsigned'
+    if sys.platform == 'darwin':
+        executable = stage / 'smc-engine'
+        subprocess.run(['codesign', '--verify', '--strict', str(executable)], check=True)
+        details = subprocess.check_output(['codesign', '-d', '--verbose=4', str(executable)],
+                                          stderr=subprocess.STDOUT, text=True)
+        signing = 'developer-id' if 'Authority=Developer ID Application:' in details else 'ad-hoc'
+        if signing_identity and signing != 'developer-id':
+            raise RuntimeError('The requested signing identity did not produce a Developer ID signature.')
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     dirty = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True))
     manifest = dict(engineVersion=version, protocol=1, platform=sys.platform, arch=arch,
                     executable='smc-engine.exe' if sys.platform == 'win32' else 'smc-engine',
-                    sourceRevision=revision, sourceDirty=dirty)
+                    sourceRevision=revision, sourceDirty=dirty,
+                    buildSystem=dict(os=platform.platform(), python=platform.python_version(),
+                                     libc=platform.libc_ver() if sys.platform == 'linux' else None),
+                    signing=signing)
     (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     print(f'Staged engine {version} for {sys.platform}-{arch}: {stage}')
 

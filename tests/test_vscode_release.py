@@ -60,6 +60,11 @@ def test_complete_native_release_passes(tmp_path):
     assert verify(paths) == ['linux-x64', 'win32-x64']
 
 
+def test_four_platform_release_includes_both_native_mac_architectures(tmp_path):
+    targets = ['win32-x64', 'linux-x64', 'darwin-x64', 'darwin-arm64']
+    assert verify([package(tmp_path, target) for target in targets], targets) == sorted(targets)
+
+
 def test_missing_or_duplicate_platform_cannot_publish(tmp_path):
     one = package(tmp_path)
     with pytest.raises(ValueError, match='Missing native packages'):

@@ -33,6 +33,7 @@ async function multiModelProject(repo, project) {
   const root = path.resolve(__dirname, '..');
   const repo = path.dirname(root);
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'smc-vscode-'));
+  try {
   // No spaces: test-electron starts Windows hosts through a shell that splits them.
   const project = path.join(temp, 'Sales-Project');
   const second = path.join(temp, 'Demo-Project');
@@ -86,7 +87,8 @@ async function multiModelProject(repo, project) {
           installed.push(directory);
       }
       if (installed.length !== 1) throw new Error('Expected exactly one installed Cleaner package.');
-      const output = execFileSync(process.execPath, [path.join(__dirname, 'smoke-engine.cjs')], {
+      const offline = process.env.SMC_TEST_OFFLINE === '1';
+      const output = execFileSync(process.execPath, [path.join(__dirname, offline ? 'offline-smoke.cjs' : 'smoke-engine.cjs')], {
         encoding: 'utf8', env: { ...process.env, SMC_ENGINE_EXTENSION: installed[0] }
       });
       await fs.writeFile(path.join(artifacts, 'bundled-engine-smoke.txt'), output);
@@ -98,7 +100,6 @@ async function multiModelProject(repo, project) {
     await fs.writeFile(path.join(development, 'package.json'), JSON.stringify(
       { name: 'smc-test-runner', publisher: 'test', version: '0.0.0', engines: { vscode: '*' } }));
   }
-  try {
     await runTests({
       ...(process.env.SMC_VSCODE_EXECUTABLE ? { vscodeExecutablePath: process.env.SMC_VSCODE_EXECUTABLE } : {}),
       extensionDevelopmentPath: development,
@@ -107,6 +108,7 @@ async function multiModelProject(repo, project) {
         SMC_TEST_PROJECT: project, SMC_TEST_SECOND_PROJECT: second, SMC_USER_DIR: path.join(temp, 'smc-user'),
         SMC_TEST_EXPECT_VERSION: version, SMC_TEST_EXPECT_EXTENSIONS: vsix ? extensions : '',
         SMC_TEST_EXPECT_BUNDLED: bundled ? '1' : '',
+        SMC_TEST_OFFLINE: process.env.SMC_TEST_OFFLINE || '',
         SMC_TEST_VSIX_SHA256: vsix ? createHash('sha256').update(await fs.readFile(vsix)).digest('hex') : '' },
       launchArgs: [project, '--user-data-dir', path.join(temp, 'profile'), '--extensions-dir', extensions,
         ...(vsix ? [] : ['--disable-extensions']), '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes',

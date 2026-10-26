@@ -1,0 +1,36 @@
+param([Parameter(Mandatory=$true)][string]$NodeExecutable,
+      [Parameter(Mandatory=$true)][string]$ChildScript)
+$ErrorActionPreference = 'Stop'
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = [Security.Principal.WindowsPrincipal]::new($identity)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw 'Offline firewall verification requires an elevated shell.'
+}
+$profiles = @(Get-NetFirewallProfile)
+$disabled = @($profiles | Where-Object { -not $_.Enabled })
+if ($disabled.Count -gt 0 -and $env:GITHUB_ACTIONS -ne 'true') {
+    throw 'Firewall profiles are disabled. No settings were changed on this computer.'
+}
+$temporary = Join-Path ([IO.Path]::GetTempPath()) ('smc-offline-' + [guid]::NewGuid().ToString('N'))
+$group = 'SMC disposable offline test ' + [guid]::NewGuid().ToString('N')
+$engine = Join-Path $env:SMC_ENGINE_EXTENSION 'engine\smc-engine.exe'
+if (-not (Test-Path $engine)) { throw 'Set SMC_ENGINE_EXTENSION to the disposable installed extension.' }
+New-Item -ItemType Directory -Path $temporary | Out-Null
+$node = Join-Path $temporary 'node.exe'
+Copy-Item $NodeExecutable $node
+try {
+    # Only ephemeral CI runners may temporarily enable disabled firewall profiles.
+    foreach ($profile in $disabled) { Set-NetFirewallProfile -Profile $profile.Name -Enabled True }
+    $outsideLoopback = @('0.0.0.0-126.255.255.255', '128.0.0.0-255.255.255.255', '::2-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')
+    foreach ($program in @($node, $engine)) {
+        New-NetFirewallRule -DisplayName ($group + ' ' + [IO.Path]::GetFileName($program)) -Group $group `
+            -Direction Outbound -Action Block -Program $program -RemoteAddress $outsideLoopback `
+            -Profile Any -Enabled True | Out-Null
+    }
+    & $node $ChildScript
+    if ($LASTEXITCODE -ne 0) { throw 'Offline engine verification failed.' }
+} finally {
+    Get-NetFirewallRule -Group $group -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    foreach ($profile in $disabled) { Set-NetFirewallProfile -Profile $profile.Name -Enabled False }
+    Remove-Item -LiteralPath $temporary -Recurse -Force
+}

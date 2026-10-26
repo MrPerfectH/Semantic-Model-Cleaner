@@ -5,7 +5,9 @@
 - Bundle the Cleaner engine, Python runtime, assets, schemas and notices in native VSIX packages.
 - Open Cleaner without Python setup or executable settings; retain explicit advanced overrides.
 - Verify engine version, native package identity and SHA-256 checksums.
-- Add Windows/Linux installed-package CI covering analysis, exports, plan apply/restore and lifecycle.
+- Add native Windows, Ubuntu 22.04, macOS Intel and Apple Silicon packages.
+- Verify installed packages with OS-level external-network isolation, disabled system-Python lookup, exports and byte-exact cleanup/restore.
+- Exercise embedded review, apply, cancel and recovery dialogs in desktop integration.
 - Publication remains manual; native platform and clean-machine release acceptance is tracked separately.
 
 ## 0.1.7 — unpublished pre-release

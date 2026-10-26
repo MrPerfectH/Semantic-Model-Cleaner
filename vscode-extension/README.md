@@ -11,7 +11,9 @@ Version **0.1.8** is prepared as a Marketplace pre-release for
 The **Preview** label remains. Native packages built from this source include the
 Cleaner engine and Python runtime. Earlier VSIX packages required a separately
 installed engine; this source change does not update those installed packages.
-Native Windows release acceptance and Marketplace publication are still pending.
+Native CI covers Windows x64, Linux x64, and macOS Intel/Apple Silicon.
+Marketplace publication remains pending; see the build evidence for the tested
+versions and platforms.
 
 ## Requirements and installation
 
@@ -140,7 +142,8 @@ SMC_VSCODE_EXECUTABLE='/Applications/Visual Studio Code.app/Contents/MacOS/Code'
 ```
 
 `SMC_TEST_BUNDLED=1` with `SMC_TEST_VSIX` tests the installed native package
-without configuring a Python interpreter. Otherwise, `SMC_TEST_PYTHON` can select
+without configuring a Python interpreter. Add `SMC_TEST_OFFLINE=1` to verify the
+engine with OS-level external-network isolation (Windows needs elevation). Otherwise, `SMC_TEST_PYTHON` can select
 the prepared development interpreter. Without
 `SMC_VSCODE_EXECUTABLE`, the VS Code test runner downloads its default test host.
 Linux needs a desktop or `xvfb-run -a npm run test:integration`. Windows can set

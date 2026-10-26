@@ -38,13 +38,50 @@ Missing/incompatible bundles fail with reinstall instructions; they never trigge
 pip, a download, or a silently selected external installation. Existing explicit
 settings remain advanced overrides after upgrading.
 
-CI builds Windows x64 and Linux x64 separately, installs each VSIX into a
-disposable profile, and exercises that installed engine with an empty PATH.
-The engine smoke covers analysis, JSON/XLSX export, plan preview/apply/verify,
-byte-exact restore, shutdown and restart on demo copies. Desktop integration
-then verifies scope selection and lifecycle without engine settings. Evidence
-records the tested VSIX SHA-256 and whether the bundled engine was selected. The manually dispatched publishing workflow
-consumes these verified artifacts; pushes do not publish. macOS builds, platform
-signing/notarization, minimum OS/glibc support, clean-machine/offline acceptance and native review of the cleanup/restore UI
-remain release work. Native Windows
-success must be established by its CI/native run, not inferred from Linux.
+CI builds four native targets: Windows x64 (`windows-2022`), Linux x64
+(`ubuntu-22.04`, glibc 2.35), macOS arm64 (`macos-14`) and macOS Intel
+(`macos-15-intel`). Linux release packages are built on the Ubuntu 22.04 baseline,
+not on the developer's newer distribution. Other Linux distributions need
+compatible system libraries. macOS 14 arm64 and macOS 15 Intel are the tested
+baselines; earlier macOS releases are not claimed.
+
+Each job installs its exact VSIX into a disposable profile. The installed engine
+runs with an empty PATH and invalid PYTHONHOME/PYTHONPATH, without uninstalling or
+changing the computer's Python installation. Offline verification blocks external
+network access while allowing loopback:
+
+- Linux: a private user/network namespace with only loopback enabled.
+- macOS: a process sandbox denying outbound connections except localhost.
+- Windows: temporary firewall rules for the disposable engine and a private copy
+  of Node. The test requires elevation and enabled firewall profiles on personal
+  computers. Only ephemeral CI runners may temporarily enable disabled profiles;
+  every original profile setting and test rule is restored afterward.
+
+The test first verifies that an external TCP connection fails, then exercises
+analysis, JSON/XLSX export, plan preview/apply/verify, byte-exact restore, shutdown
+and restart. Desktop integration also clicks the actual embedded change-review,
+apply, verification and restore controls, proving both cancel paths leave files
+unchanged. Evidence records the OS/architecture, network isolation, VSIX SHA-256,
+engine selection and unchanged project inputs.
+
+To run this acceptance on an available device, install the platform's exact VSIX
+through the existing harness with `SMC_TEST_BUNDLED=1`, `SMC_TEST_OFFLINE=1`,
+`SMC_TEST_VSIX` and `SMC_VSCODE_EXECUTABLE`. Use a normal desktop session; on
+Windows use an elevated shell for the temporary program-scoped firewall rules.
+No real Power BI Project or existing VS Code profile is used. To exercise only a
+staged engine, set `SMC_ENGINE_EXTENSION` to this extension directory and run
+`node scripts/offline-smoke.cjs`.
+
+macOS builds use PyInstaller's ad-hoc signatures by default and verify the engine
+signature. If an existing Apple Developer ID identity is installed, set
+`SMC_CODESIGN_IDENTITY` when building; PyInstaller signs the collected native code
+with hardened runtime, and the build rejects an identity that does not produce a
+Developer ID Application signature. This does not perform Apple notarization.
+No signing credentials or publisher secrets are currently configured in this
+repository; public signing/notarization and Marketplace publication therefore
+remain separate release work.
+
+The manually dispatched publishing workflow requires all four verified artifacts
+and publishes those exact packages. Pushes and PRs never publish. Evidence from a
+CI runner is labeled as CI evidence; tests on a user's Mac or MSI require working
+remote access and are not inferred from the CI results.

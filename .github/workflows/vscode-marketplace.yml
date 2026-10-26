@@ -38,11 +38,8 @@ jobs:
         run: |
           shopt -s nullglob
           packages=(verified-packages/*.vsix)
-          if [ "${#packages[@]}" -ne 2 ]; then
-            echo "Expected verified Windows x64 and Linux x64 packages"
-            exit 1
-          fi
-          python ../scripts/verify_vscode_packages.py --target win32-x64 --target linux-x64 "${packages[@]}"
+          python ../scripts/verify_vscode_packages.py --target win32-x64 --target linux-x64 \
+            --target darwin-x64 --target darwin-arm64 "${packages[@]}"
           for package in "${packages[@]}"; do
             npx --no-install vsce publish --packagePath "$package" --pre-release
           done

@@ -24,12 +24,15 @@ async function snapshot(root) {
   let server;
   const originalPath = process.env.PATH;
   const originalUserDir = process.env.SMC_USER_DIR;
+  const pythonEnvironment = Object.fromEntries(['PYTHONHOME', 'PYTHONPATH'].map(key => [key, process.env[key]]));
   try {
     const project = path.join(temp, 'Power BI Project');
     await fs.cp(path.join(root, '../src/semantic_model_cleaner/demo_workspace'), project, { recursive: true });
     const before = await snapshot(project);
     process.env.PATH = '';
     process.env.SMC_USER_DIR = path.join(temp, 'user');
+    process.env.PYTHONHOME = path.join(temp, 'no-system-python');
+    process.env.PYTHONPATH = path.join(temp, 'no-system-modules');
     const config = launchConfig(true, () => ({ get: (_, fallback) => fallback }), project, extension);
     const start = () => startServer(config,
       ['https://smoke-panel.vscode-cdn.net', 'vscode-file://vscode-app'],
@@ -94,6 +97,8 @@ async function snapshot(root) {
     if (server) await server.stop();
     if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
     if (originalUserDir === undefined) delete process.env.SMC_USER_DIR; else process.env.SMC_USER_DIR = originalUserDir;
+    for (const [key, value] of Object.entries(pythonEnvironment))
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
     await fs.rm(temp, { recursive: true, force: true });
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });
