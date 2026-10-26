@@ -1,0 +1,99 @@
+{
+  "changed_files": 40,
+  "environment": {
+    "machine": "x86_64",
+    "python": "3.14.7",
+    "system": "Linux"
+  },
+  "equivalence": {
+    "changes": "be5e0788af932dbc2fa1fae0bc1008e1b55bd3c9a2b49bb55525c575cbf64d58",
+    "inputs": "ea44fe883c3cb3b6846daf37011feb5bedb9c41d090fb71ff9297850f3668a9a",
+    "outputs": "68ecf4997df7a0cb1787f7625e718c0324ab2a48cd8185954a25914ddb4ade22",
+    "validation": "5e6d352d5d1082984398cd36be3a1f2e74d2b93fe891bd54a73558f17fd6f175"
+  },
+  "fixture": {
+    "delete_actions": 787,
+    "items": 1960,
+    "operations": 1,
+    "pages": 160,
+    "reports": 8,
+    "tables": 40,
+    "visuals": 5067
+  },
+  "ok": true,
+  "phases_inclusive": {
+    "deletion_policy": {
+      "calls": 1,
+      "cpu_s": 1.1494016009999999,
+      "wall_s": 1.1544994888827205
+    },
+    "metadata_inventory": {
+      "calls": 3,
+      "cpu_s": 1.5872087790000005,
+      "wall_s": 1.5950875137932599
+    },
+    "plan_analysis": {
+      "calls": 2,
+      "cpu_s": 1.200327155,
+      "wall_s": 1.205865914002061
+    },
+    "resource_inventory": {
+      "calls": 2,
+      "cpu_s": 0.2595730719999998,
+      "wall_s": 0.26063782442361116
+    },
+    "schema_validation": {
+      "calls": 2,
+      "cpu_s": 8.470432971,
+      "wall_s": 8.514739233534783
+    },
+    "staged_writes": {
+      "calls": 1,
+      "cpu_s": 0.5019070499999998,
+      "wall_s": 0.5051358412019908
+    }
+  },
+  "planning": {
+    "cpu_s": 15.450924185999998,
+    "wall_s": 15.535488217137754
+  },
+  "planning_reads": {
+    "bytes": 16879,
+    "text": 13368
+  },
+  "profiled": false,
+  "proof": {
+    "apply_verified": true,
+    "planning_read_only": true,
+    "removed_items": 787,
+    "restored_byte_exact": true
+  },
+  "top_cumulative_functions": [],
+  "validation": {
+    "confirmations": [],
+    "existing_problem_count": 0,
+    "json_syntax": "passed",
+    "limitations": [
+      "Static analysis of selected TMDL/PBIR only.",
+      "Only supported declared PBIR schemas are validated; TMDL/DAX engine validation is not performed."
+    ],
+    "pbir_schema": {
+      "after": {
+        "invalid": 0,
+        "not_validated": 16,
+        "valid": 5227
+      },
+      "before": {
+        "invalid": 0,
+        "not_validated": 16,
+        "valid": 5227
+      },
+      "bundle_commit": "5e1199a15b80e3d51198fe017b1a6fb9bb0871a6",
+      "changed_not_validated": [],
+      "comparison_complete": true
+    },
+    "reference_integrity": "no new unresolved references",
+    "remaining_problem_count": 0,
+    "report_measure_deletions": []
+  }
+}
