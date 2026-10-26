@@ -7,7 +7,11 @@ permissions:
   contents: read
 
 jobs:
+  verify:
+    uses: ./.github/workflows/vscode-extension.yml
+
   publish:
+    needs: verify
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -19,24 +23,28 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: vscode-extension/package-lock.json
+      - run: npm ci
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Install test engine
-        working-directory: .
-        run: python -m pip install -e '.[dev]'
-      - name: Test host security
-        working-directory: .
-        run: python -m pytest tests/test_local_http_security.py tests/test_vscode_host.py
-      - run: npm ci
-      - run: npm test
-      - run: npm run package
-      - uses: actions/upload-artifact@v4
+      - name: Download verified native packages
+        uses: actions/download-artifact@v4
         with:
-          name: semantic-model-cleaner-0.1.5
-          path: vscode-extension/semantic-model-cleaner-0.1.5.vsix
-          if-no-files-found: error
-      - name: Publish exact pre-release package
-        run: npx --no-install vsce publish --packagePath semantic-model-cleaner-0.1.5.vsix --pre-release
+          pattern: cleaner-vsix-*
+          merge-multiple: true
+          path: vscode-extension/verified-packages
+      - name: Publish exact verified pre-release packages
+        shell: bash
+        run: |
+          shopt -s nullglob
+          packages=(verified-packages/*.vsix)
+          if [ "${#packages[@]}" -ne 2 ]; then
+            echo "Expected verified Windows x64 and Linux x64 packages"
+            exit 1
+          fi
+          python ../scripts/verify_vscode_packages.py --target win32-x64 --target linux-x64 "${packages[@]}"
+          for package in "${packages[@]}"; do
+            npx --no-install vsce publish --packagePath "$package" --pre-release
+          done
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}

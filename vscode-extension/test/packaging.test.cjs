@@ -7,12 +7,12 @@ const root = path.join(__dirname, '..');
 
 test('release version agrees with lockfile, package output and changelog', () => {
   const lock = require('../package-lock.json');
-  assert.equal(manifest.version, '0.1.7');
+  assert.equal(manifest.version, '0.1.8');
   assert.equal(manifest.publisher, 'MrPerfectH');
   assert.equal(`${manifest.publisher}.${manifest.name}`, 'MrPerfectH.semantic-model-cleaner');
   assert.equal(lock.version, manifest.version);
   assert.equal(lock.packages[''].version, manifest.version);
-  assert.ok(manifest.scripts.package.endsWith(`--out ${manifest.name}-${manifest.version}.vsix`));
+  assert.equal(manifest.scripts.package, 'node scripts/package.cjs');
   assert.match(fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8'),
     new RegExp(`^## ${manifest.version.replaceAll('.', '\\.')} — unpublished pre-release$`, 'm'));
 });

@@ -24,7 +24,7 @@ const vscode = {
   EventEmitter:class { constructor(){this.event=()=>disposable();} fire(){} dispose(){} },
   TreeItem:class { constructor(label,collapsibleState){Object.assign(this,{label,collapsibleState});} },
   ThemeIcon:class { constructor(id){this.id=id;} },
-  workspace:{isTrusted:true, workspaceFolders:[], getConfiguration(){host.reads++;return {get:(_,fallback)=>fallback};}},
+  workspace:{isTrusted:true, workspaceFolders:[], getConfiguration(){host.reads++;return {get:(key,fallback)=>key==='executable'?'smc-web':fallback};}},
   commands:{registerCommand(name,fn){host.commands.set(name,fn);return disposable();},async executeCommand(name){host.executed.push(name);}},
   window:{createTreeView:()=>({...disposable(),onDidChangeCheckboxState:()=>disposable()}),registerTreeDataProvider:()=>disposable(),
     createOutputChannel:()=>({...disposable(),clear(){},append(){},show(){}}),createStatusBarItem:()=>({...disposable(),show(){}}),

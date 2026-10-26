@@ -6,6 +6,7 @@ import secrets
 from urllib.parse import urlsplit
 
 from flask import jsonify, request
+from . import __version__
 
 
 TOKEN_HEADER = 'X-SMC-Token'
@@ -99,7 +100,7 @@ def install_local_http_boundary(app):
     def vscode_ready():
         if not app.config.get('SMC_WEBVIEW_ANCESTORS'):
             return jsonify(error='VS Code host mode is not enabled.'), 404
-        return jsonify(protocol=1, instance=hashlib.sha256(
+        return jsonify(protocol=1, engineVersion=__version__, instance=hashlib.sha256(
             app.config['SMC_LOCAL_TOKEN'].encode('utf-8')).hexdigest())
 
     @app.after_request

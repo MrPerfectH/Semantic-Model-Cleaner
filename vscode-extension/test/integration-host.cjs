@@ -40,6 +40,12 @@ exports.run = async () => {
   assert.equal(extension.packageJSON.version, process.env.SMC_TEST_EXPECT_VERSION);
   if (process.env.SMC_TEST_EXPECT_EXTENSIONS)
     assert.ok(extension.extensionPath.startsWith(process.env.SMC_TEST_EXPECT_EXTENSIONS), extension.extensionPath);
+  const bundledEngine = process.env.SMC_TEST_EXPECT_BUNDLED === '1';
+  if (bundledEngine) {
+    const settings = vscode.workspace.getConfiguration('semanticModelCleaner');
+    assert.equal(settings.get('pythonPath'), '', 'Bundled acceptance must not configure Python');
+    assert.equal(settings.get('executable'), '', 'Bundled acceptance must not configure an external engine');
+  }
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${process.env.SMC_TEST_CDP_PORT}`);
   const checks = [];
   const pass = name => { checks.push(name); console.log('PASS', name); };
@@ -243,6 +249,7 @@ exports.run = async () => {
       host: process.platform, vscode: vscode.version, appName: vscode.env.appName,
       extensionVersion: extension.packageJSON.version, extensionPath: extension.extensionPath,
       installedFromVsix: !!process.env.SMC_TEST_EXPECT_EXTENSIONS, trusted: vscode.workspace.isTrusted,
+      bundledEngine, vsixSha256: process.env.SMC_TEST_VSIX_SHA256 || null,
       projectUnchanged: true, checks,
       boundary: 'Disposable desktop host with isolated profile and extensions directory; Workspace Trust disabled for unattended runs.'
     }, null, 2));
