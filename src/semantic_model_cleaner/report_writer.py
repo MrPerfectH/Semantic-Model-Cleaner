@@ -24,19 +24,6 @@ _DECLARED_SCHEMA_REQUIRED_FIELDS = (
 )
 
 
-_REPORT_EXTENSION_TMDL_DATA_TYPES = {
-    "Binary": "binary",
-    "Boolean": "boolean",
-    "Date": "dateTime",
-    "DateTime": "dateTime",
-    "Decimal": "decimal",
-    "Double": "double",
-    "Integer": "int64",
-    "Text": "string",
-    "Variant": "variant",
-}
-
-
 def _declared_report_required_fields(schema: str) -> tuple[str, ...] | None:
     match = re.search(r"/definition/report/(\d+)\.", schema)
     if not match:
@@ -147,13 +134,6 @@ def _report_extension_string(measure: dict, field: str) -> str:
     return ""
 
 
-def _report_extension_data_type(value: str) -> str:
-    for report_value, tmdl_value in _REPORT_EXTENSION_TMDL_DATA_TYPES.items():
-        if report_value.casefold() == value.casefold():
-            return tmdl_value
-    return ""
-
-
 def _report_measure_promotion_metadata(measure: dict) -> tuple[dict, list[str], list[dict[str, str]]]:
     create_kwargs: dict = {}
     preserved_metadata: list[str] = []
@@ -162,20 +142,13 @@ def _report_measure_promotion_metadata(measure: dict) -> tuple[dict, list[str], 
     if _report_extension_string(measure, "expression"):
         preserved_metadata.append("expression")
 
-    report_data_type = _report_extension_string(measure, "dataType")
-    if report_data_type:
-        tmdl_data_type = _report_extension_data_type(report_data_type)
-        if tmdl_data_type:
-            create_kwargs["data_type"] = tmdl_data_type
-            preserved_metadata.append("dataType")
-        else:
-            unpreserved_metadata.append({
-                "field": "dataType",
-                "reason": (
-                    f"Report extension dataType '{report_data_type}' does not have a supported "
-                    "TMDL measure dataType mapping."
-                ),
-            })
+    if _report_extension_string(measure, "dataType"):
+        # TOM Measure.DataType is read-only; writing it into TMDL is not valid metadata.
+        unpreserved_metadata.append({
+            "field": "dataType",
+            "reason": "A semantic model measure's data type is read-only: the engine derives it from the DAX "
+                      "expression, so TMDL does not write it.",
+        })
 
     for report_field, create_field in (
         ("dataCategory", "data_category"),
@@ -423,10 +396,10 @@ def migrate_measure_to_model(
                      'displayFolder', 'formatString', 'hidden', 'annotations', 'measureTemplate'}
             lost += [{"field": field, "reason": "Unsupported report extension metadata"}
                      for field in measure if field not in known]
-            semantic_loss = [entry for entry in lost if entry['field'] != 'measureTemplate']
+            semantic_loss = [entry for entry in lost if entry['field'] not in {'dataType', 'measureTemplate'}]
             if semantic_loss and not allow_metadata_loss:
                 blockers.append(f"Promotion would discard metadata for {table}[{name}]; review unpreserved_metadata")
-            for field in ('data_type', 'data_category', 'display_folder', 'format_string'):
+            for field in ('data_category', 'display_folder', 'format_string'):
                 if '\n' in str(kwargs.get(field, '')) or '\r' in str(kwargs.get(field, '')):
                     blockers.append(f"Unsupported multiline {field}: {table}[{name}]")
             promotions.append({"table": table, "name": name, "preserved_metadata": preserved,
@@ -560,6 +533,8 @@ def _rewrite_query_ref(
         return value, False
     table_or_alias, name = parts
     alias = aliases.get(table_or_alias.casefold())
+    if alias and alias.get("subquery"):
+        return value, False
     if alias and alias.get("ambiguous"):
         if table_lookup or any(key[1] == name.casefold() for key in (*measure_lookup, *column_lookup)):
             raise ValueError(f"Cannot resolve query alias '{table_or_alias}' for '{value}'; propagation is ambiguous.")
@@ -606,12 +581,19 @@ def _collect_source_aliases(obj, path_parts, bindings) -> dict[str, dict] | None
                 continue
             alias_name = source["Name"]
             if id(source) not in bindings:
+                # A subquery source (Desktop Top-N filters) is a derived table,
+                # not a model entity. Its nested Query has its own namespace,
+                # which the walk resolves and rewrites like any other query.
+                subquery = isinstance(source.get("Expression"), dict) and isinstance(
+                    source["Expression"].get("Subquery"), dict) and "Entity" not in source
                 bindings[id(source)] = {
                     "name": alias_name,
                     "original_entity": source.get("Entity"),
                     "source": source,
                     "entity_path": path_parts + ["From", f"[{idx}]", "Entity"],
-                    "ambiguous": not isinstance(source.get("Entity"), str) or not source["Entity"].strip(),
+                    "subquery": subquery,
+                    "ambiguous": not subquery and (not isinstance(source.get("Entity"), str)
+                                                   or not source["Entity"].strip()),
                 }
             alias_key = alias_name.casefold()
             aliases[alias_key] = ({"ambiguous": True} if alias_key in aliases else bindings[id(source)])
@@ -665,6 +647,9 @@ def _resolve_reference_source(source_ref, prop, aliases, table_lookup, object_lo
         return entity, None
     source_alias = source_ref.get("Source")
     alias = aliases.get(source_alias.casefold()) if isinstance(source_alias, str) else None
+    if alias and alias.get("subquery"):
+        # Subquery output names are query labels, never model items to rewrite.
+        return None, None
     if alias and not alias.get("ambiguous"):
         return alias["original_entity"], alias
     moving_objects = any(target[0].casefold() != key[0] for key, target in object_lookup.items())

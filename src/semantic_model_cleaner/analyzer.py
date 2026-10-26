@@ -26,6 +26,7 @@ from contextlib import redirect_stderr
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -3154,27 +3155,28 @@ def build_report_issues(
     model_items: list[ModelItem],
     hierarchies: list[HierarchyInfo],
     warnings: list[AnalyzerWarning],
+    suggestions: bool = True,
 ) -> list[ReportIssue]:
     model_table_names = {item.table.casefold() for item in model_items}
-    report_entity_names = {item.table.casefold() for item in all_items if item.source_kind == "report"}
-    measure_keys = {normalize_key(*item.key) for item in all_items if item.item_type == "Measure"}
     column_keys = {normalize_key(*item.key) for item in all_items if item.item_type in ("Column", "Calculated Column")}
     hierarchy_keys = {normalize_key(info.table, info.name) for info in hierarchies}
 
     issues: list[ReportIssue] = list(invalid_json_issues)
     scope_cache = {}
-    def items_for_report(usage):
-        if not usage.report_path:
-            return all_items
+    def scope_for_report(usage):
         if usage.report_path not in scope_cache:
-            scope_cache[usage.report_path] = [item for item in all_items if item.source_kind != "report"
+            scoped_items = all_items if not usage.report_path else [
+                item for item in all_items if item.source_kind != "report"
                 or (item.source_file and str(Path(item.source_file).parent.parent.resolve()) == usage.report_path)]
+            scope_cache[usage.report_path] = (
+                scoped_items,
+                {item.table.casefold() for item in scoped_items if item.source_kind == "report"},
+                {normalize_key(*item.key) for item in scoped_items if item.item_type == "Measure"},
+            )
         return scope_cache[usage.report_path]
     suggestion_cache: dict[tuple, list[dict]] = {}
     for usage in direct_usages:
-        scoped_items = items_for_report(usage)
-        report_entity_names = {item.table.casefold() for item in scoped_items if item.source_kind == "report"}
-        measure_keys = {normalize_key(*item.key) for item in scoped_items if item.item_type == "Measure"}
+        scoped_items, report_entity_names, measure_keys = scope_for_report(usage)
         issue_type = _classify_missing_usage(
             usage,
             model_table_names=model_table_names,
@@ -3193,7 +3195,7 @@ def build_report_issues(
             issue_context = "Inactive Filter"
         suggestion_key = (usage.report_path, usage.table.casefold(), usage.name.casefold(), usage.ref_type.casefold())
         if suggestion_key not in suggestion_cache:
-            suggestion_cache[suggestion_key] = _fuzzy_suggestions(usage, scoped_items)
+            suggestion_cache[suggestion_key] = _fuzzy_suggestions(usage, scoped_items) if suggestions else []
         issues.append(_report_issue_from_usage(
             usage,
             issue_type=issue_type,
@@ -3871,6 +3873,7 @@ def scan_additional_definition_json(
 # ── DAX Dependency Analysis ──────────────────────────────────────────────────
 
 
+@lru_cache(maxsize=16384)
 def _split_dax_comments(dax_body: str) -> tuple[str, str]:
     """Return reference code with comments/literals masked, plus real comments.
 
@@ -4057,14 +4060,24 @@ def _skip_dax_whitespace(text: str, start: int) -> int:
 
 def _extract_dax_qualified_refs(dax_body: str) -> set[tuple[str, str]]:
     """Extract qualified refs: 'Table'[Name] and Table[Name]."""
+    return set(_cached_dax_qualified_refs(dax_body))
+
+
+@lru_cache(maxsize=16384)
+def _cached_dax_qualified_refs(dax_body: str) -> frozenset[tuple[str, str]]:
     active_dax, _ = _split_dax_comments(dax_body)
-    return _extract_dax_qualified_refs_from_text(active_dax)
+    return frozenset(_extract_dax_qualified_refs_from_text(active_dax))
 
 
 def _extract_dax_unqualified_refs(dax_body: str) -> set[str]:
     """Extract unqualified [Name] references."""
+    return set(_cached_dax_unqualified_refs(dax_body))
+
+
+@lru_cache(maxsize=16384)
+def _cached_dax_unqualified_refs(dax_body: str) -> frozenset[str]:
     active_dax, _ = _split_dax_comments(dax_body)
-    return _extract_dax_unqualified_refs_from_text(active_dax)
+    return frozenset(_extract_dax_unqualified_refs_from_text(active_dax))
 
 
 def _extract_dax_table_refs(dax_body: str) -> set[str]:
@@ -4818,6 +4831,8 @@ def analyze(
     progress=None,
     allow_model_only: bool = False,
     unselected_reports: list[Path] | None = None,
+    unverified_reports: list[Path] | None = None,
+    suggestions: bool = True,
 ) -> dict:
     def checkpoint(stage, current=0, total=None):
         if progress is not None:
@@ -4997,6 +5012,7 @@ def analyze(
         model_items=parsed_model_items,
         hierarchies=all_hierarchies,
         warnings=warnings,
+        suggestions=suggestions,
     )
 
     usage_index: dict[tuple[str, str], list[UsageRef]] = defaultdict(list)
@@ -5152,6 +5168,20 @@ def analyze(
             "unchecked": f"{len(names)} connected Report(s) were not selected: {shown}.",
             "effect": "Items without known use require Review; usage in unselected Reports is unknown.",
             "message": f"{len(names)} connected Report(s) were not selected for this analysis.",
+        })
+    if reports and unverified_reports:
+        # A Report whose binding cannot be read may use this model; its uses are unknown.
+        names = sorted(report_display_name(Path(p)) for p in unverified_reports)
+        shown = ", ".join(names[:3]) + (f", +{len(names) - 3} more" if len(names) > 3 else "")
+        analysis_limitations.append({
+            "id": "report_scan:unverified_binding", "kind": "report_scan", "area": "Report scan",
+            "feature": "report bindings not verified", "construct": "report_binding",
+            "owner": "selected Semantic Model", "table": "", "source_file": "", "line": 0,
+            "location": "selected Semantic Model", "scope": "shared", "targets": [],
+            "checked": f"{len(reports)} selected connected Report(s) were scanned.",
+            "unchecked": f"{len(names)} Report(s) with an unverified binding were not scanned: {shown}.",
+            "effect": "Items without known use require Review; usage in those Reports is unknown.",
+            "message": f"{len(names)} discovered Report(s) have a binding that could not be verified.",
         })
     coverage_limitations = [limitation for limitation in analysis_limitations if limitation["scope"] == "shared"]
     shared_limitation_trigger = _shared_limitation_trigger(coverage_limitations) if coverage_limitations else ""
@@ -5638,6 +5668,7 @@ def format_unused(results: dict) -> str:
     lines.append("# Unused Measures & Columns\n")
     lines.append(f"**Models**: {', '.join(s['models'])} | **Reports**: {', '.join(s['reports'])}\n")
     lines.extend(_format_warnings_section(results))
+    lines.extend(_format_analysis_limitations_section(results))
     lines.append(f"**{s['not_used']}** unused out of **{total}** total items\n")
 
     unused = [r for r in results["items"] if r["status"] == "NOT USED"]
@@ -6583,6 +6614,10 @@ def _analysis_cli(argv):
     scope = narrow_report_scope(scope, reports)
     for row in scope["excluded"]:
         print(f"Excluded {row['path']}: {row['message']}", file=sys.stderr)
+    # Same Safe -> Review rule as check/items: unscanned connected or unverified Reports keep usage unknown.
+    unselected = [Path(row["path"]) for row in scope["excluded"] if row["status"] == "not_selected"]
+    unverified = [Path(row["path"]) for row in scope["excluded"]
+                  if row["status"] not in {"not_selected", "not_connected"}]
 
     output_path = args.output
     if args.format == "xlsx" and not output_path:
@@ -6604,6 +6639,8 @@ def _analysis_cli(argv):
             report_paths=reports,
             model_search_roots=model_roots,
             report_search_roots=report_roots,
+            unselected_reports=unselected,
+            unverified_reports=unverified,
         )
     except UnsupportedSemanticModelError as exc:
         print(f"Error: {exc}", file=sys.stderr)

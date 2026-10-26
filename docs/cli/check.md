@@ -78,7 +78,9 @@ with a selected Cleanup Recommendation. It can independently require complete
 dependency analysis, complete JSON schema validation, and all known connected
 Reports. See [gate settings and precedence](review-policy.md#ci-gates). Findings
 retain their severity, identity and scope; `gate.blocking` and `gate.reason`
-explain the effective decision. The check and focused review use the same gate.
+explain the effective decision. The check and focused review use the same gate:
+`smc review` accepts the same `--policy` (relative to PROJECT) and `--baseline`
+(relative to CWD) with the same validation, so both commands reach the same verdict.
 
 ```sh
 smc check ./bi --format json --summary-output smc-summary.md > smc-findings.json
@@ -91,7 +93,9 @@ suppressed/reviewed findings and available source locations remain visible.
 Report Health and Analysis Limitations have separate sections.
 
 Metadata is escaped; at most 200 findings, 100 entries per scope collection and
-20 execution errors are shown. Each metadata field is capped at 800 characters.
+20 execution errors are shown. Each metadata field is capped at 800 characters
+after escaping; `@` and `$` are written as HTML entities so a pasted summary cannot
+mention people or render math.
 Truncation/omission is explicit; use JSON for full details. The summary does not
 include entire model expressions, but can contain confidential names and paths.
 It is written for handled input/execution errors after argument parsing succeeds;

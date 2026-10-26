@@ -87,7 +87,7 @@ them. JSON includes `gate.settings`, requirement results and counts; every findi
 has `gate.blocking` and `gate.reason`. `summary.failure_count` counts blocking
 findings plus failed requirements. Exit codes remain 0 passed, 1 blocked, 2 invalid
 input/execution failure. `review` retains the same gate results even when findings
-are paginated. Policy saving, decisions and naming edits preserve the gate object.
+are paginated, and accepts the same `--policy` and `--baseline` options as `check`. Policy saving, decisions and naming edits preserve the gate object.
 
 ## Saved decisions
 
@@ -127,7 +127,7 @@ smc diff ./naming.plan.json
 smc apply ./naming.plan.json
 ```
 
-Naming never invokes writers against the original project during suggestion generation. `naming preview` uses the existing change-plan engine, which stages copies, rewrites selected report references, validates static integrity, and exports exact diffs. Applying remains a separate existing `smc apply` operation. Policy and plan output files cannot overwrite selected artifact metadata.
+Naming never invokes writers against the original project during suggestion generation. `naming preview` uses the existing change-plan engine, which stages copies, rewrites selected report references, validates static integrity, and exports exact diffs. Applying remains a separate existing `smc apply` operation. Naming renames reach every connected Report, so a preview on a narrowed Report selection is refused; omit `--report-path`/`--report`. Policy and plan output files cannot overwrite selected artifact metadata.
 
 Rules require unique `id` and `item_type` (`Table`, `Measure`, or `Column`; Column includes calculated columns). Optional fields:
 

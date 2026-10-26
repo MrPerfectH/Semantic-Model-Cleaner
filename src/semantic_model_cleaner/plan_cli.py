@@ -30,6 +30,9 @@ def main(argv=None):
     plan.add_argument('--report', action='append', default=[], help='Exact .Report path relative to CWD; repeat for each report.')
     plan.add_argument('--operations', required=True, help='UTF-8 JSON file (optional BOM) containing an operations array or {operations:[...]}.')
     plan.add_argument('-o', '--output', required=True, help='Reviewable local plan JSON.')
+    plan.add_argument('--allow-partial-report-scope', action='store_true',
+                      help='Allow delete, rename, move, promote and auto-date removal while connected Reports under '
+                           'project_path are not selected or have unverified bindings; those Reports are not checked.')
     for name in ('apply', 'verify', 'restore', 'recover-lock'):
         cmd = sub.add_parser(name)
         cmd.add_argument('plan_file')
@@ -80,11 +83,14 @@ def main(argv=None):
                     '(with or without a UTF-8 BOM), then retry.'
                 ) from exc
             operations = parse_operations(raw)
-            result = change_plan.create_plan(models[0], reports, operations)
+            result = change_plan.create_plan(models[0], reports, operations,
+                                             known_reports=analyzer.discover_reports([root]),
+                                             allow_partial_report_scope=args.allow_partial_report_scope)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(result, indent=2) + '\n', encoding="utf-8")
             emit({'ok': True, 'plan_file': str(target), 'id': result['id'],
                               'reportBinding': scope,
+                              'reportSelection': result['coverage']['report_selection'],
                               'changed_files': len(result['changes']), 'validation': result['validation']})
         elif args.command == 'history':
             emit({'receipts': [json.loads(p.read_text(encoding="utf-8")) for p in sorted(Path(args.journal_dir).glob('*.receipt.json'))]})
@@ -111,6 +117,9 @@ def main(argv=None):
         return 0
     except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
         error = {'ok': False, 'error': str(exc)}
+        if isinstance(exc, change_plan.PartialReportScopeError):
+            error['error'] += (' Omit --report-path and --report to select them all, or explicitly allow a partial '
+                               'Report scope (--allow-partial-report-scope) and check the other Reports yourself.')
         if scope is not None:
             error['reportBinding'] = scope
         if machine:

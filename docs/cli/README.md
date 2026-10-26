@@ -41,7 +41,11 @@ Repeat `--report-path` to select additional connected Reports. Names containing
 spaces require shell quoting. Missing folders, missing `definition` directories,
 unconnected Reports and contradictory selectors fail rather than silently using
 discovery or broadening a name search. A narrowed Report scope still does not
-verify external consumers or prove global non-use.
+verify external consumers or prove global non-use. While connected Reports under
+PROJECT are left out, or a discovered binding cannot be verified, items with No Use
+Found In Scope stay at Review in every command and in the app, and `plan` refuses deletes,
+renames, moves, promotions and auto-date removal unless you pass
+`--allow-partial-report-scope` (see [plans](plans.md#scope-and-storage)).
 
 ### Compatibility and migration
 

@@ -3,7 +3,7 @@ import argparse
 import json
 from pathlib import Path
 
-from . import analyzer, review_policy
+from . import analyzer, change_plan, review_policy
 from .analysis_export import validate_export_destination
 from .cli_selection import add_path_options, resolve_path_options, select_exact_reports
 
@@ -90,5 +90,8 @@ def main(argv=None) -> int:
             return 0 if result["ok"] else 1
         return 0
     except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
-        print(json.dumps({"ok": False, "error": str(exc)}))
+        message = str(exc)
+        if isinstance(exc, change_plan.PartialReportScopeError):
+            message += " Omit --report-path and --report to select every connected Report."
+        print(json.dumps({"ok": False, "error": message}))
         return 2

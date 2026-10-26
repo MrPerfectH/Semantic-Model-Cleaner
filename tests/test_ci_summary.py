@@ -1,5 +1,6 @@
 """Markdown is an escaped, bounded companion to the unchanged JSON/check result."""
 import json
+import re
 
 import pytest
 
@@ -111,3 +112,18 @@ def test_policy_requirements_and_suppression_visible_in_markdown(tmp_path):
     markdown = target.read_text(encoding="utf-8")
     assert "require\\_complete\\_schema" in markdown and "BLOCKING" in markdown
     assert "SMC004 (warning; suppressed)" in markdown
+
+
+def test_escaped_text_is_bounded_and_cannot_mention_or_render_math():
+    from semantic_model_cleaner.ci_summary import _text
+    hostile = "<&>|`*_" * 400
+    escaped = _text(hostile)
+    assert len(escaped) <= 800 + len("… [truncated]")
+    assert escaped.endswith("… [truncated]")
+    body = escaped[:-len("… [truncated]")]
+    # Never cut inside an HTML entity or leave a dangling backslash escape.
+    assert not re.search(r"&[#\w]*$", body) and not body.endswith("\\")
+    safe = _text("cc @octocat for $x^2$ and @team")
+    assert "@" not in safe and "$" not in safe
+    assert "&#64;octocat" in safe and "&#36;x" in safe
+    assert _text("short") == "short"

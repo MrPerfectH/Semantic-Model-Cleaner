@@ -193,6 +193,15 @@ def run_check(
         return 2, payload
 
 
+def load_gate_inputs(root: Path, policy: Path | None, baseline: Path | None) -> tuple[dict | None, dict | None]:
+    """Read --policy (relative to PROJECT) and --baseline (relative to CWD) for check and review."""
+    loaded = json.loads(baseline.read_text(encoding="utf-8")) if baseline else None
+    from .review_policy import load_policy
+    if policy and not (root / policy).is_file():
+        raise ValueError("Explicit policy file does not exist.")
+    return (load_policy(root, policy) if policy else None), loaded
+
+
 def _summary_destination(args, root):
     if not args.summary_output:
         return None
@@ -238,12 +247,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         summary_target = _summary_destination(args, root)
         exact_model, exact_reports = resolve_path_options(args, root)
-        if args.baseline:
-            baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
-        from .review_policy import load_policy
-        if args.policy and not (root / args.policy).is_file():
-            raise ValueError("Explicit policy file does not exist.")
-        repository_policy = load_policy(root, args.policy) if args.policy else None
+        repository_policy, baseline = load_gate_inputs(root, args.policy, args.baseline)
         code, payload = run_check(root, policy=repository_policy,
                                   model_path=exact_model or ((root / args.model) if args.model else None),
                                   report_paths=exact_reports, report_filters=args.report,
