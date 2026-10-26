@@ -17,7 +17,7 @@ COMMAND_GUIDE = """Commands (use COMMAND --help for details):
   smc clean-stale PROJECT          Discover stale Report metadata (read-only)
   smc plan PROJECT --operations FILE -o PLAN
                                   Prepare reviewed changes on copies
-  smc diff PLAN [CANDIDATE]        Show plan diff, or compare two model folders
+  smc diff PLAN                   Show the reviewed plan diff
   smc apply PLAN                  Apply the exact reviewed plan
   smc verify PLAN                 Check current files against the plan
   smc history                     List local change receipts

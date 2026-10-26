@@ -64,6 +64,13 @@ def test_help_and_version_for_public_entrypoints(tmp_path, alias):
                     "restore", "recover-lock", "policy", "naming"):
         assert f"smc {command}" in help_text
     assert "FILTERS" in help_text and "relative to PROJECT" in help_text and "CWD" in help_text
+    assert "compare two model folders" not in help_text and "CANDIDATE" not in help_text
+
+
+def test_diff_takes_only_a_reviewed_plan(tmp_path):
+    """Model-folder comparison is outside the product scope; diff never offers it."""
+    result = run(["diff", "baseline", "candidate", "--format", "json"], tmp_path)
+    assert "unrecognized arguments: candidate" in envelope(result, "diff", 2)["errors"][0]
 
 
 @pytest.mark.parametrize("args,command", [

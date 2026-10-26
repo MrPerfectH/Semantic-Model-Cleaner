@@ -212,7 +212,6 @@ Prefer generating these from reviewed analyzer/UI evidence rather than guessing 
 | --- | --- |
 | `smc plan … --operations FILE -o PLAN [--allow-partial-report-scope]` | Create a plan; stdout JSON summary |
 | `smc diff PLAN` | Print unified text differences from a validated plan |
-| `smc diff BASELINE_MODEL CANDIDATE_MODEL` | Print a model comparison as JSON; this is a separate comparison mode, not plan creation |
 | `smc apply PLAN [--journal-dir DIR]` | Apply reviewed bytes after input checks; JSON result and receipt |
 | `smc verify PLAN [--journal-dir DIR]` | Compare current metadata hashes to plan inputs/outputs; JSON state |
 | `smc history [--journal-dir DIR]` | List saved operation receipts as JSON; does not list unapplied plan files elsewhere |
