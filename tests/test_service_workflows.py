@@ -130,6 +130,9 @@ def test_audit_real_analyzer_isolated_snapshot_and_no_cleanup(tmp_path):
     assert "_snapshot_path" not in result["reports"][0]
     assert "/tmp/smc-service-snapshot-" not in json.dumps(result)
     assert result["cleanup_available"] is False
+    assert public_summary(result)["capacity_observations"] == [
+        {"capacityState": "Unknown", "capacityObservation": "preflight"}
+    ]
 
 
 def replace_part(data, path, text):

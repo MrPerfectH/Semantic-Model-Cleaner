@@ -54,6 +54,10 @@ not alter the existing offline CLI.
 For deterministic testing, pass `--fixture tests/fixtures/service_probe/supported.json`
 with its synthetic IDs (tenant ending 001, workspace 002, model 003, report scope
 002). Fixture mode never loads credentials or uses HTTP, and is labeled as such.
+Transcripts must include a workspace `GET /v1/workspaces/{id}` response (any status)
+before the first definition request in each workspace, followed by capacity-list
+responses when that workspace response identifies a capacity. Older transcripts
+without these advisory rows fail with `fixture_request_mismatch`.
 Transport, pagination, retrieval/path safety and identity handling are shared
 with the #116 probe, not separate implementations. API permissions and current
 Microsoft source links are in the feasibility guide. No live demonstration has
@@ -285,6 +289,8 @@ proceeds. Missing capacity assignments, inaccessible metadata (including 403/404
 unknown/malformed states, missing matches, conflicting rows or incomplete pagination
 produce `Unknown` and still attempt the original definition request. Capacity
 visibility is not a prerequisite and no additional consent is requested.
+Fixture transcripts must include these advisory workspace/capacity responses in
+request order, as described in the fixture contract above.
 
 The advisory pass has no retries, at most one workspace GET plus five capacity
 pages, canonical same-collection continuation URLs, the existing 64 MiB response

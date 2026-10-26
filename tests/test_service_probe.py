@@ -586,3 +586,42 @@ def test_failed_network_attempt_is_preserved_in_request_evidence():
     assert evidence.data["requests"][0]["status"] is None
     assert evidence.data["requests"][0]["failure"] == "network_unavailable"
     assert "finished_at" in evidence.data["requests"][0]
+
+
+@pytest.mark.parametrize("state,status,expected_exit", [("Inactive", 200, 2), (None, 403, 0)])
+def test_actual_executable_capacity_preflight_contract(tmp_path, state, status, expected_exit):
+    data = json.loads(FIXTURE.read_text())
+    capacity = "abcdef12-abcd-4abc-8abc-abcdef123456"
+    data["responses"][2] = {
+        "method": "GET",
+        "url": f"{probe.FABRIC}/workspaces/{WORKSPACE}",
+        "body": {"id": WORKSPACE, "capacityId": capacity},
+    }
+    data["responses"].insert(3, {
+        "method": "GET",
+        "url": f"{probe.FABRIC}/capacities",
+        "status": status,
+        "body": {"value": [{"id": capacity.upper(), "state": state}], "message": "SECRET"},
+    })
+    path = tmp_path / "capacity-fixture.json"
+    path.write_text(json.dumps(data))
+    completed = subprocess.run(
+        [sys.executable, "-m", "semantic_model_cleaner.service_probe",
+         *cli_args(tmp_path), "--fixture", str(path)],
+        text=True, capture_output=True, timeout=30,
+    )
+    assert completed.returncode == expected_exit, completed.stdout + completed.stderr
+    public = (tmp_path / "evidence.json").read_text()
+    result = json.loads(public)
+    assert "SECRET" not in public
+    assert all(value not in public for value in (TENANT, WORKSPACE, MODEL, REPORT, capacity))
+    observation = next(row["capacity_preflight"] for row in result["requests"] if row.get("capacity_preflight"))
+    assert observation == {"capacityState": state or "Unknown", "capacityObservation": "preflight"}
+    if state == "Inactive":
+        assert result["status"] == "incomplete"
+        assert result["failure_diagnostics"] == observation
+        assert any(row["code"] == "capacity_inactive" and "administrator" in row["hint"] for row in result["analysis_limitations"])
+        assert all(row["method"] == "GET" for row in result["requests"])
+    else:
+        assert result["status"] == "bounded_probe_completed"
+        assert sum(row["method"] == "POST" for row in result["requests"]) == 2
