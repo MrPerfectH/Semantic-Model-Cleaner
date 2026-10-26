@@ -6,47 +6,31 @@ Semantic Model Cleaner web UI. The Python engine discovers the Power BI Project
 and its report bindings. Analysis and model changes remain explicit user
 actions; the existing reviewed-plan safeguards are unchanged.
 
-Version **0.1.7** is prepared as a Marketplace pre-release for
+Version **0.1.8** is prepared as a Marketplace pre-release for
 `MrPerfectH.semantic-model-cleaner`; this document does not confirm publication.
-The **Preview** label remains. The VSIX contains the extension, not Python or the
-engine. Nothing is downloaded, installed or upgraded automatically.
+The **Preview** label remains. Native packages built from this source include the
+Cleaner engine and Python runtime. Earlier VSIX packages required a separately
+installed engine; this source change does not update those installed packages.
+Native CI covers Windows x64, Linux x64, and macOS Intel/Apple Silicon.
+Marketplace publication remains pending; see the build evidence for the tested
+versions and platforms.
 
 ## Requirements and installation
 
 - Desktop VS Code 1.95 or newer and a **trusted local workspace**.
-- Python 3.11+ and the separately installed **Semantic Model Cleaner 0.4.0b10** engine from the same reviewed build.
+- A native VSIX matching the supported operating system and architecture.
 - Local disk Power BI Project files (TMDL Semantic Model and PBIR Reports).
 
-Use the separately prepared `semantic_model_cleaner-0.4.0b10-py3-none-any.whl`
-from the same reviewed build; this document does not confirm beta10 publication
-or provide a public beta10 download URL. Place that wheel in the current
-directory before running the commands below. Install it into a virtual
-environment at a location you choose. These commands create an example
-environment in the current directory; run them yourself in a terminal.
+Install the matching native VSIX with **Extensions: Install from VSIX...**, then
+run **Semantic Model Cleaner: Open Cleaner**. No Python installation, virtual
+environment, engine path, or first-run download is required. Once published,
+Marketplace selects the matching platform package automatically.
 
-POSIX shell (macOS/Linux):
-
-```sh
-python3 -m venv .venv-smc
-.venv-smc/bin/python -m pip install "./semantic_model_cleaner-0.4.0b10-py3-none-any.whl"
-```
-
-Windows PowerShell:
-
-```powershell
-py -3 -m venv .venv-smc
-& .\.venv-smc\Scripts\python.exe -m pip install "./semantic_model_cleaner-0.4.0b10-py3-none-any.whl"
-```
-
-Install the extension through **Extensions: Install from VSIX...** using
-`semantic-model-cleaner-0.1.7.vsix`. Once the public pre-release is available,
-its Marketplace identity is `MrPerfectH.semantic-model-cleaner`.
-Set **Semantic Model Cleaner: Python Path** to the absolute path of your chosen
-environment's Python executable (`.venv-smc/bin/python` or
-`.venv-smc\Scripts\python.exe`). Alternatively leave Python Path empty and set
-**Executable** to that environment's absolute `smc-web` / `smc-web.exe` path.
-The extension launches that configured external engine; installing this VSIX
-does not replace or configure an existing engine or executable setting.
+For advanced development, **Python Path** can select an environment with a
+compatible engine installed. Alternatively, **Executable** can select an external
+`smc-web` executable. Python Path takes precedence. Clear both settings to use the
+bundled engine; an explicitly configured override is never silently replaced.
+Old explicit settings remain overrides after upgrading.
 
 Settings are resource-scoped and restricted by Workspace Trust. The extension
 also checks trust in command handlers before reading executable settings or
@@ -133,11 +117,15 @@ From this directory, with Node 22+:
 ```sh
 npm ci
 npm test
+# Use the prepared Python environment on this native build host:
+python ../packaging/vscode/build_engine.py
+node scripts/smoke-engine.cjs
 npm run package
 ```
 
-The package command creates `semantic-model-cleaner-0.1.7.vsix` with the VSIX
-pre-release flag. It does not publish. Open this directory in VS Code and use
+The package command creates `semantic-model-cleaner-0.1.8-<platform>-<arch>.vsix`
+with the VSIX pre-release flag and matching platform target. It requires a staged
+native engine; a universal package without an engine is not produced. It does not publish. Open this directory in VS Code and use
 **Run Cleaner extension** (F5) for a development host.
 
 Run the Python suite from the repository root:
@@ -153,7 +141,10 @@ A real extension-host/browser smoke is available:
 SMC_VSCODE_EXECUTABLE='/Applications/Visual Studio Code.app/Contents/MacOS/Code' npm run test:integration
 ```
 
-`SMC_TEST_PYTHON` can select the prepared interpreter. Without
+`SMC_TEST_BUNDLED=1` with `SMC_TEST_VSIX` tests the installed native package
+without configuring a Python interpreter. Add `SMC_TEST_OFFLINE=1` to verify the
+engine with OS-level external-network isolation (Windows needs elevation). Otherwise, `SMC_TEST_PYTHON` can select
+the prepared development interpreter. Without
 `SMC_VSCODE_EXECUTABLE`, the VS Code test runner downloads its default test host.
 Linux needs a desktop or `xvfb-run -a npm run test:integration`. Windows can set
 these environment variables in PowerShell. The script builds a disposable
@@ -161,7 +152,7 @@ two-model project (bundled demo plus the Product QA example, extra connected
 reports and one broken binding), uses disposable VS Code/SMC profiles and a
 local debugging port, and deletes the copy afterward. Set `SMC_TEST_VSIX` to
 install and test a packaged VSIX in the disposable extensions directory instead
-of this source folder (Windows also needs `SMC_VSCODE_CLI_JS`, the product's
+of this source folder (if CLI discovery fails, set `SMC_VSCODE_CLI_JS` to the product's
 `resources/app/out/cli.js`). It disables Workspace Trust **only in that disposable test
 host**; trust denial is covered separately by command-handler tests. It drives the
 native sidebar: cold Choose and Analyze, explicit model choice, default and deselected reports, exact

@@ -146,7 +146,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (generation !== epoch) throw new Cancelled();
       requireLocalTrusted();
       const config = launchConfig(vscode.workspace.isTrusted,
-        () => vscode.workspace.getConfiguration('semanticModelCleaner', uri), uri.fsPath);
+        () => vscode.workspace.getConfiguration('semanticModelCleaner', uri), uri.fsPath, context.extensionPath);
       const started = await server.start(config, ancestors, log, () => {
         if (generation !== epoch) return;
         state('stopped');

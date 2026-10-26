@@ -2,7 +2,7 @@
   "name": "semantic-model-cleaner",
   "displayName": "Semantic Model Cleaner (Preview)",
   "description": "Run Semantic Model Cleaner's local Power BI Project UI inside VS Code.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "MrPerfectH",
   "license": "MIT",
   "repository": {
@@ -160,17 +160,17 @@
       "properties": {
         "semanticModelCleaner.executable": {
           "type": "string",
-          "default": "smc-web",
+          "default": "",
           "scope": "resource",
           "restricted": true,
-          "markdownDescription": "Installed `smc-web` executable (absolute path recommended). Must support `--vscode`. A single executable, not a shell command. Ignored when pythonPath is set."
+          "markdownDescription": "Advanced override for an external `smc-web` executable supporting `--vscode`. Leave empty to use the bundled engine. A single executable, not a shell command. Ignored when pythonPath is set."
         },
         "semanticModelCleaner.pythonPath": {
           "type": "string",
           "default": "",
           "scope": "resource",
           "restricted": true,
-          "markdownDescription": "Python executable from an environment with this checkout's Semantic Model Cleaner installed. Runs `python -I -m semantic_model_cleaner.web`. Nothing is installed automatically."
+          "markdownDescription": "Advanced development override: Python executable with a compatible Cleaner engine installed. Runs `python -I -m semantic_model_cleaner.web`. Leave empty to use the bundled engine."
         }
       }
     },
@@ -219,7 +219,8 @@
     "test": "npm run compile && node --test test/*.test.cjs",
     "test:integration": "npm run compile && node scripts/integration.cjs",
     "vscode:prepublish": "npm run compile",
-    "package": "vsce package --pre-release --no-dependencies --out semantic-model-cleaner-0.1.7.vsix"
+    "package": "node scripts/package.cjs",
+    "build:engine": "python ../packaging/vscode/build_engine.py"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

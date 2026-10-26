@@ -10,6 +10,7 @@ from flask.testing import FlaskClient
 from semantic_model_cleaner.local_http import install_local_http_boundary
 from semantic_model_cleaner.vscode_host import configure_host, validate_ancestors
 from semantic_model_cleaner import webapp
+from semantic_model_cleaner import __version__
 
 ORIGINS = ['https://specific-panel.vscode-cdn.net', 'vscode-file://vscode-app']
 TOKEN = 'a' * 64
@@ -65,7 +66,8 @@ def test_ready_proves_this_instance_only(embedded):
     assert request(embedded, '/api/vscode/ready').status_code == 403
     assert request(embedded, '/api/vscode/ready', headers={'X-SMC-Token': 'b' * 64}).status_code == 403
     response = request(embedded, '/api/vscode/ready', headers={'X-SMC-Token': TOKEN})
-    assert response.json == {'protocol': 1, 'instance': hashlib.sha256(TOKEN.encode()).hexdigest()}
+    assert response.json == {'protocol': 1, 'engineVersion': __version__,
+                            'instance': hashlib.sha256(TOKEN.encode()).hexdigest()}
     assert TOKEN.encode() not in response.data
 
 

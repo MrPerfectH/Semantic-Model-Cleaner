@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const os = require('node:os');
 const { chromium } = require('playwright-core');
 async function snapshot(root) {
   const entries = await fs.readdir(root, { withFileTypes: true });
@@ -40,6 +41,12 @@ exports.run = async () => {
   assert.equal(extension.packageJSON.version, process.env.SMC_TEST_EXPECT_VERSION);
   if (process.env.SMC_TEST_EXPECT_EXTENSIONS)
     assert.ok(extension.extensionPath.startsWith(process.env.SMC_TEST_EXPECT_EXTENSIONS), extension.extensionPath);
+  const bundledEngine = process.env.SMC_TEST_EXPECT_BUNDLED === '1';
+  if (bundledEngine) {
+    const settings = vscode.workspace.getConfiguration('semanticModelCleaner');
+    assert.equal(settings.get('pythonPath'), '', 'Bundled acceptance must not configure Python');
+    assert.equal(settings.get('executable'), '', 'Bundled acceptance must not configure an external engine');
+  }
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${process.env.SMC_TEST_CDP_PORT}`);
   const checks = [];
   const pass = name => { checks.push(name); console.log('PASS', name); };
@@ -145,8 +152,10 @@ exports.run = async () => {
     assert.equal(await frame.evaluate(() => document.getElementById('viewToolbar').inert), false);
     const full = await frame.evaluate(() => ({ safe: allItems.filter(i => i.deleteSafety === 'Safe').length,
       limitations: allAnalysisLimitations.limitations.map(l => l.id) }));
-    assert.ok(full.safe > 0); assert.ok(!full.limitations.includes('report_scan:not_selected'));
-    pass('full selection analysis restores current results');
+    assert.equal(full.safe, 0, 'The unverified Legacy Draft binding still withholds Safe');
+    assert.ok(full.limitations.includes('report_scan:unverified_binding'));
+    assert.ok(!full.limitations.includes('report_scan:not_selected'));
+    pass('full selection clears the subset limitation but retains the unverified-binding safeguard');
 
     // 6. Zero reports: model-only analysis.
     await vscode.commands.executeCommand('semanticModelCleaner.clearReports');
@@ -210,8 +219,59 @@ exports.run = async () => {
     await until(async () => (await frame.locator('#smcHostScope').innerText()).includes('Ready: TestModel · 1 of 1 report'), 'second folder banner');
     await row('Analyze').click();
     await until(async () => (await frame.locator('#smcHostScope').innerText()).includes('Analyzed: TestModel · 1 of 1 report'), 'second folder analysis', 60000);
+    assert.ok(await frame.evaluate(() => allItems.some(item => item.deleteSafety === 'Safe')),
+      'The clean demo scope must retain Safe recommendations');
+    assert.equal(await frame.evaluate(() => allAnalysisLimitations.limitations.some(
+      limitation => limitation.id === 'report_scan:unverified_binding')), false);
     await shot('8-second-folder.png');
     pass('workspace switch resets scope; sole model auto-selected and analyzed');
+
+    // Exercise actual embedded review dialogs, including cancellation and recovery.
+    await frame.locator('#tabDetails').click();
+    await frame.locator('#tableBody .item-link').filter({ hasText: /^Total Orders$/ }).click();
+    await frame.locator('#item-tab-changes').click();
+    await frame.locator('#detailBtnHide').click();
+    const reviewApply = frame.locator('#objectReviewApply');
+    const reviewClose = frame.locator('#objectReviewClose');
+    const reviewStatus = frame.locator('#objectReviewStatus');
+    const readyToApply = async () => {
+      await reviewApply.waitFor({ state: 'visible' });
+      await until(() => reviewApply.isEnabled(), 'validated review');
+      assert.ok(await frame.locator('#objectReviewBody pre').count(), 'Review must show the saved file diff');
+    };
+    await frame.locator('#detailBtnApply').click();
+    await readyToApply();
+    await shot('10-cleanup-preview.png');
+    await reviewClose.click();
+    assert.deepEqual(await snapshot(second), beforeSecond, 'Canceling preview must not write files');
+    await frame.locator('#detailBtnApply').click();
+    await readyToApply();
+    await reviewApply.click();
+    await until(async () => await reviewApply.isHidden() && await reviewClose.isEnabled(), 'cleanup applied', 60000);
+    const appliedBytes = await snapshot(second);
+    assert.notDeepEqual(appliedBytes, beforeSecond, 'Apply must change the disposable model');
+    await reviewClose.click();
+    const openRecovery = async () => {
+      await frame.locator('#objectHistoryButton').click();
+      const receipt = frame.locator('#objectReviewBody details').filter({ has: frame.locator('[data-restore-id]') }).first();
+      await receipt.locator('summary').first().click();
+      await receipt.locator('[data-verify-id]').click();
+      await until(async () => (await reviewStatus.innerText()).includes('Files: applied'), 'applied files verified');
+      await receipt.locator('[data-restore-id]').click();
+      await readyToApply();
+    };
+    await openRecovery();
+    await reviewClose.click();
+    assert.deepEqual(await snapshot(second), appliedBytes, 'Canceling recovery must not restore files');
+    await openRecovery();
+    await shot('11-restore-preview.png');
+    await reviewApply.click();
+    await until(async () => (await reviewStatus.innerText()).includes('Original files restored') &&
+      await reviewClose.isEnabled(), 'original files restored', 60000);
+    assert.deepEqual(await snapshot(second), beforeSecond, 'UI restore must recover every original byte');
+    assert.equal(await frame.evaluate(() => pendingActions.size === 0 && actionStatus.size === 0), true);
+    await reviewClose.click();
+    pass('embedded cleanup preview/cancel/apply/verify and recovery cancel/restore are byte-exact');
 
     // 11. Stop returns the pane to its welcome state and closes the port.
     const lastOrigin = new URL(frame.url()).origin;
@@ -243,6 +303,9 @@ exports.run = async () => {
       host: process.platform, vscode: vscode.version, appName: vscode.env.appName,
       extensionVersion: extension.packageJSON.version, extensionPath: extension.extensionPath,
       installedFromVsix: !!process.env.SMC_TEST_EXPECT_EXTENSIONS, trusted: vscode.workspace.isTrusted,
+      bundledEngine, vsixSha256: process.env.SMC_TEST_VSIX_SHA256 || null,
+      offlineEngineSmoke: process.env.SMC_TEST_OFFLINE === '1',
+      platform: { arch: os.arch(), release: os.release(), version: os.version() },
       projectUnchanged: true, checks,
       boundary: 'Disposable desktop host with isolated profile and extensions directory; Workspace Trust disabled for unattended runs.'
     }, null, 2));

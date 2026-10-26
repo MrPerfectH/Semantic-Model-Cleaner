@@ -1,18 +1,32 @@
 name: VS Code extension
 
 on:
+  workflow_call:
+  workflow_dispatch:
   push:
-    paths: ['vscode-extension/**', 'src/semantic_model_cleaner/**', 'tests/test_vscode_host.py', '.github/workflows/vscode-extension.yml']
+    paths: ['vscode-extension/**', 'packaging/vscode/**', 'scripts/verify_vscode_packages.py', 'pyproject.toml', 'src/semantic_model_cleaner/**', 'tests/test_vscode_host.py', 'tests/test_vscode_release.py', '.github/workflows/vscode-extension.yml']
   pull_request:
-    paths: ['vscode-extension/**', 'src/semantic_model_cleaner/**', 'tests/test_vscode_host.py', '.github/workflows/vscode-extension.yml']
+    paths: ['vscode-extension/**', 'packaging/vscode/**', 'scripts/verify_vscode_packages.py', 'pyproject.toml', 'src/semantic_model_cleaner/**', 'tests/test_vscode_host.py', 'tests/test_vscode_release.py', '.github/workflows/vscode-extension.yml']
 
 jobs:
   extension:
+    name: extension (${{ matrix.target }})
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-22.04
+            target: linux-x64
+          - os: windows-2022
+            target: win32-x64
+          - os: macos-14
+            target: darwin-arm64
+          - os: macos-15-intel
+            target: darwin-x64
     runs-on: ${{ matrix.os }}
+    env:
+      SMC_TEST_OFFLINE: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,14 +38,36 @@ jobs:
         with:
           python-version: '3.13'
       - run: python -m pip install -e .[dev]
-      - run: python -m pytest tests/test_local_http_security.py tests/test_vscode_host.py
+      - run: python -m pytest tests/test_local_http_security.py tests/test_vscode_host.py tests/test_vscode_release.py
       - run: npm ci
         working-directory: vscode-extension
       - run: npm test
         working-directory: vscode-extension
+      - name: Build native bundled engine
+        run: python packaging/vscode/build_engine.py
       - run: npm run package
         working-directory: vscode-extension
+      - name: Verify native package identity and checksum
+        shell: bash
+        run: |
+          python scripts/verify_vscode_packages.py --target '${{ matrix.target }}' vscode-extension/*.vsix
+      - name: Verify installed bundled VSIX on Windows and macOS
+        if: runner.os != 'Linux'
+        run: node scripts/test-bundled.cjs
+        working-directory: vscode-extension
+      - name: Verify installed bundled VSIX on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node scripts/test-bundled.cjs
+        working-directory: vscode-extension
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bundled-acceptance-${{ matrix.target }}
+          path: vscode-extension/integration-artifacts/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
-          name: cleaner-vsix-${{ matrix.os }}
-          path: vscode-extension/*.vsix
+          name: cleaner-vsix-${{ matrix.target }}
+          path: |
+            vscode-extension/*.vsix
+            vscode-extension/*.vsix.sha256

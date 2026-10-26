@@ -33,7 +33,7 @@ export class SafeLines {
   // Never flush a partial line on process exit: it could be part of a secret.
 }
 
-export function probe(port: number, token: string, signal: AbortSignal): Promise<void> {
+export function probe(port: number, token: string, signal: AbortSignal, engineVersion?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const req = http.get({ hostname: '127.0.0.1', port, path: '/api/vscode/ready',
       headers: { 'X-SMC-Token': token }, signal, timeout: 2000 }, res => {
@@ -44,13 +44,17 @@ export function probe(port: number, token: string, signal: AbortSignal): Promise
       });
       res.on('error', reject);
       res.on('end', () => {
-        try {
-          const value = JSON.parse(body);
-          const expected = createHash('sha256').update(token).digest('hex');
-          if (res.statusCode !== 200 || value.protocol !== 1 || value.instance !== expected)
-            throw new Error('Server instance verification failed.');
-          resolve();
-        } catch { reject(new Error('Server instance verification failed.')); }
+        let value;
+        try { value = JSON.parse(body); }
+        catch { reject(new Error('Server instance verification failed.')); return; }
+        const expected = createHash('sha256').update(token).digest('hex');
+        if (res.statusCode !== 200 || value?.protocol !== 1 || value?.instance !== expected) {
+          reject(new Error('Server instance verification failed.')); return;
+        }
+        if (engineVersion && value.engineVersion !== engineVersion) {
+          reject(new Error('Bundled Cleaner engine version mismatch. Reinstall the extension.')); return;
+        }
+        resolve();
       });
     });
     req.on('timeout', () => req.destroy(new Error('Server readiness request timed out.')));
@@ -144,12 +148,14 @@ export async function startServer(config: LaunchConfig, ancestors: string[], sig
       const stderr = new SafeLines(token, log);
       child.stdout.setEncoding('utf8').on('data', chunk => stdout.push(chunk));
       child.stderr.setEncoding('utf8').on('data', chunk => stderr.push(chunk));
-      child.once('error', () => reject(new Error('Could not start SMC. Set semanticModelCleaner.pythonPath to a Python environment with this SMC checkout installed, or executable to a compatible smc-web. Nothing was installed automatically.')));
+      child.once('error', () => reject(new Error(config.engineVersion
+        ? 'Could not start SMC bundled engine. Reinstall the extension and check Show Logs or security software quarantine.'
+        : 'Could not start SMC configured engine. Check the Python Path or Executable override, or clear both to use the bundled engine.')));
       child.once('close', code => reject(signal.aborted ? new Cancelled() :
         new Error(`SMC exited before readiness (code ${code}). Check Show Logs; the engine must support --vscode.`)));
-      timer = setTimeout(() => reject(new Error('SMC startup timed out. Check Show Logs and the configured Python/SMC installation.')), timeoutMs);
+      timer = setTimeout(() => reject(new Error('SMC startup timed out. Check Show Logs and restart Cleaner.')), timeoutMs);
     });
-    await probe(port, token, signal);
+    await probe(port, token, signal, config.engineVersion);
     if (signal.aborted) throw new Cancelled();
     if (exited) throw new Error('SMC exited during startup.');
     ready = true;
