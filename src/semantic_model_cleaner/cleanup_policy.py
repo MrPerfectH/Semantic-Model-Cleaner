@@ -237,8 +237,12 @@ def _evaluate_deletion_policy(
         # A target's own missing references (BROKEN) are not use; incoming
         # consumers are checked above and its usage status here.
         usage = analyzer.row_usage_status(row)
-        if analyzer.is_used_status(usage) or analyzer.inferred_keep(row):
+        if analyzer.is_used_status(usage):
             reject("SMC-D004", f"Keep {analyzer.format_item_ref(item.key)}: {usage}.", *item.key)
+        elif analyzer.inferred_keep(row):
+            reject("SMC-D004", f"Keep {analyzer.format_item_ref(item.key)}: engine-inferred column of a calculated table. "
+                   "Deleting its column TMDL cannot remove it; edit the calculated table expression or review whole-table removal.", *item.key,
+                   location={'file': item.source_file})
         elif row.get("entity_type_trigger") and item.table.casefold() in cleared_tables:
             # The whole tool entity goes and nothing that remains uses it.
             reasons = _final_state_review_triggers(

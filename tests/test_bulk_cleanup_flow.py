@@ -1,6 +1,4 @@
 """One model and connected Reports: listing, bulk plan and exact verification."""
-import json
-
 from semantic_model_cleaner import change_plan, insights
 from test_cli_insights import write_json
 
@@ -61,3 +59,20 @@ def test_report_reference_matching_is_case_insensitive(tmp_path):
     assert result['report_used'] and result['locations']['total'] == 1
     assert not query.items(table='Report View', unused=True)['items']['items']
 
+
+
+def test_unused_non_safe_items_explain_inferred_columns_and_retained_review_consumers(tmp_path):
+    model, reports = project(tmp_path)
+    (model / 'definition/tables/Derived.tmdl').write_text(
+        'table Derived\n\tcolumn Description\n\t\tisNameInferred\n'
+        '\tpartition Derived = calculated\n\t\tsource = DATATABLE("Description", STRING, {{"x"}})\n', encoding='utf-8')
+    query = listing(model)
+    rows = query.items(unused=True, limit=None)['items']['items']
+    assert all(row.get('kept_because') for row in rows if row['cleanup'] != 'Safe')
+    inferred = next(r for r in rows if r['name'] == 'Description')
+    assert any('calculated table' in r['reason'] and 'expression' in r['reason'] for r in inferred['kept_because'])
+    column = next(r for r in rows if r['name'] == 'Guarded')
+    assert any(r.get('dependency', {}).get('name') == 'Retained' and 'Review' in r['reason']
+               for r in column['kept_because'])
+    usage = query.usage(table='Derived', item='Description')
+    assert usage['review_reasons']['total'] and usage['kept_because']

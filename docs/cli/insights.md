@@ -251,3 +251,11 @@ deletion policy. A retained NAMEOF target, Report Extension Measure dependency,
 structural consumer or Report Reference that needs a table keeps the affected
 items out of Safe. All Safe items from the same complete scope can be submitted
 in one deletion batch; source changes still require a fresh preview.
+
+Every non-Safe item includes `kept_because`: records with `rule_id`, `reason`,
+`dependency`, `location` and `resolution`. They distinguish retained Review
+consumers, NAMEOF targets, Report References, calendar/detail-rows declarations,
+hidden flags and engine-inferred columns. Inferred columns of calculated tables
+require an expression edit or a reviewed whole-table removal; deleting their
+column declarations alone does not remove their engine-defined output. `usage`
+also includes these records and readable reasons in `review_reasons`.

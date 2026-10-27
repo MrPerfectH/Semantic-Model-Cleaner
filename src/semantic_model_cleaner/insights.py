@@ -136,6 +136,15 @@ class Insights:
         return out
 
     def _structural_edges(self):
+        warnings = []
+        parameters = analyzer.resolve_field_parameter_targets(analyzer.parse_field_parameters(self.model, warnings),
+            [row['item'] for row in self.rows.values() if row['item'].source_kind == 'model'], self.model.name, warnings)
+        by_key = {analyzer.normalize_key(key[2], key[3]): key for key in self.rows if key[0] == 'model'}
+        for parameter, targets in parameters:
+            for target in targets:
+                key = by_key.get(analyzer.normalize_key(*target.key))
+                if key:
+                    self.structural[key].append(f'Required by NAMEOF in retained field parameter {parameter.table} ({parameter.source_file}).')
         columns = defaultdict(list)
         for key, row in self.rows.items():
             item = row["item"]
@@ -210,6 +219,47 @@ class Insights:
             return "Review"
         return risk or "Review"
 
+    def _kept_because(self, key):
+        from .plan_diagnostics import location
+        row = self.rows[key]
+        item = row['item']
+        reasons = []
+
+        def add(rule, reason, *, dependency=None, where=None):
+            record = {'rule_id': rule, 'reason': reason, 'location': where or {'file': item.source_file},
+                      'dependency': dependency or {}, 'resolution': 'Keep this item until its reason is resolved in a reviewed plan.'}
+            if record not in reasons:
+                reasons.append(record)
+
+        if analyzer.inferred_keep(row):
+            add('SMC-D004', 'Engine-inferred column of a calculated table: deleting its TMDL column declaration '
+                'cannot remove it. Change the calculated table expression, or review removal of the whole unused table.')
+        for consumer in sorted(self.reverse[key]):
+            if consumer not in self.rows:
+                continue
+            source = self.rows[consumer]
+            label = 'Review item' if source['removal_risk'] == 'Review' else 'item'
+            add('SMC-D006', f'Required by retained {label} {consumer[2]}[{consumer[3]}].',
+                dependency={**self.identity(consumer), 'file': source['item'].source_file},
+                where={'file': source['item'].source_file})
+        for reason in row.get('review_triggers', []):
+            add('SMC-D005', reason)
+        for reason in self.structural[key]:
+            add('SMC-D006', reason)
+        for consumer in row.get('metadata_consumers', []):
+            add('SMC-D006', f"Required by retained {consumer['feature']} of {consumer['owner']} ({consumer['location']}).",
+                dependency=consumer, where={'file': consumer['location']})
+        for reference in self.live[key]:
+            add('SMC-D004', 'Required by a Live Report Reference.', where=location(reference))
+        for violation in self._safe_cleanup()['kept'].get(analyzer.normalize_key(item.table, item.name), []):
+            add(violation['rule_id'], violation['message'], dependency=violation.get('dependency'),
+                where=violation.get('location'))
+        if not self.scope['selection_complete'] or self.scope['unverified_reports']:
+            add('SMC-D001', 'Report selection or verified binding coverage is incomplete; external consumers are not checked.')
+        if not reasons and self._recommendation(key) != 'Safe':
+            add('SMC-D005', 'The Cleanup Recommendation requires review before deletion.')
+        return reasons if self._recommendation(key) != 'Safe' else []
+
     def _base(self, limit=20, offset=0):
         return {"scope": self.scope, "limitations": window([
             {"id": row["id"], "feature": row["feature"], "owner": row["owner"],
@@ -255,7 +305,7 @@ class Insights:
             if key in self.rows:
                 row = self.rows[key]
                 identity.update(status=row["status"], cleanup=self._recommendation(key),
-                                hidden=row["item"].is_hidden)
+                                hidden=row["item"].is_hidden, kept_because=self._kept_because(key))
                 identity["status_code"] = ("broken" if row["broken_dax_refs"] else
                     "unused" if row["status"] == "NOT USED" else
                     "indirect" if row["status"].startswith("INDIRECT") else "used")
@@ -377,6 +427,9 @@ class Insights:
         else:
             cleanup = self._recommendation(key)
             reasons = self.rows[key].get("review_triggers", [])
+        kept = self._kept_because(key) if key in self.rows else [reason for child in self.children[key[2]]
+                                                               for reason in self._kept_because(child)]
+        reasons = list(dict.fromkeys([*reasons, *(entry['reason'] for entry in kept)]))
         details = {}
         if key in self.rows:
             item_data = self.rows[key]["item"]
@@ -385,7 +438,7 @@ class Insights:
                 details["expression"] = item_data.dax_body
         return {**self._base(limit, offset), **details, "item": self.identity(key), "answer": answer,
                 "used": used, "report_used": bool(locations) if self.scope["report_usage_checked"] else None,
-                "cleanup": cleanup, "review_reasons": window(reasons, limit, offset),
+                "cleanup": cleanup, "review_reasons": window(reasons, limit, offset), "kept_because": kept,
                 "counts": {"reports": len(reports), "pages": sum(r["pages"] for r in reports),
                            "live_locations": len(locations), "stale_locations": len(stale),
                            "direct_locations": sum(r["kind"] == "direct" for r in locations),
