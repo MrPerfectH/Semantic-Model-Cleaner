@@ -78,6 +78,45 @@ Apply records a recovery journal automatically. There is no `--no-backup` option
 - Journals default to `~/.semantic-model-cleaner/plans`. Setting `SMC_USER_DIR` changes the default to `<SMC_USER_DIR>/plans`. `apply`, `verify`, `restore`, `recover-lock` and `history` accept `--journal-dir`; verification itself reads the plan and files, not the journal.
 - Use the same journal directory for operations on the same model. The per-model lock resides there; separate journal directories do not provide a shared lock. Keep journals outside selected artifacts and retain them until recovery is no longer needed.
 
+## Clean all unused model items in one plan
+
+```bash
+smc plan PROJECT --model-path Models/Sales.SemanticModel --cleanup unused --cascade -o cleanup.json --format json
+smc diff cleanup.json
+smc apply cleanup.json --format json
+smc verify cleanup.json --format json
+```
+
+`--cleanup unused` replaces `--operations`; do not combine them. `--cascade`
+computes the dependency-closed unused set from one analysis snapshot, retaining
+blocked consumers and their dependencies to a fixed point. One staged preview
+then validates the resulting changes. No repeated apply/analyze rounds are
+needed. Without `--cascade`, cleanup starts with the current Safe candidates.
+Every connected Report is selected by default, and the existing partial-scope
+safeguards still apply. Review the saved plan before applying it.
+
+Unused calculated tables can be removed as whole tables when no retained
+consumer, relationship, Report Reference, structural declaration or Analysis
+Limitation prevents it. This removes their partitions and inferred columns
+rather than pretending column-declaration deletion changes a calculated
+expression. A retained `COUNTROWS('Table')` consumer blocks removal. Report
+References in Reports connected to another Semantic Model are outside this scope.
+`items --unused` lists whole calculated-table options in `table_removals`;
+`items --unused --type table` exposes their Cleanup Recommendation directly.
+
+Hidden-only Review items stay kept by default. Add `--include-review` to approve
+that reason explicitly; it cannot waive keys, inferred-column restrictions,
+Analysis Limitations, Report References or retained dependencies. The saved
+actions record this approval as `allow_hidden: true`, so it is checked by the
+same deletion policy again. Other Review items and Tool Entities remain kept.
+
+The saved plan and command response include `cleanup`, with `deleted_items`,
+`action_count`, `deleted_tables` (explicit whole-table actions), `held_back_hidden`
+(hidden-only Review items) and `kept`. The kept report contains unused items that
+remain, each with `kept_because` rule/dependency/location evidence. Required items
+are never eligible merely because a cleanup command was requested. Import tables
+that become empty continue to be removed by the existing last-item writer.
+
 ## Operation format
 
 The operations file accepts either an array or an object containing `operations`. The array must be nonempty. Operations run in order on staged copies, so later operations must use identities established by earlier ones.

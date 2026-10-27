@@ -62,6 +62,10 @@ def _evaluate_deletion_policy(
     deletes = [a for a in actions if isinstance(a, dict) and a.get("action") == "delete"]
     if not deletes:
         return result()
+    whole_tables = {a['table'].casefold() for a in deletes if str(a.get('item_type', '')).casefold() == 'table'}
+    hidden_approved = {analyzer.normalize_key(a['table'], a['name']) for a in deletes if a.get('allow_hidden') is True}
+    hidden_tables = {a['table'].casefold() for a in deletes if a.get('allow_hidden') is True
+                     and str(a.get('item_type', '')).casefold() == 'table'}
     model_path = Path(model_path).resolve()
     reports = sorted({Path(p).resolve() for p in report_paths})
     if not model_path.is_dir() or not reports:
@@ -171,6 +175,24 @@ def _evaluate_deletion_policy(
                    f"({reference.artifact_path}: {reference.source_path}).", reference.table,
                    location=location(reference), dependency={'table': reference.table, 'name': reference.name,
                                                             'item_type': reference.ref_type})
+    # Measures have model-wide names. An unresolved Report entity binding is
+    # not evidence that its same-named model measure can be deleted safely.
+    measure_names = {}
+    for key, row in rows.items():
+        if row['item'].item_type == 'Measure':
+            measure_names.setdefault(key[1], []).append(key)
+    for reference in analysis.get('report_references', []):
+        if reference.ref_type != 'Measure':
+            continue
+        qualified = analyzer.normalize_key(reference.table, reference.name)
+        if qualified in rows and rows[qualified]['item'].item_type == 'Measure':
+            continue
+        for target in measure_names.get(reference.name.casefold(), []):
+            if target in targets:
+                reject('SMC-D006', f'{analyzer.format_item_ref(rows[target]["item"].key)} may be required by an unresolved '
+                       f'Report Reference {reference.table}[{reference.name}] in {reference.report}. Resolve its entity binding first.',
+                       *rows[target]['item'].key, location=location(reference),
+                       dependency={'table': reference.table, 'name': reference.name, 'item_type': 'Measure'})
     # Resolved metadata constructs (calculation items, KPI, detail-rows, format-string
     # and coverage expressions, calendar mappings) need their targets while the
     # construct itself remains. Table-owned constructs go only with their table.
@@ -214,6 +236,18 @@ def _evaluate_deletion_policy(
                 if table.casefold() in removed_tables:
                     owner = "" if source[0] == "model" else f" in {source[0]}"
                     reject("SMC-D006", f"Table {table} is required by retained {analyzer.format_item_ref(source[-2:])}{owner}.", table)
+    from .cleanup_flow import calculated_tables
+    known_tables = {row['item'].table.casefold(): row['item'].table for row in rows.values()}
+    for owner, partitions in calculated_tables(model_path).items():
+        if owner.casefold() in removed_tables:
+            continue
+        for file, expression in partitions:
+            references = analyzer.dax_table_references(expression, known_tables)
+            references.update(table for table, _ in analyzer._extract_dax_qualified_refs(expression))
+            for table in references:
+                if table.casefold() in removed_tables:
+                    reject('SMC-D006', f'Table {table} is required by calculated partition of retained {owner} ({file}).',
+                           table, location={'file': str(file)}, dependency={'table': owner, 'item_type': 'Table'})
     # Simulated final state (#91): a table is cleared only when the plan removes
     # every model item in it and no retained structural or DAX consumer still
     # needs it. Its own shared limitations vanish with its declaration; every
@@ -239,10 +273,15 @@ def _evaluate_deletion_policy(
         usage = analyzer.row_usage_status(row)
         if analyzer.is_used_status(usage):
             reject("SMC-D004", f"Keep {analyzer.format_item_ref(item.key)}: {usage}.", *item.key)
-        elif analyzer.inferred_keep(row):
+        elif analyzer.inferred_keep(row) and item.table.casefold() not in whole_tables:
             reject("SMC-D004", f"Keep {analyzer.format_item_ref(item.key)}: engine-inferred column of a calculated table. "
                    "Deleting its column TMDL cannot remove it; edit the calculated table expression or review whole-table removal.", *item.key,
                    location={'file': item.source_file})
+        elif analyzer.inferred_keep(row) and item.table.casefold() in whole_tables:
+            if item.is_hidden and item.table.casefold() not in hidden_tables:
+                reject("SMC-D005", f"Review required for {analyzer.format_item_ref(item.key)}: Item is hidden.", *item.key)
+            if row.get('analysis_limitation_ids'):
+                reject("SMC-D005", f"Review required for {analyzer.format_item_ref(item.key)}: Analysis Limitations affect this inferred column.", *item.key)
         elif row.get("entity_type_trigger") and item.table.casefold() in cleared_tables:
             # The whole tool entity goes and nothing that remains uses it.
             reasons = _final_state_review_triggers(
@@ -256,7 +295,8 @@ def _evaluate_deletion_policy(
                 message=analyzer.entity_type_trigger(row["entity_kind"], item.table, after_plan=True)))
         elif row.get("standalone_removal_risk", row["removal_risk"]) == "Review":
             reasons = _final_state_review_triggers(
-                row, coverage_cleared=coverage_cleared, group_cleared=item.table.casefold() in cleared_tables)
+                row, coverage_cleared=coverage_cleared, group_cleared=item.table.casefold() in cleared_tables,
+                waived=['Item is hidden'] if key in hidden_approved or item.table.casefold() in hidden_tables else [])
             if reasons:
                 reject("SMC-D005", f"Review required for {analyzer.format_item_ref(item.key)}: "
                        + "; ".join(reasons), *item.key)

@@ -11,7 +11,7 @@ def project(tmp_path):
         'table Sales\n\tcolumn Amount\n\tcolumn Guarded\n'
         '\tmeasure Retained = SUM(Sales[Guarded])\n\t\tisHidden\n'
         '\tmeasure ExtensionTarget = 1\n\tmeasure ParameterTarget = 1\n'
-        '\tmeasure Spare = 1\n\tmeasure Leaf = 1\n\tmeasure Top = [Leaf]\n', encoding='utf-8')
+        '\tmeasure Spare = 1\n\tmeasure MissingUrl = 1\n\tmeasure Leaf = 1\n\tmeasure Top = [Leaf]\n', encoding='utf-8')
     (tables / 'Links.tmdl').write_text('table Links\n\tcolumn Value\n', encoding='utf-8')
     (tables / 'FP.tmdl').write_text(
         'table FP\n\tcolumn Label\n\tcolumn Fields\n\tcolumn Order\n'
@@ -43,7 +43,7 @@ def test_every_safe_unused_item_can_be_planned_in_one_batch(tmp_path):
     assert any(row['name'] == 'Spare' for row in safe)
     plan = change_plan.create_plan(model, reports, [{'kind': 'actions', 'actions': actions(safe)}])
     assert plan['changes']
-    assert not any(row['name'] in {'Value', 'ParameterTarget', 'ExtensionTarget', 'Guarded'} for row in safe)
+    assert not any(row['name'] in {'Value', 'ParameterTarget', 'ExtensionTarget', 'Guarded', 'MissingUrl'} for row in safe)
 
 
 def test_report_reference_matching_is_case_insensitive(tmp_path):
@@ -76,3 +76,80 @@ def test_unused_non_safe_items_explain_inferred_columns_and_retained_review_cons
                for r in column['kept_because'])
     usage = query.usage(table='Derived', item='Description')
     assert usage['review_reasons']['total'] and usage['kept_because']
+
+
+def test_one_cascade_plan_deletes_closed_chains_and_unused_calculated_tables(tmp_path, capsys):
+    import json
+    from semantic_model_cleaner import plan_cli
+    model, reports = project(tmp_path)
+    (model / 'definition/tables/Derived.tmdl').write_text(
+        'table Derived\n\tcolumn Description\n\t\tisNameInferred\n'
+        '\tpartition Derived = calculated\n\t\tsource = DATATABLE("Description", STRING, {{"x"}})\n', encoding='utf-8')
+    planfile = tmp_path / 'review/cleanup.json'
+    assert plan_cli.main(['plan', str(tmp_path), '--cleanup', 'unused', '--cascade',
+                          '-o', str(planfile), '--format', 'json']) == 0
+    plan = json.loads(planfile.read_text(encoding='utf-8'))
+    removed = {(a['table'], a['name'], a['item_type']) for op in plan['operations'] for a in op['actions']}
+    assert {('Sales', 'Leaf', 'Measure'), ('Sales', 'Top', 'Measure'), ('Derived', 'Derived', 'Table')} <= removed
+    assert not any(name in {'Guarded', 'Retained', 'ExtensionTarget', 'ParameterTarget', 'Value'} for _, name, _ in removed)
+    assert plan['cleanup']['kept'] and all(r['kept_because'] for r in plan['cleanup']['kept'])
+    assert plan['cleanup']['held_back_hidden'] == 1
+    assert change_plan.apply_plan(plan, tmp_path / 'journal')['ok']
+    assert change_plan.verify_plan(plan)['ok']
+    assert not (model / 'definition/tables/Derived.tmdl').exists()
+    assert change_plan.restore_plan(plan, tmp_path / 'journal')['ok']
+
+
+def test_calculated_table_removal_is_blocked_by_retained_bare_table_consumer(tmp_path):
+    from semantic_model_cleaner.cleanup_flow import cleanup_actions
+    model, _ = project(tmp_path)
+    (model / 'definition/tables/Derived.tmdl').write_text(
+        'table Derived\n\tcolumn X\n\t\tisNameInferred\n'
+        '\tpartition Derived = calculated\n\t\tsource = {1}\n', encoding='utf-8')
+    source = model / 'definition/tables/Sales.tmdl'
+    source.write_text(source.read_text(encoding='utf-8') + '\tmeasure CountDerived = COUNTROWS(Derived)\n\t\tisHidden\n', encoding='utf-8')
+    query = listing(model)
+    result = cleanup_actions(query, cascade=True)
+    assert not any(a['table'] == 'Derived' for a in result['actions'])
+    assert any('CountDerived' in reason['message'] for reason in result['kept'][('derived', 'derived')])
+
+
+def test_hidden_only_review_requires_explicit_opt_in(tmp_path):
+    from semantic_model_cleaner.cleanup_flow import create_cleanup_plan
+    model, reports = project(tmp_path)
+    # Retained is hidden, but is otherwise unused; its column becomes removable together.
+    regular = create_cleanup_plan(tmp_path, model, reports, cascade=True)
+    assert not any(a['name'] == 'Retained' for op in regular['operations'] for a in op['actions'])
+    opted = create_cleanup_plan(tmp_path, model, reports, cascade=True, include_review=True)
+    assert any(a['name'] == 'Retained' and a['allow_hidden'] for op in opted['operations'] for a in op['actions'])
+    assert opted['cleanup']['held_back_hidden'] == 0
+    assert change_plan.apply_plan(opted, tmp_path / 'journal')['ok']
+    assert change_plan.verify_plan(opted)['ok']
+
+
+def test_unused_inferred_calculated_table_is_offered_as_one_table_action(tmp_path):
+    model, _ = project(tmp_path)
+    (model / 'definition/tables/Derived.tmdl').write_text(
+        'table Derived\n\tcolumn X\n\t\tisNameInferred\n'
+        '\tpartition Derived = calculated\n\t\tsource = {1}\n', encoding='utf-8')
+    result = listing(model).items(unused=True, limit=None)
+    table = next(row for row in result['table_removals'] if row['table'] == 'Derived')
+    assert table['cleanup'] == 'Safe' and table['action']['item_type'] == 'Table'
+    tables = listing(model).items(unused=True, item_type='table', limit=None)['items']['items']
+    assert any(row['table'] == 'Derived' and row['cleanup'] == 'Safe' for row in tables)
+
+
+def test_other_models_report_does_not_retain_unused_calculated_table(tmp_path):
+    from semantic_model_cleaner.cleanup_flow import create_cleanup_plan
+    model, reports = project(tmp_path)
+    (model / 'definition/tables/Derived.tmdl').write_text(
+        'table Derived\n\tcolumn X\n\t\tisNameInferred\n'
+        '\tpartition Derived = calculated\n\t\tsource = {1}\n', encoding='utf-8')
+    other = tmp_path / 'Legacy.Report'
+    write_json(other / 'definition.pbir', {'datasetReference': {'byConnection': {
+        'connectionString': 'Data Source=powerbi://example;Initial Catalog=Legacy;'}}})
+    write_json(other / 'definition/report.json', {'Column': {
+        'Expression': {'SourceRef': {'Entity': 'Derived'}}, 'Property': 'X'}})
+    plan = create_cleanup_plan(tmp_path, model, reports, cascade=True,
+                               known_reports=[*reports, other], report_search_roots=[tmp_path])
+    assert any(a['table'] == 'Derived' and a['item_type'] == 'Table' for op in plan['operations'] for a in op['actions'])

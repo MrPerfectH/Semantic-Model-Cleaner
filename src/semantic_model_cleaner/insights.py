@@ -76,6 +76,7 @@ class Insights:
     def __init__(self, root, model, reports, scope):
         self.root, self.model, self.reports, self.scope = root, model, reports, scope
         self._checked_cleanup = None
+        self._checked_tables = None
         self.result = analyzer.analyze(root, model_paths=[model], report_paths=reports,
                                        allow_model_only=not scope["report_usage_checked"])
         self.scope["scan_complete"] = self.result["coverage"]["complete"]
@@ -286,11 +287,29 @@ class Insights:
             matches.append(key)
         return sorted(matches, key=lambda k: (k[2].casefold(), k[3].casefold(), k[1], k[0]))
 
+    def _table_cleanup(self):
+        if self._checked_tables is None:
+            from .cleanup_flow import table_actions, checked_subset
+            candidates = table_actions(self.model, self.result, include_review=True)
+            checked = checked_subset(self.model, self.reports,
+                                     [{k: v for k, v in action.items() if k != 'allow_hidden'} for action in candidates], self.result)
+            self._checked_tables = []
+            for action in candidates:
+                reasons = checked['kept'].get(analyzer.normalize_key(action['table'], action['name']), [])
+                safe = not reasons and self.scope['selection_complete'] and not self.scope['unverified_reports']
+                self._checked_tables.append(dict(type='Table', table=action['table'], name=action['table'], source='model',
+                    status='NOT USED', cleanup='Safe' if safe else 'Review',
+                    kept_because=[dict(rule_id=r['rule_id'], reason=r['message'], location=r.get('location', {}),
+                                       dependency=r.get('dependency', {})) for r in reasons],
+                    action={key: value for key, value in action.items() if key != 'allow_hidden'}))
+        return self._checked_tables
+
     def items(self, *, limit=20, offset=0, used_in_reports=False, unused=False, **filters):
         matches = self.match(**filters)
         if unused:
-            matches = [key for key in matches if key in self.rows
-                       and analyzer.row_usage_status(self.rows[key]) == "NOT USED"]
+            matches = [key for key in matches if (key in self.rows and analyzer.row_usage_status(self.rows[key]) == "NOT USED")
+                       or (key[1] == 'Table' and self.children[key[2]] and all(
+                           analyzer.row_usage_status(self.rows[child]) == 'NOT USED' for child in self.children[key[2]]))]
         if used_in_reports:
             if not self.scope["report_usage_checked"]:
                 raise QueryError("--used-in-reports requires Report analysis; omit --model-only.")
@@ -311,10 +330,18 @@ class Insights:
                     "indirect" if row["status"].startswith("INDIRECT") else "used")
                 identity["via"] = [self.identity(consumer) for consumer in sorted(self.reverse[key])
                                    if consumer in self.rows]
+            elif key[1] == 'Table':
+                option = next((row for row in self._table_cleanup() if row['table'] == key[2]), None)
+                if option:
+                    identity.update(option)
+                else:
+                    identity.update(cleanup='Review', kept_because=[dict(rule_id='SMC-D005',
+                        reason='Review whole-table scope and retained dependencies before deleting this table.')])
             rows.append(identity)
         page = window(matches, limit, offset)
         page["items"] = rows
-        return {**self._base(limit, offset), "items": page}
+        return {**self._base(limit, offset), "items": page,
+                **({'table_removals': self._table_cleanup()} if unused else {})}
 
     def cleanup_groups(self, *, limit=20, offset=0):
         """Preview dead measure components; validate group deletion with existing policy."""

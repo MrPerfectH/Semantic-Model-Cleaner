@@ -1360,6 +1360,36 @@ def _owned_description_start(lines: list[str], declaration: int) -> int:
     return start
 
 
+def delete_table(model_path: Path, table: str, *, cache=None) -> dict:
+    """Remove one consolidated table declaration, its memberships and model ref."""
+    declarations = []
+    for path in cache.item_files() if cache is not None else _item_files(model_path):
+        lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
+        for start, end in _table_declaration_blocks(lines, table):
+            declarations.append((path, lines, start, end))
+    if len(declarations) != 1:
+        return {'ok': False, 'error': f"Whole-table deletion requires one consolidated declaration for '{table}'."}
+    path, lines, start, end = declarations[0]
+    try:
+        membership_edits = prepare_membership_edits(model_path, table=table, name=table,
+                                                     item_type='Table', delete_table=True)
+    except MembershipError as exc:
+        return {'ok': False, 'error': str(exc)}
+    start = _owned_description_start(lines, start)
+    text = ''.join(lines[:start] + lines[end:])
+    if text.strip():
+        path.write_bytes(text.encode('utf-8'))
+    else:
+        path.unlink()
+    _delete_all_relationships_for_table(model_path, table)
+    _delete_table_ref_from_model(model_path, table)
+    for member, content in membership_edits.items():
+        member.write_bytes(content)
+    if cache is not None:
+        cache.clear()
+    return {'ok': True, 'table_deleted': True, 'file': str(path), 'action': 'delete', 'item': table}
+
+
 def delete_item(
     model_path: Path,
     table: str,
@@ -1373,6 +1403,8 @@ def delete_item(
     If the item is a column, also removes any relationships referencing it.
     If the table has no remaining columns or measures, deletes the table file
     and all its relationships."""
+    if item_type.casefold() == 'table':
+        return delete_table(model_path, table, cache=cache)
     source = _find_item_source(model_path, table, name, item_type, source_file=source_file, cache=cache)
     if not source:
         return {"ok": False, "error": f"Item '{name}' not found in table '{table}' TMDL source files"}
@@ -1676,7 +1708,7 @@ def _validate_action(model_path: Path, act: dict, cache: BatchFileCache | None =
         if not value:
             return {**result, "ok": False, "error": f"Missing field '{field_name}' in action"}
 
-    if action == "move_to_table_group":
+    if action == "move_to_table_group" or (action == 'delete' and item_type.casefold() == 'table'):
         tmdl_file = _find_table_declaration_file(model_path, table)
         if not tmdl_file:
             return {**result, "ok": False, "error": f"TMDL table declaration not found for table '{table}'"}
