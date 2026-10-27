@@ -131,7 +131,7 @@ def create_cleanup_plan(project, model, reports, *, cascade=False, include_revie
     plan['cleanup'] = dict(mode='unused', cascade=cascade, include_review=include_review, action_count=len(actions),
         deleted_items=sum(1 for row in query.result['items'] if row['item'].source_kind == 'model'
                           and (analyzer.normalize_key(*row['item'].key) in removed or row['item'].table.casefold() in tables)),
-        deleted_tables=sorted(tables), kept=kept,
+        deleted_tables=sorted(a['table'] for a in actions if a['item_type'] == 'Table'), kept=kept,
         held_back_hidden=sum(set(row['review_triggers']) == {'Item is hidden'} and analyzer.row_usage_status(row) == 'NOT USED'
                              and analyzer.normalize_key(*row['item'].key) not in removed and row['item'].table.casefold() not in tables
                              for row in query.result['items'] if row['item'].source_kind == 'model'))

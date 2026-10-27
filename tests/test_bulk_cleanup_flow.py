@@ -153,3 +153,25 @@ def test_other_models_report_does_not_retain_unused_calculated_table(tmp_path):
     plan = create_cleanup_plan(tmp_path, model, reports, cascade=True,
                                known_reports=[*reports, other], report_search_roots=[tmp_path])
     assert any(a['table'] == 'Derived' and a['item_type'] == 'Table' for op in plan['operations'] for a in op['actions'])
+
+
+def test_whole_table_writer_preserves_neighbour_bytes_and_line_endings(tmp_path):
+    from semantic_model_cleaner import tmdl_writer
+    model, _ = project(tmp_path)
+    path = model / 'definition/tables/Mixed.tmdl'
+    neighbor = b'table Neighbor\r\n\tcolumn Keep\r\n\t\tdescription: untouched\r\n'
+    path.write_bytes(b'table Derived\r\n\tcolumn X\r\n\t\tisNameInferred\r\n' + neighbor)
+    assert tmdl_writer.delete_table(model, 'Derived')['ok']
+    assert path.read_bytes() == neighbor
+
+
+def test_unrelated_broken_query_does_not_retain_same_named_model_measure(tmp_path):
+    model, reports = project(tmp_path)
+    source = model / 'definition/tables/Sales.tmdl'
+    source.write_text(source.read_text(encoding='utf-8') + '\tmeasure Unrelated = 1\n', encoding='utf-8')
+    write_json(reports[0] / 'definition/pages/P/visuals/Broken/visual.json', {'visual': {'query': {'Measure': {
+        'Expression': {'SourceRef': {'Entity': 'MissingTable'}}, 'Property': 'Unrelated'}}}})
+    rows = listing(model).items(unused=True, limit=None)['items']['items']
+    assert next(r for r in rows if r['name'] == 'Unrelated')['cleanup'] == 'Safe'
+    assert change_plan.create_plan(model, reports, [dict(kind='actions', actions=[
+        dict(action='delete', table='Sales', name='Unrelated', item_type='Measure')])])['changes']

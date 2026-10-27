@@ -1364,7 +1364,7 @@ def delete_table(model_path: Path, table: str, *, cache=None) -> dict:
     """Remove one consolidated table declaration, its memberships and model ref."""
     declarations = []
     for path in cache.item_files() if cache is not None else _item_files(model_path):
-        lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
+        lines = path.read_bytes().decode('utf-8').splitlines(keepends=True)
         for start, end in _table_declaration_blocks(lines, table):
             declarations.append((path, lines, start, end))
     if len(declarations) != 1:

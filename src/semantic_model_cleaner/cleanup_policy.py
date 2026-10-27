@@ -175,14 +175,16 @@ def _evaluate_deletion_policy(
                    f"({reference.artifact_path}: {reference.source_path}).", reference.table,
                    location=location(reference), dependency={'table': reference.table, 'name': reference.name,
                                                             'item_type': reference.ref_type})
-    # Measures have model-wide names. An unresolved Report entity binding is
-    # not evidence that its same-named model measure can be deleted safely.
+    # Visual property expressions can name a measure under a contextual entity
+    # rather than its home table. Retain same-named model candidates for these
+    # unresolved expressions; do not invent uses from unrelated broken queries.
     measure_names = {}
     for key, row in rows.items():
         if row['item'].item_type == 'Measure':
             measure_names.setdefault(key[1], []).append(key)
     for reference in analysis.get('report_references', []):
-        if reference.ref_type != 'Measure':
+        if (reference.ref_type != 'Measure' or '.properties.' not in reference.source_path
+                or '.expr.' not in reference.source_path):
             continue
         qualified = analyzer.normalize_key(reference.table, reference.name)
         if qualified in rows and rows[qualified]['item'].item_type == 'Measure':
