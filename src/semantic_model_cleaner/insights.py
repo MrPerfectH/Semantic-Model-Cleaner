@@ -295,7 +295,10 @@ class Insights:
                                      [{k: v for k, v in action.items() if k != 'allow_hidden'} for action in candidates], self.result)
             self._checked_tables = []
             for action in candidates:
-                reasons = checked['kept'].get(analyzer.normalize_key(action['table'], action['name']), [])
+                reasons = list(checked['kept'].get(analyzer.normalize_key(action['table'], action['name']), []))
+                if not self.scope['selection_complete'] or self.scope['unverified_reports']:
+                    reasons.append(dict(rule_id='SMC-D001', message='Report selection or verified binding coverage is incomplete.',
+                                        location={'file': str(self.model)}, dependency={}))
                 safe = not reasons and self.scope['selection_complete'] and not self.scope['unverified_reports']
                 self._checked_tables.append(dict(type='Table', table=action['table'], name=action['table'], source='model',
                     status='NOT USED', cleanup='Safe' if safe else 'Review',
@@ -341,7 +344,10 @@ class Insights:
         page = window(matches, limit, offset)
         page["items"] = rows
         return {**self._base(limit, offset), "items": page,
-                **({'table_removals': self._table_cleanup()} if unused else {})}
+                **({'table_removals': [row for row in self._table_cleanup()
+                    if (filters.get('source', 'model') in {'model', 'all'})
+                    and (not filters.get('table') or row['table'].casefold() == filters['table'].casefold())
+                    and (not filters.get('search') or filters['search'].casefold() in row['table'].casefold())]} if unused else {})}
 
     def cleanup_groups(self, *, limit=20, offset=0):
         """Preview dead measure components; validate group deletion with existing policy."""

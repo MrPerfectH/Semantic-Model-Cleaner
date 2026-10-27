@@ -116,7 +116,14 @@ def create_cleanup_plan(project, model, reports, *, cascade=False, include_revie
     for key, row in query.rows.items():
         if key[0] != 'model' or analyzer.row_usage_status(row) != 'NOT USED' or (analyzer.normalize_key(key[2], key[3]) in removed or key[2].casefold() in tables):
             continue
-        reasons = query._kept_because(key)
+        reasons = []
+        for reason in query._kept_because(key):
+            dependency = reason.get('dependency') or {}
+            if dependency.get('source') == 'model' or dependency.get('source_kind') == 'model':
+                owner = analyzer.normalize_key(dependency.get('table', ''), dependency.get('name', ''))
+                if owner in removed or owner[0] in tables:
+                    continue
+            reasons.append(reason)
         for violation in selected['kept'].get(analyzer.normalize_key(key[2], key[3]), []):
             reason = dict(rule_id=violation['rule_id'], reason=violation['message'],
                           location=violation.get('location', {'file': row['item'].source_file}),

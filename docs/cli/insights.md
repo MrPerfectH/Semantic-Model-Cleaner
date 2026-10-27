@@ -253,7 +253,7 @@ items out of Safe. All Safe items from the same complete scope can be submitted
 in one deletion batch; source changes still require a fresh preview.
 
 Every non-Safe item includes `kept_because`: records with `rule_id`, `reason`,
-`dependency`, `location` and `resolution`. They distinguish retained Review
+`dependency` and `location`, plus item-level `resolution` guidance. They distinguish retained Review
 consumers, NAMEOF targets, Report References, calendar/detail-rows declarations,
 hidden flags and engine-inferred columns. Inferred columns of calculated tables
 require an expression edit or a reviewed whole-table removal; deleting their

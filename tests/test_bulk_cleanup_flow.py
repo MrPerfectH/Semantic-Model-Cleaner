@@ -175,3 +175,27 @@ def test_unrelated_broken_query_does_not_retain_same_named_model_measure(tmp_pat
     assert next(r for r in rows if r['name'] == 'Unrelated')['cleanup'] == 'Safe'
     assert change_plan.create_plan(model, reports, [dict(kind='actions', actions=[
         dict(action='delete', table='Sales', name='Unrelated', item_type='Measure')])])['changes']
+
+
+def test_table_option_in_partial_scope_has_a_concrete_keep_reason(tmp_path):
+    model, reports = project(tmp_path)
+    (model / 'definition/tables/Derived.tmdl').write_text(
+        'table Derived\n\tcolumn X\n\t\tisNameInferred\n'
+        '\tpartition Derived = calculated\n\t\tsource = {1}\n', encoding='utf-8')
+    other = tmp_path / 'Second.Report'
+    write_json(other / 'definition.pbir', {'datasetReference': {'byPath': {'path': '../M.SemanticModel'}}})
+    write_json(other / 'definition/report.json', {})
+    query = insights.Insights(*insights.select_scope(tmp_path, reports=reports))
+    option = next(row for row in query.items(unused=True, limit=None)['table_removals'] if row['table'] == 'Derived')
+    assert option['cleanup'] == 'Review' and option['kept_because']
+
+
+def test_cleanup_kept_reasons_do_not_name_a_consumer_the_plan_deletes(tmp_path):
+    from semantic_model_cleaner.cleanup_flow import create_cleanup_plan
+    model, reports = project(tmp_path)
+    path = model / 'definition/tables/Sales.tmdl'
+    path.write_text(path.read_text(encoding='utf-8') + '\tmeasure Temporary = SUM(Sales[Guarded])\n', encoding='utf-8')
+    plan = create_cleanup_plan(tmp_path, model, reports, cascade=True)
+    assert any(a['name'] == 'Temporary' for op in plan['operations'] for a in op['actions'])
+    kept = next(r for r in plan['cleanup']['kept'] if r['name'] == 'Guarded')
+    assert all(reason.get('dependency', {}).get('name') != 'Temporary' for reason in kept['kept_because'])
