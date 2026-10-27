@@ -68,3 +68,31 @@ def summary(blockers, operations):
             'blocked_actions': [dict(operation_index=oi, action_index=ai) for oi, ai in sorted(blocked)],
             'remaining_actions': [dict(operation_index=oi, action_index=ai) for oi, ai in sorted(all_actions - blocked)],
             'remaining_actions_require_preview': True}
+
+
+def input_blocker(reason):
+    return dict(rule_id='SMC-PLAN-INPUT', operation_index=None, action_index=None,
+                table='', name='', item_type='', reason=reason,
+                location=dict.fromkeys(('artifact', 'report', 'page', 'visual', 'file', 'json_path'), ''),
+                resolution='Correct the selected scope or input and generate a fresh preview.')
+
+
+def schema_blockers(comparison, after):
+    output = []
+    for error in comparison['new_errors']:
+        blocker = input_blocker('New PBIR schema error: ' + error['message'])
+        blocker.update(rule_id='SMC-PLAN-SCHEMA', resolution='Repair the metadata or remove the action introducing this schema error.')
+        blocker['location'].update(artifact=error['file'].split('/')[0], file=error['file'], json_path=error['path'])
+        output.append(blocker)
+    for file in comparison['lost_validation']:
+        blocker = input_blocker('Declared schema validation was lost: ' + file)
+        blocker.update(rule_id='SMC-PLAN-SCHEMA')
+        blocker['location'].update(artifact=file.split('/')[0], file=file)
+        output.append(blocker)
+    for record in after['files']:
+        if record['truncated']:
+            blocker = input_blocker('Schema error limit exceeded; validation evidence is incomplete: ' + record['path'])
+            blocker.update(rule_id='SMC-PLAN-SCHEMA')
+            blocker['location'].update(file=record['path'])
+            output.append(blocker)
+    return output

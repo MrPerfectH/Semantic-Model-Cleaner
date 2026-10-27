@@ -569,7 +569,9 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
         schema_after = metadata_validation.validate_metadata(after, memo=schema_memo, previous=schema_before)
         schema_comparison = metadata_validation.compare_validation(schema_before, schema_after)
         if schema_comparison["new_errors"] or schema_comparison["lost_validation"] or schema_comparison["truncated"]:
-            raise PlanError("Change introduces schema errors, loses declared schema validation, or exceeds the schema error limit. Repair the metadata before applying.")
+            from .plan_diagnostics import schema_blockers
+            raise PlanError("Change introduces schema errors, loses declared schema validation, or exceeds the schema error limit. Repair the metadata before applying.",
+                            blockers=schema_blockers(schema_comparison, schema_after), operations=operations)
         analysis = _analyze(staged)
         added = _problems(analysis) - _problems(baseline, operations)
         if added:

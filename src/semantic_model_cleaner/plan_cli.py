@@ -131,6 +131,9 @@ def main(argv=None):
         if isinstance(exc, change_plan.PlanError) and exc.blockers:
             from .plan_diagnostics import summary
             error.update(summary(exc.blockers, exc.operations))
+        if argv and argv[0] == 'plan' and 'blockers' not in error:
+            from .plan_diagnostics import input_blocker
+            error['blockers'] = [input_blocker(str(exc))]
         if isinstance(exc, change_plan.PartialReportScopeError):
             error['error'] += (' Omit --report-path and --report to select them all, or explicitly allow a partial '
                                'Report scope (--allow-partial-report-scope) and check the other Reports yourself.')

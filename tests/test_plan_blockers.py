@@ -39,3 +39,12 @@ def test_new_reference_errors_are_complete_sentences_with_structured_owners(tmp_
     assert {b['operation_index'] for b in result['blockers']} == {0, 1}
     assert all(b['rule_id'] == 'SMC-PLAN-REFERENCE' and b['resolution'] for b in result['blockers'])
     assert "('model'," not in result['error']
+
+
+def test_invalid_plan_inputs_also_have_structured_blockers(tmp_path, capsys):
+    from semantic_model_cleaner import plan_cli
+    assert plan_cli.main(['plan', str(tmp_path), '--cleanup', 'unused',
+                          '-o', str(tmp_path / 'plan.json'), '--format', 'json']) == 2
+    result = json.loads(capsys.readouterr().out)
+    assert result['blockers'][0]['rule_id'] == 'SMC-PLAN-INPUT'
+    assert result['blockers'][0]['resolution']
