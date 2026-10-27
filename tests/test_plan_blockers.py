@@ -48,3 +48,21 @@ def test_invalid_plan_inputs_also_have_structured_blockers(tmp_path, capsys):
     result = json.loads(capsys.readouterr().out)
     assert result['blockers'][0]['rule_id'] == 'SMC-PLAN-INPUT'
     assert result['blockers'][0]['resolution']
+
+
+def test_same_named_reports_keep_distinct_blocker_locations(tmp_path, capsys):
+    import shutil
+    from semantic_model_cleaner import plan_cli
+    from test_cli_insights import write_json
+    model, reports = project(tmp_path)
+    twin = tmp_path / 'Folder/R.Report'
+    shutil.copytree(reports[0], twin)
+    write_json(twin / 'definition.pbir', {'datasetReference': {'byPath': {'path': '../../M.SemanticModel'}}})
+    operations = tmp_path / 'ops.json'
+    operations.write_text(json.dumps([dict(kind='actions', actions=[
+        dict(action='delete', table='Links', name='Value', item_type='Column')])]), encoding='utf-8')
+    assert plan_cli.main(['plan', str(tmp_path), '--operations', str(operations),
+                          '-o', str(tmp_path / 'plan.json'), '--format', 'json']) == 2
+    payload = json.loads(capsys.readouterr().out)
+    locations = {b['location']['report_path'] for b in payload['blockers']}
+    assert locations == {str(reports[0]), str(twin)}

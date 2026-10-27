@@ -303,7 +303,9 @@ def _evaluate_deletion_policy(
                 reject("SMC-D005", f"Review required for {analyzer.format_item_ref(item.key)}: "
                        + "; ".join(reasons), *item.key)
     # Keep diagnostics deterministic and avoid duplicate edges from parser paths.
-    unique = {(v["rule_id"], v["table"], v["name"], v["message"]): v for v in violations}
+    unique = {(v["rule_id"], v["table"], v["name"], v["message"],
+               tuple(sorted((key, str(value)) for key, value in v.get('location', {}).items()))): v
+              for v in violations}
     violations[:] = [unique[key] for key in sorted(unique)]
     return result()
 
