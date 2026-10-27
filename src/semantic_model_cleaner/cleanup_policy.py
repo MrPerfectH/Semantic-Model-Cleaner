@@ -151,6 +151,14 @@ def _evaluate_deletion_policy(
     # Removing the last model item may remove its table. Bare-table DAX consumers
     # are not represented by item-to-item edges.
     removed_tables = {key[0] for key in targets if all(k in targets for k in rows if k[0] == key[0])}
+    # A Report can reference an existing table but a missing item in it. The
+    # last-item writer removes that table; do not turn an existing missing-item
+    # problem (including visual property expressions) into a missing table.
+    for reference in analysis.get("report_references", []):
+        if reference.table.casefold() in removed_tables:
+            reject("SMC-D006", f"Table {reference.table} is required by a Report Reference in "
+                   f"{reference.report}, page {reference.page}, visual {reference.visual_id} "
+                   f"({reference.artifact_path}: {reference.source_path}).", reference.table)
     # Resolved metadata constructs (calculation items, KPI, detail-rows, format-string
     # and coverage expressions, calendar mappings) need their targets while the
     # construct itself remains. Table-owned constructs go only with their table.

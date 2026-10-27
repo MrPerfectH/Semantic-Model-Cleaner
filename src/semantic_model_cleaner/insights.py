@@ -75,6 +75,7 @@ def select_scope(project, model=None, reports=None, model_only=False):
 class Insights:
     def __init__(self, root, model, reports, scope):
         self.root, self.model, self.reports, self.scope = root, model, reports, scope
+        self._checked_cleanup = None
         self.result = analyzer.analyze(root, model_paths=[model], report_paths=reports,
                                        allow_model_only=not scope["report_usage_checked"])
         self.scope["scan_complete"] = self.result["coverage"]["complete"]
@@ -178,7 +179,22 @@ class Insights:
                     queue.append(other)
         return paths
 
+    def _safe_cleanup(self):
+        if self._checked_cleanup is None:
+            from .cleanup_flow import checked_subset
+            actions = [{'action': 'delete', 'table': key[2], 'name': key[3], 'item_type': key[1]}
+                       for key in self.rows if key[0] == 'model' and self._basic_recommendation(key) == 'Safe']
+            self._checked_cleanup = checked_subset(self.model, self.reports, actions, self.result)
+        return self._checked_cleanup
+
     def _recommendation(self, key):
+        recommendation = self._basic_recommendation(key)
+        if recommendation == 'Safe' and key[0] == 'model':
+            if analyzer.normalize_key(key[2], key[3]) in self._safe_cleanup()['kept']:
+                return 'Review'
+        return recommendation
+
+    def _basic_recommendation(self, key):
         row = self.rows[key]
         risk = row.get("removal_risk")
         # These queries recommend deleting one item at a time. Even an idle
