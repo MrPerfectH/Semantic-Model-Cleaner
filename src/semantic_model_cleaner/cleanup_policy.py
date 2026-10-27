@@ -84,8 +84,9 @@ def _evaluate_deletion_policy(
     # The public entry point always scans afresh before any mutation workflow.
     if analysis is None:
         try:
-            analysis = analyzer.analyze(model_path.parent, model_paths=[model_path], report_paths=reports,
-                                        cache=cache)
+            analysis = analyzer.analyze((cache.workspace if cache is not None else None) or model_path.parent,
+                                        model_paths=[model_path], report_paths=reports,
+                                        cache=cache, suggestions=False)
         except (Exception, SystemExit) as exc:
             reject("SMC-D001", f"Fresh analysis failed: {exc}")
             return result()

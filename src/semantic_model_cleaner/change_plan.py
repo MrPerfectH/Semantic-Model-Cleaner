@@ -278,11 +278,13 @@ def _execute(op, roots):
 def _analyze(roots, cache=None):
     try:
         reports = {k: p for k, p in roots.items() if k != 'model'}
+        reuse = cache is not None
         if cache is None:
             cache = analyzer.AnalysisCache()
         # Plans compare problem identities; repair suggestions are never used here.
-        result = analyzer.analyze(roots['model'].parent, model_paths=[roots['model']],
-                                  report_paths=list(reports.values()), suggestions=False, cache=cache)
+        result = analyzer.analyze(cache.workspace or roots['model'].parent, model_paths=[roots['model']],
+                                  report_paths=list(reports.values()), suggestions=False, cache=cache,
+                                  persistent_cache=reuse)
         # Report display names are not unique. Group issues by their exact
         # artifact so identical visual paths in distinct Reports never hide
         # new errors. An issue without a known Report counts for every Report.
@@ -506,6 +508,7 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
     # The originals are read-only here and the hash check at the end rejects any
     # change to them, so the policy check and the baseline analysis share one parse.
     analysis_cache = analyzer.AnalysisCache()
+    analysis_cache.workspace = project
     policy = evaluate_deletion_policy(originals['model'], list(originals.values())[1:], actions,
                                       cache=analysis_cache)
     if not policy['ok']:

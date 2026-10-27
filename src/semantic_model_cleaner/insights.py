@@ -78,7 +78,7 @@ class Insights:
         self._checked_cleanup = None
         self._checked_tables = None
         self.result = analyzer.analyze(root, model_paths=[model], report_paths=reports,
-                                       allow_model_only=not scope["report_usage_checked"])
+                                       allow_model_only=not scope["report_usage_checked"], suggestions=False)
         self.scope["scan_complete"] = self.result["coverage"]["complete"]
         self.rows = {analyzer.item_identity(row["item"]): row for row in self.result["items"]}
         self.graph = defaultdict(set)
