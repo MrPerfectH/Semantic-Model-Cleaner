@@ -129,3 +129,32 @@ def test_model_only_conflict_and_capability_discovery(project, tmp_path):
     for command in capabilities["commands"]:
         if command["name"] != "capabilities":
             assert {"--model-path", "--report-path"} <= {option["flag"] for option in command["options"]}
+
+
+@pytest.mark.parametrize('absolute', [False, True])
+def test_operations_report_paths_resolve_from_project_outside_cwd(project, tmp_path, absolute):
+    root, model, reports, operations = project
+    operation = {'kind': 'rename', 'report_paths': [
+        str(path if absolute else path.relative_to(root)) for path in reports],
+        'column_renames': [{'table': 'Sales', 'name': 'Spare', 'target_name': 'Available'}]}
+    operations.write_text(json.dumps([operation]), encoding='utf-8')
+    target = tmp_path / 'review/relative-plan.json'
+    payload = run(tmp_path, ['plan', root, '--model-path', model.relative_to(root),
+                            '--operations', operations, '-o', target, '--format', 'json'])
+    assert payload['ok']
+    saved = json.loads(target.read_text(encoding='utf-8'))
+    assert saved['operations'][0]['report_paths'] == [str(path) for path in reports]
+    assert any('Available' in change['diff'] for change in saved['changes'])
+
+
+def test_operations_report_path_error_names_outside_and_scope_reports(project, tmp_path):
+    root, model, reports, operations = project
+    operations.write_text(json.dumps([{'kind': 'report_repair',
+        'report_paths': ['Reports/Missing.Report'],
+        'column_renames': [{'table': 'Sales', 'name': 'Spare', 'target_name': 'Available'}]}]), encoding='utf-8')
+    target = tmp_path / 'review/refused.json'
+    result = run(tmp_path, ['plan', root, '--model-path', model.relative_to(root),
+                           '--operations', operations, '-o', target, '--format', 'json'], expected=2)
+    assert 'Reports/Missing.Report' in result['error']
+    assert all(str(report) in result['error'] for report in reports)
+    assert not target.exists()

@@ -61,6 +61,19 @@ Cleanup recommendation: Blocked
 
 This is illustrative output, not a claim about a bundled or private project.
 
+Compact queries (`usage`, `items`, `summary`, `review`) read fresh metadata but
+skip Report Extension Measure deletion assessment. Full analysis and web output
+still include that evidence, and a Report Extension Measure deletion plan always
+runs the assessment before allowing deletion. Other plans, including column
+renames, do not compute it. Python callers that display deletion evidence opt in
+with `analyze(..., include_report_measure_deletions=True)`.
+
+Declared PBIR schema checks reuse process-local results for identical document
+content and the same error limit and schema registry, including staged copies.
+A content change is revalidated even when its size and timestamps are unchanged.
+This cache stores validation evidence only; it does not cache whole analyses or
+persist project metadata between CLI invocations.
+
 ## Selection and identity
 
 Prefer `--model-path` and repeated `--report-path` for exact PROJECT-relative

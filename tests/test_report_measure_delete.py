@@ -188,7 +188,8 @@ def test_minimal_writer_preserves_all_retained_bytes(tmp_path, deleted):
 def test_api_and_cli_export_expose_eligibility_and_exact_identity(tmp_path, monkeypatch):
     from semantic_model_cleaner import webapp
     model, reports = project(tmp_path)
-    results = analyzer.analyze(tmp_path, model_paths=[model], report_paths=reports)
+    results = analyzer.analyze(tmp_path, model_paths=[model], report_paths=reports,
+                               include_report_measure_deletions=True)
     for payload in (webapp._serialize_results(results, model_paths=[model]),
                     json.loads(analyzer.format_json_output(results))):
         local = [r for r in payload['items'] if r['name'] == 'Unused']
@@ -329,3 +330,65 @@ def test_nonmetadata_report_byte_drift_blocks_apply(tmp_path):
     image.write_bytes(b'changed bytes')
     with pytest.raises(plans.PlanError, match='Stale plan'):
         plans.apply_plan(plan, tmp_path / 'journal')
+
+
+def test_opaque_reference_matching_preserves_casefold_escaping_and_string_boundaries(tmp_path):
+    model, reports = project(tmp_path)
+    extension(reports[0], [('Sales', name, '1') for name in (
+        'Straße', 'A]B', 'CrossBoundary', 'NoMatch')])
+    (reports[0] / 'definition/report.json').write_text(json.dumps({
+        'literal': 'STRASSE', 'escaped': '[A]]B]', 'parts': ['Cross', 'Boundary']}), encoding='utf-8')
+    result = analyzer.analyze(tmp_path, model_paths=[model], report_paths=[reports[0]],
+                              include_report_measure_deletions=True)
+    evidence = {row['entry']['name']: row for row in result['report_measure_deletions']}
+    for name in ('Straße', 'A]B'):
+        assert not evidence[name]['eligible']
+        assert evidence[name]['reasons'] == ['Reference or possible reference remains in definition/report.json.']
+    for name in ('CrossBoundary', 'NoMatch'):
+        assert evidence[name]['eligible']
+        assert evidence[name]['reasons'] == []
+
+
+def test_opaque_metadata_strings_are_casefolded_once_per_document(tmp_path, monkeypatch):
+    from semantic_model_cleaner import report_measure_delete as deletion
+    model, reports = project(tmp_path)
+    probes = []
+
+    class TrackedString(str):
+        def casefold(self):
+            self.calls += 1
+            return super().casefold()
+
+    def strings(document):
+        for value in ('Unused', 'Retained', 'Unrelated'):
+            probe = TrackedString(value)
+            probe.calls = 0
+            probes.append(probe)
+            yield probe
+
+    monkeypatch.setattr(deletion, '_strings', strings)
+    analyzer.analyze(tmp_path, model_paths=[model], report_paths=[reports[0]],
+                     include_report_measure_deletions=True)
+    assert probes and all(probe.calls == 1 for probe in probes)
+
+
+def test_report_deletion_plan_assesses_once_and_retains_full_analysis_evidence(tmp_path, monkeypatch):
+    from semantic_model_cleaner import report_measure_delete as deletion
+    model, reports = project(tmp_path)
+    result = analyzer.analyze(tmp_path, model_paths=[model], report_paths=reports,
+                              include_report_measure_deletions=True)
+    evidence = next(row for row in result['report_measure_deletions']
+                    if row['entry'] == operation(reports[0], 'Unused')['entries'][0])
+    assert evidence['eligible'] and evidence['groupEligible'] and evidence['reasons'] == []
+    calls = []
+    original = deletion.assessment
+
+    def observed(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(deletion, 'assessment', observed)
+    plan = plans.create_plan(model, reports, [operation(reports[0], 'Unused')])
+    assert calls == [1]
+    assert plan['validation']['report_measure_deletions'] == [{
+        **evidence['entry'], 'reason': evidence['reason'], 'required_group': evidence['requiredGroup']}]
