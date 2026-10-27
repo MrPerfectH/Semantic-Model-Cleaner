@@ -51,8 +51,8 @@ def _evaluate_deletion_policy(
     scope = {"model": str(model_path), "reports": [], "complete": False, "cleared_limitations": []}
     confirmations: dict[str, dict] = {}
 
-    def reject(rule_id: str, message: str, table: str = "", name: str = "") -> None:
-        violations.append(dict(rule_id=rule_id, table=table, name=name, message=message))
+    def reject(rule_id: str, message: str, table: str = "", name: str = "", **evidence) -> None:
+        violations.append(dict(rule_id=rule_id, table=table, name=name, message=message, **evidence))
 
     def result() -> dict:
         return {"ok": not violations, "errors": [v["message"] for v in violations],
@@ -105,6 +105,12 @@ def _evaluate_deletion_policy(
             reject("SMC-D003", f"Deletion target does not match a current model item: {table}[{name}].", table, name)
         targets.update(matches)
     items = [row["item"] for row in analysis["items"]]
+    by_identity = {analyzer.item_identity(item): item for item in items}
+
+    def dependency_evidence(identity):
+        item = by_identity[identity]
+        return dict(table=item.table, name=item.name, item_type=item.item_type,
+                    source_kind=item.source_kind, file=item.source_file)
     graphs = analysis.get("dependency_graphs") or analyzer.scoped_dependency_graphs(items)
 
     def removed(identity):
@@ -117,7 +123,8 @@ def _evaluate_deletion_policy(
             for target in dependencies:
                 if removed(target):
                     owner = "" if source[0] == "model" else f" in {source[0]}"
-                    reject("SMC-D006", f"{analyzer.format_item_ref(target[-2:])} is required by retained {analyzer.format_item_ref(source[-2:])}{owner}.", *target[-2:])
+                    reject("SMC-D006", f"{analyzer.format_item_ref(target[-2:])} is required by retained {analyzer.format_item_ref(source[-2:])}{owner}.", *target[-2:], dependency=dependency_evidence(source),
+                           location={'file': by_identity[source].source_file})
     # NAMEOF dependencies live in calculated-table definitions, not item DAX.
     # They remain structural consumers even when the parameter has no report
     # usage. Row deletions alone cannot prove the source definition will vanish
@@ -136,7 +143,9 @@ def _evaluate_deletion_policy(
             target = analyzer.normalize_key(*dependency.key)
             if target in targets:
                 reject("SMC-D006", f"{analyzer.format_item_ref(dependency.key)} is required by NAMEOF in retained "
-                       f"field parameter {parameter.table} ({parameter.source_file}).", *dependency.key)
+                       f"field parameter {parameter.table} ({parameter.source_file}).", *dependency.key,
+                       dependency={'table': parameter.table, 'name': parameter.table, 'item_type': 'Table',
+                                   'file': str(parameter.source_file)}, location={'file': str(parameter.source_file)})
     # Sort-by and hierarchy declarations must remain valid even when their source
     # column currently has no live report references.
     for item in items:
@@ -154,11 +163,14 @@ def _evaluate_deletion_policy(
     # A Report can reference an existing table but a missing item in it. The
     # last-item writer removes that table; do not turn an existing missing-item
     # problem (including visual property expressions) into a missing table.
+    from .plan_diagnostics import location
     for reference in analysis.get("report_references", []):
         if reference.table.casefold() in removed_tables:
             reject("SMC-D006", f"Table {reference.table} is required by a Report Reference in "
                    f"{reference.report}, page {reference.page}, visual {reference.visual_id} "
-                   f"({reference.artifact_path}: {reference.source_path}).", reference.table)
+                   f"({reference.artifact_path}: {reference.source_path}).", reference.table,
+                   location=location(reference), dependency={'table': reference.table, 'name': reference.name,
+                                                            'item_type': reference.ref_type})
     # Resolved metadata constructs (calculation items, KPI, detail-rows, format-string
     # and coverage expressions, calendar mappings) need their targets while the
     # construct itself remains. Table-owned constructs go only with their table.

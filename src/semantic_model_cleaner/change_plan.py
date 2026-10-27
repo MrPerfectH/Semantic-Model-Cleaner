@@ -25,7 +25,10 @@ SCHEMA_VERSION = 1
 
 
 class PlanError(ValueError):
-    pass
+    def __init__(self, message, *, blockers=None, operations=None):
+        super().__init__(message)
+        self.blockers = blockers or []
+        self.operations = operations or []
 
 
 class PartialReportScopeError(PlanError):
@@ -506,7 +509,9 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
     policy = evaluate_deletion_policy(originals['model'], list(originals.values())[1:], actions,
                                       cache=analysis_cache)
     if not policy['ok']:
-        raise PlanError('; '.join(policy['errors']))
+        from .plan_diagnostics import policy_blockers
+        raise PlanError('; '.join(policy['errors']),
+                        blockers=policy_blockers(policy['violations'], operations), operations=operations)
     from . import metadata_validation
     # Unchanged documents validate once; the after snapshot replays their records.
     schema_memo = {}
@@ -568,7 +573,10 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
         analysis = _analyze(staged)
         added = _problems(analysis) - _problems(baseline, operations)
         if added:
-            raise PlanError('Change introduces unresolved references: ' + '; '.join(str(x) for x in sorted(added)))
+            from .plan_diagnostics import reference_blockers
+            blockers = reference_blockers(added, operations)
+            raise PlanError('Change introduces unresolved references: ' + '; '.join(b['reason'] for b in blockers),
+                            blockers=blockers, operations=operations)
     if _hashes(_inventory(originals)) != _hashes(before) or _resource_inventory(originals, operations) != resources:
         raise PlanError('Input changed while preview was being prepared; re-analyze and retry.')
     changes = []

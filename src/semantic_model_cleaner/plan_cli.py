@@ -119,6 +119,9 @@ def main(argv=None):
         return 0
     except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
         error = {'ok': False, 'error': str(exc)}
+        if isinstance(exc, change_plan.PlanError) and exc.blockers:
+            from .plan_diagnostics import summary
+            error.update(summary(exc.blockers, exc.operations))
         if isinstance(exc, change_plan.PartialReportScopeError):
             error['error'] += (' Omit --report-path and --report to select them all, or explicitly allow a partial '
                                'Report scope (--allow-partial-report-scope) and check the other Reports yourself.')

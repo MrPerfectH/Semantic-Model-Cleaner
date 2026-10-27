@@ -291,3 +291,20 @@ byte-equivalence evidence, see [bulk-plan verification](../audits/bulk-plan-2026
 
 
 Scratch query scope includes the exact `DAXQueries/.pbi/daxQueries.json` editor index. Its contents, including unsupported or malformed state, do not affect cleanup eligibility, coverage or plan drift. Apply and restore preserve concurrent scratch edits, additions and deletions. Declared report resources and files in `StaticResources` keep their resource guards regardless of extension (including `.dax`); a declaration that collides with the editor-index path takes precedence. Other JSON and `.pbi` metadata remain guarded.
+
+### Structured plan blockers
+
+JSON plan failures retain `ok`, `error`, `errors` and Report-binding evidence.
+Deletion-policy failures additionally include all `blockers` from that policy
+check, with `rule_id`, zero-based `operation_index`/`action_index`, `table`, `name`,
+`item_type`, `reason`, `location`, optional `dependency`, and `resolution`.
+Locations contain artifact, Report, page, visual, file and JSON-path fields;
+fields unavailable for that type of metadata are empty. Scope-wide blockers can
+have null indices. New reference-integrity failures use the same shape and
+readable sentences, without Python tuple representations.
+
+`blocked_actions`, `remaining_actions` and their counts identify the affected
+input actions once, even when several rules block one action. Remaining actions
+require a new preview; this response is not an authorization or a saved plan.
+All policy blockers are returned together. If policy fails, no writer runs;
+staging/schema/reference checks therefore have not run for that rejected batch.
