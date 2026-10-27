@@ -34,3 +34,9 @@ def authenticated_domain_api_clients(monkeypatch):
             return super().open(*args, **kwargs)
 
     monkeypatch.setattr(webapp.app, 'test_client_class', LocalClient)
+
+
+@pytest.fixture(autouse=True)
+def isolate_persistent_analysis_cache(monkeypatch):
+    """Domain tests scan afresh; cache tests explicitly enable private temp state."""
+    monkeypatch.setenv('SMC_DISABLE_ANALYSIS_CACHE', '1')

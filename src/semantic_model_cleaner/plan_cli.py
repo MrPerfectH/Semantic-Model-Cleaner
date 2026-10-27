@@ -28,7 +28,11 @@ def main(argv=None):
     add_path_options(plan)
     plan.add_argument('--model', help='Exact .SemanticModel path relative to CWD; otherwise discover one under project_path.')
     plan.add_argument('--report', action='append', default=[], help='Exact .Report path relative to CWD; repeat for each report.')
-    plan.add_argument('--operations', required=True, help='UTF-8 JSON file (optional BOM) containing an operations array or {operations:[...]}.')
+    inputs = plan.add_mutually_exclusive_group(required=True)
+    inputs.add_argument('--cleanup', choices=['unused'], help='Build one reviewed plan for unused model items and safe whole calculated tables.')
+    plan.add_argument('--cascade', action='store_true', help='Include the dependency-closed unused set in the cleanup plan.')
+    plan.add_argument('--include-review', action='store_true', help='Explicitly include hidden-only Review items; other Review reasons remain protected.')
+    inputs.add_argument('--operations', help='UTF-8 JSON file (optional BOM) containing an operations array or {operations:[...]}.')
     plan.add_argument('-o', '--output', required=True, help='Reviewable local plan JSON.')
     plan.add_argument('--allow-partial-report-scope', action='store_true',
                       help='Allow delete, rename, move, promote and auto-date removal while connected Reports under '
@@ -73,27 +77,32 @@ def main(argv=None):
             target = validate_export_destination(args.output, [
                 *models, *reports, *analyzer.discover_models([root]), *analyzer.discover_reports([root])
             ], allow_missing_parent=True)
-            if target == Path(args.operations).resolve():
-                raise change_plan.PlanError('Plan output must not replace the operations file. Choose a separate external output file.')
-            try:
-                raw = json.loads(Path(args.operations).read_text(encoding="utf-8-sig"))
-            except UnicodeDecodeError as exc:
-                raise change_plan.PlanError(
-                    f'Cannot read operations file {args.operations!r}: save it as UTF-8 '
-                    '(with or without a UTF-8 BOM), then retry.'
-                ) from exc
-            operations = parse_operations(raw)
-            result = change_plan.create_plan(models[0], reports, operations,
-                                             project_path=root,
-                                             known_reports=analyzer.discover_reports([root]),
-                                             report_search_roots=[root],
-                                             allow_partial_report_scope=args.allow_partial_report_scope)
+            options = dict(known_reports=analyzer.discover_reports([root]), report_search_roots=[root],
+                           allow_partial_report_scope=args.allow_partial_report_scope)
+            if args.cleanup:
+                from .cleanup_flow import create_cleanup_plan
+                result = create_cleanup_plan(root, models[0], reports, cascade=args.cascade,
+                                             include_review=args.include_review, **options)
+            else:
+                if args.cascade or args.include_review:
+                    raise change_plan.PlanError('--cascade and --include-review require --cleanup unused.')
+                if target == Path(args.operations).resolve():
+                    raise change_plan.PlanError('Plan output must not replace the operations file. Choose a separate external output file.')
+                try:
+                    raw = json.loads(Path(args.operations).read_text(encoding="utf-8-sig"))
+                except UnicodeDecodeError as exc:
+                    raise change_plan.PlanError(
+                        f'Cannot read operations file {args.operations!r}: save it as UTF-8 '
+                        '(with or without a UTF-8 BOM), then retry.'
+                    ) from exc
+                result = change_plan.create_plan(models[0], reports, parse_operations(raw), project_path=root, **options)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(result, indent=2) + '\n', encoding="utf-8")
             emit({'ok': True, 'plan_file': str(target), 'id': result['id'],
                               'reportBinding': scope,
                               'reportSelection': result['coverage']['report_selection'],
-                              'changed_files': len(result['changes']), 'validation': result['validation']})
+                              'changed_files': len(result['changes']), 'validation': result['validation'],
+                              **({'cleanup': result['cleanup']} if 'cleanup' in result else {})})
         elif args.command == 'history':
             emit({'receipts': [json.loads(p.read_text(encoding="utf-8")) for p in sorted(Path(args.journal_dir).glob('*.receipt.json'))]})
         elif args.command == 'diff':
@@ -119,6 +128,12 @@ def main(argv=None):
         return 0
     except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
         error = {'ok': False, 'error': str(exc)}
+        if isinstance(exc, change_plan.PlanError) and exc.blockers:
+            from .plan_diagnostics import summary
+            error.update(summary(exc.blockers, exc.operations))
+        if argv and argv[0] == 'plan' and 'blockers' not in error:
+            from .plan_diagnostics import input_blocker
+            error['blockers'] = [input_blocker(str(exc))]
         if isinstance(exc, change_plan.PartialReportScopeError):
             error['error'] += (' Omit --report-path and --report to select them all, or explicitly allow a partial '
                                'Report scope (--allow-partial-report-scope) and check the other Reports yourself.')

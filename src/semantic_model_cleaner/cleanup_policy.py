@@ -51,8 +51,8 @@ def _evaluate_deletion_policy(
     scope = {"model": str(model_path), "reports": [], "complete": False, "cleared_limitations": []}
     confirmations: dict[str, dict] = {}
 
-    def reject(rule_id: str, message: str, table: str = "", name: str = "") -> None:
-        violations.append(dict(rule_id=rule_id, table=table, name=name, message=message))
+    def reject(rule_id: str, message: str, table: str = "", name: str = "", **evidence) -> None:
+        violations.append(dict(rule_id=rule_id, table=table, name=name, message=message, **evidence))
 
     def result() -> dict:
         return {"ok": not violations, "errors": [v["message"] for v in violations],
@@ -62,6 +62,10 @@ def _evaluate_deletion_policy(
     deletes = [a for a in actions if isinstance(a, dict) and a.get("action") == "delete"]
     if not deletes:
         return result()
+    whole_tables = {a['table'].casefold() for a in deletes if str(a.get('item_type', '')).casefold() == 'table'}
+    hidden_approved = {analyzer.normalize_key(a['table'], a['name']) for a in deletes if a.get('allow_hidden') is True}
+    hidden_tables = {a['table'].casefold() for a in deletes if a.get('allow_hidden') is True
+                     and str(a.get('item_type', '')).casefold() == 'table'}
     model_path = Path(model_path).resolve()
     reports = sorted({Path(p).resolve() for p in report_paths})
     if not model_path.is_dir() or not reports:
@@ -80,8 +84,9 @@ def _evaluate_deletion_policy(
     # The public entry point always scans afresh before any mutation workflow.
     if analysis is None:
         try:
-            analysis = analyzer.analyze(model_path.parent, model_paths=[model_path], report_paths=reports,
-                                        cache=cache)
+            analysis = analyzer.analyze((cache.workspace if cache is not None else None) or model_path.parent,
+                                        model_paths=[model_path], report_paths=reports,
+                                        cache=cache, suggestions=False)
         except (Exception, SystemExit) as exc:
             reject("SMC-D001", f"Fresh analysis failed: {exc}")
             return result()
@@ -105,6 +110,12 @@ def _evaluate_deletion_policy(
             reject("SMC-D003", f"Deletion target does not match a current model item: {table}[{name}].", table, name)
         targets.update(matches)
     items = [row["item"] for row in analysis["items"]]
+    by_identity = {analyzer.item_identity(item): item for item in items}
+
+    def dependency_evidence(identity):
+        item = by_identity[identity]
+        return dict(table=item.table, name=item.name, item_type=item.item_type,
+                    source_kind=item.source_kind, file=item.source_file)
     graphs = analysis.get("dependency_graphs") or analyzer.scoped_dependency_graphs(items)
 
     def removed(identity):
@@ -117,7 +128,8 @@ def _evaluate_deletion_policy(
             for target in dependencies:
                 if removed(target):
                     owner = "" if source[0] == "model" else f" in {source[0]}"
-                    reject("SMC-D006", f"{analyzer.format_item_ref(target[-2:])} is required by retained {analyzer.format_item_ref(source[-2:])}{owner}.", *target[-2:])
+                    reject("SMC-D006", f"{analyzer.format_item_ref(target[-2:])} is required by retained {analyzer.format_item_ref(source[-2:])}{owner}.", *target[-2:], dependency=dependency_evidence(source),
+                           location={'file': by_identity[source].source_file})
     # NAMEOF dependencies live in calculated-table definitions, not item DAX.
     # They remain structural consumers even when the parameter has no report
     # usage. Row deletions alone cannot prove the source definition will vanish
@@ -136,7 +148,9 @@ def _evaluate_deletion_policy(
             target = analyzer.normalize_key(*dependency.key)
             if target in targets:
                 reject("SMC-D006", f"{analyzer.format_item_ref(dependency.key)} is required by NAMEOF in retained "
-                       f"field parameter {parameter.table} ({parameter.source_file}).", *dependency.key)
+                       f"field parameter {parameter.table} ({parameter.source_file}).", *dependency.key,
+                       dependency={'table': parameter.table, 'name': parameter.table, 'item_type': 'Table',
+                                   'file': str(parameter.source_file)}, location={'file': str(parameter.source_file)})
     # Sort-by and hierarchy declarations must remain valid even when their source
     # column currently has no live report references.
     for item in items:
@@ -151,6 +165,37 @@ def _evaluate_deletion_policy(
     # Removing the last model item may remove its table. Bare-table DAX consumers
     # are not represented by item-to-item edges.
     removed_tables = {key[0] for key in targets if all(k in targets for k in rows if k[0] == key[0])}
+    # A Report can reference an existing table but a missing item in it. The
+    # last-item writer removes that table; do not turn an existing missing-item
+    # problem (including visual property expressions) into a missing table.
+    from .plan_diagnostics import location
+    for reference in analysis.get("report_references", []):
+        if reference.table.casefold() in removed_tables:
+            reject("SMC-D006", f"Table {reference.table} is required by a Report Reference in "
+                   f"{reference.report}, page {reference.page}, visual {reference.visual_id} "
+                   f"({reference.artifact_path}: {reference.source_path}).", reference.table,
+                   location=location(reference), dependency={'table': reference.table, 'name': reference.name,
+                                                            'item_type': reference.ref_type})
+    # Visual property expressions can name a measure under a contextual entity
+    # rather than its home table. Retain same-named model candidates for these
+    # unresolved expressions; do not invent uses from unrelated broken queries.
+    measure_names = {}
+    for key, row in rows.items():
+        if row['item'].item_type == 'Measure':
+            measure_names.setdefault(key[1], []).append(key)
+    for reference in analysis.get('report_references', []):
+        if (reference.ref_type != 'Measure' or '.properties.' not in reference.source_path
+                or '.expr.' not in reference.source_path):
+            continue
+        qualified = analyzer.normalize_key(reference.table, reference.name)
+        if qualified in rows and rows[qualified]['item'].item_type == 'Measure':
+            continue
+        for target in measure_names.get(reference.name.casefold(), []):
+            if target in targets:
+                reject('SMC-D006', f'{analyzer.format_item_ref(rows[target]["item"].key)} may be required by an unresolved '
+                       f'Report Reference {reference.table}[{reference.name}] in {reference.report}. Resolve its entity binding first.',
+                       *rows[target]['item'].key, location=location(reference),
+                       dependency={'table': reference.table, 'name': reference.name, 'item_type': 'Measure'})
     # Resolved metadata constructs (calculation items, KPI, detail-rows, format-string
     # and coverage expressions, calendar mappings) need their targets while the
     # construct itself remains. Table-owned constructs go only with their table.
@@ -194,6 +239,18 @@ def _evaluate_deletion_policy(
                 if table.casefold() in removed_tables:
                     owner = "" if source[0] == "model" else f" in {source[0]}"
                     reject("SMC-D006", f"Table {table} is required by retained {analyzer.format_item_ref(source[-2:])}{owner}.", table)
+    from .cleanup_flow import calculated_tables
+    known_tables = {row['item'].table.casefold(): row['item'].table for row in rows.values()}
+    for owner, partitions in calculated_tables(model_path).items():
+        if owner.casefold() in removed_tables:
+            continue
+        for file, expression in partitions:
+            references = analyzer.dax_table_references(expression, known_tables)
+            references.update(table for table, _ in analyzer._extract_dax_qualified_refs(expression))
+            for table in references:
+                if table.casefold() in removed_tables:
+                    reject('SMC-D006', f'Table {table} is required by calculated partition of retained {owner} ({file}).',
+                           table, location={'file': str(file)}, dependency={'table': owner, 'item_type': 'Table'})
     # Simulated final state (#91): a table is cleared only when the plan removes
     # every model item in it and no retained structural or DAX consumer still
     # needs it. Its own shared limitations vanish with its declaration; every
@@ -217,8 +274,17 @@ def _evaluate_deletion_policy(
         # A target's own missing references (BROKEN) are not use; incoming
         # consumers are checked above and its usage status here.
         usage = analyzer.row_usage_status(row)
-        if analyzer.is_used_status(usage) or analyzer.inferred_keep(row):
+        if analyzer.is_used_status(usage):
             reject("SMC-D004", f"Keep {analyzer.format_item_ref(item.key)}: {usage}.", *item.key)
+        elif analyzer.inferred_keep(row) and item.table.casefold() not in whole_tables:
+            reject("SMC-D004", f"Keep {analyzer.format_item_ref(item.key)}: engine-inferred column of a calculated table. "
+                   "Deleting its column TMDL cannot remove it; edit the calculated table expression or review whole-table removal.", *item.key,
+                   location={'file': item.source_file})
+        elif analyzer.inferred_keep(row) and item.table.casefold() in whole_tables:
+            if item.is_hidden and item.table.casefold() not in hidden_tables:
+                reject("SMC-D005", f"Review required for {analyzer.format_item_ref(item.key)}: Item is hidden.", *item.key)
+            if row.get('analysis_limitation_ids'):
+                reject("SMC-D005", f"Review required for {analyzer.format_item_ref(item.key)}: Analysis Limitations affect this inferred column.", *item.key)
         elif row.get("entity_type_trigger") and item.table.casefold() in cleared_tables:
             # The whole tool entity goes and nothing that remains uses it.
             reasons = _final_state_review_triggers(
@@ -232,12 +298,15 @@ def _evaluate_deletion_policy(
                 message=analyzer.entity_type_trigger(row["entity_kind"], item.table, after_plan=True)))
         elif row.get("standalone_removal_risk", row["removal_risk"]) == "Review":
             reasons = _final_state_review_triggers(
-                row, coverage_cleared=coverage_cleared, group_cleared=item.table.casefold() in cleared_tables)
+                row, coverage_cleared=coverage_cleared, group_cleared=item.table.casefold() in cleared_tables,
+                waived=['Item is hidden'] if key in hidden_approved or item.table.casefold() in hidden_tables else [])
             if reasons:
                 reject("SMC-D005", f"Review required for {analyzer.format_item_ref(item.key)}: "
                        + "; ".join(reasons), *item.key)
     # Keep diagnostics deterministic and avoid duplicate edges from parser paths.
-    unique = {(v["rule_id"], v["table"], v["name"], v["message"]): v for v in violations}
+    unique = {(v["rule_id"], v["table"], v["name"], v["message"],
+               tuple(sorted((key, str(value)) for key, value in v.get('location', {}).items()))): v
+              for v in violations}
     violations[:] = [unique[key] for key in sorted(unique)]
     return result()
 

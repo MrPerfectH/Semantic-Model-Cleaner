@@ -1,82 +1,79 @@
-# Analysis reuse: current checks and a persistent cache proposal
+# Content-verified analysis reuse
 
-## Implemented
+## Cache contract
 
-Compact queries (`usage`, `items`, `summary`, `review`) and plans that do not
-remove Report Extension Measures skip their deletion assessment. Full analysis
-and web output explicitly request it; a Report Extension Measure deletion plan
-assesses its original scope once before allowing the operation. The staged
-analysis still checks reference integrity, without reassessing deletion
-eligibility for retained measures.
+Commands with an explicit resolved Semantic Model and Report scope reuse analysis
+under `SMC_USER_DIR/analysis-cache` (normally
+`~/.semantic-model-cleaner/analysis-cache`). This includes `items`, `usage`,
+`summary`, `check`, `review`, and the original-scope analysis used by planning.
+Discovery and Report binding selection still run before query projections.
 
-PBIR schema validation stores process-local evidence keyed by a SHA-256 digest
-of the decoded document's JSON serialization and the error limit. The schema
-registry identity controls the cache lifetime. Validation is independent of the
-file path, so a snapshot, deletion assessment and staged copy can share a result.
-Results are copied before returning and get the caller's own path. Original-byte
-hashes in plan inventories remain unchanged. Strict duplicate-key and non-JSON
-numeric checks in deletion assessment still run before cache access.
+A cache key includes:
 
-Only digests and evidence are retained, not source documents. Evidence lives
-until process exit or registry replacement; memory therefore grows with distinct
-document versions checked by a long-running web process. No disk cache is read
-or written. A lock prevents concurrent calls from duplicating a schema check.
+- Canonical model and selected Report paths, directory names, file modes and
+  SHA-256 content hashes of every file in those artifacts, including resources.
+- Current model/Report discovery and the `definition.pbir` contents of discovered
+  Reports, including unselected and unverified Reports. Search roots must remain
+  available. Adding a Report or changing a binding cannot silently reuse an old
+  selection's evidence.
+- Analysis options, model-only mode, excluded/unverified selection facts, the
+  deletion-evidence option, and whether repair suggestions were requested.
+- Cache format, Python/dependency versions, tool source and bundled schema
+  contents. Frozen distributions also fingerprint their executable.
 
-Opaque reference matching folds metadata strings once per file and measure
-spellings once per Report. It preserves separate strings, Unicode casefolding,
-substring matches and escaped closing brackets; combining strings into a blob
-could invent references crossing string boundaries.
+File size/mtime is never accepted as proof of unchanged content. The current
+contents are hashed twice around a cache read or analysis calculation. File
+mtime/ctime/inode observations additionally reject edits during those reads,
+including a change restored to its original bytes. An invocation's parsed-input
+cache is cleared when its content key changes, preventing a new snapshot from
+being populated with an earlier snapshot's parsed items.
 
-## Measurements
+The cache contains checksummed, compressed JSON, with explicit data tags for
+model items, Report References, tuple graph keys and sets. It never unpickles
+Python or imports a class named by a cache file. Record types come from a fixed
+local registry. Every hit returns independent objects; later query enrichment
+cannot mutate persisted evidence. Entries have compressed/expanded size bounds,
+atomic writes and a 32-entry retention bound. Missing, corrupt, incompatible or
+unwritable entries fall back to fresh analysis. Symlink scopes are not cached.
+Cache directories inside selected artifacts are refused, so caching cannot
+write project metadata into a Semantic Model or Report.
 
-Single wall-time runs on Linux, Python 3.14, using the same read-only Power BI
-Project with one Semantic Model and eight connected Reports. Each command starts
-a new process; this is not a persistent-cache speedup. Baseline is `40c5379`
-(latest origin/main when the branch was created). Plan output and staging are
-outside the fixture, with staging on disk rather than the small `/tmp` tmpfs.
+These are local user-owned performance artifacts, containing model expressions,
+names and location evidence. They can be deleted without affecting source files,
+plans or recovery journals. Set `SMC_DISABLE_ANALYSIS_CACHE=1` to bypass persistent
+reuse and its writes for comparison or troubleshooting.
 
-| Command | Before | After | Reduction |
-| --- | ---: | ---: | ---: |
-| `usage` for one column | 35.225 s | 7.862 s | 77.7% |
-| `items` | 32.998 s | 7.647 s | 76.8% |
-| `plan` for one column rename | 89.731 s | 40.670 s | 54.7% |
+## Mutation and policy boundaries
 
-The two compact-query JSON outputs are identical. The rename plans have identical
-input and output hashes, 185 file changes, operations, coverage and validation
-records. Identity and creation-time fields are naturally different. Timings are
-observations on this fixture and machine, not CI performance thresholds.
+A cache hit is evidence for the exact current content snapshot, not an approval
+token. Plan creation still checks deletion policy, binding/scope completeness,
+TMDL writer eligibility and JSON/schema validity. The changed staged scope is
+always analyzed afresh and compared for new unresolved references. Apply and
+verify still hash source files against the reviewed plan; they never replace
+those checks with cached analysis. The cache does not store review-policy or
+baseline decisions: `check` and `review` reapply current inputs every time.
 
-## Deferred: persistent read-only analysis cache
+Compact queries and ordinary refactoring plans skip Report Extension Measure
+deletion assessment. Full analysis/web output request it explicitly, and a Report
+Extension Measure deletion plan assesses its original scope before deletion.
+This distinction is part of the cache key.
 
-A cache under `SMC_USER_DIR` could avoid repeated full analysis for agents, but
-file size/mtime alone cannot guarantee correctness. An edit can preserve both.
-A safe first design should prefer content identity over a quick stat-only hit:
+PBIR schema validation separately retains process-local evidence keyed by
+normalized document content, error limit and schema registry. Snapshots,
+assessment and staged copies share those checks within one process. Strict
+JSON/duplicate-key checks and original-byte plan fingerprints are unaffected.
+Schema evidence is not currently persisted across CLI invocations.
 
-1. Discover the current Semantic Model and Reports and resolve selection before
-   lookup. Include canonical roots, selected Reports, known connected Reports,
-   excluded/unverified bindings and model-only/partial-scope options in the key.
-   Adding or removing a Report or changing its binding invalidates the result.
-2. Enumerate current scope files afresh. Hash content and relative paths,
-   including additions/deletions, metadata, declared resources and files that
-   can change scope classification or Analysis Limitations. Handle unreadable
-   files and symlinks conservatively; do not reuse earlier successful coverage.
-   A parent-directory timestamp is insufficient. Use consistent snapshots and
-   reject changes detected while taking or reading the snapshot.
-3. Include the tool/analysis format version, bundled schema identity and all
-   analysis options. Persist only a versioned, data-only representation; never
-   deserialize executable Python objects. Preserve exact Report ownership,
-   graph sets, item types and evidence on a hit.
-4. Cache analyzer evidence, not review-policy or baseline decisions. Reapply the
-   current policy and baseline for each `check`/`review`. Share the same snapshot
-   across `usage`, `items`, `summary` and `check` projections.
-5. Keep every mutation authorization fresh: plan creation, apply and deletion
-   safety must not trust persisted analysis as their source of truth. Restrict
-   initial persistent reuse to read-only queries. Write atomically, bound disk
-   usage, and treat malformed, stale or incompatible entries as misses.
+## Validation
 
-Before implementation, demonstrate invalidation for same-size/same-time edits,
-new and deleted files/Reports, changed bindings, changing selection, changed
-policy/baseline, moved roots, tool/schema updates, concurrent writes, corrupt
-entries and native Windows paths. Compare cold/hit results with fresh analysis,
-including graph ownership and Analysis Limitations. Measure the cost of fresh
-content hashing: it may be acceptable, but should not be assumed negligible.
+Regression coverage compares cold and cached evidence, item/usage projections,
+plan validation and staged edits. It exercises same-size/same-time edits,
+new/deleted metadata, newly discovered Reports, changed bindings and selection,
+engine/schema changes, corrupt entries, caller mutations and edits during cache
+reads. Domain tests bypass persistent reuse so safety tests still exercise fresh
+analysis; dedicated cache tests enable isolated temporary state.
+
+Wall-time measurements and PMRA cleanup results for this change are recorded in
+`bulk-cleanup-benchmark.md`. They distinguish cold and repeated commands and
+compare cached/uncached outputs, rather than treating a cache hit as a relaxation
+of any cleanup guard.

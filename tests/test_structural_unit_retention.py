@@ -309,7 +309,7 @@ def test_used_sibling_retains_the_inferred_member(tmp_path):
     assert tables[MP]["cleanup_recommendation"] == "Blocked"
 
 
-def test_ordinary_inferred_column_keeps_its_protection(tmp_path):
+def test_ordinary_inferred_column_requires_whole_calculated_table_removal(tmp_path):
     model, report = inferred_project(tmp_path, ordinary_inferred=True)
     analysis, rows = analyze(tmp_path, model, report)
     row = rows[("Plain", "Value1")]
@@ -318,8 +318,10 @@ def test_ordinary_inferred_column_keeps_its_protection(tmp_path):
     assert api_items(analysis, model)[("Plain", "Value1")]["deleteSafety"] == "Keep"
     tables = {t["name"]: t for t in analysis["table_summaries"]}
     assert tables["Plain"]["cleanup_recommendation"] == "Blocked"
-    policy = evaluate_deletion_policy(model, [report], [delete("Plain", "", "Table")])
-    assert any(v["rule_id"] == "SMC-D004" and v["name"] == "Value1" for v in policy["violations"])
+    single = evaluate_deletion_policy(model, [report], [delete("Plain", "Value1", "Column")])
+    assert any(v["rule_id"] == "SMC-D004" and v["name"] == "Value1" for v in single["violations"])
+    whole = evaluate_deletion_policy(model, [report], [delete("Plain", "", "Table")])
+    assert whole['ok']
 
 
 def test_genuine_limitation_on_inferred_member_still_blocks_the_unit(tmp_path):
