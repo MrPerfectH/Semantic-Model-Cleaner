@@ -109,3 +109,34 @@ def test_report_level_measure_only_satisfies_references_in_its_own_report(projec
     result = analyzer.analyze(model.parent, model_paths=[model], report_paths=reports, suggestions=False)
     missing = {(issue["reportPath"], issue["name"]) for issue in result["report_issues"] if issue["name"] == "Local"}
     assert missing == {(str(reports[0].resolve()), "Local")}
+
+
+def test_column_rename_plan_skips_report_extension_deletion_assessment(project, monkeypatch):
+    from semantic_model_cleaner import report_measure_delete
+    model, reports = project
+
+    def unexpected(*args, **kwargs):
+        pytest.fail('Column rename must not assess Report Extension Measure deletion')
+
+    monkeypatch.setattr(report_measure_delete, 'assessment', unexpected)
+    plan = change_plan.create_plan(model, reports, [{'kind': 'rename', 'column_renames': [
+        {'table': 'Sales', 'name': 'Amount', 'target_name': 'Value'}]}])
+    assert plan['changes']
+    assert plan['validation']['report_measure_deletions'] == []
+
+
+@pytest.mark.parametrize('command', ['usage', 'items', 'summary', 'review'])
+def test_compact_queries_skip_report_extension_deletion_assessment(project, monkeypatch, capsys, command):
+    from semantic_model_cleaner import insights_cli, report_measure_delete
+    model, _ = project
+
+    def unexpected(*args, **kwargs):
+        pytest.fail('Compact queries must not assess Report Extension Measure deletion')
+
+    monkeypatch.setattr(report_measure_delete, 'assessment', unexpected)
+    args = [command, str(model.parent), '--format', 'json']
+    if command == 'usage':
+        args += ['--table', 'Sales', '--item', 'Amount']
+    # The fixture has an existing broken Report Reference; review reports it.
+    assert insights_cli.main(args) == (1 if command == 'review' else 0)
+    assert json.loads(capsys.readouterr().out)['command'] == command

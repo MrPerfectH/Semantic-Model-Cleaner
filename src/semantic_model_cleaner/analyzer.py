@@ -371,9 +371,12 @@ def _discover_artifact_dirs(search_roots: list[Path], suffix: str, conventional_
         # whether a conventional Models/ or Reports/ folder also exists.
         for current, directories, _ in os.walk(root):
             parent = Path(current)
-            directories[:] = [name for name in directories
-                              if not _skip_discovery_path(parent / name, root, source_root=source_root)
-                              and name != "node_modules"]
+            # os.walk is top-down: a hidden ancestor was already pruned. Only
+            # this name (and source-only top-level folders) needs checking.
+            top_level = source_root and parent == root
+            directories[:] = [name for name in directories if not name.startswith('.')
+                              and name != 'node_modules'
+                              and not (top_level and name in {'tests', 'examples', 'src'})]
             artifacts = [name for name in directories if name.endswith(suffix)]
             discovered.extend(parent / name for name in artifacts)
             directories[:] = [name for name in directories if name not in artifacts]
@@ -4924,6 +4927,7 @@ class AnalysisCache:
     """
 
     def __init__(self):
+        self.workspace: Path | None = None
         self.model: dict[Path, dict] = {}
         self.extensions: dict[Path, dict] = {}
         self.reports: dict[Path, dict] = {}
@@ -5010,6 +5014,36 @@ def analyze(
     cache: AnalysisCache | None = None,
     unverified_reports: list[Path] | None = None,
     suggestions: bool = True,
+    include_report_measure_deletions: bool = False,
+    persistent_cache: bool = True,
+) -> dict:
+    options = dict(model_filters=model_filters, report_filters=report_filters,
+        model_paths=model_paths, report_paths=report_paths, model_search_roots=model_search_roots,
+        report_search_roots=report_search_roots, progress=progress, allow_model_only=allow_model_only,
+        unselected_reports=unselected_reports, cache=cache, unverified_reports=unverified_reports,
+        suggestions=suggestions, include_report_measure_deletions=include_report_measure_deletions)
+    if persistent_cache and os.environ.get('SMC_DISABLE_ANALYSIS_CACHE') != '1' \
+            and model_paths is not None and report_paths is not None:
+        from .analysis_store import analyze as reuse_analysis
+        return reuse_analysis(workspace, options, lambda: _analyze_uncached(workspace, **options))
+    return _analyze_uncached(workspace, **options)
+
+
+def _analyze_uncached(
+    workspace: Path,
+    model_filters: list[str] | None = None,
+    report_filters: list[str] | None = None,
+    model_paths: list[Path] | None = None,
+    report_paths: list[Path] | None = None,
+    model_search_roots: list[Path] | None = None,
+    report_search_roots: list[Path] | None = None,
+    progress=None,
+    allow_model_only: bool = False,
+    unselected_reports: list[Path] | None = None,
+    cache: AnalysisCache | None = None,
+    unverified_reports: list[Path] | None = None,
+    suggestions: bool = True,
+    include_report_measure_deletions: bool = False,
 ) -> dict:
     def checkpoint(stage, current=0, total=None):
         if progress is not None:
@@ -5551,7 +5585,7 @@ def analyze(
         row["review_basis"] = review_basis(row)
 
     report_deletions = {}
-    if any(row["item"].source_kind == "report" for row in results):
+    if include_report_measure_deletions and any(row["item"].source_kind == "report" for row in results):
         from .report_measure_delete import assessment, _entry, _key
         report_deletions = assessment(models[0], reports, {
             "items": results, "coverage": {"complete": not coverage_limitations,
@@ -6825,6 +6859,7 @@ def _analysis_cli(argv):
             report_search_roots=report_roots,
             unselected_reports=unselected,
             unverified_reports=unverified,
+            include_report_measure_deletions=True,
         )
     except UnsupportedSemanticModelError as exc:
         print(f"Error: {exc}", file=sys.stderr)

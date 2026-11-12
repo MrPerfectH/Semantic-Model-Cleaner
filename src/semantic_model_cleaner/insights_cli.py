@@ -25,7 +25,7 @@ def capabilities():
     return {**operation_capabilities(), "contract": "insights/1.1", "query_commands_read_only": True,
             "commands": [{"name": name, "description": description,
                           "options": _options(name)} for name, description in COMMANDS.items()],
-            "structured_item_fields": {"status_code": ["used", "indirect", "unused", "broken"], "via": "Immediate model consumers; status retains its legacy display label"},
+            "structured_item_fields": {"kept_because": "Rule, reason, concrete dependency and source location for non-Safe items", "status_code": ["used", "indirect", "unused", "broken"], "via": "Immediate model consumers; status retains its legacy display label"},
             "formats": ["text", "json"], "default_format": "text (capabilities: json)",
             "path_base": "PROJECT for --model-path/--report-path and legacy --model/--report; PROJECT is relative to CWD",
             "artifact_selection": {"model": "--model-path", "reports": "--report-path (repeatable)",

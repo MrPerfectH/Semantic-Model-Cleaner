@@ -1749,6 +1749,7 @@ def api_analyze():
             model_paths=[Path(p) for p in model_paths],
             report_paths=[Path(p) for p in report_paths],
             allow_model_only=exact, unselected_reports=unselected, unverified_reports=unverified,
+            include_report_measure_deletions=True,
         )
 
         _record_report_scope(results, scope)
@@ -1793,7 +1794,7 @@ def api_start_analysis_job():
             result = analyzer.analyze(workspace=workspace, model_paths=[Path(p) for p in models],
                                       report_paths=[Path(p) for p in reports], progress=progress,
                                       allow_model_only=exact, unselected_reports=unselected,
-                                      unverified_reports=unverified)
+                                      unverified_reports=unverified, include_report_measure_deletions=True)
             from .metadata_validation import validate_report_paths
             schema = validate_report_paths(reports, workspace=workspace, progress=progress, include_report_identity=True)
             _record_report_scope(result, scope)
@@ -2279,7 +2280,7 @@ def api_plans():
         report_roots = [Path(r) for r in _effective_report_roots()]
         known = analyzer.discover_reports(report_roots)
         plan = change_plan.create_plan(model_path, reports or [], data.get("operations"), known_reports=known,
-                                       report_search_roots=report_roots,
+                                       report_search_roots=report_roots, project_path=_state.get("workspace") or None,
                                        allow_partial_report_scope=data.get("allow_partial_report_scope") is True)
         change_plan.save_plan(plan, _plan_directory())
         return jsonify({"ok": True, "plan": plan})

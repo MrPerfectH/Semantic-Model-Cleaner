@@ -2,6 +2,7 @@
 from copy import deepcopy
 import hashlib
 import json
+import os
 from pathlib import Path
 import socket
 
@@ -207,3 +208,51 @@ def test_previous_snapshot_is_reused_only_for_identical_bytes(monkeypatch):
     calls.clear()
     metadata.validate_metadata(after_files, previous=before, error_limit=5)
     assert len(calls) == 2
+
+
+def test_schema_validation_reused_across_assessment_snapshots_and_staging(monkeypatch):
+    document = fixture('page-valid.json')
+    document['displayName'] = 'Cache regression unique page'
+    calls = []
+    _, schemas, _, _ = metadata._bundle()
+    validator = metadata.validators.validator_for(schemas[document['$schema']])
+    original_errors = validator.iter_errors
+
+    def errors(self, instance, *args, **kwargs):
+        if instance == document:
+            calls.append(1)
+        yield from original_errors(self, instance, *args, **kwargs)
+
+    monkeypatch.setattr(validator, 'iter_errors', errors)
+    direct = metadata.validate_document(document)
+    before = metadata.validate_metadata({'report-1/page.json': json.dumps(document)})
+    staged = metadata.validate_document(json.loads(json.dumps(document)), path='staged/page.json')
+    after = metadata.validate_metadata({'report-1/page.json': json.dumps(document)})
+    assert direct['status'] == staged['status'] == 'valid'
+    assert before == after
+    assert staged['path'] == 'staged/page.json'
+    assert len(calls) == 1
+
+
+def test_cached_validation_tracks_content_error_limit_and_caller_mutation(tmp_path):
+    document = fixture('page-valid.json')
+    path = tmp_path / 'page.json'
+    path.write_text(json.dumps(document), encoding='utf-8')
+    good = metadata.validate_metadata({'page.json': path.read_bytes()})
+    stat = path.stat()
+    # Same byte length and timestamps: file stats cannot conceal a content edit.
+    path.write_bytes(path.read_bytes().replace(b'"width": 1280', b'"width": "xx"'))
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    assert path.stat().st_size == stat.st_size
+    bad = metadata.validate_metadata({'page.json': path.read_bytes()})
+    assert good['ok'] and not bad['ok']
+    assert bad['files'][0]['errors'][0]['path'] == '/width'
+    bad['files'][0]['errors'].clear()
+    replay = metadata.validate_metadata({'page.json': path.read_bytes()})
+    assert replay['files'][0]['errors']
+    # A different error limit must gather its own evidence, including truncation.
+    incomplete = {'$schema': BASE + 'page/2.1.0/schema.json'}
+    one = metadata.validate_document(incomplete, error_limit=1)
+    many = metadata.validate_document(incomplete, error_limit=100)
+    assert one['truncated'] and len(one['errors']) == 1
+    assert not many['truncated'] and len(many['errors']) > 1

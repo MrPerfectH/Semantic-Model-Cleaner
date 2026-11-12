@@ -9,7 +9,8 @@ from test_report_measure_delete import project, extension, operation
 
 
 def rows(tmp_path, model, reports):
-    result = analyzer.analyze(tmp_path, model_paths=[model], report_paths=reports)
+    result = analyzer.analyze(tmp_path, model_paths=[model], report_paths=reports,
+                              include_report_measure_deletions=True)
     return {r["item"].name: r for r in result["items"]
             if r["item"].source_kind == "report"}
 

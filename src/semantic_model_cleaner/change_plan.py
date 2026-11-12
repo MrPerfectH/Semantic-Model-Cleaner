@@ -25,7 +25,10 @@ SCHEMA_VERSION = 1
 
 
 class PlanError(ValueError):
-    pass
+    def __init__(self, message, *, blockers=None, operations=None):
+        super().__init__(message)
+        self.blockers = blockers or []
+        self.operations = operations or []
 
 
 class PartialReportScopeError(PlanError):
@@ -187,6 +190,25 @@ def _validate_operation_paths(value, roots):
             _validate_operation_paths(child, roots)
 
 
+def _resolve_operation_reports(operations, roots, project):
+    reports = [path for key, path in roots.items() if key != 'model']
+    resolved = []
+    for operation in operations:
+        op = dict(operation)
+        if op.get('report_paths'):
+            selected = [(value, (project / value).resolve()) for value in op['report_paths']]
+            outside = [str(value) for value, path in selected if path not in reports]
+            if outside:
+                raise PlanError('Operation reports must belong to the plan scope. Offending paths: '
+                                + ', '.join(outside) + '. Plan-scope Reports: '
+                                + ', '.join(map(str, reports)))
+            op['report_paths'] = [str(path) for _, path in selected]
+            if op.get('kind') in {'rename', 'move'} and {path for _, path in selected} != set(reports):
+                raise PlanError('Model rename and move must propagate through every report in the plan scope.')
+        resolved.append(op)
+    return resolved
+
+
 def _execute(op, roots):
     model = roots['model']
     reports = [p for k, p in roots.items() if k != 'model']
@@ -256,11 +278,13 @@ def _execute(op, roots):
 def _analyze(roots, cache=None):
     try:
         reports = {k: p for k, p in roots.items() if k != 'model'}
+        reuse = cache is not None
         if cache is None:
             cache = analyzer.AnalysisCache()
         # Plans compare problem identities; repair suggestions are never used here.
-        result = analyzer.analyze(roots['model'].parent, model_paths=[roots['model']],
-                                  report_paths=list(reports.values()), suggestions=False, cache=cache)
+        result = analyzer.analyze(cache.workspace or roots['model'].parent, model_paths=[roots['model']],
+                                  report_paths=list(reports.values()), suggestions=False, cache=cache,
+                                  persistent_cache=reuse)
         # Report display names are not unique. Group issues by their exact
         # artifact so identical visual paths in distinct Reports never hide
         # new errors. An issue without a known Report counts for every Report.
@@ -410,7 +434,7 @@ def _report_discovery_roots(roots, known_reports, search_roots):
 
 
 def create_plan(model_path, report_paths, operations, *, known_reports=None,
-                report_search_roots=None, allow_partial_report_scope=False):
+                report_search_roots=None, allow_partial_report_scope=False, project_path=None):
     """Preview only; no input files or backups are written.
 
     Pass ``known_reports`` (the project's discovered Reports) so a plan that
@@ -419,6 +443,8 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
     records the discovery boundary for a fresh check on apply; without explicit
     roots, checked callers use the model's parent and outside Reports' parents.
     Omitting both scope arguments retains the low-level explicit-scope contract.
+    Operation ``report_paths`` resolve relative to ``project_path`` (defaulting
+    to the model's parent for Python callers); absolute paths also work.
     """
     if not isinstance(operations, list) or not operations or any(not isinstance(o, dict) for o in operations):
         raise PlanError('operations must be a nonempty list of objects.')
@@ -432,6 +458,10 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
                     or str(action.get('source_file', action.get('sourceFile', ''))).lower().endswith('.json')):
                 raise PlanError('Report identities cannot be used for semantic-model actions; use delete_report_measures.')
     originals = _roots(model_path, report_paths)
+    # Resolve operation Report selectors before staging and expensive analysis.
+    # CLI PROJECT is explicit; Python callers default to the model's parent.
+    project = Path(project_path).resolve() if project_path is not None else originals['model'].parent
+    operations = _resolve_operation_reports(operations, originals, project)
     if report_search_roots is not None:
         report_search_roots = list(report_search_roots)
         known_reports = list(known_reports or [])
@@ -478,10 +508,13 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
     # The originals are read-only here and the hash check at the end rejects any
     # change to them, so the policy check and the baseline analysis share one parse.
     analysis_cache = analyzer.AnalysisCache()
+    analysis_cache.workspace = project
     policy = evaluate_deletion_policy(originals['model'], list(originals.values())[1:], actions,
                                       cache=analysis_cache)
     if not policy['ok']:
-        raise PlanError('; '.join(policy['errors']))
+        from .plan_diagnostics import policy_blockers
+        raise PlanError('; '.join(policy['errors']),
+                        blockers=policy_blockers(policy['violations'], operations), operations=operations)
     from . import metadata_validation
     # Unchanged documents validate once; the after snapshot replays their records.
     schema_memo = {}
@@ -489,8 +522,8 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
     baseline = _analyze(originals, analysis_cache)
     report_deletions = []
     if report_delete:
-        assessments = {report_measure_delete._key(r['entry']): r
-                       for r in baseline.get('report_measure_deletions', [])}
+        assessments = report_measure_delete.assessment(
+            originals['model'], list(originals.values())[1:], baseline)
         try:
             report_deletions = report_measure_delete.check_operation(operations[0], assessments)
             operations = [{'kind': report_measure_delete.OPERATION_KIND,
@@ -539,11 +572,16 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
         schema_after = metadata_validation.validate_metadata(after, memo=schema_memo, previous=schema_before)
         schema_comparison = metadata_validation.compare_validation(schema_before, schema_after)
         if schema_comparison["new_errors"] or schema_comparison["lost_validation"] or schema_comparison["truncated"]:
-            raise PlanError("Change introduces schema errors, loses declared schema validation, or exceeds the schema error limit. Repair the metadata before applying.")
+            from .plan_diagnostics import schema_blockers
+            raise PlanError("Change introduces schema errors, loses declared schema validation, or exceeds the schema error limit. Repair the metadata before applying.",
+                            blockers=schema_blockers(schema_comparison, schema_after), operations=operations)
         analysis = _analyze(staged)
         added = _problems(analysis) - _problems(baseline, operations)
         if added:
-            raise PlanError('Change introduces unresolved references: ' + '; '.join(str(x) for x in sorted(added)))
+            from .plan_diagnostics import reference_blockers
+            blockers = reference_blockers(added, operations)
+            raise PlanError('Change introduces unresolved references: ' + '; '.join(b['reason'] for b in blockers),
+                            blockers=blockers, operations=operations)
     if _hashes(_inventory(originals)) != _hashes(before) or _resource_inventory(originals, operations) != resources:
         raise PlanError('Input changed while preview was being prepared; re-analyze and retry.')
     changes = []

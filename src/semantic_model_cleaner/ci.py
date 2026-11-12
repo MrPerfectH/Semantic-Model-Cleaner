@@ -81,7 +81,7 @@ def run_check(
             raise ValueError("Selected reports require the supported PBIR definition directory.")
         if not reports:
             payload["scope"].update(report_usage_checked=False, selection_complete=False)
-        result = analyzer.analyze(workspace, model_paths=[model], report_paths=reports,
+        result = analyzer.analyze(workspace, model_paths=[model], report_paths=reports, suggestions=False,
                                   **({"allow_model_only": True} if allow_model_only else {}))
         payload["scope"]["scan_complete"] = result.get("coverage", {}).get("complete", False)
         findings: list[dict] = []
