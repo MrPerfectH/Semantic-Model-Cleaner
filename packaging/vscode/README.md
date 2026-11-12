@@ -39,7 +39,7 @@ pip, a download, or a silently selected external installation. Existing explicit
 settings remain advanced overrides after upgrading.
 
 CI builds four native targets: Windows x64 (`windows-2022`), Linux x64
-(`ubuntu-22.04`, glibc 2.35), macOS arm64 (`macos-14`) and macOS Intel
+(`ubuntu-22.04`, glibc 2.35), macOS arm64 (`macos-15`) and macOS Intel
 (`macos-15-intel`). Linux release packages are built on the Ubuntu 22.04 baseline,
 not on the developer's newer distribution. Other Linux distributions need
 compatible system libraries. macOS 14 arm64 and macOS 15 Intel are the tested

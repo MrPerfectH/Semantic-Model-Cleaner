@@ -16,7 +16,7 @@ EXTENSION = {'name': 'semantic-model-cleaner', 'publisher': 'MrPerfectH', 'versi
 REVISION = 'a' * 40
 
 
-def package(directory, target='win32-x64', *, overrides=None, mode=0o755, omitted=()):
+def package(directory, target='win32-x64', *, overrides=None, mode=0o755, omitted=(), pre_release=True):
     directory.mkdir(parents=True, exist_ok=True)
     platform, arch = target.split('-')
     executable = 'smc-engine.exe' if platform == 'win32' else 'smc-engine'
@@ -28,7 +28,10 @@ def package(directory, target='win32-x64', *, overrides=None, mode=0o755, omitte
         'extension/engine/manifest.json': json.dumps(engine),
         'extension.vsixmanifest': '<PackageManifest><Metadata><Identity '
             f'Id="{EXTENSION["name"]}" Publisher="{EXTENSION["publisher"]}" '
-            f'Version="{EXTENSION["version"]}" TargetPlatform="{target}" /></Metadata></PackageManifest>',
+            f'Version="{EXTENSION["version"]}" TargetPlatform="{target}" />'
+            + ('<Properties><Property Id="Microsoft.VisualStudio.Code.PreRelease" Value="true" /></Properties>'
+               if pre_release else '')
+            + '</Metadata></PackageManifest>',
         f'extension/engine/{executable}': 'runtime fixture',
         'extension/engine/licenses/Python-LICENSE.txt': 'license fixture',
         'extension/engine/_internal/semantic_model_cleaner/templates/index_v2.html': '<html>fixture</html>',
@@ -50,9 +53,9 @@ def checksum(path):
     path.with_suffix('.vsix.sha256').write_text(f'{digest}  {path.name}\n')
 
 
-def verify(paths, targets=('win32-x64', 'linux-x64')):
+def verify(paths, targets=('win32-x64', 'linux-x64'), engine_version='0.4.0b10'):
     return release.verify_packages(paths, targets, extension=EXTENSION,
-                                   engine_version='0.4.0b10', revision=REVISION)
+                                   engine_version=engine_version, revision=REVISION)
 
 
 def test_complete_native_release_passes(tmp_path):
@@ -102,3 +105,16 @@ def test_unix_engine_must_be_executable_after_extraction(tmp_path):
     path = package(tmp_path, 'linux-x64', mode=0o644)
     with pytest.raises(ValueError, match='executable permission'):
         verify([path], ['linux-x64'])
+
+
+def test_stable_engine_publishes_stable_packages(tmp_path):
+    paths = [package(tmp_path, target, overrides={'engineVersion': '0.4.0'}, pre_release=False)
+             for target in ['win32-x64', 'linux-x64']]
+    assert verify(paths, engine_version='0.4.0') == ['linux-x64', 'win32-x64']
+
+
+@pytest.mark.parametrize('engine_version, pre_release', [('0.4.0', True), ('0.4.0b10', False)])
+def test_marketplace_channel_must_match_engine_version(tmp_path, engine_version, pre_release):
+    path = package(tmp_path, overrides={'engineVersion': engine_version}, pre_release=pre_release)
+    with pytest.raises(ValueError, match='Marketplace channel'):
+        verify([path], ('win32-x64',), engine_version=engine_version)

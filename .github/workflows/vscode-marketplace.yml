@@ -1,4 +1,4 @@
-name: Publish Cleaner Marketplace pre-release
+name: Publish Cleaner to Marketplace
 
 on:
   workflow_dispatch:
@@ -33,15 +33,20 @@ jobs:
           pattern: cleaner-vsix-*
           merge-multiple: true
           path: vscode-extension/verified-packages
-      - name: Publish exact verified pre-release packages
+      - name: Publish exact verified packages
         shell: bash
         run: |
           shopt -s nullglob
           packages=(verified-packages/*.vsix)
           python ../scripts/verify_vscode_packages.py --target win32-x64 --target linux-x64 \
             --target darwin-x64 --target darwin-arm64 "${packages[@]}"
+          # A pre-release engine (a, b, rc, dev) publishes as a Marketplace pre-release; a final engine publishes stable.
+          channel=()
+          if python -c "import re, sys, tomllib; v = tomllib.load(open('../pyproject.toml', 'rb'))['project']['version']; sys.exit(0 if re.search(r'(a|b|rc|\.dev)\d+$', v) else 1)"; then
+            channel=(--pre-release)
+          fi
           for package in "${packages[@]}"; do
-            npx --no-install vsce publish --packagePath "$package" --pre-release
+            npx --no-install vsce publish --packagePath "$package" "${channel[@]}"
           done
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}

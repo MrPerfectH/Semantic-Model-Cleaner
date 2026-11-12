@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import subprocess
 import tomllib
 from xml.etree import ElementTree
@@ -12,6 +13,10 @@ from zipfile import ZipFile
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def is_pre_release(version):
+    return re.search(r'(a|b|rc|\.dev)\d+$', version) is not None
 
 
 def verify_packages(paths, targets, *, extension, engine_version, revision):
@@ -27,9 +32,14 @@ def verify_packages(paths, targets, *, extension, engine_version, revision):
                 raise ValueError(f'Duplicate archive entries: {path.name}')
             package = json.loads(archive.read('extension/package.json'))
             engine = json.loads(archive.read('extension/engine/manifest.json'))
-            identity = ElementTree.fromstring(archive.read('extension.vsixmanifest')).find('.//{*}Identity')
+            vsix_manifest = ElementTree.fromstring(archive.read('extension.vsixmanifest'))
+            identity = vsix_manifest.find('.//{*}Identity')
             if identity is None:
                 raise ValueError(f'Missing VSIX identity: {path.name}')
+            pre_release = any(item.get('Id') == 'Microsoft.VisualStudio.Code.PreRelease' and item.get('Value') == 'true'
+                              for item in vsix_manifest.findall('.//{*}Property'))
+            if pre_release != is_pre_release(engine_version):
+                raise ValueError(f'Marketplace channel does not match engine version {engine_version}: {path.name}')
             target = f'{engine["platform"]}-{engine["arch"]}'
             if target not in targets or target in found:
                 raise ValueError(f'Unexpected or duplicate target: {target}')

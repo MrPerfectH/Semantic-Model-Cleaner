@@ -185,7 +185,7 @@ jobs:
           if-no-files-found: warn
 
   publish-prerelease:
-    name: Publish GitHub prerelease
+    name: Publish GitHub release
     if: github.ref_type == 'tag'
     needs: [python-package, windows-verify]
     runs-on: ubuntu-latest
@@ -210,18 +210,25 @@ jobs:
       - name: Verify every release checksum
         run: python scripts/release_checksums.py verify release-assets/python/*.sha256 release-assets/windows/*.sha256
 
-      - name: Create or update prerelease and upload assets
+      - name: Create or update release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          python scripts/verify_release_identity.py --tag "$RELEASE_TAG"
+          IDENTITY="$(python scripts/verify_release_identity.py --tag "$RELEASE_TAG")"
           VERSION="${RELEASE_TAG#v}"
+          TITLE="$(python -c 'import json, sys; print(json.loads(sys.argv[1])["title"])' "$IDENTITY")"
+          # A beta version is a GitHub prerelease; a final version becomes the latest full release.
+          if [ "$(python -c 'import json, sys; print(json.loads(sys.argv[1])["prerelease"])' "$IDENTITY")" = "True" ]; then
+            CHANNEL=(--prerelease)
+          else
+            CHANNEL=(--prerelease=false --latest)
+          fi
           NOTES_FILE="docs/releases/$VERSION.md"
           test -f "$NOTES_FILE" || { echo "Missing release notes: $NOTES_FILE" >&2; exit 1; }
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" --draft=false --prerelease --title "Semantic Model Cleaner $VERSION public beta" --notes-file "$NOTES_FILE"
+            gh release edit "$RELEASE_TAG" --draft=false "${CHANNEL[@]}" --title "$TITLE" --notes-file "$NOTES_FILE"
           else
-            gh release create "$RELEASE_TAG" --prerelease --verify-tag --title "Semantic Model Cleaner $VERSION public beta" --notes-file "$NOTES_FILE"
+            gh release create "$RELEASE_TAG" "${CHANNEL[@]}" --verify-tag --title "$TITLE" --notes-file "$NOTES_FILE"
           fi
           gh release upload "$RELEASE_TAG" release-assets/python/* release-assets/windows/* --clobber
