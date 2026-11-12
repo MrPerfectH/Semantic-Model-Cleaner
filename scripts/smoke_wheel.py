@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import sys
@@ -134,7 +135,7 @@ def main() -> None:
         if (
             not Path(installed["path"]).is_relative_to(venv)
             or installed["version"] != expected_version
-            or installed["channel"] != "beta"
+            or installed["channel"] != ("beta" if re.search(r"(a|b|rc|\.dev)\d+$", expected_version) else "stable")
         ):
             raise RuntimeError(f"Unexpected installed wheel identity: {installed}")
         if not smc.is_file() or not smc_web.is_file():

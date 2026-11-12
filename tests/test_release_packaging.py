@@ -28,9 +28,34 @@ def test_public_beta_release_identity_is_consistent():
         "name": "semantic-model-cleaner",
         "version": __version__,
         "channel": "beta",
+        "prerelease": True,
+        "title": f"Semantic Model Cleaner {__version__} public beta",
         "tag": f"v{__version__}",
         "windows_archive": f"semantic-model-cleaner-windows-x64-{__version__}.zip",
     }
+
+
+@pytest.mark.parametrize("version, channel, title", [
+    ("0.4.0", "stable", "Semantic Model Cleaner 0.4.0"),
+    ("0.4.0b11", "beta", "Semantic Model Cleaner 0.4.0b11 public beta"),
+])
+def test_release_identity_follows_the_version_channel(monkeypatch, tmp_path, version, channel, title):
+    (tmp_path / "pyproject.toml").write_text(f'[project]\nname = "semantic-model-cleaner"\nversion = "{version}"\n')
+    monkeypatch.setattr(identity, "ROOT", tmp_path)
+    monkeypatch.setattr(identity, "__version__", version)
+    monkeypatch.setattr(identity, "__release_channel__", channel)
+    release = identity.verify(f"v{version}")
+    assert (release["channel"], release["prerelease"], release["title"]) == (channel, channel == "beta", title)
+
+
+@pytest.mark.parametrize("version, channel", [("0.4.0", "beta"), ("0.4.0b11", "stable"), ("0.4.0rc1", "beta")])
+def test_release_identity_rejects_a_channel_that_disagrees_with_the_version(monkeypatch, tmp_path, version, channel):
+    (tmp_path / "pyproject.toml").write_text(f'[project]\nname = "semantic-model-cleaner"\nversion = "{version}"\n')
+    monkeypatch.setattr(identity, "ROOT", tmp_path)
+    monkeypatch.setattr(identity, "__version__", version)
+    monkeypatch.setattr(identity, "__release_channel__", channel)
+    with pytest.raises(ValueError, match="release channel|neither"):
+        identity.verify()
 
 
 def test_release_identity_rejects_a_mismatched_tag():
