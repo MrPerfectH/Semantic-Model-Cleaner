@@ -25,7 +25,10 @@ SCHEMA_VERSION = 1
 
 
 class PlanError(ValueError):
-    pass
+    def __init__(self, message, *, blockers=None, operations=None):
+        super().__init__(message)
+        self.blockers = blockers or []
+        self.operations = operations or []
 
 
 class PartialReportScopeError(PlanError):
@@ -275,11 +278,13 @@ def _execute(op, roots):
 def _analyze(roots, cache=None):
     try:
         reports = {k: p for k, p in roots.items() if k != 'model'}
+        reuse = cache is not None
         if cache is None:
             cache = analyzer.AnalysisCache()
         # Plans compare problem identities; repair suggestions are never used here.
-        result = analyzer.analyze(roots['model'].parent, model_paths=[roots['model']],
-                                  report_paths=list(reports.values()), suggestions=False, cache=cache)
+        result = analyzer.analyze(cache.workspace or roots['model'].parent, model_paths=[roots['model']],
+                                  report_paths=list(reports.values()), suggestions=False, cache=cache,
+                                  persistent_cache=reuse)
         # Report display names are not unique. Group issues by their exact
         # artifact so identical visual paths in distinct Reports never hide
         # new errors. An issue without a known Report counts for every Report.
@@ -503,10 +508,13 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
     # The originals are read-only here and the hash check at the end rejects any
     # change to them, so the policy check and the baseline analysis share one parse.
     analysis_cache = analyzer.AnalysisCache()
+    analysis_cache.workspace = project
     policy = evaluate_deletion_policy(originals['model'], list(originals.values())[1:], actions,
                                       cache=analysis_cache)
     if not policy['ok']:
-        raise PlanError('; '.join(policy['errors']))
+        from .plan_diagnostics import policy_blockers
+        raise PlanError('; '.join(policy['errors']),
+                        blockers=policy_blockers(policy['violations'], operations), operations=operations)
     from . import metadata_validation
     # Unchanged documents validate once; the after snapshot replays their records.
     schema_memo = {}
@@ -564,11 +572,16 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
         schema_after = metadata_validation.validate_metadata(after, memo=schema_memo, previous=schema_before)
         schema_comparison = metadata_validation.compare_validation(schema_before, schema_after)
         if schema_comparison["new_errors"] or schema_comparison["lost_validation"] or schema_comparison["truncated"]:
-            raise PlanError("Change introduces schema errors, loses declared schema validation, or exceeds the schema error limit. Repair the metadata before applying.")
+            from .plan_diagnostics import schema_blockers
+            raise PlanError("Change introduces schema errors, loses declared schema validation, or exceeds the schema error limit. Repair the metadata before applying.",
+                            blockers=schema_blockers(schema_comparison, schema_after), operations=operations)
         analysis = _analyze(staged)
         added = _problems(analysis) - _problems(baseline, operations)
         if added:
-            raise PlanError('Change introduces unresolved references: ' + '; '.join(str(x) for x in sorted(added)))
+            from .plan_diagnostics import reference_blockers
+            blockers = reference_blockers(added, operations)
+            raise PlanError('Change introduces unresolved references: ' + '; '.join(b['reason'] for b in blockers),
+                            blockers=blockers, operations=operations)
     if _hashes(_inventory(originals)) != _hashes(before) or _resource_inventory(originals, operations) != resources:
         raise PlanError('Input changed while preview was being prepared; re-analyze and retry.')
     changes = []

@@ -27,6 +27,7 @@ def schema():
     action = _obj({**item, **source,
         "action": {"enum": ["hide", "unhide", "delete", "move_to_folder", "move_to_table_group"]},
         "item_type": {"enum": ["Measure", "Column", "Calculated Column", "Table"]},
+        "allow_hidden": {"type": "boolean", "description": "Explicit approval of hidden-only Review; other guards remain."},
         "folder": {"type": "string"}, "table_group": {"type": "string"}},
         ["action", "table", "name", "item_type"])
     action["allOf"] = [
@@ -117,6 +118,9 @@ def capabilities():
         "tool_version": __version__, "operations_schema_version": VERSION,
         "operations": list(schema()["$defs"]), "schema_command": "smc operations-schema",
         "workflow": ["analyze", "plan", "diff", "apply", "verify"],
+        "bulk_cleanup": {"command": "smc plan PROJECT --cleanup unused --cascade -o PLAN --format json",
+                         "hidden_only_review_opt_in": "--include-review",
+                         "scope": "One Semantic Model and every connected Report", "output": "One saved plan, including kept_because and hidden-only counts"},
         "plan_workflow_mutations": ["apply", "restore", "recover-lock"],
         "approval": "Obtain explicit user approval of the exact plan before apply or restore.",
         "safeguards": ["local staging", "scope checks", "sealed plans", "freshness checks",

@@ -10,6 +10,8 @@ COMMAND_GUIDE = """Commands (use COMMAND --help for details):
   smc usage PROJECT --table NAME   Explain whole-table usage
   smc summary PROJECT             Model totals and each Report's footprint
   smc review PROJECT              Compact existing model/Report checks
+  smc plan PROJECT --cleanup unused --cascade -o PLAN
+                                  Plan the full unused dependency closure once
   smc cleanup-groups PROJECT      Preview dead measure deletion groups
   smc capabilities                Discover query options and reviewed operations
   smc check PROJECT               Read-only CI checks (JSON by default)
