@@ -54,7 +54,10 @@ def schema():
     definitions = {}
 
     def operation(kind, properties, required):
-        definitions[kind] = _obj({"kind": {"const": kind}, "report_paths": _array(TEXT),
+        reports = {**_array(TEXT), "description": (
+            "Exact Report folders relative to PROJECT (or absolute), within the plan scope. "
+            "Rename and move require every Report in that scope.")}
+        definitions[kind] = _obj({"kind": {"const": kind}, "report_paths": reports,
                                   **properties}, ["kind", *required])
 
     operation("delete_report_measures", {"entries": _array(_obj(

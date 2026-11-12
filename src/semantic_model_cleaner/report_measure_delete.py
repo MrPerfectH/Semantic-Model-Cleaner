@@ -39,10 +39,9 @@ def _strings(value):
             yield from _strings(child)
 
 
-def _mentions(text, name):
-    # Conservative fallback for opaque and unfamiliar metadata surfaces.
-    folded = text.casefold()
-    return name.casefold() in folded or name.replace("]", "]]").casefold() in folded
+def _mentions(folded_strings, spellings):
+    # Conservative fallback, retaining boundaries between metadata strings.
+    return any(name in text for text in folded_strings for name in spellings)
 
 
 def _entry(item):
@@ -77,6 +76,9 @@ def assessment(model_path, report_paths, analysis):
         local = {key: row for key, row in rows.items() if key[0] == owner}
         if not local:
             continue
+        spellings = {key: (row['item'].name.casefold(),
+                           row['item'].name.replace("]", "]]").casefold())
+                     for key, row in local.items()}
         try:
             resources = declared_report_resources(report)
             for path in sorted(report.rglob("*")):
@@ -100,9 +102,9 @@ def assessment(model_path, report_paths, analysis):
                             detail = validation["reason"] + "; " + str(document.get("$schema", ""))
                             errors = ", ".join(e["path"] + ":" + e["keyword"] for e in validation["errors"][:3])
                             report_reasons[owner].append(f"Invalid or unsupported report metadata schema: {path.relative_to(report)} ({detail}; {errors})")
-                    strings = list(_strings(document))
+                    strings = tuple(value.casefold() for value in _strings(document))
                     for key in local:
-                        if any(_mentions(value, local[key]["item"].name) for value in strings):
+                        if _mentions(strings, spellings[key]):
                             reasons[key].append("Reference or possible reference remains in "
                                                 + path.relative_to(report).as_posix() + ".")
             if not (report / EXTENSION).is_file():

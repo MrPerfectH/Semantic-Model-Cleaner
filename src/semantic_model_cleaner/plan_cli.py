@@ -84,6 +84,7 @@ def main(argv=None):
                 ) from exc
             operations = parse_operations(raw)
             result = change_plan.create_plan(models[0], reports, operations,
+                                             project_path=root,
                                              known_reports=analyzer.discover_reports([root]),
                                              report_search_roots=[root],
                                              allow_partial_report_scope=args.allow_partial_report_scope)

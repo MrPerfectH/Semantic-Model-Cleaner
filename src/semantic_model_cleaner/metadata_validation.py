@@ -15,6 +15,7 @@ from itertools import islice
 import json
 import os
 from pathlib import Path
+from threading import RLock
 from urllib.parse import urldefrag, urljoin
 
 from jsonschema import validators
@@ -22,6 +23,12 @@ from referencing import Registry, Resource
 from referencing.exceptions import NoSuchResource, Unresolvable
 
 BUNDLE_ROOT = Path(__file__).parent / 'schemas' / 'microsoft-report'
+# Only validation evidence is retained, never the PBIR document itself. Content
+# identity also covers staged copies and differently named snapshot paths.
+_DOCUMENT_RESULTS = {}
+_DOCUMENT_REGISTRY = None
+_DOCUMENT_LOCK = RLock()
+
 METADATA_SUFFIXES = frozenset({'.json', '.pbir', '.pbism'})
 
 
@@ -105,6 +112,36 @@ def _pointer(parts) -> str:
 
 
 def validate_document(document, *, path: str = '', error_limit: int = 100) -> dict:
+    """Validate once per document content, error limit and bundled registry.
+
+    Schema validation has no dependency on the source path. A content digest
+    therefore safely shares results between assessment, metadata snapshots and
+    staged copies, including changed files whose timestamps/size stay the same.
+    Callers always receive independent evidence with their requested path.
+    """
+    global _DOCUMENT_REGISTRY
+    if error_limit < 1:
+        raise ValueError('error_limit must be positive')
+    declared = document.get('$schema') if isinstance(document, dict) else None
+    if not isinstance(declared, str) or not declared:
+        return _validate_document(document, path=path, error_limit=error_limit)
+    registry = _bundle()[2]
+    fingerprint = hashlib.sha256(json.dumps(document, ensure_ascii=True,
+                                            separators=(',', ':')).encode()).digest()
+    key = (fingerprint, error_limit)
+    # Concurrent browser analyses must not validate the same content twice.
+    with _DOCUMENT_LOCK:
+        if registry is not _DOCUMENT_REGISTRY:
+            _DOCUMENT_RESULTS.clear()
+            _DOCUMENT_REGISTRY = registry
+        if key not in _DOCUMENT_RESULTS:
+            _DOCUMENT_RESULTS[key] = _validate_document(document, error_limit=error_limit)
+        result = deepcopy(_DOCUMENT_RESULTS[key])
+    result['path'] = path
+    return result
+
+
+def _validate_document(document, *, path: str = '', error_limit: int = 100) -> dict:
     """Validate one decoded document only against its exact bundled $schema.
 
     ``not_validated`` is explicit absence of evidence, never a passing result.
@@ -155,7 +192,8 @@ def validate_metadata(files: Mapping[str, bytes | str], *, error_limit: int = 10
     A record depends only on the document path, its exact bytes, the error
     limit and the bundled schemas. ``memo`` is a caller-owned dict keyed by
     those inputs; a plan validates one snapshot before and after its changes,
-    so unchanged documents are validated once and replayed (#169).
+    so unchanged documents are validated once and replayed (#169). The shared
+    document cache also reuses checks performed by deletion assessment or staging.
     ``previous`` (an earlier snapshot of the same bundle and error limit) lets
     files with identical bytes reuse their record instead of validating again.
     """

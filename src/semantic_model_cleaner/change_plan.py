@@ -187,6 +187,25 @@ def _validate_operation_paths(value, roots):
             _validate_operation_paths(child, roots)
 
 
+def _resolve_operation_reports(operations, roots, project):
+    reports = [path for key, path in roots.items() if key != 'model']
+    resolved = []
+    for operation in operations:
+        op = dict(operation)
+        if op.get('report_paths'):
+            selected = [(value, (project / value).resolve()) for value in op['report_paths']]
+            outside = [str(value) for value, path in selected if path not in reports]
+            if outside:
+                raise PlanError('Operation reports must belong to the plan scope. Offending paths: '
+                                + ', '.join(outside) + '. Plan-scope Reports: '
+                                + ', '.join(map(str, reports)))
+            op['report_paths'] = [str(path) for _, path in selected]
+            if op.get('kind') in {'rename', 'move'} and {path for _, path in selected} != set(reports):
+                raise PlanError('Model rename and move must propagate through every report in the plan scope.')
+        resolved.append(op)
+    return resolved
+
+
 def _execute(op, roots):
     model = roots['model']
     reports = [p for k, p in roots.items() if k != 'model']
@@ -410,7 +429,7 @@ def _report_discovery_roots(roots, known_reports, search_roots):
 
 
 def create_plan(model_path, report_paths, operations, *, known_reports=None,
-                report_search_roots=None, allow_partial_report_scope=False):
+                report_search_roots=None, allow_partial_report_scope=False, project_path=None):
     """Preview only; no input files or backups are written.
 
     Pass ``known_reports`` (the project's discovered Reports) so a plan that
@@ -419,6 +438,8 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
     records the discovery boundary for a fresh check on apply; without explicit
     roots, checked callers use the model's parent and outside Reports' parents.
     Omitting both scope arguments retains the low-level explicit-scope contract.
+    Operation ``report_paths`` resolve relative to ``project_path`` (defaulting
+    to the model's parent for Python callers); absolute paths also work.
     """
     if not isinstance(operations, list) or not operations or any(not isinstance(o, dict) for o in operations):
         raise PlanError('operations must be a nonempty list of objects.')
@@ -432,6 +453,10 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
                     or str(action.get('source_file', action.get('sourceFile', ''))).lower().endswith('.json')):
                 raise PlanError('Report identities cannot be used for semantic-model actions; use delete_report_measures.')
     originals = _roots(model_path, report_paths)
+    # Resolve operation Report selectors before staging and expensive analysis.
+    # CLI PROJECT is explicit; Python callers default to the model's parent.
+    project = Path(project_path).resolve() if project_path is not None else originals['model'].parent
+    operations = _resolve_operation_reports(operations, originals, project)
     if report_search_roots is not None:
         report_search_roots = list(report_search_roots)
         known_reports = list(known_reports or [])
@@ -489,8 +514,8 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
     baseline = _analyze(originals, analysis_cache)
     report_deletions = []
     if report_delete:
-        assessments = {report_measure_delete._key(r['entry']): r
-                       for r in baseline.get('report_measure_deletions', [])}
+        assessments = report_measure_delete.assessment(
+            originals['model'], list(originals.values())[1:], baseline)
         try:
             report_deletions = report_measure_delete.check_operation(operations[0], assessments)
             operations = [{'kind': report_measure_delete.OPERATION_KIND,

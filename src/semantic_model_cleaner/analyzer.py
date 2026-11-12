@@ -5010,6 +5010,7 @@ def analyze(
     cache: AnalysisCache | None = None,
     unverified_reports: list[Path] | None = None,
     suggestions: bool = True,
+    include_report_measure_deletions: bool = False,
 ) -> dict:
     def checkpoint(stage, current=0, total=None):
         if progress is not None:
@@ -5551,7 +5552,7 @@ def analyze(
         row["review_basis"] = review_basis(row)
 
     report_deletions = {}
-    if any(row["item"].source_kind == "report" for row in results):
+    if include_report_measure_deletions and any(row["item"].source_kind == "report" for row in results):
         from .report_measure_delete import assessment, _entry, _key
         report_deletions = assessment(models[0], reports, {
             "items": results, "coverage": {"complete": not coverage_limitations,
@@ -6825,6 +6826,7 @@ def _analysis_cli(argv):
             report_search_roots=report_roots,
             unselected_reports=unselected,
             unverified_reports=unverified,
+            include_report_measure_deletions=True,
         )
     except UnsupportedSemanticModelError as exc:
         print(f"Error: {exc}", file=sys.stderr)
