@@ -3,7 +3,11 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $appDirectory = Join-Path $repoRoot "dist\Semantic Model Cleaner"
 $manifest = Get-Content -LiteralPath (Join-Path $appDirectory "release.json") -Raw | ConvertFrom-Json
-if ($manifest.version -notmatch '^\d+\.\d+\.\d+b\d+$') { throw "Invalid beta package version" }
+# A beta version (X.Y.ZbN) must be on the beta channel; a final version (X.Y.Z) on stable.
+if ($manifest.version -match '^\d+\.\d+\.\d+b\d+$') { $expectedChannel = "beta" }
+elseif ($manifest.version -match '^\d+\.\d+\.\d+$') { $expectedChannel = "stable" }
+else { throw "Invalid package version: $($manifest.version)" }
+if ($manifest.release_channel -ne $expectedChannel) { throw "Version $($manifest.version) needs release channel $expectedChannel, got $($manifest.release_channel)" }
 $exe = Join-Path $appDirectory "Semantic Model Cleaner.exe"
 $signature = Get-AuthenticodeSignature -LiteralPath $exe
 if ($RequireSignature) {
