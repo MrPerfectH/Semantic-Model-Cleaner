@@ -17,7 +17,9 @@ if (manifest.executable !== expected || !fs.statSync(path.join(root, 'engine', e
   throw new Error('The staged engine executable is missing or incompatible.');
 const vsce = require.resolve('@vscode/vsce/vsce');
 const output = `${name}-${version}-${target}.vsix`;
-execFileSync(process.execPath, [vsce, 'package', '--pre-release', '--no-dependencies',
+// A pre-release engine (a, b, rc, dev) ships as a Marketplace pre-release; a final engine ships stable.
+const preRelease = /(a|b|rc|\.dev)\d+$/.test(sourceVersion);
+execFileSync(process.execPath, [vsce, 'package', ...(preRelease ? ['--pre-release'] : []), '--no-dependencies',
   '--target', target, '--out', output], { cwd: root, stdio: 'inherit' });
 const checksum = createHash('sha256').update(fs.readFileSync(path.join(root, output))).digest('hex');
 fs.writeFileSync(path.join(root, `${output}.sha256`), `${checksum}  ${output}\n`);

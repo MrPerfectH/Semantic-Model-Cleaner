@@ -21,10 +21,15 @@ def verify(tag: str = "") -> dict:
     errors = []
     if package_version != __version__:
         errors.append(f"pyproject version {package_version} != runtime version {__version__}")
-    if __release_channel__ != "beta":
-        errors.append(f"public beta requires release channel beta, got {__release_channel__}")
-    if not re.fullmatch(r"\d+\.\d+\.\d+b\d+", __version__):
-        errors.append(f"public beta version is not a PEP 440 beta: {__version__}")
+    if re.fullmatch(r"\d+\.\d+\.\d+b\d+", __version__):
+        channel = "beta"
+    elif re.fullmatch(r"\d+\.\d+\.\d+", __version__):
+        channel = "stable"
+    else:
+        channel = ""
+        errors.append(f"release version is neither X.Y.Z nor a PEP 440 beta X.Y.ZbN: {__version__}")
+    if channel and __release_channel__ != channel:
+        errors.append(f"version {__version__} requires release channel {channel}, got {__release_channel__}")
     expected_tag = f"v{__version__}"
     if tag and tag != expected_tag:
         errors.append(f"release tag {tag} != {expected_tag}")
@@ -34,6 +39,8 @@ def verify(tag: str = "") -> dict:
         "name": project["project"]["name"],
         "version": __version__,
         "channel": __release_channel__,
+        "prerelease": channel == "beta",
+        "title": f"Semantic Model Cleaner {__version__}" + (" public beta" if channel == "beta" else ""),
         "tag": expected_tag,
         "windows_archive": f"semantic-model-cleaner-windows-x64-{__version__}.zip",
     }
