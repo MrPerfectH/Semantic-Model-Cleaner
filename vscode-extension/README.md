@@ -1,4 +1,4 @@
-# Semantic Model Cleaner for VS Code - Preview
+# Semantic Model Cleaner for VS Code
 
 Choose a semantic model and its reports in a native **Cleaner** sidebar, then
 review the analysis in a desktop VS Code editor tab running the existing
@@ -6,14 +6,10 @@ Semantic Model Cleaner web UI. The Python engine discovers the Power BI Project
 and its report bindings. Analysis and model changes remain explicit user
 actions; the existing reviewed-plan safeguards are unchanged.
 
-Version **0.1.8** is prepared as a Marketplace pre-release for
-`MrPerfectH.semantic-model-cleaner`; this document does not confirm publication.
-The **Preview** label remains. Native packages built from this source include the
-Cleaner engine and Python runtime. Earlier VSIX packages required a separately
-installed engine; this source change does not update those installed packages.
-Native CI covers Windows x64, Linux x64, and macOS Intel/Apple Silicon.
-Marketplace publication remains pending; see the build evidence for the tested
-versions and platforms.
+Version **0.2.0** is the first stable release of
+`MrPerfectH.semantic-model-cleaner`. It bundles Cleaner engine **0.4.0** and its
+Python runtime in native packages for Windows x64, Linux x64, macOS Intel and
+macOS Apple Silicon. Native CI installs and tests each package.
 
 ## Requirements and installation
 
@@ -21,10 +17,11 @@ versions and platforms.
 - A native VSIX matching the supported operating system and architecture.
 - Local disk Power BI Project files (TMDL Semantic Model and PBIR Reports).
 
-Install the matching native VSIX with **Extensions: Install from VSIX...**, then
-run **Semantic Model Cleaner: Open Cleaner**. No Python installation, virtual
-environment, engine path, or first-run download is required. Once published,
-Marketplace selects the matching platform package automatically.
+Install **Semantic Model Cleaner** (`MrPerfectH.semantic-model-cleaner`) from the
+Extensions view, then run **Semantic Model Cleaner: Open Cleaner**. Marketplace
+selects the matching platform package. No Python installation, virtual
+environment, engine path, or first-run download is required. Offline machines can
+install the matching native VSIX with **Extensions: Install from VSIX...**.
 
 For advanced development, **Python Path** can select an environment with a
 compatible engine installed. Alternatively, **Executable** can select an external
@@ -89,7 +86,7 @@ on a guessed port is reused.
   workspaces and VS Code in a browser fail before starting a process. A workspace
   extension and loopback `portMapping` are used, but remote operation is not
   claimed. Public tunnels and `asExternalUri` URLs would need separate Host,
-  Origin and ancestor verification; this preview deliberately does not create one.
+  Origin and ancestor verification; this extension deliberately does not create one.
 - The engine binds `127.0.0.1` on an OS-assigned port. A fresh 256-bit launch token
   travels only in the child's environment and request headers. Readiness checks
   the matching instance fingerprint. There are no token URLs or token files.
@@ -123,8 +120,9 @@ node scripts/smoke-engine.cjs
 npm run package
 ```
 
-The package command creates `semantic-model-cleaner-0.1.8-<platform>-<arch>.vsix`
-with the VSIX pre-release flag and matching platform target. It requires a staged
+The package command creates `semantic-model-cleaner-<version>-<platform>-<arch>.vsix`
+with the matching platform target. It sets the VSIX pre-release flag only when the
+engine version is a pre-release (`a`, `b`, `rc` or `dev`). It requires a staged
 native engine; a universal package without an engine is not produced. It does not publish. Open this directory in VS Code and use
 **Run Cleaner extension** (F5) for a development host.
 
@@ -167,15 +165,16 @@ API references: [Workspace Trust](https://code.visualstudio.com/api/extension-gu
 [webview security](https://code.visualstudio.com/api/extension-guides/webview),
 and [desktop port mapping](https://code.visualstudio.com/api/advanced-topics/remote-extensions#option-2---use-a-port-mapping).
 
-## Marketplace release preparation
+## Marketplace release
 
 The package declares the public publisher `MrPerfectH`, repository URL and MIT
 license, and includes `LICENSE`. The `media/cleaner-broom.svg` is the Activity Bar
 icon; `media/cleaner.png` is the Marketplace package icon.
 
-The manually dispatched **Publish Cleaner Marketplace pre-release** workflow
-runs extension and focused Python checks, packages this version and publishes
-that exact VSIX with `--pre-release`. A repository maintainer must configure
+The manually dispatched **Publish Cleaner to Marketplace** workflow runs
+extension and focused Python checks, packages this version and publishes those
+exact native VSIX files. A final engine version publishes a stable release; a
+pre-release engine version publishes with `--pre-release`. A repository maintainer must configure
 `VSCE_PAT` with permission for the `MrPerfectH` publisher and explicitly dispatch
 the workflow from the reviewed release commit. Pushes do not publish. Packaging
 or passing tests alone does not establish Marketplace availability.

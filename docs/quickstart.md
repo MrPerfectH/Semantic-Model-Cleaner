@@ -1,20 +1,18 @@
 # Windows quick start
 
-> Release candidate: publication and independent review are pending. Versioned download links are release targets, not evidence of available artifacts.
-
 Use a disposable copy or Git branch containing one TMDL `.SemanticModel` and its connected PBIR `.Report` folders. Analysis runs locally without Power BI Desktop, an account, or Fabric.
 
-Download [0.4.0b10 public beta](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b10). The steps below cover its first analysis and reviewed recovery workflow. See the [release notes](releases/0.4.0b10.md).
+Download [0.4.0](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0). The steps below cover its first analysis and reviewed recovery workflow. See the [release notes](releases/0.4.0.md). In VS Code, install the **Semantic Model Cleaner** extension instead; it bundles the same engine.
 
 1. Download the versioned Windows ZIP and its `.sha256` sidecar from the same release. Compare the ZIP's SHA-256 with the sidecar (`Get-FileHash <zip-path> -Algorithm SHA256`).
-2. Extract the **complete ZIP**. Keep the EXE and adjacent files together, then run `Semantic Model Cleaner.exe`. No Python installation is required. The beta is unsigned; Windows reputation prompts vary by machine.
+2. Extract the **complete ZIP**. Keep the EXE and adjacent files together, then run `Semantic Model Cleaner.exe`. No Python installation is required. The EXE is unsigned; Windows reputation prompts vary by machine.
 3. Choose **Try demo** for a disposable example, or **Open Power BI Project**. Choose a Semantic Model explicitly if several are found. Separate model/report locations are supported through the folder controls.
 4. Review selected and excluded Reports, then select **Analyze**. Other Reports may use the same items. Read **Analysis Limitations** separately from **Report Health**.
 5. Open an item and inspect its Usage, definition and dependencies. **Safe** applies only to supported scanned metadata in this scope. It does not establish runtime equivalence or absence of external consumers.
 6. Prepare a Cleanup Action and review the exact file differences before applying. A changed input invalidates its saved preview; create a fresh plan instead of forcing it.
 7. Open **Changes & history**, choose **Verify files**, and review restoration when needed. Restore recovers saved original bytes and refuses conflicting later edits. Preserve the app's user-data directory containing plans and receipts.
 
-![Windows public beta analyzing the disposable demo](assets/candidate/analysis.png)
+![Windows app analyzing the disposable demo](assets/candidate/analysis.png)
 
 If the browser does not open, use the URL printed by the launcher. Port 5001 is preferred; a busy port causes fallback to another port. Keep the launcher running while using the app.
 
@@ -27,7 +25,7 @@ PBIX binaries are not supported inputs. In Power BI Desktop, save a copy as a Po
 Download the wheel from the same release and install it using Python 3.11 or newer. The Windows GUI EXE is a launcher; CLI commands come from the Python package.
 
 ```powershell
-python -m pip install .\semantic_model_cleaner-0.4.0b10-py3-none-any.whl
+python -m pip install .\semantic_model_cleaner-0.4.0-py3-none-any.whl
 smc --version
 smc --help
 smc "C:\Projects\Example" --format json -o "C:\Exports\analysis.json"

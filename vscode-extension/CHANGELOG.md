@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 — first stable release
+
+- First stable Marketplace release, bundling Cleaner engine 0.4.0. The **Preview** label is removed.
+- Native packages for Windows x64, Linux x64, macOS Intel and macOS Apple Silicon. Marketplace selects the matching package; no Python setup is required.
+- Includes every engine change since 0.4.0b10; see the [0.4.0 release notes](https://github.com/MrPerfectH/Semantic-Model-Cleaner/blob/main/docs/releases/0.4.0.md).
+- macOS engines carry an ad-hoc code signature and are not notarized. Windows engines are not Authenticode-signed.
+
 ## 0.1.8 — unpublished pre-release
 
 - Bundle the Cleaner engine, Python runtime, assets, schemas and notices in native VSIX packages.

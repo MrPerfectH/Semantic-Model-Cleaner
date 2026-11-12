@@ -4,15 +4,11 @@ Semantic Model Cleaner analyzes Power BI PBIR + TMDL projects, shows which seman
 
 It works directly in repositories containing TMDL and PBIR files; Power BI Desktop is not required. Core workflows are free under the MIT license, with no account or paid service required. Fabric integration is a future extension.
 
-It is designed for local use against files on your machine. Version `0.4.0b10`
-is the public beta for Power BI practitioners who already work with PBIR
-and TMDL.
-
-> Beta10 integrates format-string reference checks, whole-table dependencies, Broken-item deletion handling, nullable report bindings, Review explanations, and structural-unit retention. See the [release notes](docs/releases/0.4.0b10.md).
+It is designed for local use against files on your machine. Version `0.4.0`
+is the first stable release for Power BI practitioners who already work with PBIR
+and TMDL. See the [release notes](docs/releases/0.4.0.md).
 
 > **Before applying changes:** back up your Power BI Project or commit it to version control first. Apply writes to your TMDL and PBIR files; guarded restore recovers the original bytes from the plan, but a backup is your safety net.
-
-> Release candidate: publication and independent review are pending. Versioned download links below are release targets, not evidence of available artifacts.
 
 ## Current Status
 
@@ -21,11 +17,11 @@ scope rules and the reviewed cleanup workflow. Maintainers regenerate it with
 `python scripts/generate_skill.py` after installing the project; CI checks it
 against `smc capabilities` with `python scripts/generate_skill.py --check`.
 
-- Project maturity: public beta `0.4.0b10`
+- Project maturity: stable `0.4.0`
 - Runtime shape: Python package with a CLI, a local web UI, and Windows desktop packaging
 - Stable entry points: `semantic-model-cleaner`, `semantic-model-cleaner-web`, `smc`, and `smc-web`
 - Windows entry points: packaged `Semantic Model Cleaner.exe`, `semantic-model-cleaner-desktop`, and `smc-desktop`
-- Release channel: beta is baked into this package and shown in the UI
+- Release channel: follows the version; `0.4.0` is stable, `bN` versions are beta
 
 ## What It Does
 
@@ -39,7 +35,7 @@ against `smc capabilities` with `python scripts/generate_skill.py --check`.
 ## What It Does Not Do
 
 - It does not host or publish reports for you
-- It does not yet ship a signed installer or auto-update flow
+- It does not yet ship a code-signed Windows executable or a notarized macOS engine
 - It does not yet cover every Power BI metadata edge case
 
 ## Requirements
@@ -49,12 +45,11 @@ against `smc capabilities` with `python scripts/generate_skill.py --check`.
 
 ## Install
 
-The desktop [VS Code extension preview](vscode-extension/README.md) is prepared
-for an initial public pre-release as `MrPerfectH.semantic-model-cleaner` 0.1.4.
-It wraps the existing Python/UI and requires a separately installed compatible
-engine. Nothing is installed automatically; see the extension instructions
-for engine setup, VSIX packaging and acceptance limits. Publication is a separate
-maintainer action.
+The easiest install is the [VS Code extension](vscode-extension/README.md):
+search the Extensions view for **Semantic Model Cleaner**
+(`MrPerfectH.semantic-model-cleaner`). It bundles the engine and its Python
+runtime for Windows x64, Linux x64, macOS Intel and macOS Apple Silicon, so no
+Python setup is required.
 
 Runtime install:
 
@@ -71,10 +66,10 @@ python -m pip install -e .[dev]
 ### Windows Packaged App
 
 For terminal-free Windows use, download
-[`semantic-model-cleaner-windows-x64-0.4.0b10.zip`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b10/semantic-model-cleaner-windows-x64-0.4.0b10.zip)
+[`semantic-model-cleaner-windows-x64-0.4.0.zip`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0/semantic-model-cleaner-windows-x64-0.4.0.zip)
 and its
-[`SHA-256 checksum`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0b10/semantic-model-cleaner-windows-x64-0.4.0b10.zip.sha256)
-from the explicit beta prerelease. Extract the whole ZIP, then run
+[`SHA-256 checksum`](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/download/v0.4.0/semantic-model-cleaner-windows-x64-0.4.0.zip.sha256)
+from the 0.4.0 release. Extract the whole ZIP, then run
 `Semantic Model Cleaner.exe`. Python, Power BI Desktop, Fabric, an account,
 and paid services are not required.
 
@@ -99,7 +94,7 @@ Packaged runtime behavior:
 
 ## Quick Start
 
-### Windows public beta
+### Windows app
 
 Open **Try demo** or **Open Power BI Project**, review the selected Semantic Model and connected Reports, then choose **Analyze**. Inspect one item’s Usage and dependencies before preparing changes. Review the exact file diff before apply. **Changes & history** provides file verification and guarded restore. See the [Windows walkthrough](docs/quickstart.md).
 
@@ -187,7 +182,7 @@ Exit codes (so CI can gate on a dry run):
 | 1 | Cleanup candidates found; nothing was written |
 | 2 | Input/analysis error or a withheld direct-write request |
 
-This command is read-only in the beta. The legacy `--apply` shortcut is withheld because it cannot apply a previously reviewed, saved plan. Use the app change review or a `clean_stale` operation through [CLI plans](docs/cli/plans.md), followed by `smc diff`, `smc apply` and `smc verify`. The reviewed workflow always records recovery data.
+This command is read-only. The legacy `--apply` shortcut is withheld because it cannot apply a previously reviewed, saved plan. Use the app change review or a `clean_stale` operation through [CLI plans](docs/cli/plans.md), followed by `smc diff`, `smc apply` and `smc verify`. The reviewed workflow always records recovery data.
 
 ### Local Web UI
 
@@ -286,11 +281,11 @@ Build the Windows package locally:
 pwsh -File packaging/windows/build.ps1
 ```
 
-## Public beta channel
+## Release channels
 
-- Version `0.4.0b10` defaults to the `beta` release channel without an environment variable.
-- Developers can set `SMC_RELEASE_CHANNEL=stable` to inspect the stable-gated UI during compatibility testing.
-- The public beta shows a `Beta` banner. Experiments remain separately opt-in.
+- The channel follows the version: a final version such as `0.4.0` is `stable`; a pre-release such as `X.Y.ZbN` is `beta`.
+- Developers can set `SMC_RELEASE_CHANNEL=beta` or `stable` to inspect either UI during compatibility testing.
+- Beta builds show a `Beta` banner. Experiments remain separately opt-in.
 
 No experimental features are currently registered. See `tests/test_experiments.py` for release-channel logic.
 
@@ -341,7 +336,7 @@ smc verify review/change.plan.json
 
 Use `smc history` to inspect receipts and `smc restore review/change.plan.json` for guarded recovery. Plans contain local metadata and must come from a trusted source. Static validation covers supported selected files; it does not evaluate Power BI runtime behavior. See [CLI plans and recovery](docs/cli/plans.md) for operation examples, scope rules, exit codes and interrupted-operation recovery.
 
-Read [CI checks and baselines](docs/cli/check.md), [supported workflows](docs/support.md), and the [beta quick start](docs/quickstart.md).
+Read [CI checks and baselines](docs/cli/check.md), [supported workflows](docs/support.md), and the [quick start](docs/quickstart.md).
 
 External/saved .dax queries (including developer scratch and DAXQueries files) are outside semantic-model and report cleanup scope. They are not analyzed, fingerprinted, staged, changed or restored. Query edits, additions and deletions do not invalidate a cleanup plan. Model TMDL expressions and report-extension DAX remain analyzed.
 

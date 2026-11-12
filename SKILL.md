@@ -9,7 +9,7 @@ description: Analyze local Power BI TMDL and PBIR projects, trace item usage, an
 
 Use `smc` for local Power BI Project analysis and cleanup. Power BI Desktop is
 not required for metadata analysis. Install from the repository with
-`python -m pip install .` (Python 3.11+). This reference describes 0.4.0b10;
+`python -m pip install .` (Python 3.11+). This reference describes 0.4.0;
 run `smc capabilities` to check the installed contract before authoring operations.
 
 ## Important constraints

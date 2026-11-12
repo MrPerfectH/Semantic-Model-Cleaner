@@ -1,12 +1,12 @@
-from semantic_model_cleaner import experiments
+from semantic_model_cleaner import __release_channel__, experiments
 
 
-def test_runtime_config_defaults_to_packaged_beta_channel(monkeypatch):
+def test_runtime_config_defaults_to_packaged_channel(monkeypatch):
     monkeypatch.delenv("SMC_RELEASE_CHANNEL", raising=False)
     runtime = experiments.runtime_config(raw_experiments="")
 
-    assert runtime["releaseChannel"] == "beta"
-    assert runtime["betaEnabled"] is True
+    assert runtime["releaseChannel"] == __release_channel__
+    assert runtime["betaEnabled"] is (__release_channel__ == "beta")
     assert runtime["activeExperiments"] == []
 
 
