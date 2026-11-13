@@ -1,8 +1,8 @@
 {
   "name": "semantic-model-cleaner",
-  "displayName": "Semantic Model Cleaner (Preview)",
+  "displayName": "Semantic Model Cleaner",
   "description": "Run Semantic Model Cleaner's local Power BI Project UI inside VS Code.",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "publisher": "MrPerfectH",
   "license": "MIT",
   "repository": {

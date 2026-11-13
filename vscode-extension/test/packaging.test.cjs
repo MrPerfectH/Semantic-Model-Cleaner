@@ -21,14 +21,14 @@ test('Mac acceptance resolves current Code bundles and retains older Electron bu
 
 test('release version agrees with lockfile, package output and changelog', () => {
   const lock = require('../package-lock.json');
-  assert.equal(manifest.version, '0.1.8');
+  assert.equal(manifest.version, '0.2.0');
   assert.equal(manifest.publisher, 'MrPerfectH');
   assert.equal(`${manifest.publisher}.${manifest.name}`, 'MrPerfectH.semantic-model-cleaner');
   assert.equal(lock.version, manifest.version);
   assert.equal(lock.packages[''].version, manifest.version);
   assert.equal(manifest.scripts.package, 'node scripts/package.cjs');
   assert.match(fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8'),
-    new RegExp(`^## ${manifest.version.replaceAll('.', '\\.')} — unpublished pre-release$`, 'm'));
+    new RegExp(`^## ${manifest.version.replaceAll('.', '\\.')} — .+$`, 'm'));
 });
 
 test('listing has its own 256px PNG rather than the generic extension icon', () => {

@@ -1,17 +1,15 @@
 # Supported workflows and validation boundaries
 
-> Release candidate: publication and independent review are pending. Versioned download links are release targets, not evidence of available artifacts.
-
 Semantic Model Cleaner is a free, MIT-licensed tool that works on local project files. No account or hosted service is required for analysis or cleanup. Start with a copy of your project or a Git branch, choose one semantic model and its reports, and inspect the selected scope before reviewing changes.
 
-The current public beta is [0.4.0b10](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b10). See the [release notes](releases/0.4.0b10.md) for fixes and verification boundaries.
+The current release is [0.4.0](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0). See the [release notes](releases/0.4.0.md) for fixes and verification boundaries.
 
 ## Inputs
 
 | Input | Support |
 | --- | --- |
 | TMDL `.SemanticModel` plus PBIR `.Report` folders | Primary workflow: one selected model and one or more selected reports. Invalid folders and unreadable TMDL are rejected before analysis. Valid empty model/table declarations are supported. |
-| UTF-8 BOM-prefixed TMDL | Read-only analysis is supported. All saved changes in a model scope containing a BOM-prefixed TMDL file are withheld in this beta because writer handling is incomplete; older saved previews are also refused. |
+| UTF-8 BOM-prefixed TMDL | Read-only analysis is supported. All saved changes in a model scope containing a BOM-prefixed TMDL file are withheld in this release because writer handling is incomplete; older saved previews are also refused. |
 | Different model/report directory roots | Supported through explicit path selection |
 | Report extension measures | Analyzed separately from semantic model measures; promotion is an explicit workflow |
 | PBIX binaries | Not an input format; save the project in the supported text formats first |
@@ -39,7 +37,7 @@ The current public beta is [0.4.0b10](https://github.com/MrPerfectH/Semantic-Mod
 
 Analysis limitations are listed on their own surface, separately from Report Health. Each one names the feature, the owning object and source location, what was checked, what remains unchecked and how it affects the Cleanup Recommendation. Counts are distinct limitations and affected items. A shared limitation (for example a calculation item that applies to whichever measure is selected) keeps every item with no use found in scope at Review; a targeted limitation affects only the items it references. They are analysis gaps, not report problems and not invalid Power BI configuration.
 
-Legacy direct-write HTTP routes and `smc clean-stale --apply` are withheld in this beta. Use the shared saved-plan workflow from the UI or CLI. Read-only stale-candidate discovery remains available.
+Legacy direct-write HTTP routes and `smc clean-stale --apply` are withheld in this release. Use the shared saved-plan workflow from the UI or CLI. Read-only stale-candidate discovery remains available.
 
 ## A complete review
 
@@ -56,11 +54,11 @@ Review decisions and naming conventions can be saved in the repository; see [rev
 ## Installation and reporting problems
 
 Windows users should download the versioned ZIP and checksum from the
-[v0.4.0b10 prerelease](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0b10),
+[v0.4.0 release](https://github.com/MrPerfectH/Semantic-Model-Cleaner/releases/tag/v0.4.0),
 verify the SHA-256 value, extract the entire ZIP, and run the executable from
 the extracted folder. The app opens a local browser UI. Preserve the adjacent
 packaged files, including the release manifest, static assets, schemas, and demo
-workspace. This public beta is unsigned.
+workspace. The Windows executable is unsigned.
 
 Python users can install the wheel or a source checkout with `python -m pip install .`;
 use Python 3.11 or newer. Release CI installs the wheel with

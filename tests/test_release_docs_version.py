@@ -1,4 +1,4 @@
-"""Public-facing docs must advertise the current beta, not an older download."""
+"""Public-facing docs must advertise the current release, not an older download."""
 from pathlib import Path
 import re
 
@@ -17,10 +17,11 @@ PUBLIC_DOCS = [
 
 
 @pytest.mark.parametrize("relative", PUBLIC_DOCS)
-def test_public_docs_reference_only_the_current_beta(relative):
+def test_public_docs_reference_only_the_current_release(relative):
     text = (ROOT / relative).read_text(encoding="utf-8")
-    versions = set(re.findall(r"\d+\.\d+\.\d+b\d+", text))
-    assert versions == {__version__}, f"{relative} mentions {sorted(versions)}, expected only {__version__}"
+    betas = set(re.findall(r"\d+\.\d+\.\d+b\d+", text))
+    assert betas <= {__version__}, f"{relative} mentions {sorted(betas)}, expected only {__version__}"
+    assert re.search(rf"(?<![\d.]){re.escape(__version__)}(?![\d.]|b\d)", text), f"{relative} does not mention {__version__}"
 
 
 def test_landing_page_download_links_point_at_the_current_release():

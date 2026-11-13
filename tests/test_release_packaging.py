@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from semantic_model_cleaner import __version__
+from semantic_model_cleaner import __release_channel__, __version__
 
 
 ROOT = Path(__file__).parents[1]
@@ -22,14 +22,15 @@ identity = _load("release_identity", ROOT / "scripts/verify_release_identity.py"
 checksums = _load("release_checksums", ROOT / "scripts/release_checksums.py")
 
 
-def test_public_beta_release_identity_is_consistent():
+def test_release_identity_is_consistent():
     release = identity.verify(f"v{__version__}")
+    beta = __release_channel__ == "beta"
     assert release == {
         "name": "semantic-model-cleaner",
         "version": __version__,
-        "channel": "beta",
-        "prerelease": True,
-        "title": f"Semantic Model Cleaner {__version__} public beta",
+        "channel": __release_channel__,
+        "prerelease": beta,
+        "title": f"Semantic Model Cleaner {__version__}" + (" public beta" if beta else ""),
         "tag": f"v{__version__}",
         "windows_archive": f"semantic-model-cleaner-windows-x64-{__version__}.zip",
     }
@@ -60,7 +61,7 @@ def test_release_identity_rejects_a_channel_that_disagrees_with_the_version(monk
 
 def test_release_identity_rejects_a_mismatched_tag():
     with pytest.raises(ValueError, match="release tag"):
-        identity.verify("v0.4.0")
+        identity.verify("v0.0.1")
 
 
 def test_checksum_sidecar_round_trip_and_tamper_detection(tmp_path):

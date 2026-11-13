@@ -1,4 +1,4 @@
-"""Browser-level verification for an extracted Windows public-beta package.
+"""Browser-level verification for an extracted Windows release package.
 
 The ZIP is treated as a user download: it is checksum-verified, extracted to a
 path containing spaces and non-ASCII characters, and launched with a PATH that
@@ -47,7 +47,6 @@ ASSETS_BY_LAYOUT = {
         "viewer-code-tokens.js",
     ),
 }
-EXPECTED_CHANNEL = "beta"
 OPTION_B_ITEM_KEY = "Measure:::Sales:::Revenue"
 OPTION_B_TAB_CONTENT = {
     "Definition": ("Copy source", "Edit DAX"),
@@ -356,9 +355,16 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
         manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
         version = manifest.get("version", "")
         expected_archive = f"semantic-model-cleaner-windows-x64-{version}.zip"
+        # A beta version (X.Y.ZbN) ships on the beta channel; a final version (X.Y.Z) ships stable.
+        if re.fullmatch(r"\d+\.\d+\.\d+b\d+", version):
+            expected_channel = "beta"
+        elif re.fullmatch(r"\d+\.\d+\.\d+", version):
+            expected_channel = "stable"
+        else:
+            expected_channel = None
         if (
-            not re.fullmatch(r"\d+\.\d+\.\d+b\d+", version)
-            or manifest.get("release_channel") != EXPECTED_CHANNEL
+            expected_channel is None
+            or manifest.get("release_channel") != expected_channel
             or archive.name != expected_archive
         ):
             raise RuntimeError(f"Unexpected packaged release identity: {manifest}")
@@ -408,9 +414,12 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
                 page.goto(base + "/?ui=v2", wait_until="networkidle", timeout=30_000)
                 if page.title() != "Semantic Model Cleaner":
                     raise RuntimeError(f"Unexpected page title: {page.title()}")
-                page.locator(".beta-badge").wait_for(state="visible")
+                if expected_channel == "beta":
+                    page.locator(".beta-badge").wait_for(state="visible")
+                elif page.locator(".beta-badge").count():
+                    raise RuntimeError("Stable package shows a beta badge")
                 if version not in page.locator(".build-stamp").inner_text():
-                    raise RuntimeError("Packaged UI does not show the beta version")
+                    raise RuntimeError("Packaged UI does not show the package version")
                 for layout, assets in ASSETS_BY_LAYOUT.items():
                     page.goto(base + "/?ui=" + layout, wait_until="networkidle")
                     content = page.content()
@@ -570,7 +579,7 @@ def run_smoke(*, archive: Path, checksum: Path, evidence_dir: Path, timeout: flo
                 (evidence_dir / "browser-page-errors.log").write_text("\n".join(page_errors), encoding="utf-8")
                 browser.close()
         report["ok"] = True
-        print("Windows public-beta smoke passed: " + ", ".join(report["checks"]))
+        print("Windows package smoke passed: " + ", ".join(report["checks"]))
     except Exception as exc:
         report["ok"] = False
         report["error"] = f"{type(exc).__name__}: {exc}"
