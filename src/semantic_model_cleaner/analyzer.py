@@ -2675,6 +2675,9 @@ def _find_json_refs(obj, path_parts: Optional[list] = None, aliases: Optional[di
         if "metadata" in obj and isinstance(obj["metadata"], str):
             meta = obj["metadata"]
             parts = _split_top_level_query_ref(meta)
+            if parts and parts[0] == "extension" and "." in parts[1]:
+                # `extension.<Entity>.<Measure>` is a report-extension measure.
+                parts = tuple(parts[1].split(".", 1))
             if parts:
                 refs.append({
                     "table": parts[0],

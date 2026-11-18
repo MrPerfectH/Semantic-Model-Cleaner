@@ -106,6 +106,21 @@ def _load_report_extensions(report_path: Path) -> tuple[Path, dict]:
     return report_extensions, json.loads(report_extensions.read_text(encoding="utf-8"))
 
 
+def _json_text(payload, path: Path) -> str:
+    """Serialize a PBIR JSON file, keeping its original end-of-file state.
+
+    Fabric and Git store these files without a final newline. A rewrite must not
+    add one, or every touched file would show as Modified after a round trip.
+    A file that does not exist yet gets the newline.
+    """
+    text = json.dumps(payload, indent=2, ensure_ascii=False)
+    try:
+        original = Path(path).read_bytes()
+    except OSError:
+        return text + "\n"
+    return text + "\n" if original.endswith(b"\n") or not original else text
+
+
 def _save_report_extensions(report_extensions: Path, payload: dict) -> None:
     payload.setdefault("$schema", "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/reportExtension/1.0.0/schema.json")
     payload.setdefault("name", "extension")
@@ -114,7 +129,7 @@ def _save_report_extensions(report_extensions: Path, payload: dict) -> None:
     if not validation["ok"]:
         error = "; ".join(err["message"] for err in validation["errors"])
         raise ValueError(f"PBIR validation failed: {error}")
-    report_extensions.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    report_extensions.write_text(_json_text(payload, report_extensions), encoding="utf-8")
 
 
 def _find_measure(payload: dict, entity_name: str, measure_name: str) -> tuple[dict | None, dict | None]:
@@ -536,6 +551,15 @@ def _rewrite_query_ref(
         return value, False
     table_or_alias, name = parts
     alias = aliases.get(table_or_alias.casefold())
+    if (table_or_alias == "extension" and alias is None and "." in name
+            and "extension" not in table_lookup):
+        # `extension.<Entity>.<Measure>` names a report-extension measure. Its
+        # entity is a table name, and reportExtensions.json renames it the same way.
+        entity, measure = name.split(".", 1)
+        target_entity = table_lookup.get(entity.casefold())
+        if target_entity and target_entity != entity:
+            return f"extension.{target_entity}.{measure}", True
+        return value, False
     if alias and alias.get("subquery"):
         return value, False
     if alias and alias.get("ambiguous"):
@@ -983,7 +1007,7 @@ def rewrite_model_reference_changes(
         # value) cannot fire mid-write and leave reports half-rewritten — the write
         # loop below can then only fail with OSError, which the transaction handles.
         serialized_writes = [
-            (json_file, json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+            (json_file, _json_text(payload, json_file))
             for json_file, payload in pending_writes
         ]
         roots = [report_path / "definition" for report_path in report_paths]
@@ -1492,7 +1516,7 @@ def apply_report_issue_actions(*, entries: list[dict], dry_run: bool = False) ->
         # value) cannot fire mid-write and leave reports half-rewritten — the write
         # loop below can then only fail with OSError, which the transaction handles.
         serialized_writes = [
-            (target_file, json.dumps(pending_payloads[target_file], indent=2, ensure_ascii=False) + "\n")
+            (target_file, _json_text(pending_payloads[target_file], target_file))
             for target_file in target_files
         ]
         snapshot = file_transaction.snapshot_artifact_files(target_files, suffixes=(".json",))
@@ -1825,7 +1849,7 @@ def cleanup_stale_metadata_selectors(*, entries: list[dict], dry_run: bool = Fal
         # value) cannot fire mid-write and leave reports half-rewritten — the write
         # loop below can then only fail with OSError, which the transaction handles.
         serialized_writes = [
-            (target_file, json.dumps(pending_payloads[target_file], indent=2, ensure_ascii=False) + "\n")
+            (target_file, _json_text(pending_payloads[target_file], target_file))
             for target_file in target_files
         ]
         snapshot = file_transaction.snapshot_artifact_files(target_files, suffixes=(".json",))
