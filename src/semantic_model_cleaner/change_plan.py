@@ -336,6 +336,16 @@ def _problems(results, operations=None):
     return found
 
 
+def _new_problems(after, before):
+    # A reference that was already broken stays pre-existing when its category
+    # changes: renaming a table into the name of a stale reference turns
+    # missing_table into missing_column at the same place, and that is not new.
+    def identity(problem):
+        return problem[:4] + problem[5:] if problem[0] == 'report' else problem
+    known = {identity(problem) for problem in before}
+    return {problem for problem in after if identity(problem) not in known}
+
+
 def _validate_json(inventory, *, tolerate_existing=None):
     errors = []
     for key, content in inventory.items():
@@ -576,7 +586,7 @@ def create_plan(model_path, report_paths, operations, *, known_reports=None,
             raise PlanError("Change introduces schema errors, loses declared schema validation, or exceeds the schema error limit. Repair the metadata before applying.",
                             blockers=schema_blockers(schema_comparison, schema_after), operations=operations)
         analysis = _analyze(staged)
-        added = _problems(analysis) - _problems(baseline, operations)
+        added = _new_problems(_problems(analysis), _problems(baseline, operations))
         if added:
             from .plan_diagnostics import reference_blockers
             blockers = reference_blockers(added, operations)

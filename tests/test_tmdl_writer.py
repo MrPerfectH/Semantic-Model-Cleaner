@@ -207,6 +207,26 @@ def test_set_table_group_inserts_and_updates_annotation(tmp_path):
     assert "PNL Actuals" not in updated
 
 
+def test_set_table_group_writes_the_annotation_after_the_table_properties(tmp_path):
+    model_path = tmp_path / "Demo.SemanticModel"
+    tables_dir = model_path / "definition" / "tables"
+    tables_dir.mkdir(parents=True)
+    sales_file = tables_dir / "Sales.tmdl"
+    sales_file.write_text(
+        "table Sales\n\tlineageTag: abc\n\n\tcolumn Id\n\t\tdataType: int64\n\n"
+        "\tpartition Sales = m\n\t\tmode: import\n",
+        encoding="utf-8",
+    )
+
+    assert tmdl_writer.set_table_group(model_path, "Sales", "Dim")["ok"] is True
+
+    assert sales_file.read_text(encoding="utf-8") == (
+        "table Sales\n\tlineageTag: abc\n\n\tcolumn Id\n\t\tdataType: int64\n\n"
+        "\tpartition Sales = m\n\t\tmode: import\n\n\tannotation TabularEditor_TableGroup = Dim\n")
+    assert tmdl_writer.set_table_group(model_path, "Sales", "Fact")["ok"] is True
+    assert sales_file.read_text(encoding="utf-8").count("TabularEditor_TableGroup") == 1
+
+
 def test_create_measure_appends_properties(tmp_path):
     model_path = tmp_path / "Demo.SemanticModel"
     tables_dir = model_path / "definition" / "tables"

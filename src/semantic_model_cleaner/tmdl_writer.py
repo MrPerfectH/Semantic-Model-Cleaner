@@ -465,7 +465,7 @@ def set_table_group(model_path: Path, table: str, group_name: str) -> dict:
     table_block = _find_table_block(lines, table)
     if not table_block:
         return {"ok": False, "error": f"Table declaration not found in {tmdl_file.name}"}
-    table_line, _ = table_block
+    table_line, table_end = table_block
 
     annotation_name = "TabularEditor_TableGroup"
     annotation_pattern = re.compile(
@@ -484,7 +484,12 @@ def set_table_group(model_path: Path, table: str, group_name: str) -> dict:
         else:
             lines.pop(annotation_line)
     elif group_name:
-        lines.insert(table_line + 1, f"\tannotation {annotation_name} = {group_name}")
+        # An annotation is a child object. TMDL requires table properties such as
+        # lineageTag to come first, so it goes after the last line of the table.
+        last = table_end
+        while last > table_line + 1 and not lines[last - 1].strip():
+            last -= 1
+        lines[last:last] = ["", f"\tannotation {annotation_name} = {group_name}"]
 
     tmdl_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return {
